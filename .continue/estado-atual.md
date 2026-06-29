@@ -25,7 +25,7 @@ Mantido sob a conta **`samirhvbr`** como projeto próprio (repo standalone, priv
 | `fork` | `git@github.com:samirhvbr/claude-desktop-debian.git` | backup / base p/ PRs ao upstream |
 | `upstream` | `git@github.com:aaddrick/claude-desktop-debian.git` | original (push desabilitado) |
 
-- Branch principal: **`main`**.
+- Branch principal: **`master`** (default do repo; convenção do samirhvbr).
 - Sincronizar com o upstream: `git fetch upstream && git merge upstream/main`
   (vai conflitar nos arquivos rebrandeados — resolver mantendo o branding SHVIA-DESKTOP).
 
