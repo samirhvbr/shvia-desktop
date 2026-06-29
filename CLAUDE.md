@@ -9,6 +9,16 @@
   intentionally differ) — if you edit one, edit the other.
 -->
 
+## 🔄 Before you start: `git pull`
+
+**ALWAYS** check for remote updates before writing or changing anything in this repo:
+
+```bash
+git pull          # already allow-listed
+```
+
+Working on a stale base causes conflicts. Pull first, every time. To inspect only: `git fetch && git status`.
+
 ## Required reading
 
 These documents are the source of truth. If anything in this file conflicts with them, they win. Read them before opening a non-trivial issue or PR.
