@@ -70,7 +70,7 @@ assert_command_succeeds() {
 # $2 = expected desktopName in app/package.json
 validate_app_contents() {
 	local resources_dir="$1"
-	local expected_desktop_name="${2:-claude-desktop.desktop}"
+	local expected_desktop_name="${2:-shvia-desktop.desktop}"
 
 	assert_file_exists "$resources_dir/app.asar"
 	assert_dir_exists "$resources_dir/app.asar.unpacked"
@@ -225,7 +225,7 @@ run_launch_smoke_test() {
 	local cache_root xvfb_log launcher_log
 	cache_root=$(mktemp -d)
 	xvfb_log=$(mktemp)
-	launcher_log="$cache_root/claude-desktop-debian/launcher.log"
+	launcher_log="$cache_root/shvia-desktop/launcher.log"
 	_smoke_cache_root="$cache_root"
 	_smoke_xvfb_log="$xvfb_log"
 	_smoke_pkill_match="$pkill_match"

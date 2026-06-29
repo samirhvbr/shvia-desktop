@@ -5,7 +5,7 @@
 # Sourced by: scripts/launcher-common.sh (which is in turn sourced by the
 # per-package launcher scripts — deb, rpm, AppImage, Nix).
 #
-# Provides: run_doctor (the `claude-desktop --doctor` entry point) plus its
+# Provides: run_doctor (the `shvia-desktop --doctor` entry point) plus its
 # internal helpers. Self-contained except for the WM_CLASS constant defined
 # at the top of launcher-common.sh (substituted at build time), which the
 # live-UI fingerprint in the orphaned-daemon check reads at runtime.
@@ -497,8 +497,8 @@ _doctor_check_filename_limit() {
 # CLAUDE_DISABLE_GPU=1 in the environment for headless persistence.
 #
 # Arguments: $1 = electron path (e.g.,
-#   /usr/lib/claude-desktop/node_modules/electron/dist/electron)
-#   Used to filter results to claude-desktop's electron when possible;
+#   /usr/lib/shvia-desktop/node_modules/electron/dist/electron)
+#   Used to filter results to shvia-desktop's electron when possible;
 #   falls back to all-electron crashes when the path doesn't match
 #   (e.g., AppImage mount paths are transient).
 _doctor_check_recent_crashes() {
@@ -618,7 +618,7 @@ _doctor_check_disk_space() {
 	fi
 }
 
-# Report the installed claude-desktop version from the package manager
+# Report the installed shvia-desktop version from the package manager
 # that actually owns the install (#711). On dual-DB hosts (e.g. a
 # Fedora box with dpkg installed for deb work) a stale dpkg record
 # must not shadow the live rpm install, so rpm ownership of the real
@@ -636,7 +636,7 @@ _doctor_check_pkg_version() {
 	local pkg_version=''
 
 	if [[ -z $probe_path ]]; then
-		probe_path='/usr/lib/claude-desktop'
+		probe_path='/usr/lib/shvia-desktop'
 		probe_path+='/node_modules/electron/dist/electron'
 	fi
 
@@ -654,7 +654,7 @@ _doctor_check_pkg_version() {
 	# dpkg branch: only consulted when rpm does not own the install.
 	if command -v dpkg-query &>/dev/null; then
 		pkg_version=$(dpkg-query -W -f='${Version}' \
-			claude-desktop 2>/dev/null) || pkg_version=''
+			shvia-desktop 2>/dev/null) || pkg_version=''
 		if [[ -n $pkg_version ]]; then
 			_pass "Installed version: $pkg_version"
 			return 0
@@ -665,7 +665,7 @@ _doctor_check_pkg_version() {
 	# when a package tool exists; with none there is nothing to say.
 	if command -v rpm &>/dev/null \
 		|| command -v dpkg-query &>/dev/null; then
-		_warn 'claude-desktop not found via dpkg/rpm (AppImage?)'
+		_warn 'shvia-desktop not found via dpkg/rpm (AppImage?)'
 	fi
 }
 
@@ -780,19 +780,19 @@ run_doctor() {
 		fi
 	elif [[ -n $electron_path ]]; then
 		_fail "Electron binary not found at $electron_path"
-		_info 'Fix: Reinstall claude-desktop package'
+		_info 'Fix: Reinstall shvia-desktop package'
 	elif command -v electron &>/dev/null; then
 		local ver
 		ver=$(_electron_version "$(command -v electron)")
 		_pass "Electron: ${ver:+v${ver#v} }(system)"
 	else
 		_fail 'Electron binary not found'
-		_info 'Fix: Reinstall claude-desktop package'
+		_info 'Fix: Reinstall shvia-desktop package'
 	fi
 
 	# -- Chrome sandbox permissions --
 	local sandbox_paths=(
-		'/usr/lib/claude-desktop/node_modules/electron/dist/chrome-sandbox'
+		'/usr/lib/shvia-desktop/node_modules/electron/dist/chrome-sandbox'
 	)
 	# Also check relative to the provided electron path
 	if [[ -n $electron_path ]]; then
@@ -836,12 +836,12 @@ run_doctor() {
 	# invoking build's binary): the profile pins this exact path, so only
 	# a deb install is confined by it. AppImage always runs --no-sandbox
 	# and Nix binaries live in the store — neither can hit the crash.
-	local _deb_electron='/usr/lib/claude-desktop'
+	local _deb_electron='/usr/lib/shvia-desktop'
 	_deb_electron+='/node_modules/electron/dist/electron'
 	if [[ $_userns_val == 1 && -e $_deb_electron ]]; then
 		# Profile name must match deb.sh's /etc/apparmor.d/$package_name
 		# (PACKAGE_NAME in build.sh).
-		local _aa_profile='/etc/apparmor.d/claude-desktop'
+		local _aa_profile='/etc/apparmor.d/shvia-desktop'
 		local _aa_loaded='/sys/kernel/security/apparmor/profiles'
 		# securityfs marks this file world-readable (0444), but the kernel
 		# still denies the actual read without CAP_MAC_ADMIN — so a -r test
@@ -853,7 +853,7 @@ run_doctor() {
 			# Authoritative: we actually read the kernel's loaded profile
 			# set (needs root), so report the real load state — not
 			# mere presence on disk.
-			if printf '%s\n' "$_loaded_set" | grep -q '^claude-desktop '; then
+			if printf '%s\n' "$_loaded_set" | grep -q '^shvia-desktop '; then
 				_pass 'User namespaces: restricted, AppArmor profile loaded'
 			else
 				_warn 'User namespaces: restricted by AppArmor,' \
@@ -970,7 +970,7 @@ print(len(servers))
 	fi
 
 	# -- Desktop integration --
-	local desktop_file='/usr/share/applications/claude-desktop.desktop'
+	local desktop_file='/usr/share/applications/shvia-desktop.desktop'
 	if [[ -f $desktop_file ]]; then
 		_pass "Desktop entry: $desktop_file"
 	else
@@ -1133,7 +1133,7 @@ print(len(servers))
 
 	# VM image
 	local vm_image
-	vm_image="${HOME}/.local/share/claude-desktop/vm/rootfs.qcow2"
+	vm_image="${HOME}/.local/share/shvia-desktop/vm/rootfs.qcow2"
 	if [[ -f $vm_image ]]; then
 		local vm_size
 		vm_size=$(du -h "$vm_image" 2>/dev/null \
@@ -1187,7 +1187,7 @@ print(len(servers))
 	# the launchers no longer pass app.asar in argv — Electron
 	# auto-loads it), excluding Chromium helpers (--type=...), the
 	# cowork daemon itself, our own launcher bash, and stopped/zombie
-	# processes.  Counting any `claude-desktop`-matching process (as
+	# processes.  Counting any `shvia-desktop`-matching process (as
 	# the old check did) would include the launcher's own bash and
 	# stuck launcher bashes from previous crashes, producing false
 	# negatives where a real orphan is misreported as "parent alive".
@@ -1212,7 +1212,7 @@ print(len(servers))
 	# -- Log file --
 	local log_path
 	log_path="${XDG_CACHE_HOME:-$HOME/.cache}"
-	log_path="$log_path/claude-desktop-debian/launcher.log"
+	log_path="$log_path/shvia-desktop/launcher.log"
 	if [[ -f $log_path ]]; then
 		local log_size
 		log_size=$(stat -c '%s' "$log_path" 2>/dev/null) || log_size=0

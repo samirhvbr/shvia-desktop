@@ -35,10 +35,10 @@ node_pty_build_dir=''
 final_output_path=''
 
 # Package metadata (constants)
-readonly PACKAGE_NAME='claude-desktop'
+readonly PACKAGE_NAME='shvia-desktop'
 readonly WM_CLASS='Claude'
 export WM_CLASS
-readonly MAINTAINER='Claude Desktop Linux Maintainers'
+readonly MAINTAINER='Samir Hanna Verza <samirhv@me.com>'
 readonly DESCRIPTION='Claude Desktop for Linux'
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -156,7 +156,7 @@ run_packaging() {
 Name=Claude (AppImage)
 Comment=Claude Desktop (AppImage Version $version)
 Exec=$(basename "$output_path") %u
-Icon=claude-desktop
+Icon=shvia-desktop
 Type=Application
 Terminal=false
 Categories=Office;Utility;Network;
@@ -231,7 +231,7 @@ print_next_steps() {
 				echo -e '\n   This AppImage includes embedded update information!'
 			else
 				echo -e '\n   This locally-built AppImage does not include update information.'
-				echo -e '   For automatic updates, download release versions: https://github.com/aaddrick/claude-desktop-debian/releases'
+				echo -e '   For automatic updates, download release versions: https://github.com/samirhvbr/SHVIA-DESKTOP/releases'
 			fi
 		else
 			echo -e 'AppImage file not found. Cannot provide usage instructions.'

@@ -12,8 +12,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/aaddrick/claude-desktop-debian.git
-cd claude-desktop-debian
+git clone https://github.com/samirhvbr/SHVIA-DESKTOP.git
+cd SHVIA-DESKTOP
 
 # Build with auto-detected format (based on your distro)
 ./build.sh
@@ -57,8 +57,8 @@ The pinned Electron version lives in `scripts/setup/dependencies.sh` (`electron_
 ### For .deb packages (Debian/Ubuntu)
 
 ```bash
-sudo apt install ./claude-desktop_VERSION_ARCHITECTURE.deb
-# Or: sudo dpkg -i ./claude-desktop_VERSION_ARCHITECTURE.deb
+sudo apt install ./shvia-desktop_VERSION_ARCHITECTURE.deb
+# Or: sudo dpkg -i ./shvia-desktop_VERSION_ARCHITECTURE.deb
 
 # If you encounter dependency issues:
 sudo apt --fix-broken install
@@ -67,18 +67,18 @@ sudo apt --fix-broken install
 ### For .rpm packages (Fedora/RHEL)
 
 ```bash
-sudo dnf install ./claude-desktop-VERSION-1.ARCH.rpm
-# Or: sudo rpm -i ./claude-desktop-VERSION-1.ARCH.rpm
+sudo dnf install ./shvia-desktop-VERSION-1.ARCH.rpm
+# Or: sudo rpm -i ./shvia-desktop-VERSION-1.ARCH.rpm
 ```
 
 ### For AppImages
 
 ```bash
 # Make executable
-chmod +x ./claude-desktop-*.AppImage
+chmod +x ./shvia-desktop-*.AppImage
 
 # Run directly
-./claude-desktop-*.AppImage
+./shvia-desktop-*.AppImage
 
 # Or integrate with your system using Gear Lever
 ```
@@ -93,13 +93,13 @@ The repository includes a Nix flake. Build and install directly:
 
 ```bash
 # Build the package
-nix build .#claude-desktop
+nix build .#shvia-desktop
 
 # Build the FHS-wrapped variant (for MCP server support)
-nix build .#claude-desktop-fhs
+nix build .#shvia-desktop-fhs
 
 # Run without installing
-nix run .#claude-desktop
+nix run .#shvia-desktop
 ```
 
 For declarative NixOS installation, see the [README](../README.md#using-nix-flake-nixos).
@@ -136,7 +136,7 @@ A GitHub Actions workflow runs daily to check for new Claude Desktop releases:
 2. Compares resolved URLs with those in `scripts/setup/detect-host.sh`
 3. If a new version is detected:
    - Updates `scripts/setup/detect-host.sh` with new download URLs
-   - Updates `nix/claude-desktop.nix` with new version, URLs, and SRI hashes
+   - Updates `nix/shvia-desktop.nix` with new version, URLs, and SRI hashes
    - Creates a new release tag
    - Triggers automated builds for both architectures
 

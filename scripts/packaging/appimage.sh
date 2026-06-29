@@ -16,7 +16,7 @@ echo "Work Directory: $work_dir"
 echo "App Staging Directory: $app_staging_dir"
 echo "Package Name: $package_name"
 
-component_id='io.github.aaddrick.claude-desktop-debian'
+component_id='io.github.samirhvbr.shvia-desktop'
 # Define AppDir structure path
 appdir_path="$work_dir/${component_id}.AppDir"
 rm -rf "$appdir_path"
@@ -46,10 +46,10 @@ echo 'Application files copied to Electron resources directory'
 # Copy shared launcher library (launcher-common.sh sources doctor.sh
 # at runtime, so both must live in the same directory)
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-mkdir -p "$appdir_path/usr/lib/claude-desktop" || exit 1
-cp "$(dirname "$script_dir")/launcher-common.sh" "$appdir_path/usr/lib/claude-desktop/" || exit 1
-sed -i "s/@@WM_CLASS@@/$WM_CLASS/" "$appdir_path/usr/lib/claude-desktop/launcher-common.sh"
-cp "$(dirname "$script_dir")/doctor.sh" "$appdir_path/usr/lib/claude-desktop/" || exit 1
+mkdir -p "$appdir_path/usr/lib/shvia-desktop" || exit 1
+cp "$(dirname "$script_dir")/launcher-common.sh" "$appdir_path/usr/lib/shvia-desktop/" || exit 1
+sed -i "s/@@WM_CLASS@@/$WM_CLASS/" "$appdir_path/usr/lib/shvia-desktop/launcher-common.sh"
+cp "$(dirname "$script_dir")/doctor.sh" "$appdir_path/usr/lib/shvia-desktop/" || exit 1
 echo 'Shared launcher library + doctor copied'
 
 # Ensure Electron is bundled within the AppDir for portability
@@ -75,7 +75,7 @@ cat > "$appdir_path/AppRun" << 'EOF'
 appdir=$(dirname "$(readlink -f "$0")")
 
 # Source shared launcher library
-source "$appdir/usr/lib/claude-desktop/launcher-common.sh"
+source "$appdir/usr/lib/shvia-desktop/launcher-common.sh"
 
 # Handle --doctor flag before anything else
 if [[ "${1:-}" == '--doctor' ]]; then
@@ -190,8 +190,8 @@ cat > "$appdata_file" << EOF
   <id>$component_id</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>LicenseRef-proprietary</project_license>
-  <developer id="io.github.aaddrick">
-    <name>aaddrick</name>
+  <developer id="io.github.samirhvbr">
+    <name>samirhvbr</name>
   </developer>
 
   <name>Claude Desktop</name>
@@ -206,7 +206,7 @@ cat > "$appdata_file" << EOF
   <launchable type="desktop-id">${component_id}.desktop</launchable>
 
   <icon type="stock">${component_id}</icon>
-  <url type="homepage">https://github.com/aaddrick/claude-desktop-debian</url>
+  <url type="homepage">https://github.com/samirhvbr/SHVIA-DESKTOP</url>
   <screenshots>
       <screenshot type="default">
           <image>https://github.com/user-attachments/assets/93080028-6f71-48bd-8e59-5149d148cd45</image>
@@ -330,7 +330,7 @@ if ! command -v zsyncmake &> /dev/null; then
 fi
 
 # Format: gh-releases-zsync|<username>|<repository>|<tag>|<filename-pattern>
-update_info="gh-releases-zsync|aaddrick|claude-desktop-debian|latest|claude-desktop-*-${architecture}.AppImage.zsync"
+update_info="gh-releases-zsync|samirhvbr|SHVIA-DESKTOP|latest|shvia-desktop-*-${architecture}.AppImage.zsync"
 echo "Update info: $update_info"
 
 if ! "$appimagetool_path" --updateinformation "$update_info" "$appdir_path" "$output_path"; then

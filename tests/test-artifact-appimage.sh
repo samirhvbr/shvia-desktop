@@ -17,7 +17,7 @@ _cleanup() {
 }
 trap _cleanup EXIT INT TERM
 
-component_id='io.github.aaddrick.claude-desktop-debian'
+component_id='io.github.samirhvbr.shvia-desktop'
 
 # Find the AppImage file (exclude .zsync)
 appimage_file=$(find "$artifact_dir" -name '*.AppImage' \
@@ -92,7 +92,7 @@ assert_file_exists "$electron_path"
 assert_executable "$electron_path"
 
 # --- Launcher library ---
-assert_file_exists "$appdir/usr/lib/claude-desktop/launcher-common.sh"
+assert_file_exists "$appdir/usr/lib/shvia-desktop/launcher-common.sh"
 
 # --- AppRun content ---
 assert_contains "$appdir/AppRun" 'launcher-common.sh' \

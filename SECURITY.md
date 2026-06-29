@@ -1,6 +1,6 @@
 # Security Policy
 
-Report suspected vulnerabilities privately via [GitHub Security Advisories](https://github.com/aaddrick/claude-desktop-debian/security/advisories/new). Do not open a public issue or post details in Discussions.
+Report suspected vulnerabilities privately via [GitHub Security Advisories](https://github.com/samirhvbr/SHVIA-DESKTOP/security/advisories/new). Do not open a public issue or post details in Discussions.
 
 ## Scope
 
@@ -28,7 +28,7 @@ This project repackages an upstream Electron app. The boundary matters:
 
 ## Response
 
-GitHub Advisories notify @aaddrick. Acknowledgement is usually within a few days. Fix turnaround depends on the surface — packaging-layer bugs are usually fast; patches against minified upstream JS may need to wait for a tractable anchor in a future upstream release.
+GitHub Advisories notify @samirhvbr. Acknowledgement is usually within a few days. Fix turnaround depends on the surface — packaging-layer bugs are usually fast; patches against minified upstream JS may need to wait for a tractable anchor in a future upstream release.
 
 ## Disclosure history
 

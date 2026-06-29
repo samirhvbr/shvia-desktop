@@ -1428,7 +1428,7 @@ class BwrapBackend extends LocalBackend {
 // KvmBackend — QEMU/KVM virtual machine
 // ============================================================
 
-const VM_BASE_DIR = path.join(os.homedir(), '.local/share/claude-desktop/vm');
+const VM_BASE_DIR = path.join(os.homedir(), '.local/share/shvia-desktop/vm');
 const VM_SESSION_DIR = path.join(VM_BASE_DIR, 'sessions');
 const VSOCK_GUEST_PORT = 51234;  // 0xC822 — matches guest sdk-daemon
 const HOME_SHARE_MOUNT_TAG = 'claudeshared';

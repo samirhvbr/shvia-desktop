@@ -9,7 +9,7 @@ readonly WM_CLASS='@@WM_CLASS@@'
 # Setup logging directory and file
 # Sets: log_dir, log_file
 setup_logging() {
-	log_dir="${XDG_CACHE_HOME:-$HOME/.cache}/claude-desktop-debian"
+	log_dir="${XDG_CACHE_HOME:-$HOME/.cache}/shvia-desktop"
 	mkdir -p "$log_dir" || return 1
 	log_file="$log_dir/launcher.log"
 }
@@ -192,7 +192,7 @@ _detect_password_store() {
 #
 # Section headers vary by package format: deb/rpm write "Launcher
 # Start", AppImage writes "AppImage Start", and Nix writes "Launcher
-# Start (NixOS)" (nix/claude-desktop.nix).
+# Start (NixOS)" (nix/shvia-desktop.nix).
 _previous_launch_hit_gpu_fatal() {
 	[[ -f ${log_file:-} ]] || return 1
 
@@ -383,9 +383,9 @@ _claude_desktop_ui_cmdline_matches() {
 
 # Is a live Claude Desktop UI running for this user?
 #
-# We can NOT use `pgrep -f 'claude-desktop'` on its own for this: it
+# We can NOT use `pgrep -f 'shvia-desktop'` on its own for this: it
 # matches the launcher's own bash process (this script's cmdline
-# contains "/usr/bin/claude-desktop"), any stale launcher bash left
+# contains "/usr/bin/shvia-desktop"), any stale launcher bash left
 # stopped/zombie after a previous crash, and the cowork daemon
 # itself.  Counting any of those as "the UI is alive" causes false
 # negatives in the cleanup functions below.  The reliable definition
@@ -427,7 +427,7 @@ cleanup_orphaned_cowork_daemon() {
 
 	# A live Claude Desktop UI process means the daemon is expected;
 	# leave it alone.  See _claude_desktop_ui_is_alive for why neither
-	# `pgrep -f 'claude-desktop'` nor an app.asar fingerprint works.
+	# `pgrep -f 'shvia-desktop'` nor an app.asar fingerprint works.
 	if _claude_desktop_ui_is_alive; then
 		return 0
 	fi
@@ -469,7 +469,7 @@ _desktop_helper_cmdline_matches() {
 		*"$config_dir/Claude Extensions/"*)
 			return 0
 			;;
-		*/usr/lib/claude-desktop/*--type=*)
+		*/usr/lib/shvia-desktop/*--type=*)
 			return 0
 			;;
 	esac
@@ -478,7 +478,7 @@ _desktop_helper_cmdline_matches() {
 }
 
 _desktop_helper_candidate_pids() {
-	pgrep -u "$(id -u)" -f 'cowork-vm-service\.js|--user-data-dir=.*[/]Claude|Claude Extensions|/usr/lib/claude-desktop/' 2>/dev/null
+	pgrep -u "$(id -u)" -f 'cowork-vm-service\.js|--user-data-dir=.*[/]Claude|Claude Extensions|/usr/lib/shvia-desktop/' 2>/dev/null
 }
 
 cleanup_stale_desktop_helpers() {

@@ -1,38 +1,14 @@
 name: Bug Report
-description: Report a bug in claude-desktop-debian.
+description: Report a bug in SHVIA-DESKTOP.
 title: "[bug]: "
 body:
-  - type: markdown
-    attributes:
-      value: |
-        **Is `apt update` failing?** If you're seeing
-        `Redirection from https to 'http://pkg.claude-desktop-debian.dev/...' is forbidden`,
-        your sources.list still points at the legacy `aaddrick.github.io` URL —
-        no need to file a bug. Run:
-
-        ```bash
-        sudo sed -i 's|https://aaddrick\.github\.io/claude-desktop-debian|https://pkg.claude-desktop-debian.dev|g' \
-          /etc/apt/sources.list.d/claude-desktop.list
-        sudo apt update
-        ```
-
-        Background: [README — Migrating from the old `aaddrick.github.io` URL](https://github.com/aaddrick/claude-desktop-debian/blob/main/README.md#migrating-from-the-old-aaddrickgithubio-url).
-  - type: markdown
-    attributes:
-      value: |
-        **Before you file:** This repository uses an automated triage bot that
-        sends issue contents to Anthropic's API for classification and
-        investigation. Do not include credentials, tokens, personal data, or
-        anything you wouldn't put on a public issue tracker. See the
-        [Privacy section in the README](https://github.com/aaddrick/claude-desktop-debian/blob/main/README.md#privacy)
-        for what the bot does with your issue.
   - type: textarea
     id: doctor
     attributes:
-      label: Version (`claude-desktop --doctor` output)
+      label: Version (`shvia-desktop --doctor` output)
       description: |
-        Run `claude-desktop --doctor` in a terminal and paste the full output here.
-        If the app won't start, the AppImage filename (e.g. `claude-desktop-1.3.23-amd64.AppImage`)
+        Run `shvia-desktop --doctor` in a terminal and paste the full output here.
+        If the app won't start, the AppImage filename (e.g. `shvia-desktop-0.2.0-amd64.AppImage`)
         or the version from **Help → About** is acceptable.
       render: shell
     validations:
@@ -65,7 +41,7 @@ body:
       description: |
         Relevant log output or stack traces. Common locations:
         - App logs: `~/.config/Claude/logs/`
-        - Launcher log: `~/.cache/claude-desktop-debian/launcher.log`
+        - Launcher log: `~/.cache/shvia-desktop/launcher.log`
       render: shell
     validations:
       required: false

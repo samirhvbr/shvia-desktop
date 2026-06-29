@@ -59,11 +59,11 @@ mkdir -p "$staging_dir" || exit 1
 
 # --- Create Desktop Entry ---
 echo 'Creating desktop entry...'
-cat > "$staging_dir/claude-desktop.desktop" << EOF
+cat > "$staging_dir/shvia-desktop.desktop" << EOF
 [Desktop Entry]
 Name=Claude
-Exec=/usr/bin/claude-desktop %u
-Icon=claude-desktop
+Exec=/usr/bin/shvia-desktop %u
+Icon=shvia-desktop
 Type=Application
 Terminal=false
 Categories=Office;Utility;
@@ -72,12 +72,12 @@ StartupWMClass=$WM_CLASS
 EOF
 
 # --- Stage AppStream metainfo (installed via %files block below) ---
-metainfo_name='io.github.aaddrick.claude-desktop-debian.metainfo.xml'
+metainfo_name='io.github.samirhvbr.shvia-desktop.metainfo.xml'
 cp "$script_dir/$metainfo_name" "$staging_dir/$metainfo_name" || exit 1
 
 # --- Create Launcher Script ---
 echo 'Creating launcher script...'
-cat > "$staging_dir/claude-desktop" << EOF
+cat > "$staging_dir/shvia-desktop" << EOF
 #!/usr/bin/env bash
 
 # Source shared launcher library
@@ -176,7 +176,7 @@ log_message "Executing: \$electron_exec \${electron_args[*]} \$*"
 run_electron_and_cleanup "\$electron_exec" "\${electron_args[@]}" "\$@"
 exit \$?
 EOF
-chmod +x "$staging_dir/claude-desktop"
+chmod +x "$staging_dir/shvia-desktop"
 
 # --- Create RPM Spec File ---
 echo 'Creating RPM spec file...'
@@ -191,7 +191,7 @@ for size in "${!icon_files[@]}"; do
 	icon_source_path="$work_dir/claude_${icon_files[$size]}_${size}x${size}x32.png"
 	if [[ -f $icon_source_path ]]; then
 		icon_install_cmds+="mkdir -p %{buildroot}/usr/share/icons/hicolor/${size}x${size}/apps
-install -Dm 644 $icon_source_path %{buildroot}/usr/share/icons/hicolor/${size}x${size}/apps/claude-desktop.png
+install -Dm 644 $icon_source_path %{buildroot}/usr/share/icons/hicolor/${size}x${size}/apps/shvia-desktop.png
 "
 	fi
 done
@@ -244,13 +244,13 @@ sed -i "s/@@WM_CLASS@@/$WM_CLASS/" "%{buildroot}/usr/lib/$package_name/launcher-
 cp $(dirname "$script_dir")/doctor.sh %{buildroot}/usr/lib/$package_name/
 
 # Install desktop entry
-install -Dm 644 $staging_dir/claude-desktop.desktop %{buildroot}/usr/share/applications/claude-desktop.desktop
+install -Dm 644 $staging_dir/shvia-desktop.desktop %{buildroot}/usr/share/applications/shvia-desktop.desktop
 
 # Install AppStream metainfo (GNOME Software / KDE Discover)
 install -Dm 644 $staging_dir/$metainfo_name %{buildroot}/usr/share/metainfo/$metainfo_name
 
 # Install launcher script
-install -Dm 755 $staging_dir/claude-desktop %{buildroot}/usr/bin/claude-desktop
+install -Dm 755 $staging_dir/shvia-desktop %{buildroot}/usr/bin/shvia-desktop
 
 # Normalize file modes — the cp -r above honors the build umask, and
 # the "-" first field of %defattr ships buildroot *file* modes verbatim
@@ -274,11 +274,11 @@ update-desktop-database /usr/share/applications > /dev/null 2>&1 || true
 
 %files
 %defattr(-, root, root, 0755)
-%attr(755, root, root) /usr/bin/claude-desktop
+%attr(755, root, root) /usr/bin/shvia-desktop
 /usr/lib/$package_name
-/usr/share/applications/claude-desktop.desktop
+/usr/share/applications/shvia-desktop.desktop
 /usr/share/metainfo/$metainfo_name
-/usr/share/icons/hicolor/*/apps/claude-desktop.png
+/usr/share/icons/hicolor/*/apps/shvia-desktop.png
 SPECEOF
 
 echo 'RPM spec file created'

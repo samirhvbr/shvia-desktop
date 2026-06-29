@@ -37,9 +37,9 @@ EOFENTRY
 
 	# Update package.json
 	echo 'Modifying package.json to load frame fix and add node-pty...'
-	local desktop_name='claude-desktop.desktop'
+	local desktop_name='shvia-desktop.desktop'
 	if [[ ${build_format:-} == 'appimage' ]]; then
-		desktop_name='io.github.aaddrick.claude-desktop-debian.desktop'
+		desktop_name='io.github.samirhvbr.shvia-desktop.desktop'
 	fi
 	node -e "
 const fs = require('fs');

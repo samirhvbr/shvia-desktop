@@ -1,5 +1,5 @@
 {
-  description = "Claude Desktop for Linux";
+  description = "SHVIA-DESKTOP - Claude Desktop for Linux";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
@@ -12,23 +12,23 @@
 
       perSystem = { pkgs, system, ... }: let
         node-pty = pkgs.callPackage ./nix/node-pty.nix { };
-        claude-desktop = pkgs.callPackage ./nix/claude-desktop.nix {
+        shvia-desktop = pkgs.callPackage ./nix/shvia-desktop.nix {
           inherit node-pty;
         };
-        claude-desktop-fhs = pkgs.callPackage ./nix/fhs.nix {
-          inherit claude-desktop;
+        shvia-desktop-fhs = pkgs.callPackage ./nix/fhs.nix {
+          inherit shvia-desktop;
         };
       in {
         _module.args.pkgs = import inputs.nixpkgs {
           inherit system;
           config.allowUnfreePredicate = pkg: builtins.elem (inputs.nixpkgs.lib.getName pkg) [
-            "claude-desktop"
+            "shvia-desktop"
           ];
         };
 
         packages = {
-          inherit claude-desktop claude-desktop-fhs;
-          default = claude-desktop-fhs;
+          inherit shvia-desktop shvia-desktop-fhs;
+          default = shvia-desktop-fhs;
         };
       };
 
@@ -36,11 +36,11 @@
         overlays.default = final: prev: let
           node-pty = final.callPackage ./nix/node-pty.nix { };
         in {
-          claude-desktop = final.callPackage ./nix/claude-desktop.nix {
+          shvia-desktop = final.callPackage ./nix/shvia-desktop.nix {
             inherit node-pty;
           };
-          claude-desktop-fhs = final.callPackage ./nix/fhs.nix {
-            claude-desktop = final.claude-desktop;
+          shvia-desktop-fhs = final.callPackage ./nix/fhs.nix {
+            shvia-desktop = final.shvia-desktop;
           };
         };
       };

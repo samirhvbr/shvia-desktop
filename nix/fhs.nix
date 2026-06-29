@@ -1,7 +1,7 @@
 {
   buildFHSEnv,
   bubblewrap,
-  claude-desktop,
+  shvia-desktop,
   nodejs,
   docker,
   docker-compose,
@@ -10,11 +10,11 @@
   uv,
 }:
 buildFHSEnv {
-  name = "claude-desktop";
+  name = "shvia-desktop";
 
   targetPkgs = pkgs: [
     bubblewrap
-    claude-desktop
+    shvia-desktop
     docker
     docker-compose
     glibc
@@ -23,19 +23,19 @@ buildFHSEnv {
     uv
   ];
 
-  runScript = "${claude-desktop}/bin/claude-desktop";
+  runScript = "${shvia-desktop}/bin/shvia-desktop";
 
   extraInstallCommands = ''
     # Copy desktop file
     mkdir -p $out/share/applications
-    cp ${claude-desktop}/share/applications/* $out/share/applications/
+    cp ${shvia-desktop}/share/applications/* $out/share/applications/
 
     # Copy icons
     mkdir -p $out/share/icons
-    cp -r ${claude-desktop}/share/icons/* $out/share/icons/
+    cp -r ${shvia-desktop}/share/icons/* $out/share/icons/
   '';
 
-  meta = claude-desktop.meta // {
+  meta = shvia-desktop.meta // {
     description = "Claude Desktop for Linux (FHS environment for MCP servers)";
   };
 }

@@ -20,10 +20,10 @@ pass "Found deb: $(basename "$deb_file")"
 # --- Package metadata ---
 pkg_info=$(dpkg-deb -I "$deb_file")
 
-if [[ $pkg_info == *'Package: claude-desktop'* ]]; then
-	pass "Package name is claude-desktop"
+if [[ $pkg_info == *'Package: shvia-desktop'* ]]; then
+	pass "Package name is shvia-desktop"
 else
-	fail "Package name is not claude-desktop"
+	fail "Package name is not shvia-desktop"
 fi
 
 # Architecture must match the target we built for. TARGET_ARCH is set by
@@ -53,34 +53,34 @@ else
 fi
 
 # --- File existence checks ---
-assert_executable '/usr/bin/claude-desktop'
-assert_file_exists '/usr/share/applications/claude-desktop.desktop'
+assert_executable '/usr/bin/shvia-desktop'
+assert_file_exists '/usr/share/applications/shvia-desktop.desktop'
 assert_file_exists \
-	'/usr/share/metainfo/io.github.aaddrick.claude-desktop-debian.metainfo.xml'
-assert_dir_exists '/usr/lib/claude-desktop'
-assert_file_exists '/usr/lib/claude-desktop/launcher-common.sh'
+	'/usr/share/metainfo/io.github.samirhvbr.shvia-desktop.metainfo.xml'
+assert_dir_exists '/usr/lib/shvia-desktop'
+assert_file_exists '/usr/lib/shvia-desktop/launcher-common.sh'
 
 # Electron binary
-electron_path='/usr/lib/claude-desktop/node_modules/electron/dist/electron'
+electron_path='/usr/lib/shvia-desktop/node_modules/electron/dist/electron'
 assert_file_exists "$electron_path"
 assert_executable "$electron_path"
 
 # chrome-sandbox
 assert_file_exists \
-	'/usr/lib/claude-desktop/node_modules/electron/dist/chrome-sandbox'
+	'/usr/lib/shvia-desktop/node_modules/electron/dist/chrome-sandbox'
 
 # The build's permission normalization clears the setuid bit; postinst
 # must re-assert 4755 or the Electron sandbox breaks silently (#695).
 assert_setuid \
-	'/usr/lib/claude-desktop/node_modules/electron/dist/chrome-sandbox'
+	'/usr/lib/shvia-desktop/node_modules/electron/dist/chrome-sandbox'
 
 # --- Desktop entry validation ---
-desktop_file='/usr/share/applications/claude-desktop.desktop'
-assert_contains "$desktop_file" 'Exec=/usr/bin/claude-desktop' \
+desktop_file='/usr/share/applications/shvia-desktop.desktop'
+assert_contains "$desktop_file" 'Exec=/usr/bin/shvia-desktop' \
 	"Desktop entry Exec field correct"
 assert_contains "$desktop_file" 'Type=Application' \
 	"Desktop entry Type field correct"
-assert_contains "$desktop_file" 'Icon=claude-desktop' \
+assert_contains "$desktop_file" 'Icon=shvia-desktop' \
 	"Desktop entry Icon field correct"
 
 # Validate desktop file syntax if tool available
@@ -93,7 +93,7 @@ fi
 icon_dir='/usr/share/icons/hicolor'
 icon_found=false
 for size in 16 24 32 48 64 256; do
-	if [[ -f "$icon_dir/${size}x${size}/apps/claude-desktop.png" ]]; then
+	if [[ -f "$icon_dir/${size}x${size}/apps/shvia-desktop.png" ]]; then
 		icon_found=true
 	fi
 done
@@ -104,15 +104,15 @@ else
 fi
 
 # --- Launcher script content ---
-assert_contains '/usr/bin/claude-desktop' 'launcher-common.sh' \
+assert_contains '/usr/bin/shvia-desktop' 'launcher-common.sh' \
 	"Launcher sources launcher-common.sh"
-assert_contains '/usr/bin/claude-desktop' 'run_doctor' \
+assert_contains '/usr/bin/shvia-desktop' 'run_doctor' \
 	"Launcher references run_doctor"
-assert_contains '/usr/bin/claude-desktop' 'build_electron_args' \
+assert_contains '/usr/bin/shvia-desktop' 'build_electron_args' \
 	"Launcher calls build_electron_args"
 
 # --- App contents (asar) ---
-resources_dir='/usr/lib/claude-desktop/node_modules/electron/dist/resources'
+resources_dir='/usr/lib/shvia-desktop/node_modules/electron/dist/resources'
 validate_app_contents "$resources_dir"
 
 # app.asar.unpacked must be world-traversable and root-owned, or
@@ -128,7 +128,7 @@ fi
 # --doctor checks system state; some checks will fail in CI (no display,
 # etc.) but the script itself should not crash with signal or 127.
 doctor_exit=0
-/usr/bin/claude-desktop --doctor >/dev/null 2>&1 || doctor_exit=$?
+/usr/bin/shvia-desktop --doctor >/dev/null 2>&1 || doctor_exit=$?
 if [[ $doctor_exit -lt 127 ]]; then
 	pass "--doctor runs without crashing (exit: $doctor_exit)"
 else
@@ -137,7 +137,7 @@ fi
 
 # --- Headless launch smoke test ---
 # ubuntu-latest runs as a non-root user, so no privilege drop needed.
-run_launch_smoke_test 'deb package' '/usr/lib/claude-desktop' '' \
-	/usr/bin/claude-desktop
+run_launch_smoke_test 'deb package' '/usr/lib/shvia-desktop' '' \
+	/usr/bin/shvia-desktop
 
 print_summary

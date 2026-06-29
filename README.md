@@ -1,24 +1,18 @@
-# Claude Desktop for Linux
+# SHVIA-DESKTOP
 
-This project provides build scripts to run Claude Desktop natively on Linux systems. It repackages the official Windows application for Linux distributions, producing `.deb` packages (Debian/Ubuntu), `.rpm` packages (Fedora/RHEL), distribution-agnostic AppImages, an [AUR package](https://aur.archlinux.org/packages/claude-desktop-appimage) for Arch Linux, and a Nix flake for NixOS.
+**SHVIA-DESKTOP** packages [Claude Desktop](https://www.anthropic.com) — Anthropic's desktop app — to run natively on Linux. It repackages the official Windows application for Linux, producing `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL), and distribution-agnostic AppImage packages, plus a Nix flake for NixOS. The installed package is named `shvia-desktop`.
 
-**Note:** This is an unofficial build script. For official support, please visit [Anthropic's website](https://www.anthropic.com). For issues with the build script or Linux implementation, please [open an issue](https://github.com/aaddrick/claude-desktop-debian/issues) in this repository.
+**Note:** This is an unofficial build, not affiliated with or endorsed by Anthropic. For official support, visit [Anthropic's website](https://www.anthropic.com). For issues with these build scripts or the Linux implementation, [open an issue](https://github.com/samirhvbr/SHVIA-DESKTOP/issues) in this repository.
 
 **Documentation:** Full docs at [`docs/index.md`](docs/index.md). Release history in [`CHANGELOG.md`](CHANGELOG.md). Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md). Security reports: [`SECURITY.md`](SECURITY.md).
 
 ---
 
-> **🔱 Fork de [`aaddrick/claude-desktop-debian`](https://github.com/aaddrick/claude-desktop-debian) mantido por [samirhvbr](https://github.com/samirhvbr).**
+> **🔱 SHVIA-DESKTOP** — rebrand de [`aaddrick/claude-desktop-debian`](https://github.com/aaddrick/claude-desktop-debian), mantido por [samirhvbr](https://github.com/samirhvbr). Empacota o **Claude Desktop** (app da Anthropic) para Linux; o pacote instalado chama-se `shvia-desktop`.
 >
-> **Convenção de commits deste fork:** `versão - comentário` — ex.: `0.1.0 - ajusta build`. A versão vem de [`version.md`](version.md) e é **incrementada a cada feature/mudança relevante** (Z+1). Mensagens em **pt-BR**.
+> **Convenção de commits:** `versão - comentário` — ex.: `0.2.0 - rebrand SHVIA-DESKTOP`. A versão vem de [`version.md`](version.md), incrementada a cada mudança relevante (Z+1). Mensagens em **pt-BR**.
 >
-> Notas de continuidade em [`.continue/estado-atual.md`](.continue/estado-atual.md); perfis de modelo Claude Code em [`.claude/README.md`](.claude/README.md). Sincronizar com o original: `git fetch upstream && git merge upstream/main`.
-
----
-
-> **⚠️ APT migration notice (April 2026)**
->
-> The APT/DNF repo moved to `pkg.claude-desktop-debian.dev` (#493) — binaries are now served from GitHub Releases via a Cloudflare Worker so they don't hit the 100 MB per-file push cap on `gh-pages`. **DNF users are unaffected.** APT users on the legacy `aaddrick.github.io` sources.list will see a scheme-downgrade error on `apt update`. [One-line `sed` fix](#migrating-from-the-old-aaddrickgithubio-url).
+> Notas de continuidade em [`.continue/estado-atual.md`](.continue/estado-atual.md); perfis de modelo Claude Code em [`.claude/README.md`](.claude/README.md). Sincronizar com o upstream: `git fetch upstream && git merge upstream/main`.
 
 ---
 
@@ -35,88 +29,37 @@ This project provides build scripts to run Claude Desktop natively on Linux syst
 ### Screenshots
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/aaddrick/claude-desktop-debian/main/docs/images/claude-desktop-screenshot1.png" alt="Claude Desktop running on Linux" />
+  <img src="docs/images/claude-desktop-screenshot1.png" alt="Claude Desktop running on Linux" />
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/aaddrick/claude-desktop-debian/main/docs/images/claude-desktop-screenshot2.png" alt="Global hotkey popup" />
+  <img src="docs/images/claude-desktop-screenshot2.png" alt="Global hotkey popup" />
 </p>
 
 ## Installation
 
-### Using APT Repository (Debian/Ubuntu - Recommended)
-
-Add the repository for automatic updates via `apt`:
+### Building from Source (recommended)
 
 ```bash
-# Add the GPG key
-curl -fsSL https://pkg.claude-desktop-debian.dev/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/claude-desktop.gpg
-
-# Add the repository
-echo "deb [signed-by=/usr/share/keyrings/claude-desktop.gpg arch=amd64,arm64] https://pkg.claude-desktop-debian.dev stable main" | sudo tee /etc/apt/sources.list.d/claude-desktop.list
-
-# Update and install
-sudo apt update
-sudo apt install claude-desktop
+git clone https://github.com/samirhvbr/SHVIA-DESKTOP.git
+cd SHVIA-DESKTOP
+./build.sh --build deb --clean yes   # or: --build appimage  /  --build rpm
 ```
 
-Future updates will be installed automatically with your regular system updates (`sudo apt upgrade`).
+The build produces `shvia-desktop_<version>_<arch>.deb` (or the matching `.rpm` / `.AppImage`). See [docs/building.md](docs/building.md) for all flags, formats, and dependencies.
 
-### Using DNF Repository (Fedora/RHEL - Recommended)
+### Pre-built Releases
 
-Add the repository for automatic updates via `dnf`:
-
-```bash
-# Add the repository
-sudo curl -fsSL https://pkg.claude-desktop-debian.dev/rpm/claude-desktop.repo -o /etc/yum.repos.d/claude-desktop.repo
-
-# Install
-sudo dnf install claude-desktop
-```
-
-Future updates will be installed automatically with your regular system updates (`sudo dnf upgrade`).
-
-#### Migrating from the old `aaddrick.github.io` URL
-
-If you installed claude-desktop before April 2026, your repo config points at `https://aaddrick.github.io/claude-desktop-debian`. That URL now auto-redirects to `pkg.claude-desktop-debian.dev` — DNF follows the redirect transparently, but **apt refuses it as a security downgrade**, so `apt update` fails. Update your sources list to the new URL:
-
-```bash
-# APT (Debian/Ubuntu)
-sudo sed -i 's|https://aaddrick\.github\.io/claude-desktop-debian|https://pkg.claude-desktop-debian.dev|g' \
-  /etc/apt/sources.list.d/claude-desktop.list
-sudo apt update
-
-# DNF (Fedora/RHEL) — optional refresh; the old URL still works but pointing directly at the new host is cleaner
-sudo curl -fsSL https://pkg.claude-desktop-debian.dev/rpm/claude-desktop.repo \
-  -o /etc/yum.repos.d/claude-desktop.repo
-```
-
-Background: binaries for recent releases are no longer committed to the `gh-pages` branch — `.deb` files grew past GitHub's 100 MB per-file cap (#493). The new URL is fronted by a small Cloudflare Worker that serves the existing metadata directly and 302-redirects package downloads to the corresponding GitHub Release asset. Bandwidth and package bytes still come from GitHub; the Worker just handles the routing.
-
-### Using AUR (Arch Linux)
-
-The [`claude-desktop-appimage`](https://aur.archlinux.org/packages/claude-desktop-appimage) package is available on the AUR and is automatically updated with each release.
-
-```bash
-# Using yay
-yay -S claude-desktop-appimage
-
-# Or using paru
-paru -S claude-desktop-appimage
-```
-
-The AUR package installs the AppImage build of Claude Desktop.
+Download the latest `.deb`, `.rpm`, or `.AppImage` from the [Releases page](https://github.com/samirhvbr/SHVIA-DESKTOP/releases) (when published).
 
 ### Using Nix Flake (NixOS)
 
-Install directly from the flake:
-
 ```bash
 # Basic install
-nix profile install github:aaddrick/claude-desktop-debian
+nix profile install github:samirhvbr/SHVIA-DESKTOP
 
 # With MCP server support (FHS environment)
-nix profile install github:aaddrick/claude-desktop-debian#claude-desktop-fhs
+nix profile install github:samirhvbr/SHVIA-DESKTOP#shvia-desktop-fhs
 ```
 
 Or add to your NixOS configuration:
@@ -124,28 +67,20 @@ Or add to your NixOS configuration:
 ```nix
 # flake.nix
 {
-  inputs.claude-desktop.url = "github:aaddrick/claude-desktop-debian";
+  inputs.shvia-desktop.url = "github:samirhvbr/SHVIA-DESKTOP";
 
-  outputs = { nixpkgs, claude-desktop, ... }: {
+  outputs = { nixpkgs, shvia-desktop, ... }: {
     nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
       modules = [
         ({ pkgs, ... }: {
-          nixpkgs.overlays = [ claude-desktop.overlays.default ];
-          environment.systemPackages = [ pkgs.claude-desktop ];
+          nixpkgs.overlays = [ shvia-desktop.overlays.default ];
+          environment.systemPackages = [ pkgs.shvia-desktop ];
         })
       ];
     };
   };
 }
 ```
-
-### Using Pre-built Releases
-
-Download the latest `.deb`, `.rpm`, or `.AppImage` from the [Releases page](https://github.com/aaddrick/claude-desktop-debian/releases).
-
-### Building from Source
-
-See [docs/building.md](docs/building.md) for detailed build instructions.
 
 ## Configuration
 
@@ -158,7 +93,7 @@ For additional configuration options including environment variables and Wayland
 
 ## Troubleshooting
 
-Run `claude-desktop --doctor` for built-in diagnostics that check common issues (display server, sandbox permissions, MCP config, stale locks, and more). It also reports cowork mode readiness — which isolation backend will be used, and which dependencies (KVM, QEMU, vsock, socat, virtiofsd, bubblewrap) are installed or missing.
+Run `shvia-desktop --doctor` for built-in diagnostics that check common issues (display server, sandbox permissions, MCP config, stale locks, and more). It also reports cowork mode readiness — which isolation backend will be used, and which dependencies (KVM, QEMU, vsock, socat, virtiofsd, bubblewrap) are installed or missing.
 
 For additional troubleshooting, uninstallation instructions, and log locations, see [docs/troubleshooting.md](docs/troubleshooting.md).
 

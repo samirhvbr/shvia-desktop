@@ -15,7 +15,7 @@
   node-pty,
 }:
 let
-  pname = "claude-desktop";
+  pname = "shvia-desktop";
   version = "1.15962.1";
 
   srcs = {
@@ -48,9 +48,9 @@ let
   electronDir = "${electronUnwrapped}/libexec/electron";
 
   desktopItem = makeDesktopItem {
-    name = "claude-desktop";
-    exec = "claude-desktop %u";
-    icon = "claude-desktop";
+    name = "shvia-desktop";
+    exec = "shvia-desktop %u";
+    icon = "shvia-desktop";
     type = "Application";
     terminal = false;
     desktopName = "Claude";
@@ -117,7 +117,7 @@ stdenvNoCC.mkDerivation {
     # app's resources into resources/.  Everything else (shared libs,
     # .pak files, locales/) is symlinked to avoid duplication.
     #==========================================================================
-    electron_tree=$out/lib/claude-desktop/electron
+    electron_tree=$out/lib/shvia-desktop/electron
 
     mkdir -p $electron_tree/resources
 
@@ -195,7 +195,7 @@ stdenvNoCC.mkDerivation {
     #==========================================================================
 
     # Convenience symlink for resources dir (used by launcher, FHS, etc.)
-    ln -s $electron_tree/resources $out/lib/claude-desktop/resources
+    ln -s $electron_tree/resources $out/lib/shvia-desktop/resources
 
     # Install icons
     for size in 16 24 32 48 64 256; do
@@ -203,16 +203,16 @@ stdenvNoCC.mkDerivation {
       mkdir -p "$icon_dir"
       icon=$(find build/ -name "claude_*''${size}x''${size}x32.png" 2>/dev/null | head -1)
       if [[ -n "$icon" ]]; then
-        install -Dm644 "$icon" "$icon_dir/claude-desktop.png"
+        install -Dm644 "$icon" "$icon_dir/shvia-desktop.png"
       fi
     done
 
     # Install shared launcher library + doctor (launcher-common.sh
     # sources doctor.sh at runtime, so both must live in the same dir)
     install -Dm755 ${sourceRoot}/scripts/launcher-common.sh \
-      $out/lib/claude-desktop/launcher-common.sh
+      $out/lib/shvia-desktop/launcher-common.sh
     install -Dm755 ${sourceRoot}/scripts/doctor.sh \
-      $out/lib/claude-desktop/doctor.sh
+      $out/lib/shvia-desktop/doctor.sh
 
     # Install .desktop file
     mkdir -p $out/share/applications
@@ -220,7 +220,7 @@ stdenvNoCC.mkDerivation {
 
     # Create launcher script
     mkdir -p $out/bin
-    cat > $out/bin/claude-desktop <<'LAUNCHER'
+    cat > $out/bin/shvia-desktop <<'LAUNCHER'
 #!/usr/bin/env bash
 # Claude Desktop launcher for NixOS
 
@@ -280,21 +280,21 @@ exit $?
 LAUNCHER
     # Substitute placeholders — electron_exec points to our custom
     # wrapper (which sets GTK/GIO env then execs our merged binary)
-    substituteInPlace $out/bin/claude-desktop \
+    substituteInPlace $out/bin/shvia-desktop \
       --replace-fail "ELECTRON_PLACEHOLDER" "$electron_tree/electron-wrapper" \
       --replace-fail "RESOURCES_PLACEHOLDER" "$electron_tree/resources" \
-      --replace-fail "LAUNCHER_LIB_PLACEHOLDER" "$out/lib/claude-desktop/launcher-common.sh"
-    chmod +x $out/bin/claude-desktop
+      --replace-fail "LAUNCHER_LIB_PLACEHOLDER" "$out/lib/shvia-desktop/launcher-common.sh"
+    chmod +x $out/bin/shvia-desktop
 
     runHook postInstall
   '';
 
   meta = with lib; {
     description = "Claude Desktop for Linux";
-    homepage = "https://github.com/aaddrick/claude-desktop-debian";
+    homepage = "https://github.com/samirhvbr/SHVIA-DESKTOP";
     license = licenses.unfree;
     platforms = [ "x86_64-linux" "aarch64-linux" ];
     sourceProvenance = with sourceTypes; [ binaryNativeCode ];
-    mainProgram = "claude-desktop";
+    mainProgram = "shvia-desktop";
   };
 }

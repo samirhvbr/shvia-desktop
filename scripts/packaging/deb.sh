@@ -43,7 +43,7 @@ for size in "${!icon_files[@]}"; do
 	icon_source_path="$work_dir/claude_${icon_files[$size]}_${size}x${size}x32.png"
 	if [[ -f $icon_source_path ]]; then
 		echo "Installing ${size}x${size} icon..."
-		install -Dm 644 "$icon_source_path" "$icon_dir/claude-desktop.png" || exit 1
+		install -Dm 644 "$icon_source_path" "$icon_dir/shvia-desktop.png" || exit 1
 	else
 		echo "Warning: Missing ${size}x${size} icon at $icon_source_path"
 	fi
@@ -76,11 +76,11 @@ echo 'Shared launcher library + doctor copied'
 
 # --- Create Desktop Entry ---
 echo 'Creating desktop entry...'
-cat > "$install_dir/share/applications/claude-desktop.desktop" << EOF
+cat > "$install_dir/share/applications/shvia-desktop.desktop" << EOF
 [Desktop Entry]
 Name=Claude
-Exec=/usr/bin/claude-desktop %u
-Icon=claude-desktop
+Exec=/usr/bin/shvia-desktop %u
+Icon=shvia-desktop
 Type=Application
 Terminal=false
 Categories=Office;Utility;
@@ -91,14 +91,14 @@ echo 'Desktop entry created'
 
 # --- Install AppStream metainfo (App Center / GNOME Software / KDE Discover) ---
 echo 'Installing AppStream metainfo...'
-metainfo_name='io.github.aaddrick.claude-desktop-debian.metainfo.xml'
+metainfo_name='io.github.samirhvbr.shvia-desktop.metainfo.xml'
 install -Dm 644 "$script_dir/$metainfo_name" \
 	"$install_dir/share/metainfo/$metainfo_name" || exit 1
 echo 'AppStream metainfo installed'
 
 # --- Create Launcher Script ---
 echo 'Creating launcher script...'
-cat > "$install_dir/bin/claude-desktop" << EOF
+cat > "$install_dir/bin/shvia-desktop" << EOF
 #!/usr/bin/env bash
 
 # Source shared launcher library
@@ -197,7 +197,7 @@ log_message "Executing: \$electron_exec \${electron_args[*]} \$*"
 run_electron_and_cleanup "\$electron_exec" "\${electron_args[@]}" "\$@"
 exit \$?
 EOF
-chmod +x "$install_dir/bin/claude-desktop" || exit 1
+chmod +x "$install_dir/bin/shvia-desktop" || exit 1
 echo 'Launcher script created'
 
 # --- Create Control File ---
@@ -311,7 +311,7 @@ fi
 # Cowork's "bwrap backend" runs the agent's Claude Code process inside a
 # bubblewrap sandbox, which itself needs unprivileged user namespaces — the
 # same thing Ubuntu 24.04+ blocks (apparmor_restrict_unprivileged_userns=1).
-# bwrap is a SEPARATE binary from the Electron app, so the claude-desktop
+# bwrap is a SEPARATE binary from the Electron app, so the shvia-desktop
 # profile above (which scopes the Electron binary) does not cover it; it
 # needs its own profile on /usr/bin/bwrap. Without this, Cowork silently
 # falls back to host-direct (no isolation).
@@ -326,7 +326,7 @@ fi
 # same-transaction bubblewrap install. Static checks only: postinst runs as
 # root, which is exempt from the unprivileged-userns restriction, so a
 # behavioral bwrap probe here would falsely pass — the behavioral probe
-# lives in 'claude-desktop --doctor' instead (runs as the user).
+# lives in 'shvia-desktop --doctor' instead (runs as the user).
 BWRAP_PROFILE="/etc/apparmor.d/${package_name}-bwrap"
 if command -v apparmor_parser >/dev/null 2>&1 \
     && [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then

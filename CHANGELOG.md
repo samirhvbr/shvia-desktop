@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `aaddrick/claude-desktop-debian` are documented in this file.
+All notable changes to `samirhvbr/SHVIA-DESKTOP` are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — semantic versioning applies to `REPO_VERSION`; upstream Claude Desktop bumps (the `+claude{X.Y.Z}` suffix on the tag) are tracked separately by the `check-claude-version` workflow.
 

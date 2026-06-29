@@ -4,19 +4,19 @@
 
 A few minutes here saves a round-trip later. Match your task to the right channel:
 
-- **Found a bug?** File an [issue](https://github.com/aaddrick/claude-desktop-debian/issues/new/choose)
+- **Found a bug?** File an [issue](https://github.com/samirhvbr/SHVIA-DESKTOP/issues/new/choose)
   with the bug template. Paste full `claude-desktop --doctor` output;
   include distro, DE, and session type (Wayland/X11). See
   [Filing an issue](#filing-an-issue).
 - **Have a fix in hand?** PRs that fix existing behaviour, restore parity
   with Windows/macOS, or improve packaging are always welcome. Open the
   PR; an issue isn't strictly required if the fix is small.
-- **Want to add a new feature?** Open a [discussion](https://github.com/aaddrick/claude-desktop-debian/discussions)
+- **Want to add a new feature?** Open a [discussion](https://github.com/samirhvbr/SHVIA-DESKTOP/discussions)
   or an issue first. We're a repackager; most net-new behaviour is
   declined by default — see [What we accept](#what-we-accept).
 - **Security concern?** Don't file a public issue. Use
   [SECURITY.md](SECURITY.md) — GitHub Security Advisories route to
-  @aaddrick privately.
+  @samirhvbr privately.
 
 ## Where to find what
 
@@ -86,7 +86,7 @@ Priority rule: a broken-patch upstream release beats feature work.
 
 CODEOWNERS auto-requests reviews; this list is for human discoverability.
 
-- **@aaddrick**: default. Build, non-Cowork patches, desktop, packaging, docs.
+- **@samirhvbr**: default. Build, non-Cowork patches, desktop, packaging, docs.
 - **@sabiut**: `tests/`, `scripts/doctor.sh`, test workflows.
 - **@RayCharlizard**: Cowork (`scripts/patches/cowork.sh`,
   `scripts/cowork-vm-service.js`, `tests/cowork-*.bats`).
