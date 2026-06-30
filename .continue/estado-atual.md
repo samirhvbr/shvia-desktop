@@ -76,9 +76,12 @@ ShvIA hospedado.
 
 1. ✅ **Smoke-test SSE — FEITO** (`0.2.3`): streaming token-a-token confirmado no
    Linux/WebKitGTK. **Risco #1 derrubado.**
-2. **F2 — polish nativo (em andamento):** persistência do estado da janela, links
-   externos no navegador, tela offline com retry, **política de permissões de
-   mídia** (diálogo de câmera), tray/menu/About e config de URL no 1º run.
+2. **F2 — polish nativo (em andamento):** ✅ **multi-janela** (`0.3.0`): menu
+   `Arquivo → Nova janela` (`Ctrl/Cmd+N`) abre janelas extras (`win-*`) que
+   **compartilham a sessão** (mesmo login) — conversas/projetos lado a lado.
+   Restante: persistência do estado da janela, links externos no navegador, tela
+   offline com retry, **permissões de mídia** (diálogo de câmera), tray/About e
+   config de URL no 1º run.
 3. Validar **persistência do cookie de sessão** entre reinícios (fechar/reabrir e
    continuar logado).
 4. **F4 (paralelo):** colher CI do SHVTERM (matriz mac/win/linux + updater +
