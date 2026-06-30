@@ -13,7 +13,6 @@
     "defaultMode": "plan",
     "deny": [
       "Read(./.env)",
-      "Read(./.env.*)",
       "Read(./**/*.pem)",
       "Read(./**/*.key)",
       "Read(./**/*.p8)",

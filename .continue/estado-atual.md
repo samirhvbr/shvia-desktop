@@ -4,44 +4,71 @@
 
 ## Onde estamos
 
-Repo **recém-pivotado**: era o fork `claude-desktop-debian` (SHVIA-DESKTOP,
-empacotamento do Claude Desktop p/ Linux); virou o **cliente desktop do ShvIA**.
+Repo pivotado do fork `claude-desktop-debian` para o **cliente desktop do ShvIA**.
+Além da **fundação documental** (30/06), o **esqueleto andante da Fase 1** já está
+no repo: um app **Tauri 2** que abre uma janela com a marca ShvIA e navega para o
+ShvIA hospedado.
 
-**Hoje (30/06/2026) foi feito:**
-- Decidida a arquitetura (ver [escopo-projeto.md](escopo-projeto.md) e
+**Feito até agora (30/06/2026):**
+- Arquitetura decidida (ver [escopo-projeto.md](escopo-projeto.md) e
   [../docs/decisoes.md](../docs/decisoes.md)).
-- **Fork arquivado** em `archive/claude-fork` + tag `archive/claude-fork-v0.2.2`,
-  **empurrado ao `origin`** (rede de segurança — nada perdido, inclui o recolor
-  indigo/navy que tinha sido feito no fork).
-- Working tree do `master` **esvaziada** e **documentação de fundação criada**
-  (README, CLAUDE/AGENTS, `.claude/`, `.continue/`, `docs/`, `version.md` 0.1.0).
-- **Nenhum código de app ainda** — implementação começa amanhã pela Fase 1.
+- **Fork arquivado** em `archive/claude-fork` + tag `archive/claude-fork-v0.2.2`
+  (push no `origin` — nada perdido).
+- **Documentação de fundação** (README, CLAUDE/AGENTS, `.claude/`, `.continue/`,
+  `docs/`, `version.md`).
+- **Esqueleto Tauri 2 (Fase 1) — `0.2.0`:**
+  - Scaffold Tauri 2 (vanilla-ts) integrado **sem tocar na documentação** existente.
+  - `tauri.conf.json`: `productName`/título **ShvIA**, `identifier`
+    `cloud.blue3.shvia`, janela única 1280×800 (mín. 800×600),
+    `withGlobalTauri: false`, CSP da casca local.
+  - Casca de **bootstrap** (`index.html` + `src/main.ts`): splash com a marca que
+    **redireciona o WebView para `https://ia.blue3.com.br`** — daí a UI é o Blade
+    do ShvIA ("mesmas funções", ADR-002).
+  - **Rust mínimo** (`src-tauri/src/lib.rs`): builder Tauri + plugin `opener`;
+    **nenhum comando nativo exposto à página remota** (menor privilégio). A demo
+    `greet` do scaffold foi removida.
+  - **Ícones ShvIA** gerados de `IA/SITE/public/logo.svg` (teal `#1f8a70` + "S"),
+    set desktop em `src-tauri/icons/` (mobile descartado — projeto é desktop-only).
+  - **`scripts/sync-version.mjs`** + hook `prebuild`: `version.md` vira **fonte
+    única** da versão (propaga p/ `package.json`, `tauri.conf.json`, `Cargo.toml`,
+    lock files). Modelado no SHVTERM.
+
+## Verificações
+
+- ✅ **Frontend compila**: `npm run build` (sync-version + `tsc` + `vite build`)
+  passou e gera `dist/`.
+- ⏳ **`cargo check` (Rust) PENDENTE neste ambiente**: o prompt de permissão do
+  `cargo` falhou (stream) e, por convenção, **o agente não se auto-concede
+  permissão** (ver [`../.claude/README.md`](../.claude/README.md)). Rodar onde o
+  `cargo` esteja liberado:
+  ```bash
+  cargo check --manifest-path src-tauri/Cargo.toml
+  npm run tauri dev   # abre a janela (precisa de display)
+  ```
+  Risco baixo: `lib.rs` é o builder Tauri 2 padrão (menos a demo), as deps são as
+  do scaffold e o `tauri.conf.json` usa só campos padrão do schema v2.
 
 ## Decisões travadas
 
-1. **Base = SHVTERM** (Tauri 2 + React, multiplataforma, CI/updater/packaging
-   prontos). Fork Claude **descartado** (arquivado).
-2. **Arquitetura F1 = shell fino Tauri carregando o ShvIA web (Blade) remoto**
-   (`https://ia.blue3.com.br`). "Mesmas funções" de graça; zero rewrite.
-3. **Servidor remoto = fonte da verdade** (dados, senhas, permissões). Sem banco
-   no cliente.
+1. **Base = SHVTERM** (Tauri 2 + React, multiplataforma). Fork Claude descartado.
+2. **Arquitetura F1 = shell fino Tauri** carregando o ShvIA web (Blade) remoto.
+3. **Servidor remoto = fonte da verdade**. Sem banco no cliente.
 4. **Repo reaproveitado** (`samirhvbr/SHVIA-DESKTOP`, `master`), histórico mantido.
 5. **Auth = cookie de sessão Sanctum same-origin** na F1 (login = tela do ShvIA).
 
-## Próximos passos (amanhã — Fase 1)
+## Próximos passos (Fase 1, continuação)
 
 > Passo-a-passo completo em [../docs/roteiro-fundacao.md](../docs/roteiro-fundacao.md).
 
-1. **SMOKE-TEST #1 (fazer ANTES de tudo):** validar o **streaming SSE do `/chat`
-   no Linux/WebKitGTK**. É o maior risco multiplataforma. Se passar, o caminho
-   está livre; se falhar, considerar fallback Electron (ainda thin-shell).
-2. `npm create tauri-app@latest` (Tauri 2); janela única apontando para URL
-   configurável (default = `https://ia.blue3.com.br`).
-3. Validar **login Breeze → sessão Sanctum no WebView** e a **persistência do
-   cookie entre reinícios** do app.
-4. Título + ícone ShvIA (copiar de `/Users/samir/x/IA/brand/`).
-5. **Em paralelo (dia 1):** iniciar **procurement do cert EV Windows** — é o long
-   pole de prazo (dias a semanas).
+1. **Compilar o Rust** (`cargo check`) e abrir o app (`npm run tauri dev`) num
+   ambiente com `cargo` liberado e display — confirmar que a janela abre e carrega
+   o ShvIA.
+2. **SMOKE-TEST #1 (crítico):** com o app aberto (ou qualquer WebKitGTK), **logar
+   no ShvIA e enviar uma mensagem no `/chat`**, confirmando o **streaming SSE token
+   a token** no Linux/WebKitGTK (ADR-006). Exige **login interativo** — não dá para
+   automatizar headless. Se falhar → fallback Electron (ainda thin-shell).
+3. Validar **persistência do cookie de sessão** entre reinícios do app.
+4. **Em paralelo:** iniciar **procurement do cert EV Windows** (long pole de prazo).
 
 ## Pendências / decisões em aberto (confirmar com o time)
 
@@ -49,18 +76,21 @@ empacotamento do Claude Desktop p/ Linux); virou o **cliente desktop do ShvIA**.
       fina depende disso). Ver [escopo](escopo-projeto.md#decisões-em-aberto).
 - [ ] **Verba + dono** do cert EV Windows (~US$300–600/ano) e Apple Developer
       (US$99/ano), incl. rotação da chave do updater.
-- [ ] **Funções idênticas ao web** ou haverá **telas desktop-only**? (idênticas →
-      shell fino é perfeito; divergir → exige cliente React sobre `/api/v1`, F2+).
-- [ ] **Sidecar Python na F1?** A análise indica que **não é necessário** na F1
-      (auth é cookie same-origin). Confirmar se entra só na F2 (vault/SSO/ações
-      nativas na API) ou se há razão pra antecipar.
+- [ ] **Funções idênticas ao web** ou haverá **telas desktop-only**?
+- [ ] **Sidecar Python na F1?** A análise indica que **não** (auth é cookie
+      same-origin) — confirmar que entra só na F2.
 - [ ] **URL de DEV** do ShvIA (além de produção `ia.blue3.com.br`) para testar.
+- [ ] **App ID** `cloud.blue3.shvia` — confirmar (usado como default já).
 
 ## Notas
 
-- O **workflow de design multi-agente** (30/06) gerou a recomendação completa;
-  síntese integrada em [escopo-projeto.md](escopo-projeto.md) e
-  [../docs/decisoes.md](../docs/decisoes.md). Dois pontos a **verificar em código**
-  na F1 (o recon estruturado falhou em parte; os fatos vieram dos agentes de
-  design/crítica): (a) middleware exato de auth de `/chat` em `routes/web.php`;
-  (b) o trecho de streaming SSE em `public/js/app.js` (~linha 4003).
+- **CSP × página remota:** o `security.csp` do `tauri.conf.json` governa **só a
+  casca local** (splash/offline). Quando o WebView navega para o FQDN, vale o **CSP
+  do próprio servidor ShvIA**. Não contar com o CSP do app para "proteger" a página
+  remota.
+- **Ícones:** saíram do `logo.svg` (placeholder do ShvIA). O gradiente foi achatado
+  para o teal sólido `#1f8a70` na rasterização (o renderizador SVG do ImageMagick
+  não suporta `url(#gradient)`). Trocar quando houver brand final em `brand/`.
+- **A verificar em código (ShvIA) na F1:** (a) middleware de auth de `/chat` em
+  `routes/web.php` (ADR-005); (b) trecho de streaming SSE em `public/js/app.js`
+  (~linha 4003, `fetch` + `ReadableStream.getReader()`, ADR-006).

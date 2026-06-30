@@ -116,8 +116,10 @@ Operação genuinamente offline é um *killer* desta arquitetura — ver
 
 ## Estrutura do repositório (alvo)
 
-> Layout planejado para a Fase 1 (hoje o repo só tem a documentação). Detalhe e
-> passo-a-passo em [docs/roteiro-fundacao.md](docs/roteiro-fundacao.md).
+> Layout-alvo da Fase 1. O esqueleto (`src/`, `src-tauri/`, `scripts/` e as
+> configs) **já existe** desde a `0.2.0`; `sidecar/` e `.github/workflows/` entram
+> nas fases seguintes. Detalhe e passo-a-passo em
+> [docs/roteiro-fundacao.md](docs/roteiro-fundacao.md).
 
 ```
 shvia-desktop/
@@ -189,8 +191,12 @@ iniciar no dia 1.
 
 ## Status atual
 
-**30/06/2026** — Repo esvaziado do fork Claude (arquivado) e **documentação de
-fundação criada**. A implementação **começa amanhã** pela Fase 1. Próximos passos
-e contexto vivo em [.continue/estado-atual.md](.continue/estado-atual.md).
+**30/06/2026 — Fase 1 em andamento (`0.2.0`).** Sobre a documentação de fundação,
+entrou o **esqueleto andante**: app **Tauri 2** com janela, título e ícone **ShvIA**
+que navega para o ShvIA hospedado (`https://ia.blue3.com.br`), com uma casca de
+bootstrap mínima e `version.md` como fonte única (sync no `prebuild`). O frontend
+compila (`npm run build`); **`cargo check` e o smoke-test de streaming SSE seguem
+pendentes** (este último exige login interativo). Próximos passos e contexto vivo
+em [.continue/estado-atual.md](.continue/estado-atual.md).
 
 > **Sem doc, sem deploy.** Toda função nova vira doc em `docs/` antes de entrar.

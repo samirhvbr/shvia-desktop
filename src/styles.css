@@ -1,0 +1,79 @@
+/* Casca de bootstrap do ShvIA Desktop — splash exibido por instantes antes de o
+   WebView navegar para o ShvIA hospedado. A marca (teal) acompanha o logo.svg
+   do ShvIA. */
+
+:root {
+  color-scheme: light dark;
+  --shvia-teal: #1f8a70;
+  --shvia-teal-dark: #145c4a;
+  font-family: Inter, Avenir, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  display: grid;
+  place-items: center;
+  background: radial-gradient(120% 120% at 50% 0%, #0f2b24 0%, #0a1a16 100%);
+  color: #e8f5f0;
+}
+
+.bootstrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: center;
+  padding: 2rem;
+}
+
+.brand-mark {
+  width: 96px;
+  height: 96px;
+  border-radius: 24px;
+  background: linear-gradient(
+    135deg,
+    var(--shvia-teal) 0%,
+    var(--shvia-teal-dark) 100%
+  );
+  box-shadow: 0 12px 40px rgba(31, 138, 112, 0.35);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.bootstrap h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  letter-spacing: 0.02em;
+}
+
+.bootstrap p {
+  margin: 0;
+  font-size: 0.95rem;
+  opacity: 0.7;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.94);
+    opacity: 0.8;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-mark {
+    animation: none;
+  }
+}

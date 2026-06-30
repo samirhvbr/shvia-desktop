@@ -1,0 +1,26 @@
+[package]
+name = "shvia-desktop"
+version = "0.2.0"
+description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
+authors = ["Samir Hanna Verza <samirhv@me.com>"]
+edition = "2021"
+
+# A versão acima é mantida em sincronia com version.md por scripts/sync-version.mjs.
+# Demais chaves: https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# O sufixo `_lib` evita conflito de nome entre a lib e o binário no Windows.
+# Ver https://github.com/rust-lang/cargo/issues/8519
+name = "shvia_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+# Abre links externos no navegador do SO. Mantido para a F2 (links externos da
+# página remota + botão "abrir no navegador" da tela offline).
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

@@ -53,10 +53,13 @@ nativas** que falem com a API (F2+, via sidecar + keychain).
 
 ## Segurança (CSP / capabilities)
 
-- **CSP** da casca: permitir o FQDN do ShvIA em `default-src`/`connect-src`
-  (incl. `https:` e o stream SSE), `ipc:`/`http://ipc.localhost` para o bridge
-  Tauri. Modelar a partir do CSP do SHVTERM
-  (`gui/src-tauri/tauri.conf.json`), trocando os destinos.
+- **CSP** da casca local (`security.csp` em `tauri.conf.json`): `default-src
+  'self'` + `connect-src` liberando o FQDN do ShvIA, `ipc:`/`http://ipc.localhost`
+  para o bridge Tauri. Modelada do CSP do SHVTERM (`gui/src-tauri/tauri.conf.json`).
+  **Importante:** esse CSP governa **só a casca local** (splash/offline). Quando o
+  WebView **navega para o FQDN**, a página passa a valer sob o **CSP do próprio
+  servidor ShvIA** (cabeçalhos HTTP do Laravel) — o CSP do app **não** restringe
+  nem protege a página remota.
 - **Capabilities por janela** (`src-tauri/capabilities/`): expor ao WebView só os
   comandos/plugins necessários (store, notification, updater, deep-link). Postura
   de menor privilégio.

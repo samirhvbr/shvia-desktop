@@ -37,23 +37,22 @@ que a resposta **aparece token a token** (não de uma vez no fim, não trava).
 
 ---
 
-## Passo 2 — Scaffolding Tauri 2
+## Passo 2 — Scaffolding Tauri 2  ✅ (0.2.0)
 
-```bash
-# na raiz do repo (já tem .git, docs, .claude, .continue, version.md)
-npm create tauri-app@latest -- --template vanilla-ts   # ou react-ts se preferir
-# ajustar para não sobrescrever README/CLAUDE/.gitignore existentes
-```
+> Feito com `npm create tauri-app@latest -- --template vanilla-ts`, scaffoldado em
+> dir temporário e integrado ao repo **sem sobrescrever** README/CLAUDE/docs.
 
-- [ ] Configurar **uma janela** apontando para URL configurável; default =
-      `https://ia.blue3.com.br`.
-- [ ] `identifier` = `cloud.blue3.shvia` (confirmar), `productName` = `ShvIA`.
-- [ ] **CSP** permitindo o FQDN do ShvIA + SSE (modelar do
-      `gui/src-tauri/tauri.conf.json` do SHVTERM).
+- [x] **Uma janela** carregando a casca local, que redireciona para a URL do
+      servidor; default = `https://ia.blue3.com.br` (constante em `src/main.ts`;
+      configurável via store na F2).
+- [x] `identifier` = `cloud.blue3.shvia`, `productName`/título = `ShvIA`.
+- [x] **CSP da casca local** (modelada do SHVTERM). **Atenção:** a página remota
+      do ShvIA roda sob o **CSP do servidor**, não o do app (ver
+      [arquitetura.md](arquitetura.md#segurança-csp--capabilities)).
 - [ ] Plugins: `store`, `process`, `updater`, `notification`, `deep-link`,
-      `single-instance`.
-- [ ] Versão do `tauri.conf.json` lida de `version.md` (script na CI; ver SHVTERM
-      `scripts/sync-version.mjs`).
+      `single-instance`. **(F2 — só `opener` entrou na 0.2.0.)**
+- [x] Versão sincronizada de `version.md` por `scripts/sync-version.mjs` (hook
+      `prebuild`). Integrar à CI fica para a F4.
 
 ---
 
@@ -66,13 +65,17 @@ npm create tauri-app@latest -- --template vanilla-ts   # ou react-ts se preferir
 
 ---
 
-## Passo 4 — Branding mínimo (entrega a F1)
+## Passo 4 — Branding mínimo (entrega a F1)  ⚙️ parcial (0.2.0)
 
-- [ ] Copiar assets de marca de `/Users/samir/x/IA/brand/` para `brand/` e gerar
-      ícones (`npx tauri icon brand/icon.png`).
-- [ ] Título da janela + ícone do app = ShvIA.
-- [ ] **F1 PRONTO:** app abre, loga, `/chat` transmite, sessão persiste, cara do
-      ShvIA. Commit `0.x.y - <descrição>` com bump de `version.md`.
+- [x] Ícones gerados de `IA/SITE/public/logo.svg` (o `brand/` documentado não
+      existia neste checkout). Gradiente achatado p/ teal sólido `#1f8a70` na
+      rasterização (ImageMagick não renderiza `url(#gradient)`). Trocar quando
+      houver brand final.
+- [x] Título da janela + ícone do app = ShvIA.
+- [ ] **F1 PRONTO quando:** app abre, loga, `/chat` transmite (SSE), sessão
+      persiste, cara do ShvIA. Falta: `cargo check` + abrir o app + smoke-test SSE
+      (Passo 1) + persistência de sessão (Passo 3). Cada avanço = commit
+      `0.x.y - <descrição>` com bump de `version.md`.
 
 ---
 
