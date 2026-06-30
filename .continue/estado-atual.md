@@ -47,9 +47,12 @@ ShvIA hospedado.
   título **ShvIA**, o WebView **renderiza** e navega para `ia.blue3.com.br`. O
   **login por cookie de sessão funciona** (a janela abriu **já logada** — auth
   same-origin, ADR-005) e o **chat com a ANNA respondeu** com stats de geração
-  (`pensou/total/tokens/tok-s`) — **forte sinal de que o streaming SSE funciona no
-  WebKitGTK** (risco #1, ADR-006). Falta só **cravar o token-a-token** assistindo
-  uma resposta nova pintar progressivamente.
+  (`pensou/total/tokens/tok-s`).
+- ✅ **STREAMING SSE CONFIRMADO** (`0.2.3`) — **risco #1 (ADR-006) derrubado** no
+  Linux/WebKitGTK: num prompt de resposta longa (`2.224 tokens`, ~30 tok/s), o
+  **raciocínio e a resposta pintaram token-a-token** (capturas em sequência mostram
+  o texto crescer frame a frame; botão **Parar** dinâmico). Quirks de numeração/
+  contexto observados são **do modelo** (`ShvIA:G4v5`), não do cliente thin-shell.
 - ⚠️ **Quirk WebKitGTK (render por GPU)**: em ambiente **remoto/VM/NVIDIA sem
   acesso a DRM**, o renderer DMABUF/GBM falha (`GBM-DRV error`,
   `DRM_IOCTL_MODE_CREATE_DUMB: Permission denied` → janela em branco). **Fix:**
@@ -71,15 +74,15 @@ ShvIA hospedado.
 
 > Passo-a-passo completo em [../docs/roteiro-fundacao.md](../docs/roteiro-fundacao.md).
 
-1. **Cravar o smoke-test SSE (quase lá):** o app já abriu, logou e a ANNA
-   respondeu no chat (`0.2.2`). Confirmar o **streaming token-a-token** assistindo
-   uma resposta **nova** pintar progressivamente no Linux/WebKitGTK (ADR-006). Se
-   ok → **risco #1 derrubado**. Se falhar → fallback Electron (ainda thin-shell).
-2. Validar **persistência do cookie de sessão** entre reinícios (fechar/reabrir e
+1. ✅ **Smoke-test SSE — FEITO** (`0.2.3`): streaming token-a-token confirmado no
+   Linux/WebKitGTK. **Risco #1 derrubado.**
+2. **F2 — polish nativo (em andamento):** persistência do estado da janela, links
+   externos no navegador, tela offline com retry, **política de permissões de
+   mídia** (diálogo de câmera), tray/menu/About e config de URL no 1º run.
+3. Validar **persistência do cookie de sessão** entre reinícios (fechar/reabrir e
    continuar logado).
-3. **(F2)** Definir **política de permissões de mídia** do WebView (apareceu
-   diálogo de câmera) + polish nativo (tray, tela offline, config de URL).
-4. **Em paralelo:** iniciar **procurement do cert EV Windows** (long pole de prazo).
+4. **F4 (paralelo):** colher CI do SHVTERM (matriz mac/win/linux + updater +
+   packaging) e **procurement do cert EV Windows** (long pole de prazo).
 
 ## Pendências / decisões em aberto (confirmar com o time)
 

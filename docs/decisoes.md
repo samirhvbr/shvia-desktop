@@ -93,7 +93,7 @@ how-to; linkar o ADR.
 
 ## ADR-006 — Streaming SSE no WebKitGTK é o risco #1 (smoke-test primeiro)
 
-- **Data:** 30/06/2026 · **Status:** Aceito
+- **Data:** 30/06/2026 · **Status:** Aceito · **risco RESOLVIDO no Linux** (ver Atualização 0.2.3)
 - **Contexto:** O `/chat` transmite via `fetch` + `ReadableStream.getReader()`.
   Sólido em WebView2/WKWebView; o **WebKitGTK** (Linux) é o ponto fraco histórico
   de fetch-streaming.
@@ -109,6 +109,12 @@ how-to; linkar o ADR.
   Quirk **de ambiente** (não do SSE): WebKitGTK sem GPU (VM/NVIDIA) exige
   `WEBKIT_DISABLE_DMABUF_RENDERER=1` (render por software), senão a janela fica em
   branco.
+- **Atualização (0.2.3) — RESOLVIDO (Linux):** smoke-test **confirmado**. Num prompt
+  longo (`2.224 tokens`), o raciocínio e a resposta **pintaram token-a-token**
+  (~30 tok/s) — capturas em sequência mostram o texto crescer frame a frame, com o
+  botão **Parar** dinâmico. O fetch-streaming funciona no WebKitGTK; **fallback
+  Electron descartado** por ora. Repetir o smoke em macOS/Windows na F5 (baixo
+  risco — WebView2/WKWebView são fortes em streaming).
 
 ---
 
