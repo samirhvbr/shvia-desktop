@@ -18,10 +18,35 @@
 
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
+    webview::PageLoadEvent,
     Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_window_state::{StateFlags, WindowExt};
+
+/// Injetado em cada página carregada (`on_page_load`): uma **tarja vermelha
+/// "Sistema Offline"** que aparece quando o WebView perde conexão (eventos
+/// `online`/`offline` do navegador) e some ao reconectar; clicável para recarregar.
+/// O `eval` do Tauri roda fora da CSP da página, então a injeção funciona mesmo
+/// na página remota do ShvIA. (v1 — baseada em `navigator.onLine`.)
+const OFFLINE_BANNER_JS: &str = r#"(function () {
+  if (window.__shviaOffline) return;
+  window.__shviaOffline = true;
+  var bar = document.createElement('div');
+  bar.id = 'shvia-offline-bar';
+  bar.textContent = '⚠  Sistema Offline — clique para recarregar';
+  var s = bar.style;
+  s.position='fixed'; s.top='0'; s.left='0'; s.right='0'; s.zIndex='2147483647';
+  s.background='#c0392b'; s.color='#fff'; s.textAlign='center'; s.padding='8px 12px';
+  s.font='600 14px system-ui,sans-serif'; s.letterSpacing='.02em'; s.cursor='pointer';
+  s.boxShadow='0 2px 8px rgba(0,0,0,.35)';
+  bar.addEventListener('click', function () { location.reload(); });
+  function update(){ bar.style.display = navigator.onLine ? 'none' : 'block'; }
+  function mount(){ var r=document.body||document.documentElement; if(r&&!document.getElementById('shvia-offline-bar')) r.appendChild(bar); }
+  mount(); update();
+  window.addEventListener('online', update);
+  window.addEventListener('offline', update);
+})();"#;
 
 /// Uma navegação fica **no app** se for a casca local (localhost/tauri) ou o
 /// ShvIA hospedado (`*.blue3.com.br`); qualquer outra origem é considerada um
@@ -53,6 +78,12 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
             // link externo → abre no navegador do SO, não dentro do app.
             let _ = handle.opener().open_url(url.to_string(), None::<&str>);
             false
+        })
+        // injeta a tarja "Sistema Offline" em cada página carregada.
+        .on_page_load(|webview, payload| {
+            if let PageLoadEvent::Finished = payload.event() {
+                let _ = webview.eval(OFFLINE_BANNER_JS);
+            }
         })
         .build()?;
     // restaura geometria salva (no 1º run não há estado: fica no tamanho default).

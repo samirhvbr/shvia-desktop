@@ -84,8 +84,17 @@ ShvIA hospedado.
      janelas criadas **no Rust** (`build_shvia_window`) com `on_navigation` (origens
      fora de `*.blue3.com.br` abrem no navegador do SO; login é same-origin, não
      quebra) e `tauri-plugin-window-state` (tamanho/posição entre reinícios).
-   - ⏳ **Restante:** **tela offline** — tarja vermelha **"Sistema Offline"** + retry;
-     **permissões de mídia** (diálogo de câmera); tray/About; config de URL no 1º run.
+   - ✅ **tela offline v1** (`0.4.1`): **tarja vermelha "Sistema Offline"** injetada
+     em cada página (`on_page_load` + `eval`), via `navigator.onLine`/eventos
+     `online`/`offline`; some ao reconectar e é clicável p/ recarregar.
+   - ⏳ **Restante (radar):**
+     - **permissões de mídia** — câmera **e microfone** (`getUserMedia`): tratar o
+       *signal* `permission-request` do WebKitGTK (Rust Linux-específico; macOS/Win
+       têm caminhos próprios). É o que faz o **mic/voz** funcionar.
+     - **colar imagem (Ctrl+V)** — quirk de clipboard do WebKitGTK (paste de imagem).
+     - **tray/About**, **config de URL** no 1º run.
+     - **offline v2** — ping no Rust (p/ quedas que o `navigator.onLine` não pega:
+       servidor inalcançável com a interface de rede ainda up).
 3. Validar **persistência do cookie de sessão** entre reinícios (fechar/reabrir e
    continuar logado).
 4. **F4 (paralelo):** colher CI do SHVTERM (matriz mac/win/linux + updater +
