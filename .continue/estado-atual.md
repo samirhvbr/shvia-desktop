@@ -87,12 +87,15 @@ ShvIA hospedado.
    - ✅ **tela offline v1** (`0.4.1`): **tarja vermelha "Sistema Offline"** injetada
      em cada página (`on_page_load` + `eval`), via `navigator.onLine`/eventos
      `online`/`offline`; some ao reconectar e é clicável p/ recarregar.
-   - ✅ **mídia + clipboard (Linux)** (`0.4.3`): liga `enable-media-stream` /
-     `enable-mediasource` (habilita `getUserMedia` — mic/câmera) e
-     `javascript-can-access-clipboard` (colar/copiar, ex.: Ctrl+V de print) no
-     WebKitGTK, e concede o `permission-request` de mídia. (`0.4.2` só tratava o
-     signal; faltava ligar as settings, que o WebKitGTK deixa off por padrão.)
-     macOS/Win = caminhos próprios (Info.plist / WebView2), ao empacotar lá.
+   - ⚠️ **mídia + clipboard (Linux) — limite do WebKitGTK** (`0.4.4`): o shell liga
+     `enable-media-stream` / `enable-mediasource` / `enable-webrtc` +
+     `javascript-can-access-clipboard` e concede o `permission-request` → o
+     `getUserMedia` **fica disponível** (o app **enumera o device**, ex.: BRIO). **Mas**
+     a **captura do microfone** e o **paste de imagem (Ctrl+V)** **não funcionam** no
+     WebKitGTK neste setup — limitação do WebView (Linux). **macOS/Windows**
+     (WKWebView/WebView2) tendem a resolver. Se voz/paste virarem **must-have no
+     Linux**, o fallback é **Electron** (Chromium — ADR-006/008). Núcleo (chat/
+     streaming/multi-janela/offline) intacto. Ver **ADR-008**.
    - ⏳ **Restante (radar):**
      - **tray/About**, **config de URL** no 1º run.
      - **offline v2** — ping no Rust (p/ quedas que o `navigator.onLine` não pega:

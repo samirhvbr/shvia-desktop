@@ -130,3 +130,25 @@ how-to; linkar o ADR.
   ativos, sem merge).
 - **Nota:** a análise sugeriu um repo novo `shvia-desktop-app`; preferimos
   reaproveitar este pelo nome e pelo histórico já no `origin`.
+
+---
+
+## ADR-008 — WebKitGTK: microfone e paste de imagem têm limite no Linux
+
+- **Data:** 30/06/2026 · **Status:** Aceito (limitação conhecida)
+- **Contexto:** Com o app rodando no **Linux (WebKitGTK)**, o ShvIA pediu
+  **microfone** (entrada de voz) e **Ctrl+V de imagem** no chat. Por padrão o
+  WebKitGTK **não expõe** `getUserMedia` nem deixa o JS ler imagem do clipboard.
+- **O que fizemos (shell, Linux):** via `with_webview` ligamos
+  `enable-media-stream`, `enable-mediasource`, `enable-webrtc` e
+  `javascript-can-access-clipboard`, e tratamos o signal `permission-request`
+  concedendo os pedidos de **mídia**. Com isso o `getUserMedia` **fica disponível**
+  e o WebView **enumera o device** de áudio/câmera (ex.: "BRIO Ultra HD Webcam").
+- **Limite encontrado:** mesmo assim, a **captura efetiva do microfone** e o
+  **paste de imagem** **não funcionam** no WebKitGTK neste ambiente. É uma fraqueza
+  **do WebKitGTK** (mídia/clipboard), **não do nosso código** — que faz a parte dele.
+- **Consequências:** no **Linux**, **voz** e **colar imagem** ficam **indisponíveis**
+  por ora (chat por **texto** + **streaming** intactos). **macOS (WKWebView)** e
+  **Windows (WebView2/Chromium)** tendem a suportar — validar ao empacotar lá.
+- **Saída se virar must-have:** **fallback Electron** (Chromium tem mídia/clipboard
+  fortes) — ver ADR-003/006. É decisão de **produto**, não tomada agora.

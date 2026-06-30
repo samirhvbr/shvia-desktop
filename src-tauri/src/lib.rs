@@ -113,6 +113,7 @@ fn configure_linux_webview(window: &WebviewWindow) {
         if let Some(settings) = WebViewExt::settings(&webview) {
             settings.set_enable_media_stream(true);
             settings.set_enable_mediasource(true);
+            settings.set_enable_webrtc(true);
             settings.set_javascript_can_access_clipboard(true);
         }
         webview.connect_permission_request(|_, req| {
