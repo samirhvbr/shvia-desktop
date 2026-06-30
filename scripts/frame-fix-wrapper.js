@@ -130,6 +130,59 @@ const LINUX_CSS = `
   }
 `;
 
+// SHVIA-DESKTOP brand recolor — re-skins the Claude UI to the samirhv
+// palette (indigo accent on a cool near-black navy) so this fork is
+// visually distinct from the stock Claude Desktop and nobody mistakes it
+// for the official app. It works by overriding the design-system tokens,
+// which are HSL component triplets consumed as `hsl(var(--token))` across
+// ~850 utility references — far more robust than chasing the minified
+// class names. Light tokens live on `:root`, dark tokens on `.darkTheme`
+// (the app toggles that class; html starts as `class="light"`). Injected
+// unlayered via insertCSS so it wins over the app's `@layer base`
+// definitions regardless of source order. Functional colors
+// (danger/success/warning) and the blue/purple secondary accents are
+// left intact; only the brand accent and the dark surface ladder change.
+// Palette mirrored from samirhv.com.br (indigo #6366f1, navy #12121c).
+// Disable with SHVIA_THEME=0 (or off/false/no) to ship stock colors.
+const THEME_ENABLED = !/^(0|off|false|no)$/i.test(process.env.SHVIA_THEME || '');
+console.log(`[Frame Fix] SHVIA theme: ${THEME_ENABLED ? 'on (indigo/navy)' : 'off (stock Claude)'}`);
+
+const SHVIA_THEME_CSS = `
+  /* Hex brand token (upstream scopes it to *) → samirhv indigo */
+  * { --claude-accent-clay: #6366f1; }
+
+  /* Light: indigo brand accent, Claude's cream surfaces preserved.
+     Deeper indigo for contrast on light backgrounds. */
+  :root {
+    --accent-brand: 239 70% 60%;
+    --brand-000: 239 70% 55%;
+    --brand-100: 239 70% 60%;
+    --brand-200: 239 74% 64%;
+    --clay: 239 74% 64%;
+    --book-cloth: 239 70% 60%;
+  }
+
+  /* Dark: brighter indigo accent + warm-grey surface ladder retinted to
+     a cool navy (samirhv #12121c family). Lightness steps are kept so
+     contrast and depth hierarchy are unchanged — only hue/sat shift. */
+  .darkTheme {
+    --accent-brand: 239 84% 67%;
+    --brand-000: 239 72% 60%;
+    --brand-100: 239 84% 67%;
+    --brand-200: 239 84% 67%;
+    --clay: 239 84% 67%;
+    --book-cloth: 239 72% 60%;
+
+    --bg-000: 240 14% 18%;
+    --bg-100: 240 16% 13%;
+    --bg-200: 240 20% 10%;
+    --bg-300: 240 24% 7%;
+    --bg-400: 240 30% 3%;
+    --bg-500: 240 30% 3%;
+    --claude-background-color: #12121c;
+  }
+`;
+
 // autoUpdater no-op: every property access returns a chainable function
 // so `.on(...).once(...).setFeedURL(...).checkForUpdates()` is harmless.
 // `getFeedURL` returns '' so any code that inspects the URL gets a
@@ -235,7 +288,7 @@ Module.prototype.require = function(id) {
               options.frame = false;
               options.titleBarStyle = 'hidden';
               options.titleBarOverlay = {
-                color: '#1a1a1a',
+                color: THEME_ENABLED ? '#12121c' : '#1a1a1a',
                 symbolColor: '#ffffff',
                 height: 40,
               };
@@ -268,9 +321,13 @@ Module.prototype.require = function(id) {
             this.on('show', () => { this._lastShownAt = Date.now(); });
             this.on('restore', () => { this._lastShownAt = Date.now(); });
 
-            // Inject CSS for Linux scrollbar styling
+            // Inject CSS for Linux scrollbar styling, then the SHVIA
+            // brand recolor (unless disabled via SHVIA_THEME=0).
             this.webContents.on('did-finish-load', () => {
               this.webContents.insertCSS(LINUX_CSS).catch(() => {});
+              if (THEME_ENABLED) {
+                this.webContents.insertCSS(SHVIA_THEME_CSS).catch(() => {});
+              }
             });
 
             // WCO diagnostic: probe Chromium's native Window Controls
