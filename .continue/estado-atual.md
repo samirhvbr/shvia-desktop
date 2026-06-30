@@ -87,13 +87,13 @@ ShvIA hospedado.
    - ✅ **tela offline v1** (`0.4.1`): **tarja vermelha "Sistema Offline"** injetada
      em cada página (`on_page_load` + `eval`), via `navigator.onLine`/eventos
      `online`/`offline`; some ao reconectar e é clicável p/ recarregar.
-   - ✅ **permissões de mídia (Linux)** (`0.4.2`): trata o `permission-request` do
-     WebKitGTK (`with_webview` + `connect_permission_request`) e libera
-     `getUserMedia` (mic/câmera). Compila; **testar com o app instalado** (em dev o
-     SO não reconhece o app p/ conceder). macOS/Win = caminhos próprios (Info.plist /
-     WebView2), ao empacotar lá.
+   - ✅ **mídia + clipboard (Linux)** (`0.4.3`): liga `enable-media-stream` /
+     `enable-mediasource` (habilita `getUserMedia` — mic/câmera) e
+     `javascript-can-access-clipboard` (colar/copiar, ex.: Ctrl+V de print) no
+     WebKitGTK, e concede o `permission-request` de mídia. (`0.4.2` só tratava o
+     signal; faltava ligar as settings, que o WebKitGTK deixa off por padrão.)
+     macOS/Win = caminhos próprios (Info.plist / WebView2), ao empacotar lá.
    - ⏳ **Restante (radar):**
-     - **colar imagem (Ctrl+V)** — quirk de clipboard do WebKitGTK (paste de imagem).
      - **tray/About**, **config de URL** no 1º run.
      - **offline v2** — ping no Rust (p/ quedas que o `navigator.onLine` não pega:
        servidor inalcançável com a interface de rede ainda up).

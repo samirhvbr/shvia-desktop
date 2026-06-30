@@ -86,24 +86,36 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
             }
         })
         .build()?;
-    // libera mic/câmera no WebKitGTK (por padrão o getUserMedia é negado).
+    // habilita mídia (getUserMedia) + clipboard no WebKitGTK e concede a permissão.
     #[cfg(target_os = "linux")]
-    grant_media_permissions(&win);
+    configure_linux_webview(&win);
     // restaura geometria salva (no 1º run não há estado: fica no tamanho default).
     let _ = win.restore_state(StateFlags::all());
     let _ = win.show();
     Ok(win)
 }
 
-/// Libera permissões de mídia (microfone/câmera) no WebKitGTK (Linux): por padrão
-/// o WebKitGTK nega `getUserMedia`; aqui tratamos o signal `permission-request` e
-/// concedemos **só** os pedidos de mídia (o resto segue o default). macOS/Windows
-/// têm caminhos próprios (Info.plist / WebView2) — tratados ao empacotar lá.
+/// Ajusta o WebKitGTK (Linux) para o que o ShvIA precisa e o WebView deixa **off
+/// por padrão**:
+/// - `enable-media-stream` / `enable-mediasource` → habilita `getUserMedia`
+///   (microfone/câmera); sem isso o navegador nem expõe a API e o app reporta
+///   "permissão negada";
+/// - `javascript-can-access-clipboard` → permite colar/copiar (ex.: Ctrl+V de print);
+/// - trata o signal `permission-request` concedendo os pedidos de **mídia**.
+///
+/// macOS/Windows têm caminhos próprios (Info.plist / WebView2) — tratados ao
+/// empacotar lá.
 #[cfg(target_os = "linux")]
-fn grant_media_permissions(window: &WebviewWindow) {
-    use webkit2gtk::{glib::prelude::*, PermissionRequestExt, WebViewExt};
+fn configure_linux_webview(window: &WebviewWindow) {
+    use webkit2gtk::{glib::prelude::*, PermissionRequestExt, SettingsExt, WebViewExt};
     let _ = window.with_webview(|wv| {
-        wv.inner().connect_permission_request(|_, req| {
+        let webview = wv.inner();
+        if let Some(settings) = WebViewExt::settings(&webview) {
+            settings.set_enable_media_stream(true);
+            settings.set_enable_mediasource(true);
+            settings.set_javascript_can_access_clipboard(true);
+        }
+        webview.connect_permission_request(|_, req| {
             if req
                 .downcast_ref::<webkit2gtk::UserMediaPermissionRequest>()
                 .is_some()
