@@ -9,7 +9,7 @@
 **Versão lançada com 2 pendências conhecidas.** A **Fase 1** está completa e validada
 (app abre, loga por cookie, chat com **streaming SSE** funciona) e a **Fase 2** está
 bem encorpada (multi-janela, branding, estado de janela, links externos, tela
-offline, empacotamento `.deb` + **CI dos 3 SOs**). O que funciona em detalhe está em
+offline, **empacotamento local** — `build-local.*` nos 3 SOs). O que funciona em detalhe está em
 [../docs/funcionalidades.md](../docs/funcionalidades.md); como buildar em
 [../docs/build.md](../docs/build.md).
 
@@ -33,8 +33,8 @@ tendem a suportar; (b) se virarem **must-have no Linux**, **fallback Electron**
 - **F2 restante:** tray/menu/About; **config de URL** no 1º run (`tauri-plugin-store`);
   **offline v2** (ping no Rust, p/ quedas que o `navigator.onLine` não pega).
 - **F4 (assinatura/release):** Apple Developer ID + notarização, Authenticode **EV**
-  Windows, chave do **updater** Tauri (`latest.json`); pinar actions por SHA. Pontos
-  de entrada já marcados em [`../.github/workflows/build.yml`](../.github/workflows/build.yml).
+  Windows, chave do **updater** Tauri (`latest.json`). A assinatura entra no
+  `build-local.*`; **CI (Actions) foi removida por custo** — ver [../docs/build.md](../docs/build.md).
 - **Roadmap (ideias do time, em [SAMIR-v1.md](SAMIR-v1.md)):** Anthropic como
   **infra/modelo** alternativo; **rotinas agendadas**; **conectores** (Carbonio mail,
   Google Calendar, etc.).

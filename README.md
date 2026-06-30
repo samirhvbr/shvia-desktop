@@ -195,7 +195,7 @@ iniciar no dia 1.
 (app abre, loga por cookie, **chat com streaming SSE** funciona) e **Fase 2** bem
 encorpada: **multi-janela** (Ctrl+N), **branding** (seta Blue3 P&B + "AI" navy),
 estado de janela persistido, links externos no navegador, **tela offline** e
-empacotamento `.deb` + **CI dos 3 SOs**. Detalhe do que funciona em
+empacotamento **local** (`.deb`/`.AppImage`/`.rpm` via `build-local`). Detalhe do que funciona em
 [docs/funcionalidades.md](docs/funcionalidades.md); como buildar em
 [docs/build.md](docs/build.md).
 

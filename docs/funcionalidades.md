@@ -39,8 +39,9 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 - **Tela offline v1** (`0.4.1`): **tarja vermelha "Sistema Offline"** injetada em
   cada página (`on_page_load` + `eval`, via `navigator.onLine`); some ao reconectar
   e é clicável p/ recarregar.
-- **Empacotamento** (`0.4.3+`): `tauri build` gera o `.deb` (validado localmente).
-  CI dos 3 SOs + scripts `build-local.{sh,ps1,cmd}` — ver [build.md](build.md).
+- **Empacotamento local** (`0.4.5`): `tauri build` gera os instaladores
+  (`.deb`/`.AppImage`/`.rpm` validados). Scripts `build-local.{sh,ps1,cmd}` cobrem os
+  3 SOs — ver [build.md](build.md). (CI/Actions omitida de propósito, por custo.)
 
 ## Limitações conhecidas
 
