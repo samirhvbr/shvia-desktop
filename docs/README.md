@@ -7,6 +7,8 @@
 
 | Documento | Conteúdo |
 |-----------|----------|
+| [funcionalidades.md](funcionalidades.md) | **O que o app já faz** — registro estável das funcionalidades implementadas, por versão. |
+| [build.md](build.md) | **Build & empacotamento** — CI dos 3 SOs + scripts locais (`build-local.*`). |
 | [decisoes.md](decisoes.md) | **ADRs** — decisões de arquitetura registradas (formato Architecture Decision Record). |
 | [arquitetura.md](arquitetura.md) | Arquitetura técnica detalhada: camadas, fluxo de auth, CSP/IPC, build/empacotamento. |
 | [roteiro-fundacao.md](roteiro-fundacao.md) | Passo-a-passo da fundação (F0/F1) — comandos concretos para iniciar. |

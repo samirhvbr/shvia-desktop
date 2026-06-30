@@ -191,13 +191,17 @@ iniciar no dia 1.
 
 ## Status atual
 
-**30/06/2026 — Fase 1 em andamento (`0.2.1`).** Sobre a documentação de fundação,
-entrou o **esqueleto andante**: app **Tauri 2** com janela, título e ícone **ShvIA**
-que navega para o ShvIA hospedado (`https://ia.blue3.com.br`), com uma casca de
-bootstrap mínima e `version.md` como fonte única (sync no `prebuild`). O frontend
-e o **Rust** compilam (`npm run build` e `cargo check` — este exigiu pinar
-`time = "=0.3.41"`); falta o **smoke-test de streaming SSE** (exige login
-interativo). Próximos passos e contexto vivo
-em [.continue/estado-atual.md](.continue/estado-atual.md).
+**30/06/2026 — primeira versão lançada (`0.4.5`).** **Fase 1 completa e validada**
+(app abre, loga por cookie, **chat com streaming SSE** funciona) e **Fase 2** bem
+encorpada: **multi-janela** (Ctrl+N), **branding** (seta Blue3 P&B + "AI" navy),
+estado de janela persistido, links externos no navegador, **tela offline** e
+empacotamento `.deb` + **CI dos 3 SOs**. Detalhe do que funciona em
+[docs/funcionalidades.md](docs/funcionalidades.md); como buildar em
+[docs/build.md](docs/build.md).
+
+**2 pendências conhecidas** (limitações do WebKitGTK no Linux — ADR-008): **mic
+(voz)** e **Ctrl+V de imagem** não funcionam; macOS/Windows tendem a resolver, com
+fallback Electron se virarem must-have. Contexto vivo e pendências em
+[.continue/estado-atual.md](.continue/estado-atual.md).
 
 > **Sem doc, sem deploy.** Toda função nova vira doc em `docs/` antes de entrar.
