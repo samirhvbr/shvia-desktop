@@ -1,44 +1,49 @@
-# Perfis de modelo Claude Code — fork samirhvbr
+# Perfil de modelo Claude Code — ShvIA Desktop
 
-Este `.claude/` **mistura dois mundos**:
+`.claude/` deste projeto segue o padrão dos repos Blue3/samirhvbr: perfil de
+modelo + postura de permissões. Stack-alvo: **Tauri 2 (Rust) + casca web
+(npm/Vite) + sidecar Python (entra na F2)** — o servidor é remoto, então
+**nenhum banco ou segredo roda aqui**.
 
-- **Do upstream** (`aaddrick`): `agents/`, `hooks/`, `scripts/`, `skills/` e
-  `settings.local.json` (hooks de lint/simplify). **Não mexo nesses** — vêm do projeto.
-- **Deste fork** (samirhvbr): os perfis de modelo abaixo, para alternar Opus/Fable.
-
-## Arquivos de perfil
+## Arquivos
 
 | Arquivo | Papel |
 |---------|-------|
-| `settings.json` | Perfil **ativo** (versionado). Hoje = **Opus-only**. |
-| `json-opus` | Template stand-by — **Opus 4.8** em tudo. |
-| `json-fable5-opus` | Template stand-by — **Fable 5** + fallback Opus. |
-| `json-fable5-opus-sonnet` | Template stand-by — **Fable 5** + fallback Opus → Sonnet. |
+| `settings.json` | Perfil **ativo** (versionado). Hoje = **Opus-only**, `defaultMode: plan`, só a **deny-list** de segurança. |
 
-**Trocar de perfil:** copie o template por cima do ativo e reinicie o Claude Code.
+> A **allow-list** (atalhos que evitam prompts repetidos) **não** vem no
+> `settings.json` de propósito: conceder permissão ao agente é uma ação **sua**.
+> Aplique o bloco abaixo manualmente quando quiser reduzir os prompts.
 
-```bash
-cp .claude/json-fable5-opus .claude/settings.json   # ex.: passa a usar Fable 5
+## Allow-list recomendada (cole em `permissions.allow`)
+
+```jsonc
+"allow": [
+  "Read", "Edit", "Write",
+  "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)",
+  "Bash(git show:*)", "Bash(git branch:*)",
+  "Bash(git add:*)", "Bash(git commit:*)", "Bash(git push:*)",
+  "Bash(node -c:*)", "Bash(node --check:*)",
+  "Bash(npm run dev:*)", "Bash(npm run build:*)", "Bash(npm run tauri:*)",
+  "Bash(npm install:*)", "Bash(npx tauri info:*)",
+  "Bash(cargo check:*)", "Bash(cargo build:*)", "Bash(cargo test:*)",
+  "Bash(cargo fmt:*)", "Bash(cargo clippy:*)",
+  "Bash(python -m py_compile:*)", "Bash(python3 -m py_compile:*)",
+  "Bash(pytest:*)", "Bash(bats:*)", "Bash(shellcheck:*)"
+]
 ```
 
 ## Regras que valem lembrar
 
-- **Effort `max` vai por env** (`CLAUDE_CODE_EFFORT_LEVEL=max`). O campo `effortLevel`
-  do JSON só aceita `low/medium/high/xhigh` — `max` ali é ignorado.
-- **1M é nativo** no Opus 4.8 e no Fable 5 (API Anthropic), sem flag. Não setar
+- **Effort `max` vai por env** (`CLAUDE_CODE_EFFORT_LEVEL=max`). O campo
+  `effortLevel` do JSON só aceita `low/medium/high/xhigh` — `max` ali é ignorado.
+- **1M é nativo** no Opus 4.8 (API Anthropic), sem flag. Não setar
   `CLAUDE_CODE_DISABLE_1M_CONTEXT`. No plano Max é incluso — usar longe do limite.
-- **Fable 5 / créditos:** incluso no Max até ~22/jun/2026; depois consome créditos
-  (~$10/$50 por MTok, 2× o Opus). Requer Claude Code v2.1.170+.
-- **Adaptive thinking:** OFF no Opus; no Fable 5 é sempre adaptativo (a flag não tem efeito).
+- **`defaultMode: plan`** — o agente planeja antes de agir. Mantém o hábito de
+  revisar mudanças estruturais antes de tocar em código.
 
-## Permissões (mesmo bloco nos três perfis)
+## Deny-list (já no `settings.json`)
 
-- `defaultMode: plan`.
-- **deny:** `rm -rf`, `git push --force/-f`, `git reset --hard`, `git clean -fd`,
-  `curl|sh`/`wget|sh`, e leitura de `*.pem` / `*.key` / `.env` / `auth.json`.
-- **ask:** `sudo`, `dpkg -i`, `apt`/`apt-get`, `npm install --save`.
-- **allow:** read/edit/write, git read-only + `add`/`commit`/`push`, `./build.sh`,
-  `node`/`npm`/`npx`, `shellcheck`, `bats`, `codespell`, `nix build`/`flake check`.
-
-> O `settings.local.json` (do upstream) tem **precedência** e traz os hooks do projeto;
-> ele fica fora dos perfis acima de propósito.
+Bloqueia leitura de `.env`/chaves (`*.pem`/`*.key`/`*.p8`/`*.p12`/`*.pfx`),
+`rm -rf`, `git push --force/-f`, `git reset --hard`, `git clean -fd` e
+`curl|sh`/`wget|sh`. **Não afrouxar** sem motivo documentado.

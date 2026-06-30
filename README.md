@@ -1,268 +1,196 @@
-# SHVIA-DESKTOP
+# ShvIA Desktop (`shvia-desktop`)
 
-**SHVIA-DESKTOP** packages [Claude Desktop](https://www.anthropic.com) — Anthropic's desktop app — to run natively on Linux. It repackages the official Windows application for Linux, producing `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL), and distribution-agnostic AppImage packages, plus a Nix flake for NixOS. The installed package is named `shvia-desktop`.
+> **Projeto interno da Blue3.** Cliente **desktop multiplataforma** (macOS,
+> Windows, Linux) do **ShvIA** — a plataforma interna de IA da Blue3
+> (`https://ia.blue3.com.br`). Documentação interna — não publicar.
 
-**Note:** This is an unofficial build, not affiliated with or endorsed by Anthropic. For official support, visit [Anthropic's website](https://www.anthropic.com). For issues with these build scripts or the Linux implementation, [open an issue](https://github.com/samirhvbr/SHVIA-DESKTOP/issues) in this repository.
-
-**Documentation:** Full docs at [`docs/index.md`](docs/index.md). Release history in [`CHANGELOG.md`](CHANGELOG.md). Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md). Security reports: [`SECURITY.md`](SECURITY.md).
-
----
-
-> **🔱 SHVIA-DESKTOP** — rebrand de [`aaddrick/claude-desktop-debian`](https://github.com/aaddrick/claude-desktop-debian), mantido por [samirhvbr](https://github.com/samirhvbr). Empacota o **Claude Desktop** (app da Anthropic) para Linux; o pacote instalado chama-se `shvia-desktop`.
->
-> **Convenção de commits:** `versão - comentário` — ex.: `0.2.0 - rebrand SHVIA-DESKTOP`. A versão vem de [`version.md`](version.md), incrementada a cada mudança relevante (Z+1). Mensagens em **pt-BR**.
->
-> Notas de continuidade em [`.continue/estado-atual.md`](.continue/estado-atual.md); perfis de modelo Claude Code em [`.claude/README.md`](.claude/README.md). Sincronizar com o upstream: `git fetch upstream && git merge upstream/main`.
+**Ver também:** [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md) (convenções de
+código e do agente) · [docs/README.md](docs/README.md) (índice da documentação
+técnica) · [.continue/escopo-projeto.md](.continue/escopo-projeto.md) (escopo
+detalhado e plano de fases) · [docs/decisoes.md](docs/decisoes.md) (ADRs).
 
 ---
 
-## Features
+## Sumário
 
-- **Native Linux Support**: Run Claude Desktop without virtualization or Wine
-- **MCP Support**: Full Model Context Protocol integration
-  Configuration file location: `~/.config/Claude/claude_desktop_config.json`
-- **System Integration**:
-  - Global hotkey support (Ctrl+Alt+Space) - works on X11 and Wayland (via XWayland)
-  - System tray integration
-  - Desktop environment integration
+1. [O que é](#o-que-é)
+2. [Decisão de arquitetura](#decisão-de-arquitetura)
+3. [Stack](#stack)
+4. [Modelo organizacional](#modelo-organizacional)
+5. [Estrutura do repositório (alvo)](#estrutura-do-repositório-alvo)
+6. [Versão (`version.md`)](#versão-versionmd)
+7. [Relação com ShvIA e SHVTERM](#relação-com-shvia-e-shvterm)
+8. [Roadmap em fases](#roadmap-em-fases)
+9. [Status atual](#status-atual)
 
-### Screenshots
+---
 
-<p align="center">
-  <img src="docs/images/claude-desktop-screenshot1.png" alt="Claude Desktop running on Linux" />
-</p>
+## O que é
 
-<p align="center">
-  <img src="docs/images/claude-desktop-screenshot2.png" alt="Global hotkey popup" />
-</p>
+**ShvIA Desktop** é um app desktop que entrega o ShvIA com **a cara do projeto**
+e as **mesmas funções** do web app — empacotado como aplicativo nativo para
+macOS, Windows e Linux, com janela própria, ícone, bandeja (tray), notificações
+de SO e auto-update.
 
-## Installation
+O ShvIA em si **continua sendo o servidor Laravel hospedado** em
+`https://ia.blue3.com.br`: chat com IA (streaming SSE), comparação de modelos,
+workspaces/pastas com arquivos (RAG), base de conhecimento, skills, painel admin
+e rastreamento de uso/tokens. O desktop é o **cliente** dessa instância — não
+reescreve o backend nem o frontend.
 
-### Building from Source (recommended)
+---
 
-```bash
-git clone https://github.com/samirhvbr/SHVIA-DESKTOP.git
-cd SHVIA-DESKTOP
-./build.sh --build deb --clean yes   # or: --build appimage  /  --build rpm
+## Decisão de arquitetura
+
+> Decisão tomada em **30/06/2026**, após análise multi-agente (ver
+> [docs/decisoes.md](docs/decisoes.md) para os ADRs completos).
+
+**Shell fino em Tauri 2 carregando o ShvIA web (Blade) remoto.**
+
+- **Base = SHVTERM** (`/Users/samir/Projetos/SHVTERM`), nosso cliente desktop
+  **Tauri 2 + React** já multiplataforma, com CI dos 3 SOs, updater e padrões de
+  empacotamento prontos. **O fork Claude Desktop foi descartado** (arquivado em
+  `archive/claude-fork` + tag `archive/claude-fork-v0.2.2`).
+- **A janela Tauri abre o ShvIA hospedado** (`https://ia.blue3.com.br`). Assim
+  **"mesmas funções" é literal** — é a própria UI Blade do ShvIA. Zero código
+  Laravel forkado, zero UI reescrita na Fase 1.
+- **Servidor remoto = fonte da verdade** (dados, senhas, permissões). O desktop
+  **não abre nenhum banco local** — a regra "MariaDB/MySQL, nunca SQLite" é
+  satisfeita por construção (não há DB no cliente).
+- **Auth = sessão Sanctum (cookie), same-origin.** Como navegamos o FQDN real, o
+  login é a tela normal do ShvIA e o cookie de sessão autentica tudo, como num
+  browser. (Bearer token só serve `/api/v1`; deep-link SSO `shvia://` é o único
+  caso que exige tratamento extra — Fase 2.)
+- **Camada nativa fina** (Rust/Tauri): janela com branding ShvIA, tray, deep-link
+  `shvia://`, notificações de SO, auto-update e persistência de config/janela.
+
+**Por que não Electron, não NativePHP:**
+
+| Alternativa | Por que descartada |
+|-------------|--------------------|
+| **Electron** (o fork) | Chromium embarcado (~120 MB/build) sem ganho aqui; o Tauri do SHVTERM já está pronto. Mantido só como **fallback** se o streaming SSE quebrar no WebKitGTK (Linux). |
+| **NativePHP** (Laravel local) | Ganho dele é SQLite local; o ShvIA **exige MariaDB/MySQL e proíbe SQLite**. Forçar MySQL em cada laptop forkaria a camada de dados — o oposto de reuso. |
+
+**Trade-off assinado:** a arquitetura é **online-first / efetivamente
+online-only**. Aceitável para um app de chat de IA (a inferência é server-side de
+qualquer forma), endereçado com uma **tela offline** com a marca ShvIA + retry.
+Operação genuinamente offline é um *killer* desta arquitetura — ver
+[decisões em aberto](.continue/escopo-projeto.md#decisões-em-aberto).
+
+---
+
+## Stack
+
+- **Tauri 2** (núcleo Rust) + **WebView nativo do SO** (WKWebView no macOS,
+  WebView2 no Windows, WebKitGTK no Linux).
+- **Frontend da casca**: mínimo (Vite/TS) — tela de bootstrap/offline e config de
+  URL. A UI principal é o **Blade remoto** do ShvIA.
+- **Sidecar Python** (PyInstaller) — padrão herdado do SHVTERM; **opcional na
+  F1**, estrutural na F2 (vault de token no keychain, SSO, ações nativas na API).
+- **Plugins Tauri**: `updater`, `process`, `store`, `notification`, `deep-link`,
+  `single-instance`.
+- **Três runtimes** (como o SHVTERM): `npm` (casca) · `cargo` (Rust) · `pip`
+  (sidecar).
+- **CI**: GitHub Actions, matriz `macos` / `windows` / `ubuntu` (`tauri-action`).
+
+---
+
+## Modelo organizacional
+
+- **Repositório reaproveitado** — este mesmo repo (`samirhvbr/SHVIA-DESKTOP`,
+  branch `master`). O nome encaixa: **SHVIA-DESKTOP = o desktop do ShvIA**. O
+  histórico do fork foi preservado em `archive/claude-fork` (+ tag) e
+  empurrado ao `origin`.
+- **Repo separado do Laravel.** O ShvIA (Laravel) permanece **intocado** no seu
+  próprio repo. Não é monorepo: o desktop é cliente de um servidor já hospedado e
+  compartilhado com o web app; juntá-los só acoplaria cadências de release.
+- **SHVTERM** continua repo **irmão** (cliente SSH) — dele a gente **colhe
+  ativos** (CI, updater, packaging, convenções), sem merge.
+- **Branding:** identidade ShvIA/Blue3 (ícones/splash de `brand/`, vindos de
+  `/Users/samir/x/IA/brand/`). App ID sugerido: `cloud.blue3.shvia` (alinhado ao
+  `cloud.blue3.shvterm`). **Nenhuma** marca Claude/Anthropic em artefato algum.
+- **Commits:** `versão - comentário em português` (bump de `version.md` no mesmo
+  commit). Sem `feat:/fix:/chore:`.
+
+---
+
+## Estrutura do repositório (alvo)
+
+> Layout planejado para a Fase 1 (hoje o repo só tem a documentação). Detalhe e
+> passo-a-passo em [docs/roteiro-fundacao.md](docs/roteiro-fundacao.md).
+
+```
+shvia-desktop/
+├── version.md                  # fonte única X.Y.Z (0.1.0)
+├── README.md                   # este arquivo
+├── CLAUDE.md / AGENTS.md       # convenções do agente (espelhados)
+├── brand/                      # ícones/splash ShvIA (copiar de IA/brand/)
+├── src/                        # casca web mínima (bootstrap, tela offline, config URL)
+├── src-tauri/
+│   ├── tauri.conf.json         # version gerada de version.md na CI
+│   ├── src/                    # Rust: janela, tray, deep-link, notifications, updater, store
+│   ├── capabilities/           # allowlist por janela (postura de segurança)
+│   └── icons/
+├── sidecar/                    # (F2) serviços nativos/seguros em Python
+├── scripts/packaging/          # appimage/deb/rpm adaptados do SHVTERM
+├── .github/workflows/          # matriz de build + release assinado
+├── .claude/                    # perfil de modelo + permissões
+├── .continue/                  # WIP: estado-atual + escopo do projeto
+└── docs/                       # documentação técnica estável
 ```
 
-The build produces `shvia-desktop_<version>_<arch>.deb` (or the matching `.rpm` / `.AppImage`). See [docs/building.md](docs/building.md) for all flags, formats, and dependencies.
+---
 
-### Pre-built Releases
+## Versão (`version.md`)
 
-Download the latest `.deb`, `.rpm`, or `.AppImage` from the [Releases page](https://github.com/samirhvbr/SHVIA-DESKTOP/releases) (when published).
+`version.md` guarda a versão do **app desktop** (linha própria, independente da
+versão do servidor ShvIA), no formato `X.Y.Z`:
 
-### Using Nix Flake (NixOS)
+- **X** — versão estável (manual).
+- **Y** — nova capacidade de runtime, redesenho de IPC, mudança de auth-handoff.
+- **Z** — incremento: mudança visível de UI/menu/janela, nova capacidade de
+  empacotamento, ajuste de build.
 
-```bash
-# Basic install
-nix profile install github:samirhvbr/SHVIA-DESKTOP
+**Acoplamento com o servidor:** cada release registra a **versão mínima do
+servidor ShvIA** compatível, verificada em runtime lendo o campo `version` de
+`GET /api/v1/health`. Na CI, `tauri.conf.json` recebe a versão de `version.md`
+(fonte única). Bump **no mesmo commit** da mudança.
 
-# With MCP server support (FHS environment)
-nix profile install github:samirhvbr/SHVIA-DESKTOP#shvia-desktop-fhs
-```
+---
 
-Or add to your NixOS configuration:
+## Relação com ShvIA e SHVTERM
 
-```nix
-# flake.nix
-{
-  inputs.shvia-desktop.url = "github:samirhvbr/SHVIA-DESKTOP";
+| Repo | Papel aqui |
+|------|------------|
+| **ShvIA** (`/Users/samir/x/IA`, Laravel) | **Servidor/fonte da verdade.** O desktop carrega o Blade e consome `/api/v1`. Intocado. |
+| **SHVTERM** (`/Users/samir/Projetos/SHVTERM`, Tauri) | **Base técnica.** Colhemos CI, updater, packaging, sidecar e convenções. Repo irmão, sem merge. |
+| **archive/claude-fork** (neste repo) | Snapshot do fork Claude Desktop descartado. Histórico preservado. |
 
-  outputs = { nixpkgs, shvia-desktop, ... }: {
-    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
-      modules = [
-        ({ pkgs, ... }: {
-          nixpkgs.overlays = [ shvia-desktop.overlays.default ];
-          environment.systemPackages = [ pkgs.shvia-desktop ];
-        })
-      ];
-    };
-  };
-}
-```
+---
 
-## Configuration
+## Roadmap em fases
 
-Model Context Protocol settings are stored in:
-```
-~/.config/Claude/claude_desktop_config.json
-```
+Resumo (detalhe em [.continue/escopo-projeto.md](.continue/escopo-projeto.md)):
 
-For additional configuration options including environment variables and Wayland support, see [docs/configuration.md](docs/configuration.md).
+| Fase | Entrega |
+|------|---------|
+| **F0** | Decisões + colheita de ativos do SHVTERM + branding do ShvIA. |
+| **F1** | Esqueleto andante: Tauri abre `ia.blue3.com.br`; **smoke-test de streaming SSE no Linux** (risco #1); login por cookie; ícone/título ShvIA. **Já entrega "mesmas funções".** |
+| **F2** | Polish nativo: tray, menu, About, estado de janela, config de URL, tela offline, deep-link `shvia://` + reconciliação de auth, notificações. (Sidecar entra aqui se necessário.) |
+| **F3** | Check de compatibilidade de versão de servidor (`/api/v1/health`). |
+| **F4** | CI + assinatura/notarização (macOS, Windows EV, Linux) + auto-update. |
+| **F5** | Beta nos 3 SOs + correções de quirks de WebView + docs. |
 
-## Troubleshooting
+**Esforço estimado:** ~5–6 semanas-engenheiro para 1.0 assinado/notarizado nos 3
+SOs. Long pole de **prazo** (não de eng): **procurement do cert EV Windows** —
+iniciar no dia 1.
 
-Run `shvia-desktop --doctor` for built-in diagnostics that check common issues (display server, sandbox permissions, MCP config, stale locks, and more). It also reports cowork mode readiness — which isolation backend will be used, and which dependencies (KVM, QEMU, vsock, socat, virtiofsd, bubblewrap) are installed or missing.
+---
 
-For additional troubleshooting, uninstallation instructions, and log locations, see [docs/troubleshooting.md](docs/troubleshooting.md).
+## Status atual
 
-## Acknowledgments
+**30/06/2026** — Repo esvaziado do fork Claude (arquivado) e **documentação de
+fundação criada**. A implementação **começa amanhã** pela Fase 1. Próximos passos
+e contexto vivo em [.continue/estado-atual.md](.continue/estado-atual.md).
 
-This project was inspired by [k3d3's claude-desktop-linux-flake](https://github.com/k3d3/claude-desktop-linux-flake) and their [Reddit post](https://www.reddit.com/r/ClaudeAI/comments/1hgsmpq/i_successfully_ran_claude_desktop_natively_on/) about running Claude Desktop natively on Linux.
-
-Special thanks to:
-- **k3d3**
-  - Original NixOS implementation
-  - Native bindings insights
-- **[emsi](https://github.com/emsi/claude-desktop)**
-  - Title bar fix
-  - Alternative implementation approach
-- **[leobuskin](https://github.com/leobuskin/unofficial-claude-desktop-linux)** for the Playwright-based URL resolution approach
-- **[yarikoptic](https://github.com/yarikoptic)**
-  - Codespell support
-  - Shellcheck compliance
-- **[IamGianluca](https://github.com/IamGianluca)** for build dependency check improvements
-- **[ing03201](https://github.com/ing03201)** for IBus/Fcitx5 input method support
-- **[ajescudero](https://github.com/ajescudero)** for pinning @electron/asar for Node compatibility
-- **[delorenj](https://github.com/delorenj)** for Wayland compatibility support
-- **[Regen-forest](https://github.com/Regen-forest)** for suggesting Gear Lever as AppImageLauncher replacement
-- **[niekvugteveen](https://github.com/niekvugteveen)** for fixing Debian packaging permissions
-- **[speleoalex](https://github.com/speleoalex)** for native window decorations support
-- **[imaginalnika](https://github.com/imaginalnika)** for moving logs to `~/.cache/`
-- **[richardspicer](https://github.com/richardspicer)** for the menu bar visibility fix on Linux
-- **[jacobfrantz1](https://github.com/jacobfrantz1)**
-  - Claude Desktop code preview support
-  - Quick window submit fix
-- **[janfrederik](https://github.com/janfrederik)** for the `--exe` flag to use a local installer
-- **[MrEdwards007](https://github.com/MrEdwards007)** for discovering the OAuth token cache fix
-- **[lizthegrey](https://github.com/lizthegrey)**
-  - Version update contributions
-  - Close-to-tray on Linux to keep in-app schedulers, MCP servers, and the tray icon alive across window close
-  - "Run on startup" persistence on Linux via XDG Autostart, fixing the toggle that would silently revert
-  - In-place package upgrade detection that watches `app.asar` for dpkg/rpm replacement and offers a click-to-restart notification, fixing the Quick Entry / About / Ctrl+Q symptom cluster from a running v(N) main process loading v(N+1) renderer assets (#564)
-- **[mathys-lopinto](https://github.com/mathys-lopinto)**
-  - AUR package
-  - Automated deployment
-- **[pkuijpers](https://github.com/pkuijpers)** for root cause analysis of the RPM repo GPG signing issue
-- **[dlepold](https://github.com/dlepold)** for identifying the tray icon variable name bug with a working fix
-- **[Voork1144](https://github.com/Voork1144)**
-  - Detailed analysis of the tray icon minifier bug
-  - Root-cause analysis of the Chromium layout cache bug
-  - Direct child `setBounds()` fix approach
-- **[sabiut](https://github.com/sabiut)**
-  - `--doctor` diagnostic command
-  - SHA-256 checksum validation for downloads
-  - Post-build integration tests for deb, rpm, and AppImage artifacts
-  - `tests.yml` CI workflow that runs the 186-test BATS suite on push and PR — the suite was inert in CI before this (#520)
-  - Isolating `cleanup_stale_cowork_socket` BATS from host `pgrep` state so the test passes on developer machines running Claude Desktop (#533, #534)
-  - Headless launch and `--doctor` smoke tests for the AppImage artifact, catching runtime regressions (frame-fix-wrapper syntax errors, asar patch breakage, `main` field mismatches) that the structural test missed (#592)
-- **[milog1994](https://github.com/milog1994)**
-  - Popup detection
-  - Functional stubs
-  - Wayland compositor support
-- **[jarrodcolburn](https://github.com/jarrodcolburn)**
-  - Passwordless sudo support in container/CI environments
-  - Identifying the gh-pages 4GB bloat fix
-  - Identifying the virtiofsd PATH detection issue on Debian
-  - Detailed analysis of the CI release pipeline failure caused by runner kills during compare-releases
-  - Diagnosing the session-start hook sudo blocking issue with three solution approaches
-- **[chukfinley](https://github.com/chukfinley)** for experimental Cowork mode support on Linux
-- **[CyPack](https://github.com/CyPack)**
-  - Orphaned cowork daemon cleanup on startup
-  - `COWORK_VM_BACKEND` documentation, Cowork troubleshooting sections, and unknown-value warning in `--doctor`
-- **[IliyaBrook](https://github.com/IliyaBrook)**
-  - Fixing the platform patch for Claude Desktop >= 1.1.3541 arm64 refactor
-  - Fixing the duplicate tray icon on OS theme change with an in-place `setImage`/`setContextMenu` fast-path that avoids the KDE Plasma SNI re-registration race
-- **[MichaelMKenny](https://github.com/MichaelMKenny)**
-  - Diagnosing the `$`-prefixed electron variable bug
-  - Root cause analysis and workaround
-- **[daa25209](https://github.com/daa25209)** for detailed root cause analysis of the cowork platform gate crash and patch script
-- **[noctuum](https://github.com/noctuum)**
-  - `CLAUDE_MENU_BAR` env var with configurable menu bar visibility
-  - Boolean alias support
-- **[typedrat](https://github.com/typedrat)**
-  - NixOS flake integration with build.sh
-  - node-pty derivation
-  - CI auto-update
-  - Fixing the flake package scoping regression
-  - Fixing the NixOS electron binary not being marked executable (#431, #581)
-- **[cbonnissent](https://github.com/cbonnissent)**
-  - Reverse-engineering the Cowork VM guest RPC protocol
-  - Fixing the KVM startup blocker
-  - Fixing RPC response id echoing for persistent connections
-  - Configurable bwrap mount points via a dedicated Linux config file
-  - `{src, dst}` mount form in `coworkBwrapMounts` for distinct host/sandbox paths (e.g. persistent `/tmp` across Bash tool calls)
-- **[joekale-pp](https://github.com/joekale-pp)** for adding `--doctor` support to the RPM launcher
-- **[ecrevisseMiroir](https://github.com/ecrevisseMiroir)** for the bwrap backend sandbox isolation with tmpfs-based minimal root
-- **[arauhala](https://github.com/arauhala)** for detailed root cause analysis of the NixOS `isPackaged` regression
-- **[cromagnone](https://github.com/cromagnone)** for confirming the VM download loop on bwrap installs with detailed logs that disproved the initial triage
-- **[aHk-coder](https://github.com/aHk-coder)** for diagnosing the hardcoded minified variable crash in the cowork smol-bin patch
-- **[RayCharlizard](https://github.com/RayCharlizard)**
-  - Detailed analysis of the self-referential `.mcpb-cache` symlink ELOOP bug
-  - Fixing auto-memory path translation on HostBackend
-  - Fixing the `ion-dist` static asset copy for the `app://` protocol handler
-  - `--doctor` diagnostic that detects the Ubuntu 24.04 AppArmor `apparmor_restrict_unprivileged_userns=1` block on bwrap, instead of letting it silently fall through to a hanging KVM probe (#351, #434)
-  - Documenting the upstream MCP double-spawn root-cause analysis in `docs/learnings/mcp-double-spawn.md` (#526, #527)
-- **[reinthal](https://github.com/reinthal)** for fixing the NixOS build breakage caused by the nixpkgs `nodePackages` removal
-- **[gianluca-peri](https://github.com/gianluca-peri)**
-  - Reporting the GNOME quit accessibility issue
-  - Confirming tray behavior with AppIndicator
-- **[martin152](https://github.com/martin152)** for detailed diagnosis and a complete patch for three launcher cleanup bugs: `cleanup_orphaned_cowork_daemon` self-match, `cleanup_stale_cowork_socket` socat dependency no-op, and the same self-match in `--doctor`
-- **[hfyeh](https://github.com/hfyeh)** for diagnosing the Ubuntu 24.04 AppArmor unprivileged-userns block on Cowork bwrap and contributing the AppArmor profile workaround
-- **[davidamacey](https://github.com/davidamacey)** for identifying and fixing the XRDP GPU compositing blank-window issue on remote desktop sessions
-- **[pb3ck](https://github.com/pb3ck)** for diagnosing the Cowork `CLAUDE_CODE_OAUTH_TOKEN` env-strip bug with a working reference diff
-- **[Joost-Maker](https://github.com/Joost-Maker)** for fixing the `$e` fs reference crash in cowork Patch 9 on Claude Desktop 1.3109.0, introducing the `[$\w]+` identifier-capture pattern at `cowork.sh:482-501` (#421)
-- **[aJV99](https://github.com/aJV99)** for exporting `GDK_BACKEND=wayland` in native Wayland mode to fix XWayland fallback blur on HiDPI displays
-- **[Andrej730](https://github.com/Andrej730)**
-  - Quick-window regex readability refactor (`String.raw` + `escapeRegExp` helper)
-  - Fixing the visibility-function regex break on Claude Desktop 1.3883.0 (#496)
-- **[HumboldtJoker](https://github.com/HumboldtJoker)** for diagnosing the cowork Patch 2b silent failure on Claude Desktop 1.5354.0 — identifying that the log line was patched but session init still routed through the Swift addon (#553)
-- **[zabka](https://github.com/zabka)** for identifying that `cowork-vm-service.js` was never auto-spawned on Linux and contributing a systemd-unit workaround that scoped the daemon auto-launch fix (#445)
-- **[sirfaber](https://github.com/sirfaber)** for fixing the `$`-in-minified-identifier breakage of cowork Patch 2b (vm module assignment) and Patch 6 step 2 (retry-delay auto-launch) on Claude Desktop 1.5354.0 (#555)
-- **[ProfFlow](https://github.com/ProfFlow)** for re-fixing the RPM repodata signing regression by appending `!` to the keyid passed to `gpg --default-key`, forcing `repomd.xml` to be signed by the primary key instead of the auto-selected signing subkey (#566)
-- **[jslatten](https://github.com/jslatten)** for fixing the KDE Plasma Wayland launcher-grouping bug by setting `pkg.desktopName` in the packaged `app.asar`'s `package.json`, format-conditional so deb/rpm get `claude-desktop.desktop` and AppImage gets `io.github.aaddrick.claude-desktop-debian.desktop` (#562)
-- **[JoshuaVlantis](https://github.com/JoshuaVlantis)**
-  - RPM `chrome-sandbox` SUID via `%attr(4755, ...)` instead of a `%post` chmod scriptlet so the bit survives `--noscripts` and layered images (#539)
-  - `autoUpdater` no-op Proxy on Linux that defends against future feed activation, with a thenable allowlist masking `then`/`catch`/`finally`/`Symbol.toPrimitive`/`Symbol.iterator` to `undefined` (#567)
-  - Failing loudly on `npm install node-pty` failures instead of silently shipping the upstream Windows binaries, plus auto-installing `gcc`/`g++`/`make`/`python3` on minimal build environments (#401)
-  - Silencing the RPM "File listed twice" warning on `chrome-sandbox` by moving `chmod 4755` into `%install`, with thorough investigation of four `%exclude`-based alternatives (#610)
-  - Cleaning upstream Windows binaries from node-pty before staging the Linux build, preventing PE32+ orphans in the packaged asar (#597)
-- **[Hayao0819](https://github.com/Hayao0819)** for diagnosing the upstream `titleBarStyle:""` → `titleBarStyle:"hiddenInset"` migration that broke the About window render on GNOME/X11 and contributing the `isPopupWindow()` match extension (#481, #489)
-- **[michelsfun](https://github.com/michelsfun)** for reporting the cowork `ENAMETOOLONG` failure on eCryptfs-encrypted home directories with detailed `--doctor` output that pinpointed the short-NAME_MAX filesystem as the cause (#590)
-- **[proffalken](https://github.com/proffalken)** for the LUKS-volume + `pam_mount` workaround documented in `docs/troubleshooting.md`, restoring cowork support on legacy eCryptfs-encrypted home directories (#590)
-- **[phelps-matthew](https://github.com/phelps-matthew)** for fixing `CLAUDE_QUIT_ON_CLOSE=1` to actively quit via `app.quit()` instead of relying on the bundled handler that hardcodes hide-to-tray on Linux, with thorough root cause analysis and alternatives evaluation (#624, #623)
-- **[dubreal](https://github.com/dubreal)** for `--password-store` keyring detection that probes D-Bus for kwallet6 / gnome-libsecret at startup, fixing session persistence on KDE Plasma and other desktops where Electron's `safeStorage` was unavailable (#611, #593)
-- **[JustinJLeopard](https://github.com/JustinJLeopard)** for detecting missing electron binaries after Node 24's `extract-zip` silently no-ops, with an `unzip` fallback that recovers from the `@electron/get` cache (#631, #584)
-- **[tkrag](https://github.com/tkrag)** for diagnosing and fixing the X11 window-raise-on-hover bug under sloppy/focus-follows-mouse WMs, tracing the upstream `webContents.focus()` → `_NET_ACTIVE_WINDOW` path through three iterations of review (#589, #416)
-- **[maplefater](https://github.com/maplefater)** for re-anchoring the `addTrustedFolder` `.asar` guard on the `async addTrustedFolder(…)` method declaration after upstream 1.10628.x folded the log call into a comma-expression, keying both the parameter extraction and the injection point off the unminified method name so they can't drift apart (#685)
-- **[MitchSchwartz](https://github.com/MitchSchwartz)** for finding the second `app.asar` file-drop path — the `existsSync()` branch in the second-instance argv collector that #640 never guarded — and rejecting `.asar` paths there so the app no longer prompts to attach its own bundle on every taskbar reopen (#669, #668)
-- **[LiukScot](https://github.com/LiukScot)** for making the tray rebuild mutex trailing-edge so the startup dark-theme icon no longer latches black, and restoring the in-place `setImage` fast-path after upstream changed the context-menu wiring to a prebuilt menu object (#680, #679)
-- **[sabiut](https://github.com/sabiut)**
-  - BATS coverage for `cleanup_orphaned_cowork_daemon`, mutation-tested so the kill/escalation branches genuinely bite (#693)
-  - Fixing two false-green `--doctor` PASSes: an empty password store read as healthy, and a non-numeric `df` reading falling through to the PASS branch (#692)
-  - Extending the artifact launch smoke tests to arm64 on native `ubuntu-22.04-arm` runners, and re-keying the AppImage pkill sweep to `mount_claude` so escaped zygote/electron children stop leaking on the runner (#691)
-- **[jerem](https://github.com/jerem)** for routing Quick Entry's global shortcut through the XDG GlobalShortcuts portal on native Wayland, and merging all Chromium feature requests into a single `--enable-features=` switch — the old code silently clobbered `WindowControlsOverlay` (#690, #404)
-- **[caidejager](https://github.com/caidejager)** for diagnosing why Cowork's VM daemon never auto-launched on packages built under a restrictive umask — `app.asar.unpacked/` shipped mode `0700`, failing the auto-launch `existsSync()` guard — and normalizing install permissions across deb and AppImage, with `dpkg-deb --root-owner-group` closing a build-uid write exposure (#695)
-- **[JustinJLeopard](https://github.com/JustinJLeopard)** for the AppStream metainfo that surfaces the package in GNOME Software, KDE Discover, and App Center, wired into the deb, rpm, and AppImage builds (#633)
-- **[DhanushSantosh](https://github.com/DhanushSantosh)** for the GPU crash auto-recovery in the launcher: detecting a previous GPU-process FATAL in the launcher log and re-launching with safe GPU flags automatically, instead of leaving users to discover `CLAUDE_DISABLE_GPU=1` by hand (#666)
-- **[diarized](https://github.com/diarized)** for auto-installing scoped AppArmor userns profiles from the `.deb` postinst on Ubuntu 24.04+ — one for the bundled Electron binary (fixing the launch crash without `--no-sandbox`) and one for `/usr/bin/bwrap` (keeping Cowork's sandbox isolated instead of silently falling back to host-direct), automating the workaround from #351 (#687, #694)
-- **[emandel82](https://github.com/emandel82)** for root-causing the "Attach app.asar?" prompt: every launcher passed `app.asar` as a redundant Electron argument, which the second-instance argv collector treated as a file to open — removed at the source across all four package formats (#700, #696)
-- **[svankirk](https://github.com/svankirk)** for cleaning up Desktop helper processes after an explicit quit — a quit wrapper with signal forwarding and a bundle-keyed live-UI check, so closing the app no longer strands helper processes (#682)
-- **[pjordanandrsn](https://github.com/pjordanandrsn)** for re-deriving the cowork Linux patch suite against the upstream "yukonSilver" VM refactor (1.13576+) — re-anchoring the platform gate on `startVM`'s `yukonSilver.status` check after Patch 1's removed `darwin`/`win32` anchor started `process.exit(1)`'ing and dropping every subsequent cowork patch, fixing the build's "Verify cowork patches in shipped asar" gate (#736)
-- **[chrisw1005](https://github.com/chrisw1005)** for root-causing the Linux startup hang on Claude Desktop 1.13576+ — the unconditional `@ant/claude-native.readRegistryValues()` / `getWindowsElevationType()` enterprise-policy calls throwing a swallowed missing-method `TypeError` before window creation — via probe injection, and the complete Windows-only native stub fix (#729)
-- **[colonelpanic8](https://github.com/colonelpanic8)** for independently reproducing the same 1.13576+ startup hang and contributing BATS coverage for the Linux native stub (#730)
-
-## Sponsorship
-
-If this project is useful to you, consider [sponsoring on GitHub](https://github.com/sponsors/aaddrick).
-
-## License
-
-The build scripts in this repository are dual-licensed under:
-- MIT License (see [LICENSE-MIT](LICENSE-MIT))
-- Apache License 2.0 (see [LICENSE-APACHE](LICENSE-APACHE))
-
-The Claude Desktop application itself is subject to [Anthropic's Consumer Terms](https://www.anthropic.com/legal/consumer-terms).
-
-## Privacy
-
-This repository uses an automated triage bot that sends issue contents to Anthropic's API for classification and investigation when you file a bug report or feature request. The bot reads the issue body, title, and any referenced related issues; it does not follow URLs, execute code blocks, or read content outside the triggering issue.
-
-Do not include credentials, tokens, personal data, or anything you wouldn't put on a public issue tracker. If you post sensitive content and then edit it out, the bot's original read is preserved as a run artifact for audit — GitHub's UI hides the edit, but the bot's view of what you wrote is recoverable by maintainers.
-
-Full design and data inventory: [`docs/issue-triage/README.md`](docs/issue-triage/README.md).
-
-## Contributing
-
-Contributions are welcome! By submitting a contribution, you agree to license it under the same dual-license terms as this project.
+> **Sem doc, sem deploy.** Toda função nova vira doc em `docs/` antes de entrar.

@@ -1,58 +1,62 @@
-# Build output
-build/
-build_*/
-
-# Dev folder
-.dev/
-
-# Reference implementation
-reference/
-
-# Node modules
-node_modules/
-
-# OS-specific files
+# ── SO ──────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+desktop.ini
 
-*.AppImage
-*.desktop
-*.deb
+# ── Node / Vite (casca do frontend) ─────────────────────────────────
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Rust / Tauri ────────────────────────────────────────────────────
+target/
+**/target/
+**/*.rs.bk
+*.pdb
+
+# ── Python (sidecar — entra na F2) ──────────────────────────────────
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+sidecar/build/
+sidecar/dist/
+
+# ── Binário do sidecar empacotado (gerado no build/CI) ──────────────
+src-tauri/resources/sidecar-bin*
+
+# ── Ambiente / segredos (NUNCA versionar) ───────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.p8
+*.pfx
+.tauri/
+# chave privada do updater Tauri — fica em secret de CI, não no repo
+*.tauri.key
+
+# ── Artefatos de build / empacotamento ──────────────────────────────
+/test-build/
+*.dmg
+*.msi
 *.exe
-
-
-# Test build output
-test-build/
-
-# Playwright stray output — the harness writes to
-# tools/test-harness/results/ per playwright.config.ts, but Playwright
-# also drops a default `test-results/.last-run.json` next to the cwd
-# it's invoked from. Ignore it at the repo root so an accidental run
-# from here doesn't dirty the tree.
-test-results/
-
-# Reference files for source inspection
-build-reference/
-
-# Nix build output
-result
-result-*
-
-# Wrangler (Cloudflare Worker dev/deploy cache)
-worker/.wrangler/
-
-# Graphify outputs and temporary files
-graphify-out/
-.graphify_*
-
-# Local agent/editor state and helper bins
-.agents/
-.codex/
-.tmpbin/
-
-# Local package artifacts
+*.AppImage
+*.deb
 *.rpm
+*.app.tar.gz
 
-# Root-level scratch extracts from app inspection
-/frame-fix-wrapper.js
-/index.js
+# ── Editores ────────────────────────────────────────────────────────
+.idea/
+*.swp
+*.swo
+# .vscode/ é versionado seletivamente (settings compartilhados) — ajustar se preciso
+
+# NÃO ignorar: .continue/ e .claude/ são versionados de propósito.
