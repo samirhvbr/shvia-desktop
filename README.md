@@ -191,12 +191,13 @@ iniciar no dia 1.
 
 ## Status atual
 
-**30/06/2026 — Fase 1 em andamento (`0.2.0`).** Sobre a documentação de fundação,
+**30/06/2026 — Fase 1 em andamento (`0.2.1`).** Sobre a documentação de fundação,
 entrou o **esqueleto andante**: app **Tauri 2** com janela, título e ícone **ShvIA**
 que navega para o ShvIA hospedado (`https://ia.blue3.com.br`), com uma casca de
 bootstrap mínima e `version.md` como fonte única (sync no `prebuild`). O frontend
-compila (`npm run build`); **`cargo check` e o smoke-test de streaming SSE seguem
-pendentes** (este último exige login interativo). Próximos passos e contexto vivo
+e o **Rust** compilam (`npm run build` e `cargo check` — este exigiu pinar
+`time = "=0.3.41"`); falta o **smoke-test de streaming SSE** (exige login
+interativo). Próximos passos e contexto vivo
 em [.continue/estado-atual.md](.continue/estado-atual.md).
 
 > **Sem doc, sem deploy.** Toda função nova vira doc em `docs/` antes de entrar.

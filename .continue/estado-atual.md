@@ -37,16 +37,14 @@ ShvIA hospedado.
 
 - ✅ **Frontend compila**: `npm run build` (sync-version + `tsc` + `vite build`)
   passou e gera `dist/`.
-- ⏳ **`cargo check` (Rust) PENDENTE neste ambiente**: o prompt de permissão do
-  `cargo` falhou (stream) e, por convenção, **o agente não se auto-concede
-  permissão** (ver [`../.claude/README.md`](../.claude/README.md)). Rodar onde o
-  `cargo` esteja liberado:
-  ```bash
-  cargo check --manifest-path src-tauri/Cargo.toml
-  npm run tauri dev   # abre a janela (precisa de display)
-  ```
-  Risco baixo: `lib.rs` é o builder Tauri 2 padrão (menos a demo), as deps são as
-  do scaffold e o `tauri.conf.json` usa só campos padrão do schema v2.
+- ✅ **Rust compila** (`0.2.1`): `cargo check` passa (~33s) — valida também o
+  `tauri.conf.json` (lido por `generate_context!`). **Precisou pinar `time`:**
+  `wry 0.55 → cookie 0.18.1` usa a API antiga de `Parsable::parse` (1 arg), e o
+  `time` novo (0.3.52) mudou a assinatura → fixado `time = "=0.3.41"` no
+  `Cargo.toml` (com `Cargo.lock` versionado p/ build reproduzível). Remover o pin
+  quando wry/cookie subirem.
+- ⏳ **Rodar a janela** (`npm run tauri dev`, precisa de display) e o
+  **smoke-test SSE** (exige login interativo) — ver "Próximos passos".
 
 ## Decisões travadas
 
@@ -60,9 +58,8 @@ ShvIA hospedado.
 
 > Passo-a-passo completo em [../docs/roteiro-fundacao.md](../docs/roteiro-fundacao.md).
 
-1. **Compilar o Rust** (`cargo check`) e abrir o app (`npm run tauri dev`) num
-   ambiente com `cargo` liberado e display — confirmar que a janela abre e carrega
-   o ShvIA.
+1. **Abrir o app** (`npm run tauri dev`) num ambiente com display — confirmar que a
+   janela abre, mostra o splash e carrega o ShvIA. (Rust já compila desde `0.2.1`.)
 2. **SMOKE-TEST #1 (crítico):** com o app aberto (ou qualquer WebKitGTK), **logar
    no ShvIA e enviar uma mensagem no `/chat`**, confirmando o **streaming SSE token
    a token** no Linux/WebKitGTK (ADR-006). Exige **login interativo** — não dá para
