@@ -86,10 +86,35 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
             }
         })
         .build()?;
+    // libera mic/câmera no WebKitGTK (por padrão o getUserMedia é negado).
+    #[cfg(target_os = "linux")]
+    grant_media_permissions(&win);
     // restaura geometria salva (no 1º run não há estado: fica no tamanho default).
     let _ = win.restore_state(StateFlags::all());
     let _ = win.show();
     Ok(win)
+}
+
+/// Libera permissões de mídia (microfone/câmera) no WebKitGTK (Linux): por padrão
+/// o WebKitGTK nega `getUserMedia`; aqui tratamos o signal `permission-request` e
+/// concedemos **só** os pedidos de mídia (o resto segue o default). macOS/Windows
+/// têm caminhos próprios (Info.plist / WebView2) — tratados ao empacotar lá.
+#[cfg(target_os = "linux")]
+fn grant_media_permissions(window: &WebviewWindow) {
+    use webkit2gtk::{glib::prelude::*, PermissionRequestExt, WebViewExt};
+    let _ = window.with_webview(|wv| {
+        wv.inner().connect_permission_request(|_, req| {
+            if req
+                .downcast_ref::<webkit2gtk::UserMediaPermissionRequest>()
+                .is_some()
+            {
+                req.allow();
+                true
+            } else {
+                false
+            }
+        });
+    });
 }
 
 /// Abre mais uma janela do ShvIA, com rótulo único `win-N` (não colide com as
