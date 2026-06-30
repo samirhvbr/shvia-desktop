@@ -76,12 +76,16 @@ ShvIA hospedado.
 
 1. ✅ **Smoke-test SSE — FEITO** (`0.2.3`): streaming token-a-token confirmado no
    Linux/WebKitGTK. **Risco #1 derrubado.**
-2. **F2 — polish nativo (em andamento):** ✅ **multi-janela** (`0.3.0`): menu
-   `Arquivo → Nova janela` (`Ctrl/Cmd+N`) abre janelas extras (`win-*`) que
-   **compartilham a sessão** (mesmo login) — conversas/projetos lado a lado.
-   Restante: persistência do estado da janela, links externos no navegador, tela
-   offline com retry, **permissões de mídia** (diálogo de câmera), tray/About e
-   config de URL no 1º run.
+2. **F2 — polish nativo (em andamento):**
+   - ✅ **multi-janela** (`0.3.0`): `Arquivo → Nova janela` (`Ctrl/Cmd+N`), janelas
+     `win-*` que **compartilham a sessão** — conversas/projetos lado a lado.
+   - ✅ **branding** (`0.3.1`): seta Blue3 P&B + "AI" azul sobre navy.
+   - ✅ **estado da janela persistido** + **links externos no navegador** (`0.4.0`):
+     janelas criadas **no Rust** (`build_shvia_window`) com `on_navigation` (origens
+     fora de `*.blue3.com.br` abrem no navegador do SO; login é same-origin, não
+     quebra) e `tauri-plugin-window-state` (tamanho/posição entre reinícios).
+   - ⏳ **Restante:** **tela offline** — tarja vermelha **"Sistema Offline"** + retry;
+     **permissões de mídia** (diálogo de câmera); tray/About; config de URL no 1º run.
 3. Validar **persistência do cookie de sessão** entre reinícios (fechar/reabrir e
    continuar logado).
 4. **F4 (paralelo):** colher CI do SHVTERM (matriz mac/win/linux + updater +
