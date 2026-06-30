@@ -43,8 +43,21 @@ ShvIA hospedado.
   `time` novo (0.3.52) mudou a assinatura → fixado `time = "=0.3.41"` no
   `Cargo.toml` (com `Cargo.lock` versionado p/ build reproduzível). Remover o pin
   quando wry/cookie subirem.
-- ⏳ **Rodar a janela** (`npm run tauri dev`, precisa de display) e o
-  **smoke-test SSE** (exige login interativo) — ver "Próximos passos".
+- ✅ **App roda e renderiza** (`0.2.2`, `npm run tauri dev`): janela abre com
+  título **ShvIA**, o WebView **renderiza** e navega para `ia.blue3.com.br`. O
+  **login por cookie de sessão funciona** (a janela abriu **já logada** — auth
+  same-origin, ADR-005) e o **chat com a ANNA respondeu** com stats de geração
+  (`pensou/total/tokens/tok-s`) — **forte sinal de que o streaming SSE funciona no
+  WebKitGTK** (risco #1, ADR-006). Falta só **cravar o token-a-token** assistindo
+  uma resposta nova pintar progressivamente.
+- ⚠️ **Quirk WebKitGTK (render por GPU)**: em ambiente **remoto/VM/NVIDIA sem
+  acesso a DRM**, o renderer DMABUF/GBM falha (`GBM-DRV error`,
+  `DRM_IOCTL_MODE_CREATE_DUMB: Permission denied` → janela em branco). **Fix:**
+  rodar com `WEBKIT_DISABLE_DMABUF_RENDERER=1` (render por software) — com ele,
+  **zero erros**. É só do ambiente sem GPU; em máquina normal renderiza acelerado.
+- ⏳ **F2:** o WebView repassou um pedido de **câmera** (`getUserMedia`) como
+  diálogo nativo → definir **política de permissões de mídia** (câmera/mic/notif/
+  geo) na F2.
 
 ## Decisões travadas
 
@@ -58,13 +71,14 @@ ShvIA hospedado.
 
 > Passo-a-passo completo em [../docs/roteiro-fundacao.md](../docs/roteiro-fundacao.md).
 
-1. **Abrir o app** (`npm run tauri dev`) num ambiente com display — confirmar que a
-   janela abre, mostra o splash e carrega o ShvIA. (Rust já compila desde `0.2.1`.)
-2. **SMOKE-TEST #1 (crítico):** com o app aberto (ou qualquer WebKitGTK), **logar
-   no ShvIA e enviar uma mensagem no `/chat`**, confirmando o **streaming SSE token
-   a token** no Linux/WebKitGTK (ADR-006). Exige **login interativo** — não dá para
-   automatizar headless. Se falhar → fallback Electron (ainda thin-shell).
-3. Validar **persistência do cookie de sessão** entre reinícios do app.
+1. **Cravar o smoke-test SSE (quase lá):** o app já abriu, logou e a ANNA
+   respondeu no chat (`0.2.2`). Confirmar o **streaming token-a-token** assistindo
+   uma resposta **nova** pintar progressivamente no Linux/WebKitGTK (ADR-006). Se
+   ok → **risco #1 derrubado**. Se falhar → fallback Electron (ainda thin-shell).
+2. Validar **persistência do cookie de sessão** entre reinícios (fechar/reabrir e
+   continuar logado).
+3. **(F2)** Definir **política de permissões de mídia** do WebView (apareceu
+   diálogo de câmera) + polish nativo (tray, tela offline, config de URL).
 4. **Em paralelo:** iniciar **procurement do cert EV Windows** (long pole de prazo).
 
 ## Pendências / decisões em aberto (confirmar com o time)

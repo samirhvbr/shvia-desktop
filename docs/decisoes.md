@@ -102,6 +102,13 @@ how-to; linkar o ADR.
 - **Consequências:** Se passar, caminho livre. Se falhar, **fallback Electron**
   (Chromium pinado), ainda thin-shell hospedado — nunca NativePHP.
 - **A verificar (F1):** trecho de streaming em `public/js/app.js` (~linha 4003).
+- **Atualização (0.2.2):** primeiro teste manual no **WebKitGTK (Linux)** foi
+  **positivo** — a janela carregou o `/chat` e a ANNA respondeu com stats de
+  geração (`tokens`/`tok-s`). Forte indício de que o fetch-streaming funciona;
+  falta **cravar o token-a-token** (assistir uma resposta nova pintar aos poucos).
+  Quirk **de ambiente** (não do SSE): WebKitGTK sem GPU (VM/NVIDIA) exige
+  `WEBKIT_DISABLE_DMABUF_RENDERER=1` (render por software), senão a janela fica em
+  branco.
 
 ---
 
