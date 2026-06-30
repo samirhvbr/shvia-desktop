@@ -105,9 +105,12 @@ ShvIA hospedado.
   casca local** (splash/offline). Quando o WebView navega para o FQDN, vale o **CSP
   do próprio servidor ShvIA**. Não contar com o CSP do app para "proteger" a página
   remota.
-- **Ícones:** saíram do `logo.svg` (placeholder do ShvIA). O gradiente foi achatado
-  para o teal sólido `#1f8a70` na rasterização (o renderizador SVG do ImageMagick
-  não suporta `url(#gradient)`). Trocar quando houver brand final em `brand/`.
+- **Branding (`0.3.1`):** ícone = **marca real da Blue3** (a seta) em **P&B** +
+  **"AI"** no azul-claro `#24b0e5`, sobre quadrado **navy** `#0d1b2a`. Fontes em
+  `brand/` (`shvia-desktop-icon-1024.png` = ícone; `blue3-logo-source.png` = seta
+  original Blue3; `shvia-mark.png` = marca transparente). Splash + favicon na mesma
+  paleta (`public/brand-mark.png`, `public/favicon.png`). O "S" teal placeholder
+  (do `logo.svg`) foi descartado.
 - **A verificar em código (ShvIA) na F1:** (a) middleware de auth de `/chat` em
   `routes/web.php` (ADR-005); (b) trecho de streaming SSE em `public/js/app.js`
   (~linha 4003, `fetch` + `ReadableStream.getReader()`, ADR-006).

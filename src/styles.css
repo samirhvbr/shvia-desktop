@@ -1,11 +1,11 @@
 /* Casca de bootstrap do ShvIA Desktop — splash exibido por instantes antes de o
-   WebView navegar para o ShvIA hospedado. A marca (teal) acompanha o logo.svg
-   do ShvIA. */
+   WebView navegar para o ShvIA hospedado. Paleta da marca: navy + azul-claro
+   (mesma do ícone: seta P&B + "AI" em #24b0e5). */
 
 :root {
-  color-scheme: light dark;
-  --shvia-teal: #1f8a70;
-  --shvia-teal-dark: #145c4a;
+  color-scheme: dark;
+  --shvia-blue: #24b0e5;
+  --shvia-navy: #0d1b2a;
   font-family: Inter, Avenir, "Segoe UI", Helvetica, Arial, sans-serif;
 }
 
@@ -22,8 +22,8 @@ body {
 body {
   display: grid;
   place-items: center;
-  background: radial-gradient(120% 120% at 50% 0%, #0f2b24 0%, #0a1a16 100%);
-  color: #e8f5f0;
+  background: radial-gradient(120% 120% at 50% 0%, #13243a 0%, #0a1420 100%);
+  color: #e8f0f8;
 }
 
 .bootstrap {
@@ -36,28 +36,23 @@ body {
 }
 
 .brand-mark {
-  width: 96px;
-  height: 96px;
-  border-radius: 24px;
-  background: linear-gradient(
-    135deg,
-    var(--shvia-teal) 0%,
-    var(--shvia-teal-dark) 100%
-  );
-  box-shadow: 0 12px 40px rgba(31, 138, 112, 0.35);
+  width: 176px;
+  height: 176px;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 30px rgba(36, 176, 229, 0.25));
   animation: pulse 1.6s ease-in-out infinite;
 }
 
 .bootstrap h1 {
   margin: 0;
-  font-size: 1.75rem;
-  letter-spacing: 0.02em;
+  font-size: 1.6rem;
+  letter-spacing: 0.04em;
 }
 
 .bootstrap p {
   margin: 0;
   font-size: 0.95rem;
-  opacity: 0.7;
+  opacity: 0.65;
 }
 
 @keyframes pulse {
@@ -67,8 +62,8 @@ body {
     opacity: 1;
   }
   50% {
-    transform: scale(0.94);
-    opacity: 0.8;
+    transform: scale(0.96);
+    opacity: 0.85;
   }
 }
 
