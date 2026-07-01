@@ -36,7 +36,7 @@ const targets = [
   // para não tocar nas versões das dependências.
   [
     "src-tauri/Cargo.lock",
-    /(name = "shvia-desktop"\nversion = ")\d+\.\d+\.\d+(")/,
+    /(name = "shvia-desktop"\r?\nversion = ")\d+\.\d+\.\d+(")/,
     `$1${version}$2`,
   ],
   [
