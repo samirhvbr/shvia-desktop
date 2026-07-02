@@ -48,6 +48,46 @@ const OFFLINE_BANNER_JS: &str = r#"(function () {
   window.addEventListener('offline', update);
 })();"#;
 
+/// Injetado em cada página (`on_page_load`): **ponte de colar imagem (Ctrl+V)**.
+/// O WebKitGTK **não entrega a imagem no `clipboardData` do evento `paste`** (só
+/// texto/HTML) — embora `navigator.clipboard.read()` **consiga** ler a imagem.
+/// Sem isto, colar um print no ShvIA não funciona no desktop Linux (some no
+/// Chrome/Firefox, que preenchem o `clipboardData`). A ponte: ao colar, se o
+/// evento veio **sem** imagem, lê a imagem do clipboard e **re-despacha um
+/// `paste` sintético** com ela num `DataTransfer` — transparente para o handler
+/// do app (recebe `clipboardData.items` com a imagem, como num navegador comum).
+/// Marca o evento sintético (`__shviaSynthetic`) para não entrar em laço.
+const CLIPBOARD_IMAGE_PASTE_JS: &str = r#"(function () {
+  if (window.__shviaClipboardBridge) return;
+  window.__shviaClipboardBridge = true;
+  document.addEventListener('paste', function (e) {
+    if (e.__shviaSynthetic) return;
+    var dt = e.clipboardData;
+    var hasImg = dt && Array.prototype.some.call(dt.items || [], function (it) {
+      return it.type && it.type.indexOf('image/') === 0;
+    });
+    if (hasImg) return;
+    if (!navigator.clipboard || !navigator.clipboard.read) return;
+    var target = e.target;
+    navigator.clipboard.read().then(function (items) {
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        var t = (it.types || []).find(function (x) { return x.indexOf('image/') === 0; });
+        if (!t) continue;
+        it.getType(t).then(function (blob) {
+          var file = new File([blob], 'pasted.png', { type: blob.type || 'image/png' });
+          var d = new DataTransfer();
+          d.items.add(file);
+          var evt = new ClipboardEvent('paste', { clipboardData: d, bubbles: true, cancelable: true });
+          evt.__shviaSynthetic = true;
+          (target || document.activeElement || document.body).dispatchEvent(evt);
+        });
+        return;
+      }
+    }).catch(function () {});
+  }, true);
+})();"#;
+
 /// Uma navegação fica **no app** se for a casca local (localhost/tauri) ou o
 /// ShvIA hospedado (`*.blue3.com.br`); qualquer outra origem é considerada um
 /// link externo e abre no navegador do SO.
@@ -83,6 +123,7 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
         .on_page_load(|webview, payload| {
             if let PageLoadEvent::Finished = payload.event() {
                 let _ = webview.eval(OFFLINE_BANNER_JS);
+                let _ = webview.eval(CLIPBOARD_IMAGE_PASTE_JS);
             }
         })
         .build()?;
