@@ -144,6 +144,20 @@ fn open_new_window(app: &tauri::AppHandle) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // WebKitGTK + driver NVIDIA proprietário: o renderer DMABUF deixa o WebView
+    // em **branco** — a janela e o menu nativos aparecem, mas o conteúdo web não
+    // desenha (visto no `.deb` numa workstation GTX 1060). Desligamos o DMABUF
+    // antes de qualquer init de GTK/WebView. Só toca Linux (macOS = WKWebView,
+    // Windows = WebView2, onde a env var é inócua e o `cfg` já os exclui);
+    // incondicional de propósito, pois o bug não é exclusivo da NVIDIA — já
+    // atingiu Mesa/AMD/Intel em versões do WebKitGTK. O custo num WebView de chat
+    // é imperceptível. Quem quiser reativar o DMABUF localmente pode exportar
+    // `WEBKIT_DISABLE_DMABUF_RENDERER=0` (a env do ambiente tem precedência).
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
