@@ -210,12 +210,22 @@ pub fn run() {
                 true,
                 Some("CmdOrCtrl+N"),
             )?;
+            // Recarregar: puxa a versão nova do ShvIA hospedado (o app é uma casca
+            // fina — recarregar o WebView = pegar o que está no servidor agora).
+            let recarregar = MenuItem::with_id(
+                handle,
+                "reload",
+                "Recarregar",
+                true,
+                Some("CmdOrCtrl+R"),
+            )?;
             let arquivo = Submenu::with_items(
                 handle,
                 "Arquivo",
                 true,
                 &[
                     &nova_janela,
+                    &recarregar,
                     &PredefinedMenuItem::separator(handle)?,
                     &PredefinedMenuItem::close_window(handle, Some("Fechar janela"))?,
                     &PredefinedMenuItem::quit(handle, Some("Sair"))?,
@@ -223,10 +233,25 @@ pub fn run() {
             )?;
             Menu::with_items(handle, &[&arquivo])
         })
-        .on_menu_event(|app, event| {
-            if event.id().as_ref() == "new-window" {
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "new-window" => {
                 let _ = open_new_window(app);
             }
+            "reload" => {
+                // Recarrega a janela em foco; se não achar foco, recarrega todas.
+                let windows = app.webview_windows();
+                match windows.values().find(|w| w.is_focused().unwrap_or(false)) {
+                    Some(win) => {
+                        let _ = win.eval("window.location.reload()");
+                    }
+                    None => {
+                        for win in windows.values() {
+                            let _ = win.eval("window.location.reload()");
+                        }
+                    }
+                }
+            }
+            _ => {}
         })
         .setup(|app| {
             build_shvia_window(app.handle(), "main")?;
