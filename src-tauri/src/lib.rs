@@ -142,14 +142,23 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
 ///   (microfone/câmera); sem isso o navegador nem expõe a API e o app reporta
 ///   "permissão negada";
 /// - `javascript-can-access-clipboard` → permite colar/copiar (ex.: Ctrl+V de print);
-/// - trata o signal `permission-request` concedendo os pedidos de **mídia**.
+/// - trata o signal `permission-request` concedendo os pedidos de **mídia**;
+/// - registra a **ponte de leitura em voz (TTS)** `shviaTts` (ver ADR-009): o
+///   WebKitGTK só traz vozes en-US (Flite) e não enxerga o pt-BR do SO, então a
+///   página posta o texto e o Rust fala pelo `spd-say`/espeak-ng.
 ///
 /// macOS/Windows têm caminhos próprios (Info.plist / WebView2) — tratados ao
 /// empacotar lá.
 #[cfg(target_os = "linux")]
 fn configure_linux_webview(window: &WebviewWindow) {
-    use webkit2gtk::{glib::prelude::*, PermissionRequestExt, SettingsExt, WebViewExt};
-    let _ = window.with_webview(|wv| {
+    use javascriptcore::ValueExt;
+    use webkit2gtk::{
+        glib::prelude::*, PermissionRequestExt, SettingsExt, UserContentManagerExt, WebViewExt,
+    };
+
+    // Clone da janela p/ o handler nativo devolver o "terminou" à página (eval).
+    let tts_window = window.clone();
+    let _ = window.with_webview(move |wv| {
         let webview = wv.inner();
         if let Some(settings) = WebViewExt::settings(&webview) {
             settings.set_enable_media_stream(true);
@@ -168,6 +177,87 @@ fn configure_linux_webview(window: &WebviewWindow) {
                 false
             }
         });
+
+        // ── Ponte de leitura em voz (TTS) — ver ADR-009 ──────────────────────
+        // O WebKitGTK (Flite) só expõe vozes en-US; o pt-BR do SO (espeak-ng via
+        // speech-dispatcher) não chega ao WebView. Então o botão "ouvir" da
+        // resposta fala pelo host: a página posta em
+        // `window.webkit.messageHandlers.shviaTts` e o Rust roda o `spd-say`.
+        // **Não é comando Tauri** — não abre a superfície de IPC à página remota
+        // (ADR-001); é o canal nativo do próprio WebKit, fora da CSP da página.
+        // Payload: `{ "action": "speak"|"stop", "gen": <n>, "text": "<...>" }`.
+        if let Some(ucm) = webview.user_content_manager() {
+            ucm.register_script_message_handler("shviaTts");
+            let win = tts_window.clone();
+            ucm.connect_script_message_received(Some("shviaTts"), move |_ucm, result| {
+                let payload = match result.js_value() {
+                    Some(v) => v.to_str().to_string(),
+                    None => return,
+                };
+                let parsed: serde_json::Value = match serde_json::from_str(&payload) {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
+                match parsed.get("action").and_then(|a| a.as_str()) {
+                    Some("speak") => {
+                        let generation =
+                            parsed.get("gen").and_then(|g| g.as_u64()).unwrap_or(0);
+                        let text = parsed.get("text").and_then(|t| t.as_str()).unwrap_or("");
+                        tts_speak(&win, generation, text);
+                    }
+                    Some("stop") => tts_cancel(),
+                    _ => {}
+                }
+            });
+        }
+    });
+}
+
+/// Fala um texto pela ponte nativa (Linux): `spd-say` → speech-dispatcher →
+/// espeak-ng, em **pt-BR**. Roda numa thread (o `-w` bloqueia até a fala terminar
+/// **ou** ser descartada) e, ao fim, avisa a página via `window.__shviaTtsEnded(gen)`
+/// para o botão voltar de "Parar" a "Ouvir". O `gen` deixa o front descartar o
+/// aviso de uma fala antiga quando o usuário troca de resposta rapidamente.
+#[cfg(target_os = "linux")]
+fn tts_speak(window: &WebviewWindow, generation: u64, text: &str) {
+    let text = text.trim();
+    if text.is_empty() {
+        return;
+    }
+    // Teto defensivo: evita estourar o argv e falas intermináveis.
+    let text: String = text.chars().take(16_000).collect();
+    let window = window.clone();
+    std::thread::spawn(move || {
+        use std::process::Command;
+        // Troca imediata: cancela qualquer fala em curso antes de começar a nova.
+        let _ = Command::new("spd-say").arg("-C").status();
+        // Fala e ESPERA (`-w`) terminar ou ser descartada.
+        let spoke = Command::new("spd-say")
+            .args(["-w", "-o", "espeak-ng", "-l", "pt-BR", "--"])
+            .arg(&text)
+            .status();
+        let ended = format!("window.__shviaTtsEnded&&window.__shviaTtsEnded({generation});");
+        // spd-say ausente/quebrado: reseta o botão e avisa (não fica travado e mudo).
+        let script = match spoke {
+            Ok(_) => ended,
+            Err(_) => format!(
+                "{ended}window.showToast&&window.showToast('Leitura em voz indisponível neste sistema.','error');"
+            ),
+        };
+        let app = window.app_handle().clone();
+        let _ = app.run_on_main_thread(move || {
+            let _ = window.eval(&script);
+        });
+    });
+}
+
+/// Para qualquer leitura em voz em curso (Linux). `spd-say -C` cancela no
+/// speech-dispatcher; a thread da fala (`-w`) então retorna sozinha e dispara o
+/// `__shviaTtsEnded`. (Cancela globalmente no daemon — aceitável neste app.)
+#[cfg(target_os = "linux")]
+fn tts_cancel() {
+    std::thread::spawn(|| {
+        let _ = std::process::Command::new("spd-say").arg("-C").status();
     });
 }
 

@@ -152,3 +152,37 @@ how-to; linkar o ADR.
   **Windows (WebView2/Chromium)** tendem a suportar — validar ao empacotar lá.
 - **Saída se virar must-have:** **fallback Electron** (Chromium tem mídia/clipboard
   fortes) — ver ADR-003/006. É decisão de **produto**, não tomada agora.
+
+---
+
+## ADR-009 — Leitura em voz (TTS) no desktop Linux: ponte nativa espeak-ng
+
+- **Data:** 04/07/2026 · **Status:** Aceito
+- **Contexto:** O ShvIA ganhou o botão "ouvir a resposta" (TTS). No **desktop
+  Linux (WebKitGTK 2.52)** o `window.speechSynthesis` **existe** (o botão aparece),
+  mas o backend é o **Flite** — só **4 vozes en-US**, **nenhuma pt**. O `espeak-ng`
+  pt-BR do SO (via speech-dispatcher) **não** é exposto ao WebView. Resultado: a
+  Anna saía **muda** ou lendo português com **sotaque de inglês**. O **Plano B
+  (TTS no servidor)** do ShvIA resolve, mas depende de infra (`TTS_HOST`) que pode
+  não estar de pé.
+- **Decisão:** um **fallback nativo, só no Linux**, que fala pelo **espeak-ng do
+  SO** via `spd-say` (speech-dispatcher). A página posta o texto num **script
+  message handler do WebKitGTK** — `window.webkit.messageHandlers.shviaTts`,
+  registrado em `configure_linux_webview` — e o Rust roda
+  `spd-say -w -o espeak-ng -l pt-BR`; ao terminar (ou ser descartado por `-C`),
+  devolve `window.__shviaTtsEnded(gen)` por `eval`. `stop` = `spd-say -C`.
+- **Por que NÃO é comando Tauri (mantém a postura do ADR-001):** o handler de
+  mensagens de script é o **canal nativo do próprio WebKit**, não a IPC do Tauri —
+  **não** habilitamos `invoke`/capabilities para a origem remota, então a
+  superfície de comandos nativos à página **continua fechada**. É a mesma pegada
+  das pontes já injetadas (tarja offline, colar imagem): roda na página remota,
+  fora da CSP.
+- **Preferência (cliente):** servidor (`SHVIA_TTS_ENABLED`) → ponte nativa (Linux)
+  → `speechSynthesis` (navegador/macOS/Windows). macOS/Windows não precisam da
+  ponte (WKWebView/WebView2 têm voz pt) — por isso é `#[cfg(target_os = "linux")]`.
+- **Consequências / limites:** voz **robótica** (espeak-ng), mas **pt-BR correto e
+  zero infra**. Depende de `spd-say` + `speech-dispatcher-espeak-ng` no SO (padrão
+  no Debian/GNOME; se faltar, o shell avisa por toast e reseta o botão). `spd-say
+  -C` cancela **global** no daemon (aceitável neste app pessoal). Se o Plano B
+  subir, ele tem preferência (voz melhor). Supera o trecho de **saída de voz** do
+  ADR-008 (a **entrada** por microfone segue limitada).

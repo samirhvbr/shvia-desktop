@@ -1,6 +1,6 @@
 [package]
 name = "shvia-desktop"
-version = "0.4.9"
+version = "0.5.0"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
@@ -36,5 +36,12 @@ time = "=0.3.41"
 
 # Permissões de mídia (mic/câmera) no Linux: tratamos o signal `permission-request`
 # do WebKitGTK via `with_webview`. A versão acompanha a do wry (não duplicar crate).
+# `v2_8`: registramos um *script message handler* do WebKitGTK
+# (`register_script_message_handler` + `connect_script_message_received`) para a
+# ponte de leitura em voz (TTS) — ver ADR-009. A feature já vem ativa via wry
+# (v2_38), mas declaramos aqui pra não depender disso.
 [target.'cfg(target_os = "linux")'.dependencies]
-webkit2gtk = "2.0"
+webkit2gtk = { version = "2.0", features = ["v2_8"] }
+# Extrai a string (JSON) do `JavascriptResult`/`JSCValue` recebido no message
+# handler. Mesma versão que o `webkit2gtk` já resolve (tipos unificam).
+javascriptcore-rs = "1.1"
