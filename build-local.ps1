@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
   build-local.ps1 — Build LOCAL do ShvIA Desktop no Windows (sem CI).
   Gera os instaladores (.msi + -setup.exe), replicando o runner windows-latest
