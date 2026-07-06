@@ -27,7 +27,55 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; }
+# ── Cronômetro do build: tempo total (parede) + por etapa ───────────────────
+# Mesmo padrão do SHVTERM/build-local.sh: o "built in Xs" do Vite/cargo é só
+# UMA etapa interna. Aqui medimos o script INTEIRO (npm → versão → bundle),
+# por etapa e no total, e imprimimos mesmo quando aborta por erro (trap EXIT).
+# Serve p/ comparar Linux × macOS × Windows e achar em qual fase otimizar.
+SECONDS=0
+_BUILD_OS=$(uname -s); [ "$_BUILD_OS" = Darwin ] && _BUILD_OS=macOS
+_PH_NAMES=(); _PH_TIMES=(); _PH_CUR=""; _PH_START=0
+_fmt() {  # $1 = segundos -> "1h 02m 03s" / "4m 05s" / "37s"
+  local t=$1
+  if   [ "$t" -ge 3600 ]; then printf '%dh %02dm %02ds' $((t/3600)) $(((t%3600)/60)) $((t%60))
+  elif [ "$t" -ge 60 ];   then printf '%dm %02ds' $((t/60)) $((t%60))
+  else                         printf '%ds' "$t"; fi
+}
+step() {  # fecha a etapa anterior, abre a nova, e mostra o relógio corrente
+  local now=$SECONDS
+  if [ -n "$_PH_CUR" ]; then
+    _PH_NAMES+=("$_PH_CUR"); _PH_TIMES+=($((now - _PH_START)))
+  elif [ "$now" -gt 0 ]; then
+    _PH_NAMES+=("preparação"); _PH_TIMES+=("$now")
+  fi
+  _PH_CUR="$1"; _PH_START=$now
+  echo "==> [$(_fmt "$now")] $1"
+}
+_summary() {  # tabela final: cada etapa + TOTAL
+  if [ -n "$_PH_CUR" ]; then
+    _PH_NAMES+=("$_PH_CUR"); _PH_TIMES+=($((SECONDS - _PH_START))); _PH_CUR=""
+  fi
+  echo ""
+  echo "⏱  tempo por etapa ($_BUILD_OS):"
+  if [ "${#_PH_NAMES[@]}" -gt 0 ]; then
+    local i
+    for i in "${!_PH_NAMES[@]}"; do
+      printf '     %8s  %s\n' "$(_fmt "${_PH_TIMES[$i]}")" "${_PH_NAMES[$i]}"
+    done
+  fi
+  echo "     ────────"
+  printf '     %8s  TOTAL\n' "$(_fmt "$SECONDS")"
+}
+_on_exit() {  # se abortar (exit != 0), ainda mostra quanto tempo rodou
+  local code=$?
+  if [ "$code" -ne 0 ]; then
+    echo "" >&2
+    echo "❌ build abortou após $(_fmt "$SECONDS")  ($_BUILD_OS, exit $code)" >&2
+  fi
+}
+trap _on_exit EXIT
+
+usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; }
 
 SKIP_NPM_CI=0
 BUNDLES=""
@@ -41,25 +89,34 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-OS=$(uname -s); [ "$OS" = Darwin ] && OS=macOS
-echo "==> ShvIA Desktop — build local ($OS)"
+echo "==> ShvIA Desktop — build local ($_BUILD_OS)"
 
+step "[1/3] dependências do frontend (npm ci)"
 if [ "$SKIP_NPM_CI" -eq 0 ]; then
-  echo "==> npm ci"
   npm ci
+else
+  echo "    (pulado: --skip-npm-ci)"
 fi
 
-echo "==> sincroniza versão (version.md -> manifests)"
+step "[2/3] sincroniza versão (version.md -> manifests)"
 npm run version:sync
 
-echo "==> tauri build"
+# Limpa instaladores de builds anteriores (padrão SHVTERM): o bundle dir acumula
+# .deb/.AppImage/.rpm de versões antigas (ex.: ShvIA_0.4.6 ao lado do 0.5.0).
+# Instalar o errado faz o app rodar versão velha — só o artefato do build ATUAL
+# deve sobrar na listagem final.
+rm -rf src-tauri/target/release/bundle
+
+step "[3/3] Tauri build"
 if [ -n "$BUNDLES" ]; then
   npx tauri build --bundles "$BUNDLES"
 else
   npx tauri build
 fi
 
-echo "==> pronto. Instaladores em src-tauri/target/release/bundle/:"
+echo ""
+echo "[OK] Instaladores em src-tauri/target/release/bundle/:"
 find src-tauri/target/release/bundle -maxdepth 2 -type f \
   \( -name '*.deb' -o -name '*.AppImage' -o -name '*.rpm' -o -name '*.dmg' \
      -o -name '*.app.tar.gz' \) -exec ls -lh {} \; 2>/dev/null || true
+_summary
