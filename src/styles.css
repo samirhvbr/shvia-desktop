@@ -69,8 +69,9 @@ body {
   animation: breathe 3.2s ease-in-out infinite alternate;
 }
 
-/* Ondas de sonar: dois anéis que expandem e somem, alternados. Só no
-   estado "connecting" — offline para tudo (a Anna não está "ouvindo"). */
+/* Ondas de sonar: dois anéis que expandem e somem, alternados. Só no estado
+   "connecting" — no offline as ondas somem, mas o auto-retry segue silencioso
+   por baixo (main.ts, a cada 5 s + evento `online`). */
 .ripple {
   position: absolute;
   inset: 0;
