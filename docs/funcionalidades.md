@@ -42,6 +42,17 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 - **Empacotamento local** (`0.4.5`): `tauri build` gera os instaladores
   (`.deb`/`.AppImage`/`.rpm` validados). Scripts `build-local.{sh,ps1,cmd}` cobrem os
   3 SOs — ver [build.md](build.md). (CI/Actions omitida de propósito, por custo.)
+- **Menu `Ajuda → Sobre o ShvIA Desktop`** (`0.5.3`): modal "Sobre" (estilo
+  Help → About do VS Code) com o **build do desktop** (`version.md`) separado da
+  **versão do ShvIA no servidor** — o rodapé da sidebar
+  (`.account-mini__version`) dá o valor imediato e `GET /api/v1/health`
+  (`version.app`) é consultado **sempre** como fonte viva (corrige se o servidor
+  atualizou com a janela aberta); "—" só sem ambos (login/offline). Linha de
+  ambiente (Tauri · WebView · SO) e botão **Copiar** p/ colar em chamados.
+  Mesmo padrão das outras pontes: injetado por `eval` sob demanda, sem IPC à
+  página remota (postura de menor privilégio — [arquitetura.md](arquitetura.md));
+  visual pelos design tokens do ShvIA (`var(--token, fallback)`), Esc/backdrop
+  fecham, `prefers-reduced-motion` respeitado.
 
 ## Limitações conhecidas
 
