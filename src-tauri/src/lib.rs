@@ -291,9 +291,16 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
             false
         })
         // injeta a tarja "Sistema Offline" (+ ponte de clipboard) em cada página.
+        // A tarja fica SÓ nas páginas remotas do ShvIA: a casca local (0.5.5)
+        // tem UI própria de offline (splash com "Tentar novamente") — com a
+        // tarja junto ficava indicador em dobro (visto no macOS, 07/07).
         .on_page_load(|webview, payload| {
             if let PageLoadEvent::Finished = payload.event() {
-                let _ = webview.eval(OFFLINE_BANNER_JS);
+                let host = payload.url().host_str().unwrap_or_default().to_owned();
+                let casca_local = host == "localhost" || host == "tauri.localhost";
+                if !casca_local {
+                    let _ = webview.eval(OFFLINE_BANNER_JS);
+                }
                 let _ = webview.eval(CLIPBOARD_IMAGE_PASTE_JS);
             }
         });
