@@ -1,12 +1,22 @@
-/* Casca de bootstrap do ShvIA Desktop — splash exibido por instantes antes de o
-   WebView navegar para o ShvIA hospedado. Paleta da marca: navy + azul-claro
-   (mesma do ícone: seta P&B + "AI" em #24b0e5). */
+/* Casca de bootstrap do ShvIA Desktop — splash de lançamento (backport da casca
+   do SHVIA-MOBILE 0.2.2; manter os dois em paridade ao evoluir).
+   Paleta espelhada dos tokens do ShvIA web (public/css/tokens.css do SHVIA-WEB):
+   o fundo é EXATAMENTE o --bg do app (#0B0F17), então a troca casca → Blade
+   remoto acontece sem "pulo" de cor. Motion: marca respira devagar + ondas de
+   sonar ("Anna conectando"); tudo desliga em prefers-reduced-motion e no
+   estado offline. Safe-area via env() é inócua no desktop (insets = 0) e fica
+   pela paridade com o mobile. */
 
 :root {
   color-scheme: dark;
-  --shvia-blue: #24b0e5;
-  --shvia-navy: #0d1b2a;
-  font-family: Inter, Avenir, "Segoe UI", Helvetica, Arial, sans-serif;
+  /* tokens do ShvIA web (fallbacks locais — a casca não carrega CSS remoto) */
+  --bg: #0B0F17;
+  --tx: #ECF1F8;
+  --tx-dim: #97A3B5;
+  --azure: #34B3EC;
+  --azure-strong: #5FC8F5;
+  --azure-soft: rgba(52, 179, 236, 0.12);
+  --azure-line: rgba(52, 179, 236, 0.35);
 }
 
 * {
@@ -20,55 +30,199 @@ body {
 }
 
 body {
-  display: grid;
-  place-items: center;
-  background: radial-gradient(120% 120% at 50% 0%, #13243a 0%, #0a1420 100%);
-  color: #e8f0f8;
+  background:
+    radial-gradient(140vmin 90vmin at 50% 34%, rgba(52, 179, 236, 0.07), transparent 68%),
+    var(--bg);
+  color: var(--tx);
+  font: 400 1rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .bootstrap {
+  position: relative;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.75rem;
+  justify-content: center;
   text-align: center;
-  padding: 2rem;
+  padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
+}
+
+/* ── Marca + sonar ─────────────────────────────────────────────── */
+.mark-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
 }
 
 .brand-mark {
-  width: 176px;
-  height: 176px;
+  width: clamp(112px, 32vw, 160px);
+  height: auto;
   object-fit: contain;
-  filter: drop-shadow(0 10px 30px rgba(36, 176, 229, 0.25));
-  animation: pulse 1.6s ease-in-out infinite;
+  filter: drop-shadow(0 14px 36px rgba(52, 179, 236, 0.22));
+  animation: breathe 3.2s ease-in-out infinite alternate;
 }
 
+/* Ondas de sonar: dois anéis que expandem e somem, alternados. Só no
+   estado "connecting" — offline para tudo (a Anna não está "ouvindo"). */
+.ripple {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: clamp(112px, 32vw, 160px);
+  aspect-ratio: 1;
+  border: 1.5px solid rgba(52, 179, 236, 0.35);
+  border-radius: 50%;
+  opacity: 0;
+  animation: sonar 2.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  pointer-events: none;
+}
+
+.ripple--late {
+  animation-delay: 1.3s;
+}
+
+@keyframes sonar {
+  0% {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(1.85);
+    opacity: 0;
+  }
+}
+
+@keyframes breathe {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.035);
+  }
+}
+
+/* ── Texto ─────────────────────────────────────────────────────── */
 .bootstrap h1 {
-  margin: 0;
-  font-size: 1.6rem;
-  letter-spacing: 0.04em;
+  margin: 26px 0 6px;
+  font-size: 1.7rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
 }
 
 .bootstrap p {
   margin: 0;
-  font-size: 0.95rem;
-  opacity: 0.65;
+  font-size: 0.92rem;
+  color: var(--tx-dim);
+  min-height: 1.5em; /* o texto troca (conectando/offline) sem pular o layout */
 }
 
-@keyframes pulse {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 1;
+/* ── Estado offline: retry ─────────────────────────────────────── */
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 22px;
+}
+
+.only-offline {
+  display: none;
+}
+
+.bootstrap[data-state="offline"] .only-offline {
+  display: flex;
+}
+
+.bootstrap[data-state="offline"] .ripple {
+  display: none;
+}
+
+.bootstrap[data-state="offline"] .brand-mark {
+  animation: none;
+  filter: drop-shadow(0 14px 36px rgba(3, 8, 14, 0.5));
+}
+
+.actions button {
+  font: 600 0.95rem/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  min-height: 44px; /* alvo de toque/clique confortável */
+  padding: 0 24px;
+  border-radius: 12px;
+  background: var(--azure-soft);
+  border: 1px solid var(--azure-line);
+  color: var(--azure-strong);
+  cursor: pointer;
+  transition: background 150ms ease-out;
+}
+
+.actions button:hover {
+  background: rgba(52, 179, 236, 0.18);
+}
+
+.actions button:active {
+  background: rgba(52, 179, 236, 0.22);
+}
+
+.actions button:focus-visible {
+  outline: 2px solid var(--azure);
+  outline-offset: 2px;
+}
+
+.actions button.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--tx-dim);
+  font-weight: 500;
+  font-size: 0.82rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.actions button.ghost:hover {
+  color: var(--tx);
+  background: transparent;
+}
+
+/* ── Rodapé ────────────────────────────────────────────────────── */
+.foot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--tx-dim);
+  opacity: 0.55;
+}
+
+/* Janelas baixas: aperta os espaços. */
+@media (max-height: 460px) {
+  .brand-mark,
+  .ripple {
+    width: 96px;
   }
-  50% {
-    transform: scale(0.96);
-    opacity: 0.85;
+  .bootstrap h1 {
+    margin-top: 14px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .brand-mark {
     animation: none;
+  }
+  .ripple {
+    display: none;
+  }
+  .actions button {
+    transition: none;
   }
 }
