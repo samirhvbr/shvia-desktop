@@ -17,12 +17,14 @@
 //! - **persistir** tamanho/posição entre reinícios (`tauri-plugin-window-state`).
 
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
-    webview::PageLoadEvent,
-    Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    webview::PageLoadEvent, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 use tauri_plugin_opener::OpenerExt;
-use tauri_plugin_window_state::{StateFlags, WindowExt};
+// Menu nativo é desktop-only (mobile não tem barra de menu). O window-state
+// (geometria de janela) idem — importado localmente no bloco #[cfg(desktop)] de
+// build_shvia_window; a dependência também é desktop-only no Cargo.toml.
+#[cfg(desktop)]
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 
 /// Injetado em cada página carregada (`on_page_load`): uma **tarja vermelha
 /// "Sistema Offline"** que aparece quando o WebView perde conexão (eventos
@@ -278,14 +280,8 @@ fn is_internal(url: &tauri::Url) -> bool {
 /// no navegador do SO e estado (tamanho/posição) restaurado e persistido.
 fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<WebviewWindow> {
     let handle = app.clone();
-    let win = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()))
+    let builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()))
         .title("ShvIA")
-        // ícone da janela (em dev o GNOME usa isto; no pacote vem do .desktop).
-        .icon(tauri::include_image!("icons/icon.png"))?
-        .inner_size(1280.0, 800.0)
-        .min_inner_size(800.0, 600.0)
-        // começa oculta: restauramos o estado antes de mostrar (evita o "pulo").
-        .visible(false)
         .on_navigation(move |url| {
             if is_internal(url) {
                 return true;
@@ -294,20 +290,39 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
             let _ = handle.opener().open_url(url.to_string(), None::<&str>);
             false
         })
-        // injeta a tarja "Sistema Offline" em cada página carregada.
+        // injeta a tarja "Sistema Offline" (+ ponte de clipboard) em cada página.
         .on_page_load(|webview, payload| {
             if let PageLoadEvent::Finished = payload.event() {
                 let _ = webview.eval(OFFLINE_BANNER_JS);
                 let _ = webview.eval(CLIPBOARD_IMAGE_PASTE_JS);
             }
-        })
-        .build()?;
+        });
+
+    // Geometria, ícone e visibilidade da janela são conceitos de **desktop**; no
+    // mobile a WebView ocupa a tela toda e não há ícone de janela. No desktop
+    // começa oculta p/ restaurar o estado antes de mostrar (evita o "pulo").
+    #[cfg(desktop)]
+    let builder = builder
+        .icon(tauri::include_image!("icons/icon.png"))?
+        .inner_size(1280.0, 800.0)
+        .min_inner_size(800.0, 600.0)
+        .visible(false);
+
+    let win = builder.build()?;
+
     // habilita mídia (getUserMedia) + clipboard no WebKitGTK e concede a permissão.
     #[cfg(target_os = "linux")]
     configure_linux_webview(&win);
-    // restaura geometria salva (no 1º run não há estado: fica no tamanho default).
-    let _ = win.restore_state(StateFlags::all());
-    let _ = win.show();
+
+    // window-state (restaurar geometria + mostrar sem "pulo") é desktop-only; no
+    // mobile a janela já nasce visível em tela cheia.
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_window_state::{StateFlags, WindowExt};
+        let _ = win.restore_state(StateFlags::all());
+        let _ = win.show();
+    }
+
     Ok(win)
 }
 
@@ -438,6 +453,8 @@ fn tts_cancel() {
 
 /// Abre mais uma janela do ShvIA, com rótulo único `win-N` (não colide com as
 /// janelas abertas). Compartilha a partição do WebView, então já entra logada.
+/// **Multi-janela é desktop-only** (mobile é single-window).
+#[cfg(desktop)]
 fn open_new_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     let open = app.webview_windows();
     let mut n = open.len() + 1;
@@ -464,8 +481,13 @@ pub fn run() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+
+    // window-state (geometria), menu nativo e multi-janela são **desktop-only**
+    // (mobile é single-window, sem barra de menu). O `let builder` sombreado só
+    // existe no desktop; no mobile o builder segue direto pro `.setup()`.
+    #[cfg(desktop)]
+    let builder = builder
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .menu(|handle| {
             let nova_janela = MenuItem::with_id(
@@ -547,7 +569,9 @@ pub fn run() {
                 }
             }
             _ => {}
-        })
+        });
+
+    builder
         .setup(|app| {
             build_shvia_window(app.handle(), "main")?;
             Ok(())
