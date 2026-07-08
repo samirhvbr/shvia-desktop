@@ -77,6 +77,69 @@ trap _on_exit EXIT
 
 usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; }
 
+# ── Preflight: checa o toolchain ANTES dos passos lentos ────────────────────
+# Falha em <1s com mensagem ACIONÁVEL (ex.: "instale o Rust: curl … rustup.rs")
+# em vez do erro críptico "cargo metadata: No such file or directory" 5s adentro.
+# Coleta TODOS os faltantes de uma vez. Recupera o cargo de ~/.cargo/bin se ele
+# existe mas não está no PATH (caso comum: rustup instalado, mas o terminal novo
+# não recarregou o PATH).
+preflight() {
+  local missing=()
+
+  command -v node >/dev/null 2>&1 || missing+=(
+    "Node.js não encontrado. Instale o Node 20+ (https://nodejs.org, 'brew install node' ou nvm)."
+  )
+  command -v npm >/dev/null 2>&1 || missing+=(
+    "npm não encontrado (vem com o Node)."
+  )
+
+  # Rust: se o cargo não está no PATH mas o rustup instalou em ~/.cargo/bin,
+  # puxa pro PATH desta execução e avisa — não obriga a reabrir o shell.
+  if ! command -v cargo >/dev/null 2>&1 && [ -x "$HOME/.cargo/bin/cargo" ]; then
+    export PATH="$HOME/.cargo/bin:$PATH"
+    echo "    (cargo achado em ~/.cargo/bin — adicionado ao PATH desta execução; pra"
+    echo "     fixar, rode 'source \$HOME/.cargo/env' ou reabra o terminal)"
+  fi
+  if ! command -v cargo >/dev/null 2>&1 || ! command -v rustc >/dev/null 2>&1; then
+    missing+=(
+"Rust (cargo) não encontrado — é o que o Tauri usa pra compilar.
+       Instale:  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+       Depois:   source \"\$HOME/.cargo/env\"   (ou reabra o terminal)"
+    )
+  fi
+
+  # macOS: o toolchain da Apple (clang/linker) vem do Command Line Tools do Xcode.
+  # (o próprio rustup precisa dele pra linkar — checar junto evita erro na 2ª tentativa.)
+  if [ "$_BUILD_OS" = macOS ] && ! xcode-select -p >/dev/null 2>&1; then
+    missing+=(
+"Command Line Tools do Xcode ausentes (clang/linker do macOS).
+       Instale:  xcode-select --install"
+    )
+  fi
+
+  # Linux (Debian/Ubuntu): o WebKitGTK dev é obrigatório pro WebView do Tauri.
+  if [ "$_BUILD_OS" = Linux ] && command -v pkg-config >/dev/null 2>&1 \
+     && ! pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
+    missing+=(
+"libwebkit2gtk-4.1-dev ausente (e outras deps do Tauri no Linux). Instale:
+       sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \\
+         libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf"
+    )
+  fi
+
+  if [ "${#missing[@]}" -gt 0 ]; then
+    echo "" >&2
+    echo "❌ pré-requisitos faltando ($_BUILD_OS) — corrija e rode de novo:" >&2
+    echo "" >&2
+    local m
+    for m in "${missing[@]}"; do
+      echo "   • $m" >&2
+      echo "" >&2
+    done
+    exit 1
+  fi
+}
+
 SKIP_NPM_CI=0
 BUNDLES=""
 while [ $# -gt 0 ]; do
@@ -90,6 +153,9 @@ while [ $# -gt 0 ]; do
 done
 
 echo "==> ShvIA Desktop — build local ($_BUILD_OS)"
+
+step "[pré-requisitos] verifica o toolchain (Rust, Node, Xcode/WebKitGTK)"
+preflight
 
 step "[1/3] dependências do frontend (npm ci)"
 if [ "$SKIP_NPM_CI" -eq 0 ]; then
