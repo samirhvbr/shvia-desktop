@@ -1,6 +1,6 @@
 [package]
 name = "shvia-desktop"
-version = "0.5.8"
+version = "0.6.0"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
@@ -22,6 +22,9 @@ tauri = { version = "2", features = [] }
 # Abre links externos no navegador do SO. Mantido para a F2 (links externos da
 # página remota + botão "abrir no navegador" da tela offline).
 tauri-plugin-opener = "2"
+# File picker nativo (F2 — "Vincular pasta do projeto"). Usamos só a API RUST
+# (app.dialog().file().pick_folder) — nada de comando/IPC exposto à página.
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

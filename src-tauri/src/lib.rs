@@ -16,6 +16,8 @@
 //!   SO** via `on_navigation` (login do ShvIA é same-origin, então não quebra auth);
 //! - **persistir** tamanho/posição entre reinícios (`tauri-plugin-window-state`).
 
+mod code_bridge;
+
 use tauri::{
     webview::PageLoadEvent, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
@@ -302,6 +304,9 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
                     let _ = webview.eval(OFFLINE_BANNER_JS);
                 }
                 let _ = webview.eval(CLIPBOARD_IMAGE_PASTE_JS);
+                // Ponte do Modo Code (define window.__shviaCode/__shviaDesktop se
+                // o handler nativo existir; senão é no-op). Ver code_bridge.rs.
+                let _ = webview.eval(code_bridge::BRIDGE_JS);
             }
         });
 
@@ -355,6 +360,7 @@ fn configure_linux_webview(window: &WebviewWindow) {
 
     // Clone da janela p/ o handler nativo devolver o "terminou" à página (eval).
     let tts_window = window.clone();
+    let code_window = window.clone();
     let _ = window.with_webview(move |wv| {
         let webview = wv.inner();
         if let Some(settings) = WebViewExt::settings(&webview) {
@@ -404,6 +410,17 @@ fn configure_linux_webview(window: &WebviewWindow) {
                     }
                     Some("stop") => tts_cancel(),
                     _ => {}
+                }
+            });
+
+            // ── Ponte do Modo Code (shviaCode) — MESMO canal WebKit da TTS, sem
+            // IPC Tauri (ADR-001). A página posta {action, reqId, …}; o Rust
+            // spawna/fala com o sidecar `anna` e responde via eval. Ver code_bridge.rs.
+            ucm.register_script_message_handler("shviaCode");
+            let cw = code_window.clone();
+            ucm.connect_script_message_received(Some("shviaCode"), move |_ucm, result| {
+                if let Some(v) = result.js_value() {
+                    crate::code_bridge::handle_message(&cw, v.to_str().as_ref());
                 }
             });
         }
@@ -488,7 +505,10 @@ pub fn run() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
 
-    let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .manage(code_bridge::Sidecars::default());
 
     // window-state (geometria), menu nativo e multi-janela são **desktop-only**
     // (mobile é single-window, sem barra de menu). O `let builder` sombreado só
@@ -578,11 +598,27 @@ pub fn run() {
             _ => {}
         });
 
-    builder
+    let app = builder
         .setup(|app| {
             build_shvia_window(app.handle(), "main")?;
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("erro ao executar o aplicativo ShvIA Desktop");
+        .build(tauri::generate_context!())
+        .expect("erro ao construir o aplicativo ShvIA Desktop");
+
+    // Ciclo de vida do sidecar (anti-órfão): mata o `anna` da janela ao fechá-la
+    // e todos ao sair do app. (O `anna` também sai sozinho quando o stdin fecha.)
+    app.run(|app_handle, event| match event {
+        tauri::RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::Destroyed,
+            ..
+        } => {
+            app_handle.state::<code_bridge::Sidecars>().kill_one(&label);
+        }
+        tauri::RunEvent::Exit => {
+            app_handle.state::<code_bridge::Sidecars>().kill_all();
+        }
+        _ => {}
+    });
 }
