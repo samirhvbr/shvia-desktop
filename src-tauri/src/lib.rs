@@ -17,6 +17,8 @@
 //! - **persistir** tamanho/posição entre reinícios (`tauri-plugin-window-state`).
 
 mod code_bridge;
+#[cfg(target_os = "macos")]
+mod macos_ipc;
 
 use tauri::{
     webview::PageLoadEvent, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
@@ -325,6 +327,11 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
     // habilita mídia (getUserMedia) + clipboard no WebKitGTK e concede a permissão.
     #[cfg(target_os = "linux")]
     configure_linux_webview(&win);
+
+    // Ponte do Modo Code no macOS (WKScriptMessageHandler `shviaCode`) — espelha
+    // o handler do Linux; ver macos_ipc.rs.
+    #[cfg(target_os = "macos")]
+    macos_ipc::install(&win);
 
     // window-state (restaurar geometria + mostrar sem "pulo") é desktop-only; no
     // mobile a janela já nasce visível em tela cheia.

@@ -1,6 +1,6 @@
 [package]
 name = "shvia-desktop"
-version = "0.6.1"
+version = "0.6.2"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
@@ -53,3 +53,11 @@ webkit2gtk = { version = "2.0", features = ["v2_8"] }
 # Extrai a string (JSON) do `JavascriptResult`/`JSCValue` recebido no message
 # handler. Mesma versão que o `webkit2gtk` já resolve (tipos unificam).
 javascriptcore-rs = "1.1"
+
+# Ponte do Modo Code no macOS (WKScriptMessageHandler "shviaCode"). Versões
+# CASADAS com o que o wry 0.55 resolve (Cargo.lock: objc2 0.6, web-kit 0.3) —
+# senão os tipos do WKWebView não unificam com o ponteiro do with_webview.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-web-kit = "0.3"
