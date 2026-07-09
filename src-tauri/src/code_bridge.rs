@@ -48,6 +48,9 @@ pub const BRIDGE_JS: &str = r#"(function () {
     pickFolder: function () { return post('pickFolder'); },
     getBinding: function (pid) { return post('getBinding', { projectId: pid }); },
     setBinding: function (pid, path) { return post('setBinding', { projectId: pid, path: path }); },
+    // painel da pasta (read-only, pelo app)
+    gitStatus: function (path) { return post('gitStatus', { path: path }); },
+    listTree: function (path) { return post('listTree', { path: path }); },
     // chamados pelo Rust (eval):
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
     _emit: function (evt) { for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }
@@ -154,6 +157,14 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
         "setBinding" => {
             set_binding(window, &v);
             reply(window, &req, true, serde_json::json!({ "ok": true }));
+        }
+        "gitStatus" => {
+            let path = v.get("path").and_then(|x| x.as_str()).unwrap_or_default();
+            reply(window, &req, true, git_status(path));
+        }
+        "listTree" => {
+            let path = v.get("path").and_then(|x| x.as_str()).unwrap_or_default();
+            reply(window, &req, true, list_tree(path));
         }
         _ => reply(window, &req, false, serde_json::json!({ "error": "ação desconhecida" })),
     }
@@ -273,6 +284,54 @@ fn set_binding(window: &WebviewWindow, v: &serde_json::Value) {
     if let (Some(p), Ok(s)) = (bindings_path(window), serde_json::to_string_pretty(&map)) {
         let _ = std::fs::write(p, s);
     }
+}
+
+// ── painel da pasta: git status + árvore (read-only, pelo app — F4) ─────────
+
+fn git_status(path: &str) -> serde_json::Value {
+    if path.is_empty() {
+        return serde_json::json!({ "repo": false });
+    }
+    match Command::new("git").args(["-C", path, "status", "--porcelain=v1", "-b"]).output() {
+        Ok(o) if o.status.success() => parse_git_status(&String::from_utf8_lossy(&o.stdout)),
+        _ => serde_json::json!({ "repo": false }), // não é repo git
+    }
+}
+
+fn parse_git_status(text: &str) -> serde_json::Value {
+    let mut branch = String::new();
+    let mut files = Vec::new();
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("## ") {
+            branch = rest.split("...").next().unwrap_or("").split(' ').next().unwrap_or("").to_string();
+        } else if line.len() > 3 {
+            files.push(serde_json::json!({ "status": line[..2].trim(), "path": &line[3..] }));
+        }
+    }
+    serde_json::json!({ "repo": true, "branch": branch, "files": files })
+}
+
+/// Um nível da árvore (lazy-load ao expandir). Ignora pastas de build/deps.
+fn list_tree(path: &str) -> serde_json::Value {
+    const IGNORE: &[&str] = &[".git", "node_modules", "vendor", "target", "dist", "build", ".svn"];
+    let mut entries: Vec<(bool, String, String)> = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(path) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if IGNORE.contains(&name.as_str()) {
+                continue;
+            }
+            let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            entries.push((is_dir, name, e.path().to_string_lossy().into_owned()));
+        }
+    }
+    // pastas primeiro, depois alfabético.
+    entries.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase())));
+    let arr: Vec<serde_json::Value> = entries
+        .into_iter()
+        .map(|(d, name, p)| serde_json::json!({ "name": name, "path": p, "isDir": d }))
+        .collect();
+    serde_json::json!({ "entries": arr })
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
