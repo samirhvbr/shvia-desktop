@@ -552,6 +552,23 @@ pub fn run() {
                     &PredefinedMenuItem::quit(handle, Some("Sair"))?,
                 ],
             )?;
+            // Editar: no macOS (WKWebView) os atalhos Cmd+C/V/X/A/Z só funcionam
+            // com um menu "Editar" nativo — os itens padrão carregam os selectors
+            // do responder chain do Cocoa. Sem isto, não dá nem pra colar num input.
+            let editar = Submenu::with_items(
+                handle,
+                "Editar",
+                true,
+                &[
+                    &PredefinedMenuItem::undo(handle, Some("Desfazer"))?,
+                    &PredefinedMenuItem::redo(handle, Some("Refazer"))?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &PredefinedMenuItem::cut(handle, Some("Recortar"))?,
+                    &PredefinedMenuItem::copy(handle, Some("Copiar"))?,
+                    &PredefinedMenuItem::paste(handle, Some("Colar"))?,
+                    &PredefinedMenuItem::select_all(handle, Some("Selecionar Tudo"))?,
+                ],
+            )?;
             // Ajuda → Sobre (padrão Help → About): identifica o build do desktop
             // separado da versão do ShvIA no servidor (v… do rodapé da sidebar).
             let sobre = MenuItem::with_id(
@@ -562,7 +579,7 @@ pub fn run() {
                 None::<&str>,
             )?;
             let ajuda = Submenu::with_items(handle, "Ajuda", true, &[&sobre])?;
-            Menu::with_items(handle, &[&arquivo, &ajuda])
+            Menu::with_items(handle, &[&arquivo, &editar, &ajuda])
         })
         .on_menu_event(|app, event| match event.id().as_ref() {
             "new-window" => {
