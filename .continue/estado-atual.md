@@ -32,9 +32,11 @@ tendem a suportar; (b) se virarem **must-have no Linux**, **fallback Electron**
 
 - **F2 restante:** tray/menu/About; **config de URL** no 1º run (`tauri-plugin-store`);
   **offline v2** (ping no Rust, p/ quedas que o `navigator.onLine` não pega).
-- **F4 (assinatura/release):** Apple Developer ID + notarização, Authenticode **EV**
-  Windows, chave do **updater** Tauri (`latest.json`). A assinatura entra no
-  `build-local.*`; **CI (Actions) foi removida por custo** — ver [../docs/build.md](../docs/build.md).
+- **F4 (assinatura/release):** **macOS ✅** — Developer ID + notarização + staple já
+  no `build-local.sh` (credencial no keychain, serviço `shvia-notarize`; ver
+  [../docs/build.md](../docs/build.md#macos--implementado-no-build-localsh)). Impede o
+  macOS de mandar o app baixado p/ a **lixeira**. **Pendente:** Authenticode **EV**
+  Windows, chave do **updater** Tauri (`latest.json`). **CI (Actions) removida por custo.**
 - **Roadmap (ideias do time, em [SAMIR-v1.md](SAMIR-v1.md)):** Anthropic como
   **infra/modelo** alternativo; **rotinas agendadas**; **conectores** (Carbonio mail,
   Google Calendar, etc.).
