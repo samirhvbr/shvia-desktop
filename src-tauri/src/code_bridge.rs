@@ -4,12 +4,14 @@
 //! vínculo projeto→pasta.
 //!
 //! Postura de menor privilégio (ADR-001): **não** usa comando/IPC Tauri. O canal
-//! page→Rust é o **script-message-handler do WebKit** (`window.webkit
-//! .messageHandlers.shviaCode`, igual à ponte de TTS); Rust→page é `eval`. O
-//! transporte está no `configure_linux_webview` (WebKitGTK); a lógica aqui é
-//! agnóstica de SO — macOS/Windows entram registrando o handler deles e chamando
-//! `handle_message`. Sem handler (ex.: mobile / SO ainda sem ponte) o shim não
-//! define `window.__shviaDesktop`, então o web esconde o Modo Code (fail-safe).
+//! page→Rust é o **message-handler nativo do WebView**, que muda por SO:
+//! `window.webkit.messageHandlers.shviaCode` no WebKit (Linux/macOS) e
+//! `window.chrome.webview` no WebView2 (Windows). Rust→page é sempre `eval`. O
+//! transporte é registrado por SO — `configure_linux_webview` (WebKitGTK),
+//! `macos_ipc::install` (WKWebView) e `windows_ipc::install` (WebView2) —, mas a
+//! lógica aqui é agnóstica de SO: todos chamam `handle_message`. Sem handler
+//! (ex.: mobile) o shim não define `window.__shviaDesktop`, então o web esconde
+//! o Modo Code (fail-safe).
 //!
 //! Protocolo NDJSON do `anna`: `SHVIA-CODE/docs/embedding.md`.
 
@@ -26,8 +28,15 @@ use tauri::{Manager, WebviewWindow};
 /// self-guard: sem o handler nativo, não faz nada.
 pub const BRIDGE_JS: &str = r#"(function () {
   if (window.__shviaCode) return;
-  var mh = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.shviaCode;
-  if (!mh) return; // sem ponte nativa → sem Modo Code (fail-safe)
+  // Transporte página→Rust por WebView, escolhido por SO:
+  //  - WebKit (Linux/macOS): window.webkit.messageHandlers.shviaCode.postMessage(str)
+  //  - WebView2 (Windows):   window.chrome.webview.postMessage(str)
+  // Rust→página é sempre eval (_reply/_emit). Sem nenhum dos dois → sem Modo
+  // Code (fail-safe: não define __shviaCode e o web esconde o toggle).
+  var wk = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.shviaCode;
+  var w2 = window.chrome && window.chrome.webview;
+  if (!wk && !w2) return;
+  function sendNative(str) { if (wk) { wk.postMessage(str); } else { w2.postMessage(str); } }
   var reqs = {}, seq = 0, listeners = [];
   function post(action, data) {
     return new Promise(function (res, rej) {
@@ -35,7 +44,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
       reqs[id] = { res: res, rej: rej };
       var msg = { action: action, reqId: id };
       if (data) for (var k in data) msg[k] = data[k];
-      mh.postMessage(JSON.stringify(msg));
+      sendNative(JSON.stringify(msg));
     });
   }
   window.__shviaCode = {
@@ -55,7 +64,8 @@ pub const BRIDGE_JS: &str = r#"(function () {
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
     _emit: function (evt) { for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }
   };
-  window.__shviaDesktop = { platform: 'linux', bridge: 'webkit' };
+  window.__shviaDesktop = wk ? { platform: 'webkit', bridge: 'webkit' }
+                             : { platform: 'windows', bridge: 'webview2' };
 })();"#;
 
 /// Um sidecar `anna` de uma janela (uma sessão code ativa por janela).
@@ -114,20 +124,64 @@ impl Sidecars {
     }
 }
 
-/// Localiza o binário `anna`: PATH primeiro, senão `~/.local/bin/anna` (onde o
-/// `install.sh` do SHVIA-CODE o coloca).
+/// Localiza o binário `anna` (cross-platform). Ordem: (1) ao lado do executável
+/// do ShvIA Desktop — permite empacotar o `anna(.exe)` como resource/sidecar do
+/// instalador; (2) no PATH; (3) locais conhecidos por SO (`~/.local/bin/anna`
+/// no Unix, `%LOCALAPPDATA%\Programs\anna\anna.exe` no Windows).
 fn resolve_anna() -> Option<PathBuf> {
-    if let Ok(out) = Command::new("sh").arg("-c").arg("command -v anna").output() {
-        if out.status.success() {
-            let p = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !p.is_empty() {
-                return Some(PathBuf::from(p));
+    let exe_name = if cfg!(windows) { "anna.exe" } else { "anna" };
+
+    // (1) Ao lado do próprio app (bundled).
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let p = dir.join(exe_name);
+            if p.exists() {
+                return Some(p);
             }
         }
     }
-    let home = std::env::var("HOME").ok()?;
-    let p = PathBuf::from(home).join(".local/bin/anna");
-    p.exists().then_some(p)
+
+    // (2)+(3) por SO.
+    #[cfg(windows)]
+    {
+        if let Ok(out) = Command::new("where").arg("anna").output() {
+            if out.status.success() {
+                // `where` pode listar vários — pega a 1ª linha.
+                if let Some(line) = String::from_utf8_lossy(&out.stdout).lines().next() {
+                    let p = PathBuf::from(line.trim());
+                    if p.exists() {
+                        return Some(p);
+                    }
+                }
+            }
+        }
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            let p = PathBuf::from(local).join("Programs").join("anna").join("anna.exe");
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        if let Ok(out) = Command::new("sh").arg("-c").arg("command -v anna").output() {
+            if out.status.success() {
+                let p = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !p.is_empty() {
+                    return Some(PathBuf::from(p));
+                }
+            }
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            let p = PathBuf::from(home).join(".local/bin/anna");
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+
+    None
 }
 
 /// Ponto de entrada do handler nativo: recebe uma mensagem JSON da página.
@@ -178,7 +232,7 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     }
     let Some(bin) = resolve_anna() else {
         return reply(window, req, false,
-            serde_json::json!({ "error": "anna não encontrado — instale com o install.sh do SHVIA-CODE" }));
+            serde_json::json!({ "error": "anna não encontrado — instale o anna (SHVIA-CODE) e deixe no PATH (Unix: install.sh; Windows: anna.exe no PATH ou %LOCALAPPDATA%\\Programs\\anna)" }));
     };
 
     let mut cmd = Command::new(bin);

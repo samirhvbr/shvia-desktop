@@ -19,6 +19,8 @@
 mod code_bridge;
 #[cfg(target_os = "macos")]
 mod macos_ipc;
+#[cfg(target_os = "windows")]
+mod windows_ipc;
 
 use tauri::{
     webview::PageLoadEvent, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
@@ -332,6 +334,11 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
     // o handler do Linux; ver macos_ipc.rs.
     #[cfg(target_os = "macos")]
     macos_ipc::install(&win);
+
+    // Ponte do Modo Code no Windows (WebView2 WebMessageReceived) — espelha o
+    // handler do macOS/Linux; ver windows_ipc.rs.
+    #[cfg(target_os = "windows")]
+    windows_ipc::install(&win);
 
     // window-state (restaurar geometria + mostrar sem "pulo") é desktop-only; no
     // mobile a janela já nasce visível em tela cheia.

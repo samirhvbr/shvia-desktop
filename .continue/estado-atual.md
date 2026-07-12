@@ -28,6 +28,18 @@ offline, **empacotamento local** — `build-local.*` nos 3 SOs). O que funciona 
 tendem a suportar; (b) se virarem **must-have no Linux**, **fallback Electron**
 (Chromium — ADR-003/006/008). Decisão de produto.
 
+## Modo Code no Windows (11/07/2026 — ADR-010)
+
+Implementada a **ponte do Modo Code no Windows (WebView2)** — antes o toggle
+Chat|Code só aparecia no Linux/macOS (a ponte só falava WebKit). Agora o
+`BRIDGE_JS` também fala `window.chrome.webview`, com o novo `windows_ipc.rs`
+(`add_WebMessageReceived`) espelhando o `macos_ipc.rs`, e `resolve_anna()`
+cross-platform. `cargo check`/`clippy` **cruzados p/ windows-msvc passam**;
+o **`anna.exe`** ganhou CI (`SHVIA-CODE/.github/workflows/build-windows.yml`).
+**Pendente de você:** buildar o desktop no Windows + colocar o `anna.exe` no
+PATH e validar o loop ao vivo. **Próximo passo (opcional):** empacotar o
+`anna.exe` como resource do instalador (hoje precisa estar no PATH).
+
 ## Radar / próximos passos
 
 - **F2 restante:** tray/menu/About; **config de URL** no 1º run (`tauri-plugin-store`);

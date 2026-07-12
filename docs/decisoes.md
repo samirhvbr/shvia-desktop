@@ -186,3 +186,38 @@ how-to; linkar o ADR.
   -C` cancela **global** no daemon (aceitável neste app pessoal). Se o Plano B
   subir, ele tem preferência (voz melhor). Supera o trecho de **saída de voz** do
   ADR-008 (a **entrada** por microfone segue limitada).
+
+## ADR-010 — Ponte do Modo Code no Windows (WebView2)
+
+- **Data:** 11/07/2026 · **Status:** Aceito
+- **Contexto:** O toggle **Chat | Code** do ShvIA é *fail-safe*: só aparece quando
+  a casca injeta `window.__shviaCode`. O shim (`BRIDGE_JS` em `code_bridge.rs`)
+  só sabia falar por `window.webkit.messageHandlers.shviaCode` — o
+  script-message-handler do **WebKit** (Linux/macOS). No **Windows o WebView é o
+  WebView2 (Chromium)**, que **não tem `window.webkit`**; o shim dava `return` e
+  `__shviaCode` nunca nascia → **o Modo Code não aparecia no Windows** (nunca foi
+  construído — zero `cfg(target_os = "windows")` no projeto até aqui).
+- **Decisão:** ensinar o transporte a falar **WebView2** também, espelhando o que
+  `macos_ipc.rs` faz no WKWebView:
+  - `BRIDGE_JS` detecta `window.chrome.webview` além do webkit e abstrai o envio
+    (`sendNative`); Rust→página segue `eval`.
+  - novo `windows_ipc.rs` (`#[cfg(target_os = "windows")]`): registra
+    `add_WebMessageReceived` no `ICoreWebView2` (via `webview2-com` 0.38 +
+    `windows` 0.61 — versões CASADAS com o wry 0.55) e repassa a string para
+    `code_bridge::handle_message`. `with_webview` dá o controller; `take_pwstr`
+    libera a string do WebView2.
+  - `resolve_anna()` virou cross-platform: procura `anna(.exe)` **ao lado do app**
+    (permite empacotar como resource), no **PATH** (`where` no Windows) e em
+    `%LOCALAPPDATA%\Programs\anna` / `~/.local/bin` por SO.
+- **Por que NÃO é comando Tauri (ADR-001):** `window.chrome.webview` é o canal
+  nativo do **próprio WebView2**, não a IPC do Tauri — a superfície de comandos à
+  página remota **continua fechada**, igual às pontes WebKit (TTS, Code no
+  Linux/macOS).
+- **Consequências / limites:** o **binário `anna.exe`** passa a ser um pré-requisito
+  no Windows (o loop do Code roda no cliente). O `anna` (SHVIA-CODE) já é
+  cross-platform no código (`session.rs` gateia o único unix-ism); adicionamos um
+  **CI `build-windows.yml`** que compila e publica o `anna.exe`. Empacotar o
+  `anna.exe` no instalador (para o usuário não instalar à mão) fica como próximo
+  passo — hoje basta o `anna.exe` no PATH. **Validação:** `cargo check`/`clippy`
+  **cruzados** para `x86_64-pc-windows-msvc` passam (tipos do WebView2 conferem);
+  o **teste ao vivo é no Windows do Samir** (o build final não roda daqui).

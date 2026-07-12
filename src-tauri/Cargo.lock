@@ -3049,7 +3049,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "shvia-desktop"
-version = "0.6.5"
+version = "0.7.0"
 dependencies = [
  "javascriptcore-rs",
  "objc2",
@@ -3064,6 +3064,8 @@ dependencies = [
  "tauri-plugin-window-state",
  "time",
  "webkit2gtk",
+ "webview2-com",
+ "windows",
 ]
 
 [[package]]
