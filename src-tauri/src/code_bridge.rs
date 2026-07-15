@@ -21,6 +21,7 @@ use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::Mutex;
 use tauri::{Manager, WebviewWindow};
+use tauri_plugin_notification::NotificationExt;
 
 /// O shim injetado em cada página (`on_page_load`). Define `window.__shviaCode`
 /// (a API que a UI do Modo Code no SHVIA-WEB chama) e `window.__shviaDesktop`
@@ -220,6 +221,9 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             let path = v.get("path").and_then(|x| x.as_str()).unwrap_or_default();
             reply(window, &req, true, list_tree(path));
         }
+        // Notificação nativa do SO (alertas de preço, ADR-011). Fire-and-forget:
+        // sem reqId/reply — a página só dispara, não espera resposta.
+        "notify" => notify(window, &v),
         _ => reply(window, &req, false, serde_json::json!({ "error": "ação desconhecida" })),
     }
 }
@@ -301,6 +305,31 @@ fn send(window: &WebviewWindow, v: &serde_json::Value) {
         None => return,
     };
     window.app_handle().state::<Sidecars>().send_line(window.label(), &line);
+}
+
+/// Dispara uma notificação nativa do SO (alertas de preço, ADR-011). Usa só a API
+/// Rust do `tauri-plugin-notification` — nenhuma capability é exposta à página
+/// remota (mantém o ADR-001). Best-effort: falha (permissão do SO negada, etc.) é
+/// silenciosa e nunca afeta a página. `handle_message` já roda na main/UI thread
+/// em todos os SOs (WKScriptMessageHandler / WebKitGTK / WebView2), então é seguro
+/// mostrar a notificação daqui.
+fn notify(window: &WebviewWindow, v: &serde_json::Value) {
+    let title = v.get("title").and_then(|x| x.as_str()).unwrap_or("ShvIA");
+    let body = v.get("body").and_then(|x| x.as_str()).unwrap_or_default();
+    if body.trim().is_empty() {
+        return;
+    }
+    // Neutraliza markup: alguns daemons de notificação freedesktop (Linux)
+    // interpretam <b>/<a href> no corpo. O conteúdo é first-party (nome do item
+    // que o próprio usuário cadastrou), mas removemos os sinais por precaução.
+    let sanitize = |s: &str| s.replace(['<', '>'], " ");
+    let _ = window
+        .app_handle()
+        .notification()
+        .builder()
+        .title(sanitize(title))
+        .body(sanitize(body))
+        .show();
 }
 
 fn pick_folder(window: &WebviewWindow, req: String) {

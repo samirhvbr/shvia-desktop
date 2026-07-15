@@ -6,6 +6,14 @@
 
 ## Onde estamos
 
+> **0.8.0 (15/07/2026) — Notificações nativas dos alertas de preço.** O rastreador
+> de preços do ShvIA (server) ganhou alertas; o desktop agora os mostra como
+> **notificação nativa do SO** mesmo com a janela em segundo plano. Ponte reusa o
+> canal do Modo Code + `tauri-plugin-notification` (só API Rust, sem capability —
+> ADR-011). `cargo check`/`clippy` passam. **Pendente:** teste ao vivo no **`.app`
+> build** (no macOS a notificação exige app empacotado/assinado — em `tauri dev`
+> pode não aparecer).
+
 **Versão lançada com 2 pendências conhecidas.** A **Fase 1** está completa e validada
 (app abre, loga por cookie, chat com **streaming SSE** funciona) e a **Fase 2** está
 bem encorpada (multi-janela, branding, estado de janela, links externos, tela

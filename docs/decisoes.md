@@ -221,3 +221,44 @@ how-to; linkar o ADR.
   passo — hoje basta o `anna.exe` no PATH. **Validação:** `cargo check`/`clippy`
   **cruzados** para `x86_64-pc-windows-msvc` passam (tipos do WebView2 conferem);
   o **teste ao vivo é no Windows do Samir** (o build final não roda daqui).
+
+## ADR-011 — Notificações nativas dos alertas de preço (ponte via canal do Modo Code)
+
+- **Data:** 15/07/2026 · **Status:** Aceito
+- **Contexto:** O ShvIA ganhou o **rastreador de preços** (SHVIA 2.18–2.19), com
+  alertas quando um preço bate o alvo/atinge novo mínimo/cai. In-app há um badge;
+  fora do app, o **Telegram** cobre a janela fechada. Faltava o caso do meio: a
+  **janela do desktop aberta mas em segundo plano** — o usuário não vê o badge e
+  não quer depender do Telegram. Notificação nativa do SO era item planejado da
+  **F2** (tray/notificações), até aqui não construído (zero código de notificação
+  no `src-tauri`).
+- **Decisão:** disparar **notificações nativas do SO** para os alertas de preço,
+  reusando a infraestrutura que já existe — **nenhum bridge nativo novo**:
+  - **Plugin:** `tauri-plugin-notification`, usado **só pela API Rust**
+    (`app.notification().builder().title().body().show()`) em
+    `code_bridge::notify`. **Nenhuma capability** é adicionada — a origem remota
+    **não** ganha acesso ao comando (mantém o ADR-001, igual às pontes TTS/Code).
+  - **Canal página→Rust:** o **mesmo** message-handler do Modo Code (`shviaCode`
+    no WebKit, `window.chrome.webview` no WebView2), que já converge para
+    `code_bridge::handle_message` em todos os SOs. Bastou uma **ação `notify`**
+    (fire-and-forget, sem `reqId`/reply) no dispatch — os 3 bridges nativos
+    (`configure_linux_webview`, `macos_ipc`, `windows_ipc`) **não** foram tocados.
+  - **Gatilho (página):** um shim injetado em `on_page_load` **só nas páginas
+    remotas** (`PRICE_ALERT_NOTIFY_JS`) faz *polling* de
+    `GET /api/v1/price-alerts?unread=1` (cookie same-origin) a cada 60 s e, ao ver
+    ids novos, posta `{action:'notify', title, body}` no canal nativo. Dedup
+    **persistente por id em `localStorage`** (`shvia_pt_notified`) evita repetir e
+    coordena múltiplas janelas (a 1ª a gravar o id ganha); >3 novos viram **uma
+    notificação-resumo** (anti-blast). Sem canal nativo (navegador puro/mobile) o
+    shim é **no-op** (o badge in-app cobre).
+- **Por que NÃO é comando Tauri (ADR-001):** o canal é o **message-handler nativo
+  do próprio WebView** (não a IPC do Tauri), e a API do plugin é chamada **só do
+  Rust** — a superfície de comandos à página remota **continua fechada**, como nas
+  pontes de TTS e Modo Code.
+- **Consequências / limites:** o *polling* é do lado da página (o cliente não tem o
+  cookie de sessão no Rust), throttle de 60 s — alertas de preço não são
+  tempo-real, então é de sobra. Notificação é **informativa** (v1 sem
+  clique→abrir `/precos`; o badge navega). No **macOS**, notificações exigem app
+  **empacotado/assinado** (bundle id `cloud.blue3.shvia`) — em `tauri dev` podem
+  não aparecer; teste real é no `.app` build. **Validação:** `cargo check`/`clippy`
+  passam; o **teste ao vivo é na máquina do Samir** (o build final não roda daqui).

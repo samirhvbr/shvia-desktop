@@ -96,6 +96,83 @@ const CLIPBOARD_IMAGE_PASTE_JS: &str = r#"(function () {
   }, true);
 })();"#;
 
+/// Injetado nas páginas remotas do ShvIA (`on_page_load`): **notificações nativas
+/// dos alertas de preço** (ADR-011). Faz *polling* de `GET /api/v1/price-alerts`
+/// (cookie de sessão same-origin) e, ao ver alertas novos, posta `{action:'notify',
+/// title, body}` no **mesmo canal nativo do Modo Code** (`shviaCode` no WebKit,
+/// `window.chrome.webview` no WebView2) — o Rust (`code_bridge::notify`) dispara a
+/// notificação do SO. Assim o alerta chega mesmo com a janela em segundo plano,
+/// sem depender do Telegram. Sem o canal nativo (navegador puro/mobile) é no-op —
+/// o badge in-app cobre esse caso. Dedup persistente por id em `localStorage`
+/// (`shvia_pt_notified`) evita repetir e coordena múltiplas janelas. Autocontido,
+/// ES5, self-guard. **Não é comando/IPC Tauri** — mantém a postura do ADR-001.
+const PRICE_ALERT_NOTIFY_JS: &str = r#"(function () {
+  if (window.__shviaPriceAlerts) return;
+  var wk = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.shviaCode;
+  var w2 = window.chrome && window.chrome.webview;
+  if (!wk && !w2) return; // sem canal nativo → sem notificação nativa (badge cobre)
+  window.__shviaPriceAlerts = true;
+
+  var STORE_KEY = 'shvia_pt_notified';
+  var POLL_MS = 60000;
+  var MAX_INDIVIDUAL = 3; // acima disso, uma notificação-resumo
+
+  function sendNative(obj) {
+    var str = JSON.stringify(obj);
+    if (wk) { wk.postMessage(str); } else { w2.postMessage(str); }
+  }
+  function loadSeen() {
+    try { var a = JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function saveSeen(a) {
+    // Cap alto para não descartar ids ainda no conjunto não-lido (senão eles
+    // voltariam a contar como novos e re-notificariam).
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(a.slice(-400))); } catch (e) {}
+  }
+  function money(v, cur) {
+    try { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: cur || 'BRL' }).format(Number(v)); }
+    catch (e) { return (cur || 'BRL') + ' ' + v; }
+  }
+
+  function poll() {
+    // O ShvIA consome /api/v1 com o Bearer token do localStorage (mesmo do app);
+    // mandamos ele + o cookie de sessão como fallback. Sem token/sessão → 401 → no-op.
+    var token = '';
+    try { token = localStorage.getItem('access_token') || ''; } catch (e) {}
+    var headers = { 'Accept': 'application/json' };
+    if (token) { headers['Authorization'] = 'Bearer ' + token; }
+    fetch('/api/v1/price-alerts?unread=1', { headers: headers, credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || !Array.isArray(j.data)) return; // não logado / sem dados → no-op
+        var seen = loadSeen();
+        var fresh = j.data.filter(function (a) { return a && a.id != null && seen.indexOf(a.id) === -1; });
+        if (!fresh.length) return;
+        // Marca como visto ANTES de notificar. Reduz duplicatas entre janelas
+        // (localStorage não tem compare-and-set atômico, então janelas que leem
+        // antes de qualquer uma gravar podem notificar 1x cada — aceitável, sem
+        // blast); o dedup sequencial nos polls seguintes é garantido.
+        fresh.forEach(function (a) { seen.push(a.id); });
+        saveSeen(seen);
+        if (fresh.length > MAX_INDIVIDUAL) {
+          sendNative({ action: 'notify', title: 'ShvIA — Precos',
+            body: fresh.length + ' novos alertas de preco. Abra os Precos para ver.' });
+        } else {
+          fresh.forEach(function (a) {
+            var name = (a.item && a.item.name) ? a.item.name : 'Equipamento';
+            var body = name + ' — ' + money(a.price, a.currency) + (a.store ? ' (' + a.store + ')' : '');
+            sendNative({ action: 'notify', title: 'ShvIA — Alerta de preco', body: body });
+          });
+        }
+      })
+      .catch(function () {});
+  }
+
+  setTimeout(poll, 5000);   // deixa a página assentar antes do 1º poll
+  setInterval(poll, POLL_MS);
+})();"#;
+
 /// Injetado sob demanda (menu `Ajuda → Sobre o ShvIA Desktop`): **modal "Sobre"**
 /// com o nome do app, o build do desktop e a versão do ShvIA no servidor — o
 /// equivalente ao Help → About do VS Code. Mesmo padrão das outras pontes
@@ -306,6 +383,9 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
                 let casca_local = host == "localhost" || host == "tauri.localhost";
                 if !casca_local {
                     let _ = webview.eval(OFFLINE_BANNER_JS);
+                    // Notificações nativas dos alertas de preço — só nas páginas
+                    // remotas do ShvIA (a casca local não tem sessão/alertas). ADR-011.
+                    let _ = webview.eval(PRICE_ALERT_NOTIFY_JS);
                 }
                 let _ = webview.eval(CLIPBOARD_IMAGE_PASTE_JS);
                 // Ponte do Modo Code (define window.__shviaCode/__shviaDesktop se
@@ -522,6 +602,9 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        // Notificações nativas dos alertas de preço (ADR-011). Só a API Rust é
+        // usada (code_bridge::notify); nenhuma capability exposta à página remota.
+        .plugin(tauri_plugin_notification::init())
         .manage(code_bridge::Sidecars::default());
 
     // window-state (geometria), menu nativo e multi-janela são **desktop-only**
