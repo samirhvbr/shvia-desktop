@@ -17,6 +17,12 @@
 #   ./build-local.sh --skip-npm-ci   # pula 'npm ci' (deps já instaladas)
 #   ./build-local.sh --bundles deb   # só um target (deb|appimage|rpm|dmg|app)
 #   ./build-local.sh --no-sign       # (macOS) NÃO assina/notariza — build de teste
+#   ./build-local.sh --skip-git-pull # NÃO sincroniza com o remoto antes do build
+#
+# GIT PULL (padrão da casa): antes de tudo, o script faz 'git pull --ff-only'
+# para você não empacotar código velho sem querer. É fast-forward-only (nunca
+# cria merge) e NÃO trava o build se falhar (offline, mudanças locais ou branch
+# divergente) — só avisa e segue com o que está local. Pule com --skip-git-pull.
 #
 # ASSINATURA (macOS): sem assinar, o macOS trata o app como "danificado" e oferece
 # MOVER PARA A LIXEIRA quando ele é aberto depois de baixado/enviado (atributo de
@@ -87,6 +93,35 @@ _on_exit() {  # se abortar (exit != 0), ainda mostra quanto tempo rodou
 trap _on_exit EXIT
 
 usage() { awk 'NR>1{ if($0=="set -euo pipefail") exit; sub(/^# ?/,""); print }' "$0"; }
+
+# ── git pull antes do build (padrão da casa) ────────────────────────────────
+# Puxa o remoto ANTES de qualquer passo, pra não empacotar código velho. É
+# fast-forward-only (nunca cria merge). NÃO trava o build: se o pull não
+# aplicar (offline, mudanças locais, branch divergente), avisa e segue com o
+# código LOCAL. Pule por completo com --skip-git-pull.
+git_sync() {
+  if [ "${SKIP_GIT_PULL:-0}" -eq 1 ]; then
+    echo "    (pulado: --skip-git-pull)"
+    return 0
+  fi
+  if ! command -v git >/dev/null 2>&1 || [ ! -e .git ]; then
+    echo "    (não é um clone git — pulando)"
+    return 0
+  fi
+  if ! git remote get-url origin >/dev/null 2>&1; then
+    echo "    (sem remote 'origin' — pulando)"
+    return 0
+  fi
+  echo "    branch: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?') — git pull --ff-only"
+  local out
+  if out="$(git pull --ff-only 2>&1)"; then
+    echo "$out" | sed 's/^/    /'
+  else
+    echo "$out" | sed 's/^/    /' >&2
+    echo "    ⚠️  git pull não aplicou (offline, mudanças locais ou branch divergente)." >&2
+    echo "        O build vai continuar com o código LOCAL atual." >&2
+  fi
+}
 
 # ── Preflight: checa o toolchain ANTES dos passos lentos ────────────────────
 # Falha em <1s com mensagem ACIONÁVEL (ex.: "instale o Rust: curl … rustup.rs")
@@ -262,19 +297,24 @@ verify_macos_signature() {
 
 SKIP_NPM_CI=0
 NO_SIGN=0
+SKIP_GIT_PULL=0
 BUNDLES=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --skip-npm-ci) SKIP_NPM_CI=1 ;;
-    --no-sign)     NO_SIGN=1 ;;
-    --bundles)     shift; BUNDLES="${1:-}" ;;
-    -h|--help)     usage; exit 0 ;;
+    --skip-npm-ci)  SKIP_NPM_CI=1 ;;
+    --no-sign)      NO_SIGN=1 ;;
+    --skip-git-pull) SKIP_GIT_PULL=1 ;;
+    --bundles)      shift; BUNDLES="${1:-}" ;;
+    -h|--help)      usage; exit 0 ;;
     *) echo "opção desconhecida: $1 (use --help)" >&2; exit 2 ;;
   esac
   shift
 done
 
 echo "==> ShvIA Desktop — build local ($_BUILD_OS)"
+
+step "[git] sincroniza com o remoto (git pull --ff-only)"
+git_sync
 
 step "[pré-requisitos] verifica o toolchain (Rust, Node, Xcode/WebKitGTK)"
 preflight

@@ -13,12 +13,19 @@
   USO (PowerShell, na raiz do repo):
     .\build-local.ps1                # build normal (.msi + -setup.exe)
     .\build-local.ps1 -SkipNpmCi     # pula 'npm ci' (deps ja instaladas)
+    .\build-local.ps1 -SkipGitPull   # NAO sincroniza com o remoto antes do build
+
+  GIT PULL (padrao da casa): antes de tudo, o script faz 'git pull --ff-only'
+  pra voce nao empacotar codigo velho. E fast-forward-only (nunca cria merge) e
+  NAO trava o build se falhar (offline, mudancas locais ou branch divergente) —
+  so avisa e segue com o que esta local. Pule com -SkipGitPull.
 
   Saida: src-tauri\target\release\bundle\
   Obs.: o 1o build compila o Rust inteiro (~minutos); os proximos sao incrementais.
 #>
 param(
-  [switch]$SkipNpmCi
+  [switch]$SkipNpmCi,
+  [switch]$SkipGitPull
 )
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
@@ -77,7 +84,37 @@ function Invoke-Native {
   if ($LASTEXITCODE -ne 0) { throw "$Nome falhou (exit $LASTEXITCODE)" }
 }
 
+# git pull antes do build (padrao da casa): puxa o remoto ANTES de tudo, pra nao
+# empacotar codigo velho. fast-forward-only (nunca cria merge). NAO trava o build:
+# se nao aplicar (offline, mudancas locais, branch divergente), avisa e segue com
+# o codigo LOCAL. git escreve no stderr no fluxo normal, entao rodamos com
+# EAP=Continue e validamos o exit code — sem virar erro terminante por engano.
+function Invoke-GitSync {
+  if ($SkipGitPull) { Write-Host "    (pulado: -SkipGitPull)" -ForegroundColor Yellow; return }
+  if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Write-Host "    (git nao encontrado — pulando)" -ForegroundColor Yellow; return
+  }
+  if (-not (Test-Path .git)) { Write-Host "    (nao e um clone git — pulando)" -ForegroundColor Yellow; return }
+  $prev = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+  try {
+    git remote get-url origin *> $null
+    if ($LASTEXITCODE -ne 0) { Write-Host "    (sem remote 'origin' — pulando)" -ForegroundColor Yellow; return }
+    $branch = (git rev-parse --abbrev-ref HEAD 2>$null)
+    Write-Host "    branch: $branch — git pull --ff-only"
+    $out = git pull --ff-only 2>&1
+    $code = $LASTEXITCODE
+    $out | ForEach-Object { Write-Host "    $_" }
+    if ($code -ne 0) {
+      Write-Host "    [aviso] git pull nao aplicou (offline, mudancas locais ou branch divergente)." -ForegroundColor Yellow
+      Write-Host "            O build vai continuar com o codigo LOCAL atual." -ForegroundColor Yellow
+    }
+  } finally { $ErrorActionPreference = $prev }
+}
+
 Write-Host "==> ShvIA Desktop — build local (Windows)"
+
+Step "[git] sincroniza com o remoto (git pull --ff-only)"
+Invoke-GitSync
 
 Step "[1/3] dependencias do frontend (npm ci)"
 if (-not $SkipNpmCi) {
