@@ -99,13 +99,25 @@ function Invoke-GitSync {
   try {
     git remote get-url origin *> $null
     if ($LASTEXITCODE -ne 0) { Write-Host "    (sem remote 'origin' — pulando)" -ForegroundColor Yellow; return }
+    # Manifests GERADOS pelo version:sync (derivados do version.md). Entre builds
+    # ficam "sujos" no Windows (line endings / versao de build anterior) e travam
+    # o fast-forward ("local changes would be overwritten"). O build os REESCREVE
+    # a partir do version.md, entao restaura-los ao HEAD antes do pull e seguro e
+    # evita o "del Cargo.toml" manual.
+    $generated = @('src-tauri/Cargo.toml','src-tauri/Cargo.lock','package.json','package-lock.json','src-tauri/tauri.conf.json')
+    $dirty = git diff --name-only -- $generated 2>$null
+    if ($dirty) {
+      Write-Host "    manifests de versao sujos — restaurando (serao regerados no build):" -ForegroundColor Yellow
+      $dirty | ForEach-Object { Write-Host "      $_" }
+      git checkout -- $generated 2>$null
+    }
     $branch = (git rev-parse --abbrev-ref HEAD 2>$null)
     Write-Host "    branch: $branch — git pull --ff-only"
     $out = git pull --ff-only 2>&1
     $code = $LASTEXITCODE
     $out | ForEach-Object { Write-Host "    $_" }
     if ($code -ne 0) {
-      Write-Host "    [aviso] git pull nao aplicou (offline, mudancas locais ou branch divergente)." -ForegroundColor Yellow
+      Write-Host "    [aviso] git pull nao aplicou (offline, mudancas locais fora dos manifests, ou branch divergente)." -ForegroundColor Yellow
       Write-Host "            O build vai continuar com o codigo LOCAL atual." -ForegroundColor Yellow
     }
   } finally { $ErrorActionPreference = $prev }

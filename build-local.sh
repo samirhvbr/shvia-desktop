@@ -112,13 +112,26 @@ git_sync() {
     echo "    (sem remote 'origin' — pulando)"
     return 0
   fi
+  # Manifests GERADOS pelo version:sync (derivados do version.md). Entre builds
+  # eles ficam "sujos" — no Windows é o caso clássico: line endings / versão de
+  # um build anterior — e travam o fast-forward ("local changes would be
+  # overwritten"). Como o build os REESCREVE a partir do version.md, restaurá-los
+  # ao HEAD antes do pull é seguro e evita o "del Cargo.toml" manual.
+  local generated="src-tauri/Cargo.toml src-tauri/Cargo.lock package.json package-lock.json src-tauri/tauri.conf.json"
+  local dirty
+  dirty="$(git diff --name-only -- $generated 2>/dev/null || true)"
+  if [ -n "$dirty" ]; then
+    echo "    manifests de versão sujos — restaurando (serão regerados no build):"
+    echo "$dirty" | sed 's/^/      /'
+    git checkout -- $generated 2>/dev/null || true
+  fi
   echo "    branch: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?') — git pull --ff-only"
   local out
   if out="$(git pull --ff-only 2>&1)"; then
     echo "$out" | sed 's/^/    /'
   else
     echo "$out" | sed 's/^/    /' >&2
-    echo "    ⚠️  git pull não aplicou (offline, mudanças locais ou branch divergente)." >&2
+    echo "    ⚠️  git pull não aplicou (offline, mudanças locais fora dos manifests, ou branch divergente)." >&2
     echo "        O build vai continuar com o código LOCAL atual." >&2
   fi
 }
