@@ -269,27 +269,35 @@ verify_macos_signature() {
   local app dmg
   app="$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' 2>/dev/null | head -1 || true)"
   dmg="$(find src-tauri/target/release/bundle/dmg  -maxdepth 1 -name '*.dmg' 2>/dev/null | head -1 || true)"
-  if [ -z "$app" ]; then echo "    (sem .app p/ verificar)"; return 0; fi
+  # NOTA: no build só-DMG (`--bundles dmg`), o `tauri build` APAGA o .app depois de
+  # dobrá-lo dentro do .dmg ("Cleaning …/ShvIA.app") — então aqui NÃO há .app avulso
+  # pra checar. As verificações do .app ficam sob `if [ -n "$app" ]`, mas o bloco do
+  # .dmg RODA SEMPRE — antes ele estava dentro de um `return 0` precoce ("sem .app"),
+  # e o caminho só-DMG saía com o .dmg SEM notarizar. O .app dentro do .dmg já foi
+  # notarizado+stapled antes de o tauri limpá-lo, então só falta notarizar o .dmg.
+  if [ -n "$app" ]; then
+    echo "  • codesign --verify (deep, strict):"
+    if codesign --verify --deep --strict --verbose=2 "$app" >/tmp/_cs.txt 2>&1; then
+      echo "      ✔ assinatura íntegra"
+    else
+      echo "      ❌ assinatura inválida:"; sed 's/^/        /' /tmp/_cs.txt
+    fi
 
-  echo "  • codesign --verify (deep, strict):"
-  if codesign --verify --deep --strict --verbose=2 "$app" >/tmp/_cs.txt 2>&1; then
-    echo "      ✔ assinatura íntegra"
+    echo "  • autoridade + hardened runtime:"
+    codesign -dvvv "$app" 2>&1 \
+      | grep -E 'Authority=|TeamIdentifier=|Identifier=|flags=' | sed 's/^/      /' || true
+
+    echo "  • Gatekeeper (spctl assess):"
+    spctl -a -t exec -vvv "$app" 2>&1 | sed 's/^/      /' || true
+
+    echo "  • staple (ticket de notarização anexado):"
+    if xcrun stapler validate "$app" >/dev/null 2>&1; then
+      echo "      ✔ .app com staple (abre offline, sem prompt)"
+    else
+      echo "      ⚠️  .app SEM staple — notarização não rodou/falhou (ainda pede liberação)"
+    fi
   else
-    echo "      ❌ assinatura inválida:"; sed 's/^/        /' /tmp/_cs.txt
-  fi
-
-  echo "  • autoridade + hardened runtime:"
-  codesign -dvvv "$app" 2>&1 \
-    | grep -E 'Authority=|TeamIdentifier=|Identifier=|flags=' | sed 's/^/      /' || true
-
-  echo "  • Gatekeeper (spctl assess):"
-  spctl -a -t exec -vvv "$app" 2>&1 | sed 's/^/      /' || true
-
-  echo "  • staple (ticket de notarização anexado):"
-  if xcrun stapler validate "$app" >/dev/null 2>&1; then
-    echo "      ✔ .app com staple (abre offline, sem prompt)"
-  else
-    echo "      ⚠️  .app SEM staple — notarização não rodou/falhou (ainda pede liberação)"
+    echo "    (sem .app avulso — build só-DMG; o tauri já limpou o .app, verifico o .dmg)"
   fi
   if [ -n "$dmg" ]; then
     if xcrun stapler validate "$dmg" >/dev/null 2>&1; then
@@ -306,6 +314,29 @@ verify_macos_signature() {
       fi
     fi
   fi
+}
+
+# macOS: destrava imagens .dmg DESTE repo que ficaram montadas de um build anterior.
+# Contexto do bug: o bundle_dmg.sh cria um rw.*.dmg temporário, monta em
+# /Volumes/dmg.XXXX (nome interno do volume = "ShvIA"), arruma a janela via
+# AppleScript e desmonta. Se o processo morre/é morto no meio, a imagem fica
+# ATTACHADA. No próximo build o AppleScript roda `tell disk "ShvIA"` com DOIS
+# volumes "ShvIA" montados → ambíguo → erro → "failed to run bundle_dmg.sh" (e o
+# tauri engole o erro real do script). Filtra pelo image-path dentro do nosso
+# bundle dir pra NÃO ejetar DMGs de outros projetos/apps montados pelo usuário.
+detach_stale_build_images() {
+  [ "$_BUILD_OS" = macOS ] || return 0
+  command -v hdiutil >/dev/null 2>&1 || return 0
+  local bundle_abs devs d
+  bundle_abs="$(pwd)/src-tauri/target/release/bundle"
+  devs="$(hdiutil info 2>/dev/null | awk -v b="$bundle_abs" '
+    /^image-path/            { p = (index($0, b) > 0) }
+    p && /^\/dev\/disk[0-9]/ { print $1; p = 0 }
+  ' || true)"
+  for d in $devs; do
+    echo "    imagem presa de build anterior — ejetando $d"
+    hdiutil detach "$d" >/dev/null 2>&1 || hdiutil detach -force "$d" >/dev/null 2>&1 || true
+  done
 }
 
 SKIP_NPM_CI=0
@@ -341,6 +372,11 @@ fi
 
 step "[2/3] sincroniza versão (version.md -> manifests)"
 npm run version:sync
+
+# Ejeta imagens .dmg montadas de um build anterior ANTES do rm abaixo: se um rw.*.dmg
+# ainda está attachado e apagamos o arquivo de origem, sobra um volume "ShvIA" órfão
+# em /Volumes/ que quebra o AppleScript do próximo bundle_dmg.sh (ver a função).
+detach_stale_build_images
 
 # Limpa instaladores de builds anteriores (padrão SHVTERM): o bundle dir acumula
 # .deb/.AppImage/.rpm de versões antigas (ex.: ShvIA_0.4.6 ao lado do 0.5.0).
