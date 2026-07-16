@@ -353,6 +353,23 @@ if [ "$_BUILD_OS" = macOS ]; then
   setup_macos_signing
 fi
 
+# ── AppImage (Linux): destrava o linuxdeploy nesta e em qualquer VM ──────────────
+# App WebKitGTK tem árvore de deps ENORME. Por padrão o linuxdeploy roda um
+# `dpkg-query` de copyright POR biblioteca — em VM isso arrasta por minutos e o build
+# morria com "failed to run linuxdeploy" (reproduzido: >120s travado no dpkg-query;
+# com as env abaixo, 41s e "Success"). Também há FUSE aninhado (linuxdeploy e
+# appimagetool são AppImages). As env são lidas direto por essas ferramentas:
+#   DISABLE_COPYRIGHT_FILES_DEPLOYMENT → pula o dpkg-query de copyright (o gargalo)
+#   APPIMAGE_EXTRACT_AND_RUN → extrai+roda os AppImages (sem depender de FUSE aninhado)
+#   NO_STRIP → não faz strip (rpath $ORIGIN já bloqueava caso a caso; evita o passo)
+#   ARCH → o appimagetool exige a arquitetura explícita
+if [ "$_BUILD_OS" = Linux ]; then
+  ARCH="$(uname -m)"; export ARCH
+  export DISABLE_COPYRIGHT_FILES_DEPLOYMENT=1
+  export APPIMAGE_EXTRACT_AND_RUN=1
+  export NO_STRIP=1
+fi
+
 step "[3/3] Tauri build"
 if [ -n "$BUNDLES" ]; then
   npx tauri build --bundles "$BUNDLES"
