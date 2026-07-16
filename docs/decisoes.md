@@ -262,3 +262,36 @@ how-to; linkar o ADR.
   **empacotado/assinado** (bundle id `cloud.blue3.shvia`) — em `tauri dev` podem
   não aparecer; teste real é no `.app` build. **Validação:** `cargo check`/`clippy`
   passam; o **teste ao vivo é na máquina do Samir** (o build final não roda daqui).
+
+## ADR-012 — Timeout do ping de alcance: o cold-start do WebKitGTK custa ~5-6 s
+
+- **Contexto/Problema:** a casca de bootstrap (`src/main.ts`) faz um ping em
+  `/api/v1/health` antes de navegar; alcançável → `location.replace`, senão → tela
+  "offline" com auto-retry (backport do splash do SHVIA-MOBILE). Em produção o app
+  caía em "offline" **mesmo com o servidor a <1 ms** (rede local). Reproduzido no
+  **mesmo webkit2gtk-4.1** do wry, a partir da origem real `tauri://localhost`
+  (registrada secure/local):
+  - Fora da engine: DNS resolve em <10 ms (só registro A, sem AAAA); `curl` faz
+    TLS + HTTP 200 em ~0,35 s. Rede e servidor estão perfeitos.
+  - **Dentro do WebKit:** o **1º request depois que o processo de rede sobe "frio"**
+    custa **~5-6 s** (medido 5,1 / 5,6 / 6,3 s) ANTES de qualquer resposta; aquecido,
+    cai p/ 50-400 ms. **Independe do modo** — invertendo a ordem, quem stalla é
+    sempre o 1º request (`no-cors` OU `cors`); não é DNS nem o servidor, é o
+    cold-start da engine (provável revalidação de certificado + init do NetworkProcess
+    na 1ª conexão TLS).
+  - O gate tinha timeout de **6000 ms** → o custo frio batia na trave, o
+    `AbortController` abortava e o `catch` mandava pra "offline".
+- **Decisão:** subir `REACHABLE_TIMEOUT_MS` de **6 s → 15 s** (~2,5× o pior custo
+  frio medido, cobrindo a contenção de CPU/IO do launch — Tauri + WebKit + app web
+  subindo juntos). Mantido o `no-cors` (o modo não é a causa; a resposta opaca basta
+  pra "está alcançável"). Auto-retry (5 s) e "Abrir mesmo assim" seguem como escape.
+- **Consequências/limites:** offline **de verdade** rejeita na hora (DNS/rota falha),
+  então a folga de 15 s não pesa no caso comum — só um servidor "presente mas mudo"
+  esperaria os 15 s (e o escape está sempre visível). O custo frio de ~5-6 s **é
+  inerente** ao WebKitGTK: a navegação pro FQDN pagaria o mesmo se o ping não
+  pagasse — o ping funciona como warm-up e o app carrega instantâneo em seguida.
+  **Não relitigar** baixando o timeout "porque parece muito": ele existe pra caber o
+  cold-start (ver ADR-006/008 — WebKitGTK é o risco recorrente do Linux). Se o custo
+  frio for atacado na fonte (ex.: desligar revalidação de certificado na engine), aí
+  sim dá pra reduzir. Harness de repro: `gjs` + WebKit2-4.1 (registra `tauri://`,
+  roda os fetches, exfiltra o tempo por `document.title`).

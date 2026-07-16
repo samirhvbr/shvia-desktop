@@ -24,6 +24,16 @@
 const SHVIA_URL = "https://ia.blue3.com.br";
 // Intervalo do auto-retry no estado offline.
 const AUTO_RETRY_MS = 5_000;
+// Timeout do ping de alcance. O 1º request de rede do WebKitGTK "frio" (processo
+// de rede recém-criado no launch) tem um custo fixo de ~5-6 s ANTES de qualquer
+// resposta — INDEPENDENTE do modo (medido no webkit2gtk-4.1: no-cors e cors dão
+// o mesmo stall; DNS resolve em <10 ms e o servidor responde em <1 ms, então não
+// é rede nem servidor — é o cold-start da engine). Depois de aquecido, cai p/
+// 50-400 ms. Com 6 s o ping abortava na trave (5,1/5,6/6,3 s medidos) e caía em
+// "offline" mesmo com o servidor no ar. 15 s dá folga sobre o custo frio + a
+// contenção do launch; offline de verdade rejeita na hora (DNS/rota falha), então
+// a folga não pesa no caso comum. Ver docs/decisoes.md (ADR-012).
+const REACHABLE_TIMEOUT_MS = 15_000;
 
 const rootEl = document.getElementById("bootstrap")!;
 const statusEl = document.getElementById("status")!;
@@ -56,7 +66,7 @@ function setState(state: "connecting" | "offline"): void {
   }
 }
 
-async function serverReachable(timeoutMs = 6000): Promise<boolean> {
+async function serverReachable(timeoutMs = REACHABLE_TIMEOUT_MS): Promise<boolean> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
   try {
