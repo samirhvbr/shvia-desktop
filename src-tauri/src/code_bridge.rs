@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use tauri::{Manager, WebviewWindow};
 use tauri_plugin_notification::NotificationExt;
@@ -69,23 +70,29 @@ pub const BRIDGE_JS: &str = r#"(function () {
                              : { platform: 'windows', bridge: 'webview2' };
 })();"#;
 
-/// Um sidecar `anna` de uma janela (uma sessão code ativa por janela).
+/// Um sidecar `anna` de uma janela (uma sessão code ativa por janela). `gen` é a
+/// geração da sessão — a thread de stdout usa pra saber se ainda é a sessão viva.
 struct Sidecar {
     child: Child,
     stdin: ChildStdin,
+    gen: u64,
 }
 
 /// Registro de sidecars por rótulo de janela — em Tauri managed state.
 #[derive(Default)]
-pub struct Sidecars(Mutex<HashMap<String, Sidecar>>);
+pub struct Sidecars {
+    map: Mutex<HashMap<String, Sidecar>>,
+    next_gen: AtomicU64,
+}
 
 impl Sidecars {
     fn kill_label(&self, label: &str) {
-        if let Ok(mut map) = self.0.lock() {
-            if let Some(mut sc) = map.remove(label) {
-                let _ = sc.child.kill();
-                let _ = sc.child.wait();
-            }
+        // Remove sob o lock, mas mata/espera FORA dele — child.wait() pode bloquear
+        // e seguraria o Mutex global (send/insert de outras janelas travariam).
+        let sc = self.map.lock().ok().and_then(|mut m| m.remove(label));
+        if let Some(mut sc) = sc {
+            let _ = sc.child.kill();
+            let _ = sc.child.wait();
         }
     }
 
@@ -96,32 +103,50 @@ impl Sidecars {
 
     /// Mata todos (saída do app — anti-órfão).
     pub fn kill_all(&self) {
-        if let Ok(mut map) = self.0.lock() {
-            for (_, mut sc) in map.drain() {
-                let _ = sc.child.kill();
-                let _ = sc.child.wait();
-            }
+        let drained: Vec<Sidecar> = self
+            .map
+            .lock()
+            .ok()
+            .map(|mut m| m.drain().map(|(_, sc)| sc).collect())
+            .unwrap_or_default();
+        for mut sc in drained {
+            let _ = sc.child.kill();
+            let _ = sc.child.wait();
         }
     }
 
-    /// Registra o sidecar da janela, matando um anterior (troca de sessão).
-    fn insert(&self, label: String, child: Child, stdin: ChildStdin) {
-        if let Ok(mut map) = self.0.lock() {
-            if let Some(mut old) = map.insert(label, Sidecar { child, stdin }) {
-                let _ = old.child.kill();
-                let _ = old.child.wait();
-            }
+    /// Registra o sidecar da janela (nova geração), matando o anterior (troca de
+    /// sessão). Devolve a geração desta sessão.
+    fn insert(&self, label: String, child: Child, stdin: ChildStdin) -> u64 {
+        let gen = self.next_gen.fetch_add(1, Ordering::Relaxed) + 1;
+        let old = self
+            .map
+            .lock()
+            .ok()
+            .and_then(|mut m| m.insert(label, Sidecar { child, stdin, gen }));
+        if let Some(mut old) = old {
+            let _ = old.child.kill();
+            let _ = old.child.wait();
         }
+        gen
+    }
+
+    /// A sessão viva desta janela ainda é a geração `gen`? (senão houve respawn/kill,
+    /// e a thread de stdout velha NÃO deve sinalizar 'exited' pra não derrubar a nova).
+    fn is_current(&self, label: &str, gen: u64) -> bool {
+        self.map.lock().map(|m| m.get(label).map(|sc| sc.gen) == Some(gen)).unwrap_or(false)
     }
 
     /// Escreve uma linha no stdin do sidecar da janela (mensagem ou decisão).
-    fn send_line(&self, label: &str, line: &str) {
-        if let Ok(mut map) = self.0.lock() {
+    /// `false` = não havia sessão viva ou a escrita falhou (o host então sabe que
+    /// a decisão/mensagem caiu, em vez de assumir ok).
+    fn send_line(&self, label: &str, line: &str) -> bool {
+        if let Ok(mut map) = self.map.lock() {
             if let Some(sc) = map.get_mut(label) {
-                let _ = writeln!(sc.stdin, "{line}");
-                let _ = sc.stdin.flush();
+                return writeln!(sc.stdin, "{line}").and_then(|_| sc.stdin.flush()).is_ok();
             }
         }
+        false
     }
 }
 
@@ -196,8 +221,8 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
     match action {
         "spawn" => spawn(window, &req, &v),
         "send" => {
-            send(window, &v);
-            reply(window, &req, true, serde_json::json!({ "ok": true }));
+            let ok = send(window, &v);
+            reply(window, &req, ok, serde_json::json!({ "ok": ok }));
         }
         "kill" => {
             window.app_handle().state::<Sidecars>().kill_label(window.label());
@@ -265,8 +290,9 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     let stdin = child.stdin.take().expect("stdin piped");
 
     // Guarda no state, matando um sidecar anterior desta janela (troca de sessão).
+    // A geração desta sessão acompanha a thread de stdout (guarda o 'exited').
     let label = window.label().to_string();
-    window.app_handle().state::<Sidecars>().insert(label, child, stdin);
+    let gen = window.app_handle().state::<Sidecars>().insert(label.clone(), child, stdin);
 
     // stderr → log do app (nunca a timeline).
     std::thread::spawn(move || {
@@ -277,6 +303,7 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
 
     // stdout NDJSON → evento na página (`_emit`), no main thread (WebKit).
     let win = window.clone();
+    let exit_label = label;
     std::thread::spawn(move || {
         let app = win.app_handle().clone();
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
@@ -289,22 +316,26 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
                 let _ = w.eval(&js);
             });
         }
-        // stdout fechou → anna saiu.
-        let w = win.clone();
-        let _ = app.run_on_main_thread(move || {
-            let _ = w.eval("window.__shviaCode&&window.__shviaCode._emit({type:'exited'})");
-        });
+        // stdout fechou → anna saiu. Só sinaliza 'exited' se ESTA geração ainda é a
+        // sessão viva da janela; se foi substituída (respawn) ou morta (kill/troca
+        // de projeto), fica quieta pra não derrubar a sessão nova que acabou de subir.
+        if app.state::<Sidecars>().is_current(&exit_label, gen) {
+            let w = win.clone();
+            let _ = app.run_on_main_thread(move || {
+                let _ = w.eval("window.__shviaCode&&window.__shviaCode._emit({type:'exited'})");
+            });
+        }
     });
 
     reply(window, req, true, serde_json::json!({ "ok": true }));
 }
 
-fn send(window: &WebviewWindow, v: &serde_json::Value) {
+fn send(window: &WebviewWindow, v: &serde_json::Value) -> bool {
     let line = match v.get("payload") {
         Some(p) => serde_json::to_string(p).unwrap_or_default(),
-        None => return,
+        None => return false,
     };
-    window.app_handle().state::<Sidecars>().send_line(window.label(), &line);
+    window.app_handle().state::<Sidecars>().send_line(window.label(), &line)
 }
 
 /// Dispara uma notificação nativa do SO (alertas de preço, ADR-011). Usa só a API
@@ -421,11 +452,14 @@ fn list_tree(path: &str) -> serde_json::Value {
 
 /// Responde uma requisição da página (`_reply`), no main thread.
 fn reply(window: &WebviewWindow, req: &str, ok: bool, data: serde_json::Value) {
+    // `data` vai como JSON.parse(<string>) — mesmo caminho seguro do stdout — pra
+    // que js_str neutralize aspas e U+2028/2029 (um path/erro com esses chars
+    // quebraria o eval se `data` fosse interpolado cru).
     let js = format!(
-        "window.__shviaCode&&window.__shviaCode._reply({}, {}, {})",
+        "window.__shviaCode&&window.__shviaCode._reply({}, {}, JSON.parse({}))",
         js_str(req),
         ok,
-        data
+        js_str(&data.to_string())
     );
     let w = window.clone();
     let app = window.app_handle().clone();
