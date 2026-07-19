@@ -199,9 +199,11 @@ empacotamento **local** (`.deb`/`.AppImage`/`.rpm` via `build-local`). Detalhe d
 [docs/funcionalidades.md](docs/funcionalidades.md); como buildar em
 [docs/build.md](docs/build.md).
 
-**2 pendências conhecidas** (limitações do WebKitGTK no Linux — ADR-008): **mic
-(voz)** e **Ctrl+V de imagem** não funcionam; macOS/Windows tendem a resolver, com
-fallback Electron se virarem must-have. Contexto vivo e pendências em
-[.continue/estado-atual.md](.continue/estado-atual.md).
+**1 pendência conhecida** (limitação do WebKitGTK no Linux — ADR-008): **mic
+(voz)** não funciona no empacotamento Linux local; macOS/Windows tendem a resolver,
+com fallback Electron se virar must-have. Contexto vivo e pendências em
+[.continue/estado-atual.md](.continue/estado-atual.md). **Ctrl+V de imagem** está
+implementado (`CLIPBOARD_IMAGE_PASTE_JS` injetado no host do servidor) — atualização
+de docs pendente em [.continue/estado-atual.md](.continue/estado-atual.md).
 
 > **Sem doc, sem deploy.** Toda função nova vira doc em `docs/` antes de entrar.

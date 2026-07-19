@@ -6,7 +6,6 @@
   mantenha CLAUDE.md e AGENTS.md byte-idênticos abaixo do H1. Se editar um,
   edite o outro.
 -->
-
 > **Leia também:** [README.md](README.md) (visão geral + decisão de arquitetura) ·
 > [.continue/estado-atual.md](.continue/estado-atual.md) (onde paramos) ·
 > [.continue/escopo-projeto.md](.continue/escopo-projeto.md) (escopo e fases) ·

@@ -23,7 +23,8 @@ mod macos_ipc;
 mod windows_ipc;
 
 use tauri::{
-    webview::PageLoadEvent, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    webview::{NewWindowResponse, PageLoadEvent},
+    Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 use tauri_plugin_opener::OpenerExt;
 // Menu nativo é desktop-only (mobile não tem barra de menu). O window-state
@@ -118,6 +119,7 @@ const PRICE_ALERT_NOTIFY_JS: &str = r#"(function () {
   var MAX_INDIVIDUAL = 3; // acima disso, uma notificação-resumo
 
   function sendNative(obj) {
+    obj.__t = '__SHVIA_BRIDGE_TOKEN__'; // token de capacidade (ver code_bridge::bridge_token)
     var str = JSON.stringify(obj);
     if (wk) { wk.postMessage(str); } else { w2.postMessage(str); }
   }
@@ -348,21 +350,49 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
   closeBtn.focus();
 })();"#;
 
-/// Uma navegação fica **no app** se for a casca local (localhost/tauri) ou o
-/// ShvIA hospedado (`*.blue3.com.br`); qualquer outra origem é considerada um
-/// link externo e abre no navegador do SO.
+/// Host EXATO do servidor do ShvIA (fonte da verdade). Qualquer outro subdomínio
+/// de `blue3.com.br` é externo: limita a superfície injetada pela ponte (BRIDGE_JS,
+/// PRICE_ALERT_NOTIFY_JS) e a navegação interna ao servidor real.
+const SERVER_HOST: &str = "ia.blue3.com.br";
+
+/// Hosts aceitos como navegação interna (casca local em dev + o servidor).
+/// Lista exata — sem sufixo curinga — para impedir que um subdomínio
+/// `.blue3.com.br` comprometido carregue dentro do app e ganhe a ponte nativa.
+const INTERNAL_HOSTS: &[&str] = &["localhost", "tauri.localhost", SERVER_HOST];
+
+/// Contador monotônico de janelas abertas por `target=_blank` (handler
+/// `on_new_window`). Garante labels únicos.
+static OPEN_WINDOW_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Devolve um id novo (>= 1) a cada chamada. Wrap para usar em format!.
+fn open_window_counter() -> u64 {
+    OPEN_WINDOW_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1
+}
+
+/// Uma navegação fica **no app** se for a casca local (http em dev) ou o
+/// servidor do ShvIA em https. Qualquer outra origem — incluindo outros
+/// subdomínios blue3.com.br — é link externo e abre no navegador do SO.
 fn is_internal(url: &tauri::Url) -> bool {
-    let host = url.host_str().unwrap_or_default();
-    host == "localhost"
-        || host == "tauri.localhost"
-        || host == "blue3.com.br"
-        || host.ends_with(".blue3.com.br")
+    let host = match url.host_str() {
+        Some(h) => h,
+        None => return false,
+    };
+    if !INTERNAL_HOSTS.contains(&host) {
+        return false;
+    }
+    // Casca local aceita http (Vite dev); o servidor exige https.
+    match url.scheme() {
+        "https" => host == SERVER_HOST,
+        "http" => host == "localhost" || host == "tauri.localhost",
+        _ => false,
+    }
 }
 
 /// Cria uma janela do ShvIA com o comportamento padrão do shell: links externos
 /// no navegador do SO e estado (tamanho/posição) restaurado e persistido.
 fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<WebviewWindow> {
-    let handle = app.clone();
+    let nav_handle = app.clone();
+    let win_handle = app.clone();
     let builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()))
         .title("ShvIA")
         .on_navigation(move |url| {
@@ -370,8 +400,32 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
                 return true;
             }
             // link externo → abre no navegador do SO, não dentro do app.
-            let _ = handle.opener().open_url(url.to_string(), None::<&str>);
+            let _ = nav_handle.opener().open_url(url.to_string(), None::<&str>);
             false
+        })
+        // `target=_blank` (e window.open): sem handler, no Windows/WebKit morre
+        // silencioso; no Linux vira `target=_blank` morto. Link externo → abre
+        // no navegador do SO; link interno → cria nova janela ShvIA.
+        .on_new_window(move |url, features| {
+            if is_internal(&url) {
+                let label = format!("win-open-{}", open_window_counter());
+                let title = "ShvIA";
+                match WebviewWindowBuilder::new(
+                    &win_handle,
+                    &label,
+                    WebviewUrl::External(url.clone()),
+                )
+                .title(title)
+                .window_features(features)
+                .build()
+                {
+                    Ok(window) => NewWindowResponse::Create { window },
+                    Err(_) => NewWindowResponse::Deny,
+                }
+            } else {
+                let _ = win_handle.opener().open_url(url.to_string(), None::<&str>);
+                NewWindowResponse::Deny
+            }
         })
         // injeta a tarja "Sistema Offline" (+ ponte de clipboard) em cada página.
         // A tarja fica SÓ nas páginas remotas do ShvIA: a casca local (0.5.5)
@@ -379,18 +433,20 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
         // tarja junto ficava indicador em dobro (visto no macOS, 07/07).
         .on_page_load(|webview, payload| {
             if let PageLoadEvent::Finished = payload.event() {
-                let host = payload.url().host_str().unwrap_or_default().to_owned();
-                let casca_local = host == "localhost" || host == "tauri.localhost";
-                if !casca_local {
+                let host = payload.url().host_str().unwrap_or_default();
+                // As pontes injetam APIs nativas (spawn de processo, leitura de
+                // FS, notificações). Restringimos ao servidor EXATO do ShvIA:
+                // a casca local não tem sessão/alertas e qualquer outro host
+                // (subdomínio blue3.com.br não-canônico, por ex.) é externo.
+                if host == SERVER_HOST {
                     let _ = webview.eval(OFFLINE_BANNER_JS);
-                    // Notificações nativas dos alertas de preço — só nas páginas
-                    // remotas do ShvIA (a casca local não tem sessão/alertas). ADR-011.
-                    let _ = webview.eval(PRICE_ALERT_NOTIFY_JS);
+                    // Notificações nativas dos alertas de preço — ADR-011. Injeta o
+                    // token de capacidade da sessão (só o host canônico o recebe).
+                    let _ = webview.eval(code_bridge::inject_token(PRICE_ALERT_NOTIFY_JS));
+                    let _ = webview.eval(CLIPBOARD_IMAGE_PASTE_JS);
+                    // Ponte do Modo Code (window.__shviaCode/__shviaDesktop). Ver code_bridge.rs.
+                    let _ = webview.eval(code_bridge::inject_token(code_bridge::BRIDGE_JS));
                 }
-                let _ = webview.eval(CLIPBOARD_IMAGE_PASTE_JS);
-                // Ponte do Modo Code (define window.__shviaCode/__shviaDesktop se
-                // o handler nativo existir; senão é no-op). Ver code_bridge.rs.
-                let _ = webview.eval(code_bridge::BRIDGE_JS);
             }
         });
 
@@ -729,6 +785,14 @@ pub fn run() {
             ..
         } => {
             app_handle.state::<code_bridge::Sidecars>().kill_one(&label);
+        }
+        // macOS: clicar no ícone do Dock com todas as janelas fechadas não
+        // recria nada por padrão. Recria a principal para o usuário.
+        #[cfg(target_os = "macos")]
+        tauri::RunEvent::Reopen { .. } => {
+            if app_handle.webview_windows().is_empty() {
+                let _ = build_shvia_window(app_handle, "main");
+            }
         }
         tauri::RunEvent::Exit => {
             app_handle.state::<code_bridge::Sidecars>().kill_all();

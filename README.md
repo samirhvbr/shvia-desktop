@@ -199,9 +199,11 @@ persisted window state, external links in the browser, **offline screen** and
 [docs/funcionalidades.md](docs/funcionalidades.md); how to build in
 [docs/build.md](docs/build.md).
 
-**2 known pending issues** (WebKitGTK limitations on Linux — ADR-008): **mic
-(voice)** and **Ctrl+V for images** don't work; macOS/Windows are likely to resolve them, with
-an Electron fallback if they become must-haves. Living context and pending items in
-[.continue/estado-atual.md](.continue/estado-atual.md).
+**1 known pending issue** (WebKitGTK limitation on Linux — ADR-008): **mic
+(voice)** doesn't work in Linux local packaging; macOS/Windows are likely to resolve it,
+with an Electron fallback if it becomes a must-have. Living context and pending items in
+[.continue/estado-atual.md](.continue/estado-atual.md). **Ctrl+V for images** is
+implemented (`CLIPBOARD_IMAGE_PASTE_JS` injected on the server host) — pending docs
+update in [.continue/estado-atual.md](.continue/estado-atual.md).
 
 > **No doc, no deploy.** Every new feature becomes doc in `docs/` before it goes in.

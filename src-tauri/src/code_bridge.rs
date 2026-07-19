@@ -20,9 +20,35 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use tauri::{Manager, WebviewWindow};
 use tauri_plugin_notification::NotificationExt;
+
+/// Token de capacidade da sessão do app. É injetado SOMENTE nas páginas do host
+/// canônico (`ia.blue3.com.br`, via `on_page_load`) dentro do shim da ponte, e
+/// TODA mensagem página→Rust precisa carregá-lo em `__t`.
+///
+/// Fecha o furo do handler nativo ser alcançável por QUALQUER frame: o
+/// `messageHandler`/`window.chrome.webview` existe para todos os frames da
+/// webview, então um `<iframe>` cross-origin embutido na página poderia postar
+/// `spawn`/`listTree`/`gitStatus` direto. Esse iframe NÃO consegue ler o token
+/// (não injetado nele + closure do frame pai é cross-origin), então suas
+/// mensagens são descartadas em `handle_message`. Uniforme nos 3 SOs — não
+/// depende de API de origem de frame (que o webkit2gtk 2.0 não expõe).
+static BRIDGE_TOKEN: OnceLock<String> = OnceLock::new();
+
+/// Token da sessão (gerado uma vez por processo). 32 hex, seguro em JS/JSON.
+pub fn bridge_token() -> &'static str {
+    BRIDGE_TOKEN
+        .get_or_init(|| uuid::Uuid::new_v4().simple().to_string())
+        .as_str()
+}
+
+/// Interpola o token de sessão no placeholder `__SHVIA_BRIDGE_TOKEN__` de um
+/// script injetado (BRIDGE_JS e PRICE_ALERT_NOTIFY_JS). Chamado no `on_page_load`.
+pub fn inject_token(js: &str) -> String {
+    js.replace("__SHVIA_BRIDGE_TOKEN__", bridge_token())
+}
 
 /// O shim injetado em cada página (`on_page_load`). Define `window.__shviaCode`
 /// (a API que a UI do Modo Code no SHVIA-WEB chama) e `window.__shviaDesktop`
@@ -46,6 +72,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
       reqs[id] = { res: res, rej: rej };
       var msg = { action: action, reqId: id };
       if (data) for (var k in data) msg[k] = data[k];
+      msg.__t = '__SHVIA_BRIDGE_TOKEN__'; // token de capacidade (ver bridge_token)
       sendNative(JSON.stringify(msg));
     });
   }
@@ -79,9 +106,12 @@ struct Sidecar {
 }
 
 /// Registro de sidecars por rótulo de janela — em Tauri managed state.
+/// Cada entrada fica em `Option<Sidecar>` para que `send_line` consiga TIRAR
+/// o sidecar do mapa sob o lock, escrever no stdin FORA do lock (o pipe pode
+/// bloquear se o anna estiver ocupado), e devolver a entrada no lock de novo.
 #[derive(Default)]
 pub struct Sidecars {
-    map: Mutex<HashMap<String, Sidecar>>,
+    map: Mutex<HashMap<String, Option<Sidecar>>>,
     next_gen: AtomicU64,
 }
 
@@ -89,7 +119,12 @@ impl Sidecars {
     fn kill_label(&self, label: &str) {
         // Remove sob o lock, mas mata/espera FORA dele — child.wait() pode bloquear
         // e seguraria o Mutex global (send/insert de outras janelas travariam).
-        let sc = self.map.lock().ok().and_then(|mut m| m.remove(label));
+        let sc = self
+            .map
+            .lock()
+            .ok()
+            .and_then(|mut m| m.remove(label))
+            .and_then(|opt| opt);
         if let Some(mut sc) = sc {
             let _ = sc.child.kill();
             let _ = sc.child.wait();
@@ -107,7 +142,11 @@ impl Sidecars {
             .map
             .lock()
             .ok()
-            .map(|mut m| m.drain().map(|(_, sc)| sc).collect())
+            .map(|mut m| {
+                m.drain()
+                    .filter_map(|(_, opt)| opt)
+                    .collect()
+            })
             .unwrap_or_default();
         for mut sc in drained {
             let _ = sc.child.kill();
@@ -119,12 +158,17 @@ impl Sidecars {
     /// sessão). Devolve a geração desta sessão.
     fn insert(&self, label: String, child: Child, stdin: ChildStdin) -> u64 {
         let gen = self.next_gen.fetch_add(1, Ordering::Relaxed) + 1;
-        let old = self
-            .map
-            .lock()
-            .ok()
-            .and_then(|mut m| m.insert(label, Sidecar { child, stdin, gen }));
-        if let Some(mut old) = old {
+        let old = self.map.lock().ok().and_then(|mut m| {
+            m.insert(
+                label,
+                Some(Sidecar {
+                    child,
+                    stdin,
+                    gen,
+                }),
+            )
+        });
+        if let Some(Some(mut old)) = old {
             let _ = old.child.kill();
             let _ = old.child.wait();
         }
@@ -134,19 +178,44 @@ impl Sidecars {
     /// A sessão viva desta janela ainda é a geração `gen`? (senão houve respawn/kill,
     /// e a thread de stdout velha NÃO deve sinalizar 'exited' pra não derrubar a nova).
     fn is_current(&self, label: &str, gen: u64) -> bool {
-        self.map.lock().map(|m| m.get(label).map(|sc| sc.gen) == Some(gen)).unwrap_or(false)
+        self.map
+            .lock()
+            .map(|m| {
+                m.get(label)
+                    .and_then(|opt| opt.as_ref())
+                    .map(|sc| sc.gen == gen)
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false)
     }
 
     /// Escreve uma linha no stdin do sidecar da janela (mensagem ou decisão).
     /// `false` = não havia sessão viva ou a escrita falhou (o host então sabe que
     /// a decisão/mensagem caiu, em vez de assumir ok).
+    ///
+    /// Importante: o `writeln!+flush` acontece FORA do Mutex global — se o pipe
+    /// do anna encher (tool longa, gate bloqueante), só esta chamada trava;
+    /// outras janelas e o spawn/kill continuam funcionando.
     fn send_line(&self, label: &str, line: &str) -> bool {
+        let mut sidecar = match self.map.lock() {
+            Ok(mut map) => match map.get_mut(label) {
+                Some(slot) => slot.take(),
+                None => None,
+            },
+            Err(_) => None,
+        };
+        let Some(mut sc) = sidecar.take() else {
+            return false;
+        };
+        let ok = writeln!(sc.stdin, "{line}").and_then(|_| sc.stdin.flush()).is_ok();
         if let Ok(mut map) = self.map.lock() {
-            if let Some(sc) = map.get_mut(label) {
-                return writeln!(sc.stdin, "{line}").and_then(|_| sc.stdin.flush()).is_ok();
+            if let Some(slot) = map.get_mut(label) {
+                *slot = Some(sc);
             }
+            // Se a janela foi removida entre os dois locks, recria sem gravar
+            // de volta (a sessão está morta). Sem leak: o Child morre no drop.
         }
-        false
+        ok
     }
 }
 
@@ -216,6 +285,13 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
         Ok(v) => v,
         Err(_) => return,
     };
+    // Cap de capacidade: só a página injetada em ia.blue3.com.br conhece o token
+    // de sessão. Um <iframe> cross-origin embutido alcança o messageHandler
+    // nativo mas não tem o token → descartado (silêncio, sem oráculo). Cobre os
+    // 3 SOs num só ponto, sem depender de API de origem de frame.
+    if v.get("__t").and_then(|t| t.as_str()) != Some(bridge_token()) {
+        return;
+    }
     let action = v.get("action").and_then(|a| a.as_str()).unwrap_or_default();
     let req = v.get("reqId").and_then(|r| r.as_str()).unwrap_or_default().to_string();
     match action {
