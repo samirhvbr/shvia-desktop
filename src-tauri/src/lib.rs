@@ -369,9 +369,16 @@ fn open_window_counter() -> u64 {
     OPEN_WINDOW_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1
 }
 
-/// Uma navegação fica **no app** se for a casca local (http em dev) ou o
+/// Uma navegação fica **no app** se for a casca local (dev ou empacotada) ou o
 /// servidor do ShvIA em https. Qualquer outra origem — incluindo outros
 /// subdomínios blue3.com.br — é link externo e abre no navegador do SO.
+///
+/// A casca EMPACOTADA muda de URL por SO (Tauri `tauri_protocol_url`): no
+/// Windows/Android é `http://tauri.localhost`, mas no **macOS e Linux** é
+/// `tauri://localhost` — esquema `tauri`, não `http`. Omitir esse esquema aqui
+/// bloqueia a navegação inicial do app empacotado e a janela abre BRANCA
+/// (0.9.0 no macOS): em dev o `devUrl` é `http://localhost:1420`, então o bug
+/// só aparece no build. Ver docs/decisoes.md (ADR-013).
 fn is_internal(url: &tauri::Url) -> bool {
     let host = match url.host_str() {
         Some(h) => h,
@@ -380,10 +387,12 @@ fn is_internal(url: &tauri::Url) -> bool {
     if !INTERNAL_HOSTS.contains(&host) {
         return false;
     }
-    // Casca local aceita http (Vite dev); o servidor exige https.
+    // Casca local: `http` (Vite dev + prod Windows/Android) e `tauri` (prod
+    // macOS/Linux). O servidor exige https.
     match url.scheme() {
         "https" => host == SERVER_HOST,
         "http" => host == "localhost" || host == "tauri.localhost",
+        "tauri" => host == "localhost",
         _ => false,
     }
 }
@@ -799,4 +808,40 @@ pub fn run() {
         }
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_internal;
+
+    fn internal(url: &str) -> bool {
+        is_internal(&url.parse().expect("url de teste válida"))
+    }
+
+    /// A casca empacotada tem URL diferente por SO. Se qualquer uma destas
+    /// deixar de ser interna, a navegação inicial é bloqueada e o app abre com a
+    /// janela BRANCA naquele SO — sem sintoma em `tauri dev` (que usa devUrl).
+    #[test]
+    fn casca_local_e_interna_nos_tres_sos() {
+        assert!(internal("tauri://localhost/index.html")); // prod macOS/Linux
+        assert!(internal("http://tauri.localhost/index.html")); // prod Windows/Android
+        assert!(internal("http://localhost:1420/")); // dev (Vite)
+    }
+
+    #[test]
+    fn servidor_so_em_https() {
+        assert!(internal("https://ia.blue3.com.br/chat"));
+        assert!(!internal("http://ia.blue3.com.br/chat"));
+    }
+
+    /// O endurecimento do 0.9.0: nada além do host canônico entra no app (nem
+    /// outro subdomínio blue3.com.br), pra ponte nativa não vazar.
+    #[test]
+    fn outras_origens_sao_externas() {
+        assert!(!internal("https://blue3.com.br/"));
+        assert!(!internal("https://evil.blue3.com.br/"));
+        assert!(!internal("https://ia.blue3.com.br.evil.com/"));
+        assert!(!internal("tauri://evil/"));
+        assert!(!internal("file:///etc/passwd"));
+    }
 }

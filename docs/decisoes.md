@@ -295,3 +295,35 @@ how-to; linkar o ADR.
   frio for atacado na fonte (ex.: desligar revalidação de certificado na engine), aí
   sim dá pra reduzir. Harness de repro: `gjs` + WebKit2-4.1 (registra `tauri://`,
   roda os fetches, exfiltra o tempo por `document.title`).
+## ADR-013 — `is_internal` precisa aceitar o esquema `tauri://` (casca empacotada)
+
+- **Contexto/Problema:** o 0.9.0 endureceu `is_internal` (lib.rs) trocando a
+  checagem "só host" por uma allowlist **host + esquema** — para impedir que um
+  subdomínio `*.blue3.com.br` comprometido carregasse dentro do app e ganhasse a
+  ponte nativa. A allowlist aceitava `https` (servidor) e `http`
+  (`localhost`/`tauri.localhost`). No macOS o app empacotado passou a abrir com a
+  **janela totalmente BRANCA**.
+- **Causa:** a URL da casca empacotada **muda por SO** (Tauri
+  `AppManager::tauri_protocol_url`, tauri 2.11.3 `src/manager/mod.rs:339`):
+  `http://tauri.localhost` **só** no Windows/Android; em **macOS e Linux** é
+  `tauri://localhost` — esquema **`tauri`**, não `http`. Com o esquema fora da
+  allowlist, `is_internal` devolvia `false` para a **própria navegação inicial**
+  (`on_navigation` roda no load inicial, não só em links), o handler negava a
+  navegação e ainda mandava `tauri://localhost/index.html` pro `opener` do SO
+  (no-op) — resultado: WebView vazia, sem erro, sem log.
+- **Por que passou no dev:** em `tauri dev` a janela abre o `devUrl`
+  (`http://localhost:1420`), que **está** na allowlist. O bug é **invisível fora
+  do build empacotado** — e invisível no Windows, o único SO cuja casca prod usa
+  `http`.
+- **Decisão:** aceitar `"tauri" => host == "localhost"` na allowlist, junto de
+  `http` (dev + prod Windows/Android) e `https` (servidor). O endurecimento
+  continua de pé: o esquema `tauri` só vale para o host `localhost` (a casca
+  embutida no binário), e a ponte nativa segue injetada **apenas** em
+  `SERVER_HOST` no `on_page_load` — a casca local nunca a recebe.
+- **Consequências/limites:** cobertos por teste de unidade
+  (`tests::casca_local_e_interna_nos_tres_sos`), que trava as **três** URLs de
+  casca — `tauri://localhost`, `http://tauri.localhost`, `http://localhost:1420`.
+  **Não relitigar** removendo o esquema `tauri` "porque não parece http": ele é a
+  origem real do app empacotado no macOS/Linux. Regra geral ao mexer em
+  `is_internal`: rodar `cargo test` e validar num **build empacotado**, nunca só
+  em `tauri dev`.
