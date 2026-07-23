@@ -78,7 +78,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
   }
   window.__shviaCode = {
     // sessão do agente
-    spawn: function (o) { return post('spawn', o || {}); },   // {projectDir, apiKey, model?, effort?, url?}
+    spawn: function (o) { return post('spawn', o || {}); },   // {projectDir, apiKey, model?, effort?, url?, engine?}  engine:'claude' = motor assinatura (Claude Code)
     send:  function (o) { return post('send', { payload: o }); }, // {type:'user',text} | {id,decision}
     kill:  function () { return post('kill'); },
     onEvent: function (cb) { if (typeof cb === 'function') listeners.push(cb); },
@@ -219,17 +219,18 @@ impl Sidecars {
     }
 }
 
-/// Localiza o binário `anna` (cross-platform). Ordem: (1) ao lado do executável
-/// do ShvIA Desktop — permite empacotar o `anna(.exe)` como resource/sidecar do
-/// instalador; (2) no PATH; (3) locais conhecidos por SO (`~/.local/bin/anna`
-/// no Unix, `%LOCALAPPDATA%\Programs\anna\anna.exe` no Windows).
-fn resolve_anna() -> Option<PathBuf> {
-    let exe_name = if cfg!(windows) { "anna.exe" } else { "anna" };
+/// Localiza um binário de motor (`anna` ou `claude-runner`), cross-platform.
+/// Ordem: (1) ao lado do executável do ShvIA Desktop — permite empacotar o
+/// binário como resource/sidecar do instalador; (2) no PATH; (3) locais
+/// conhecidos por SO (`~/.local/bin/<base>` no Unix, `%LOCALAPPDATA%\Programs\
+/// <base>\<base>.exe` no Windows).
+fn resolve_bin(base: &str) -> Option<PathBuf> {
+    let exe_name = if cfg!(windows) { format!("{base}.exe") } else { base.to_string() };
 
     // (1) Ao lado do próprio app (bundled).
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let p = dir.join(exe_name);
+            let p = dir.join(&exe_name);
             if p.exists() {
                 return Some(p);
             }
@@ -239,7 +240,7 @@ fn resolve_anna() -> Option<PathBuf> {
     // (2)+(3) por SO.
     #[cfg(windows)]
     {
-        if let Ok(out) = Command::new("where").arg("anna").output() {
+        if let Ok(out) = Command::new("where").arg(base).output() {
             if out.status.success() {
                 // `where` pode listar vários — pega a 1ª linha.
                 if let Some(line) = String::from_utf8_lossy(&out.stdout).lines().next() {
@@ -251,7 +252,7 @@ fn resolve_anna() -> Option<PathBuf> {
             }
         }
         if let Ok(local) = std::env::var("LOCALAPPDATA") {
-            let p = PathBuf::from(local).join("Programs").join("anna").join("anna.exe");
+            let p = PathBuf::from(local).join("Programs").join(base).join(&exe_name);
             if p.exists() {
                 return Some(p);
             }
@@ -260,7 +261,7 @@ fn resolve_anna() -> Option<PathBuf> {
 
     #[cfg(not(windows))]
     {
-        if let Ok(out) = Command::new("sh").arg("-c").arg("command -v anna").output() {
+        if let Ok(out) = Command::new("sh").arg("-c").arg(format!("command -v {base}")).output() {
             if out.status.success() {
                 let p = String::from_utf8_lossy(&out.stdout).trim().to_string();
                 if !p.is_empty() {
@@ -269,7 +270,7 @@ fn resolve_anna() -> Option<PathBuf> {
             }
         }
         if let Ok(home) = std::env::var("HOME") {
-            let p = PathBuf::from(home).join(".local/bin/anna");
+            let p = PathBuf::from(home).join(".local/bin").join(base);
             if p.exists() {
                 return Some(p);
             }
@@ -335,25 +336,43 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     if dir.is_empty() || !PathBuf::from(&dir).is_dir() {
         return reply(window, req, false, serde_json::json!({ "error": "pasta do projeto inválida" }));
     }
-    let Some(bin) = resolve_anna() else {
-        return reply(window, req, false,
-            serde_json::json!({ "error": "anna não encontrado — instale o anna (SHVIA-CODE) e deixe no PATH (Unix: install.sh; Windows: anna.exe no PATH ou %LOCALAPPDATA%\\Programs\\anna)" }));
+    // Motor: "gateway" (anna, default) ou "claude" (claude-runner — Claude Code
+    // com a ASSINATURA do usuário, FORA do gateway). Ambos falam o mesmo NDJSON
+    // (embedding.md), então o bridge e a UI de cards não mudam. Sem `engine` = anna.
+    let engine = s("engine");
+    let is_claude = engine == "claude";
+    let exe_base = if is_claude { "claude-runner" } else { "anna" };
+    let Some(bin) = resolve_bin(exe_base) else {
+        let err = if is_claude {
+            "claude-runner não encontrado — rode claude-runner/install.sh (deixa em ~/.local/bin) e faça `claude login` (usa a assinatura; sem API key)."
+        } else {
+            "anna não encontrado — instale o anna (SHVIA-CODE) e deixe no PATH (Unix: install.sh; Windows: anna.exe no PATH ou %LOCALAPPDATA%\\Programs\\anna)"
+        };
+        return reply(window, req, false, serde_json::json!({ "error": err }));
     };
 
     let mut cmd = Command::new(bin);
-    cmd.arg("--json").args(["--tools", "local"]).current_dir(&dir);
+    cmd.current_dir(&dir);
     let (model, effort, url, key) = (s("model"), s("effort"), s("url"), s("apiKey"));
-    if !model.is_empty() {
-        cmd.args(["--model", &model]);
-    }
-    if !effort.is_empty() {
-        cmd.args(["--effort", &effort]);
-    }
-    if !url.is_empty() {
-        cmd.args(["--url", &url]);
-    }
-    if !key.is_empty() {
-        cmd.env("SHVIA_API_KEY", &key); // chave do usuário, repassada pelo web (nunca logada)
+    if is_claude {
+        // Assinatura via cliente oficial: passa só a pasta do projeto. NADA de
+        // SHVIA_API_KEY / --url / --effort (não passa pelo gateway). O modelo é o
+        // do login/assinatura; o perfil do gateway não se aplica aqui.
+        cmd.args(["--cwd", &dir]);
+    } else {
+        cmd.arg("--json").args(["--tools", "local"]);
+        if !model.is_empty() {
+            cmd.args(["--model", &model]);
+        }
+        if !effort.is_empty() {
+            cmd.args(["--effort", &effort]);
+        }
+        if !url.is_empty() {
+            cmd.args(["--url", &url]);
+        }
+        if !key.is_empty() {
+            cmd.env("SHVIA_API_KEY", &key); // chave do usuário, repassada pelo web (nunca logada)
+        }
     }
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
 
@@ -371,9 +390,10 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     let gen = window.app_handle().state::<Sidecars>().insert(label.clone(), child, stdin);
 
     // stderr → log do app (nunca a timeline).
+    let tag = exe_base.to_string();
     std::thread::spawn(move || {
         for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-            eprintln!("[anna] {line}");
+            eprintln!("[{tag}] {line}");
         }
     });
 

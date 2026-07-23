@@ -327,3 +327,37 @@ how-to; linkar o ADR.
   origem real do app empacotado no macOS/Linux. Regra geral ao mexer em
   `is_internal`: rodar `cargo test` e validar num **build empacotado**, nunca só
   em `tauri dev`.
+
+## ADR-014 — Motor paralelo "Claude Code (assinatura)" no Modo Code
+
+- **Contexto/Problema:** o Modo Code roda sobre o `anna` (loop no cliente,
+  inferência pelo **gateway** do SHVIA — auditoria/quota/LGPD/custo herdados).
+  Quer-se também aproveitar a **assinatura Pro/Max** do usuário, usando o cliente
+  oficial do Claude Code. A via de "OAuth de assinatura" de gateways como o
+  9router foi **descartada**: o mecanismo dela é falsificação de identidade +
+  evasão anti-abuso (billing header falso, device/account fabricados, decoy
+  tools) — o próprio repo de origem a marca `RISK_NOTICE/deprecated`.
+- **Decisão:** um **motor paralelo** — `claude-runner` (Node + Claude **Agent
+  SDK**) que orquestra o **cliente oficial** e fala o **mesmo NDJSON do `anna`**
+  (`SHVIA-CODE/docs/embedding.md`). O `code_bridge.rs::spawn` escolhe pelo campo
+  `engine` (`'claude'` → runner; ausente/`'gateway'` → `anna`); `resolve_bin`
+  generaliza o antigo `resolve_anna`. **Bridge e UI de cards ficam intactos** (é
+  drop-in do protocolo). Auth = **assinatura** via `claude login`/`setup-token`
+  (o runner **remove `ANTHROPIC_API_KEY`** p/ forçar o fallback; **sem API key**);
+  o app **nunca embute o login** (ToS: a Anthropic proíbe terceiros oferecerem
+  login claude.ai). Política de permissão = **PreToolUse hook + `settingSources:
+  []`** (autoridade única: bypassa allow-rules e não herda o `~/.claude/
+  settings.json` pessoal — garante "nada roda/escreve sem o dev ver").
+- **Trade-off (consciente):** este motor **sai do gateway** — a inferência vai
+  direto do `claude` à Anthropic, então **não há** auditoria/quota/LGPD/medidor
+  neste modo. É intrínseco a "usar a assinatura". Por isso é **toggle paralelo**
+  ("Motor: SHVIA gateway | Claude Code assinatura"), **não** substituto do `anna`.
+- **Consequências/limites:** o patch do bridge é **retrocompatível** (sem
+  `engine` = `anna`, comportamento idêntico; `cargo check`/`clippy` verdes). O
+  runner é instalado no **padrão anna** (`claude-runner/install.sh` →
+  `~/.local/bin/claude-runner`, resolvido por PATH/local). Pré-req: **Node 18+** e
+  Claude Code **autenticado**. O seletor de **modelo** do Claude (opus/sonnet/…)
+  e o **toggle na UI** (SHVIA-WEB) com aviso "fora do gateway" ficam para o passo
+  seguinte. Validado ao vivo (spike): auth por assinatura, streaming, e gates nos
+  dois sentidos (leitura=auto; `Bash`/`Write`/`Edit`=card; approve executa,
+  reject bloqueia).
