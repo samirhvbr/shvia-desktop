@@ -37,7 +37,7 @@ modelo + postura de permissões. Stack-alvo: **Tauri 2 (Rust) + casca web
 
 - **Effort `max` vai por env** (`CLAUDE_CODE_EFFORT_LEVEL=max`). O campo
   `effortLevel` do JSON só aceita `low/medium/high/xhigh` — `max` ali é ignorado.
-- **1M é nativo** no Opus 4.8 (API Anthropic), sem flag. Não setar
+- **1M é nativo** no Opus 5 (API Anthropic), sem flag. Não setar
   `CLAUDE_CODE_DISABLE_1M_CONTEXT`. No plano Max é incluso — usar longe do limite.
 - **`defaultMode: plan`** — o agente planeja antes de agir. Mantém o hábito de
   revisar mudanças estruturais antes de tocar em código.
