@@ -95,45 +95,25 @@ trap _on_exit EXIT
 usage() { awk 'NR>1{ if($0=="set -euo pipefail") exit; sub(/^# ?/,""); print }' "$0"; }
 
 # ── git pull antes do build (padrão da casa) ────────────────────────────────
-# Puxa o remoto ANTES de qualquer passo, pra não empacotar código velho. É
-# fast-forward-only (nunca cria merge). NÃO trava o build: se o pull não
-# aplicar (offline, mudanças locais, branch divergente), avisa e segue com o
-# código LOCAL. Pule por completo com --skip-git-pull.
+# Sincroniza o remoto ANTES de qualquer passo, pra não empacotar código velho,
+# via scripts/git-sync.mjs (a mesma lógica do build-local.ps1 e do `npm run
+# pull`). É fast-forward-only e NÃO trava o build. Pule com --skip-git-pull.
+# Sincronia manual (fora do build): use `npm run pull` no lugar de `git pull`.
+# Delega a sincronia pro scripts/git-sync.mjs (uma implementação só, igual no
+# build-local.ps1 e no `npm run pull`). Ele restaura ao HEAD APENAS os manifests
+# cuja única diferença é a linha de versão (lixo regenerável) e preserva
+# qualquer mudança real (ex.: dep nova no Cargo.toml), depois faz pull --ff-only.
+# Nunca derruba o build (o próprio git-sync.mjs sai 0 sempre).
 git_sync() {
   if [ "${SKIP_GIT_PULL:-0}" -eq 1 ]; then
     echo "    (pulado: --skip-git-pull)"
     return 0
   fi
-  if ! command -v git >/dev/null 2>&1 || [ ! -e .git ]; then
-    echo "    (não é um clone git — pulando)"
+  if ! command -v node >/dev/null 2>&1; then
+    echo "    (node não encontrado — pulando a sincronia)"
     return 0
   fi
-  if ! git remote get-url origin >/dev/null 2>&1; then
-    echo "    (sem remote 'origin' — pulando)"
-    return 0
-  fi
-  # Manifests GERADOS pelo version:sync (derivados do version.md). Entre builds
-  # eles ficam "sujos" — no Windows é o caso clássico: line endings / versão de
-  # um build anterior — e travam o fast-forward ("local changes would be
-  # overwritten"). Como o build os REESCREVE a partir do version.md, restaurá-los
-  # ao HEAD antes do pull é seguro e evita o "del Cargo.toml" manual.
-  local generated="src-tauri/Cargo.toml src-tauri/Cargo.lock package.json package-lock.json src-tauri/tauri.conf.json"
-  local dirty
-  dirty="$(git diff --name-only -- $generated 2>/dev/null || true)"
-  if [ -n "$dirty" ]; then
-    echo "    manifests de versão sujos — restaurando (serão regerados no build):"
-    echo "$dirty" | sed 's/^/      /'
-    git checkout -- $generated 2>/dev/null || true
-  fi
-  echo "    branch: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?') — git pull --ff-only"
-  local out
-  if out="$(git pull --ff-only 2>&1)"; then
-    echo "$out" | sed 's/^/    /'
-  else
-    echo "$out" | sed 's/^/    /' >&2
-    echo "    ⚠️  git pull não aplicou (offline, mudanças locais fora dos manifests, ou branch divergente)." >&2
-    echo "        O build vai continuar com o código LOCAL atual." >&2
-  fi
+  node scripts/git-sync.mjs || true
 }
 
 # ── Preflight: checa o toolchain ANTES dos passos lentos ────────────────────

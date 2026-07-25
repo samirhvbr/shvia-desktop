@@ -1,0 +1,35 @@
+# Line endings normalizados em LF (25/07/2026).
+#
+# Sem isto, o Windows reescreve arquivos de texto para CRLF e o git marca o
+# arquivo INTEIRO como modificado — foi uma das causas do `git pull` travar nos
+# manifests de versão (Cargo.toml e cia.) com "your local changes would be
+# overwritten". LF em todo lugar remove essa classe de conflito de uma vez, no
+# build E no pull manual. (Checado em 25/07: 0 arquivos com CRLF hoje, então
+# isto não gera renormalização/churn.)
+#
+# Stack toda (Rust/TOML/JSON/TS/JS) roda igual com LF no Windows.
+* text=auto eol=lf
+
+# Batch clássico do Windows prefere CRLF (cmd.exe legado com labels). PowerShell
+# roda LF sem problema, então .ps1 fica no LF do resto.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binários: NUNCA normalizar (corromperia o conteúdo).
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.webp   binary
+*.ico    binary
+*.icns   binary
+*.woff   binary
+*.woff2  binary
+*.ttf    binary
+*.otf    binary
+*.msi    binary
+*.exe    binary
+*.dll    binary
+*.dmg    binary
+*.AppImage binary
+*.node   binary

@@ -15,10 +15,14 @@
     .\build-local.ps1 -SkipNpmCi     # pula 'npm ci' (deps ja instaladas)
     .\build-local.ps1 -SkipGitPull   # NAO sincroniza com o remoto antes do build
 
-  GIT PULL (padrao da casa): antes de tudo, o script faz 'git pull --ff-only'
-  pra voce nao empacotar codigo velho. E fast-forward-only (nunca cria merge) e
-  NAO trava o build se falhar (offline, mudancas locais ou branch divergente) —
-  so avisa e segue com o que esta local. Pule com -SkipGitPull.
+  GIT PULL (padrao da casa): antes de tudo, o script sincroniza com o remoto via
+  scripts/git-sync.mjs. Ele restaura ao HEAD SO os manifests cuja unica diferenca
+  e a linha de versao (Cargo.toml e cia. — lixo regeneravel pelo version:sync) e
+  preserva qualquer mudanca real, depois faz 'git pull --ff-only'. Nunca cria
+  merge e nunca trava o build. Pule com -SkipGitPull.
+
+  Pra sincronizar NA MAO (fora do build), use 'npm run pull' em vez de
+  'git pull' — mesma protecao, fim do conflito no Cargo.toml.
 
   Saida: src-tauri\target\release\bundle\
   Obs.: o 1o build compila o Rust inteiro (~minutos); os proximos sao incrementais.
@@ -89,38 +93,18 @@ function Invoke-Native {
 # se nao aplicar (offline, mudancas locais, branch divergente), avisa e segue com
 # o codigo LOCAL. git escreve no stderr no fluxo normal, entao rodamos com
 # EAP=Continue e validamos o exit code — sem virar erro terminante por engano.
+# Delega a sincronia pro scripts/git-sync.mjs (uma implementacao so, igual no
+# build-local.sh e no `npm run pull`). Ele restaura ao HEAD APENAS os manifests
+# cuja unica diferenca e a linha de versao (lixo regeneravel) e preserva
+# qualquer mudanca real (ex.: dep nova no Cargo.toml), depois faz pull --ff-only.
+# Nunca derruba o build (o proprio git-sync.mjs sai 0 sempre).
 function Invoke-GitSync {
   if ($SkipGitPull) { Write-Host "    (pulado: -SkipGitPull)" -ForegroundColor Yellow; return }
-  if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    Write-Host "    (git nao encontrado — pulando)" -ForegroundColor Yellow; return
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    Write-Host "    (node nao encontrado — pulando a sincronia)" -ForegroundColor Yellow; return
   }
-  if (-not (Test-Path .git)) { Write-Host "    (nao e um clone git — pulando)" -ForegroundColor Yellow; return }
   $prev = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-  try {
-    git remote get-url origin *> $null
-    if ($LASTEXITCODE -ne 0) { Write-Host "    (sem remote 'origin' — pulando)" -ForegroundColor Yellow; return }
-    # Manifests GERADOS pelo version:sync (derivados do version.md). Entre builds
-    # ficam "sujos" no Windows (line endings / versao de build anterior) e travam
-    # o fast-forward ("local changes would be overwritten"). O build os REESCREVE
-    # a partir do version.md, entao restaura-los ao HEAD antes do pull e seguro e
-    # evita o "del Cargo.toml" manual.
-    $generated = @('src-tauri/Cargo.toml','src-tauri/Cargo.lock','package.json','package-lock.json','src-tauri/tauri.conf.json')
-    $dirty = git diff --name-only -- $generated 2>$null
-    if ($dirty) {
-      Write-Host "    manifests de versao sujos — restaurando (serao regerados no build):" -ForegroundColor Yellow
-      $dirty | ForEach-Object { Write-Host "      $_" }
-      git checkout -- $generated 2>$null
-    }
-    $branch = (git rev-parse --abbrev-ref HEAD 2>$null)
-    Write-Host "    branch: $branch — git pull --ff-only"
-    $out = git pull --ff-only 2>&1
-    $code = $LASTEXITCODE
-    $out | ForEach-Object { Write-Host "    $_" }
-    if ($code -ne 0) {
-      Write-Host "    [aviso] git pull nao aplicou (offline, mudancas locais fora dos manifests, ou branch divergente)." -ForegroundColor Yellow
-      Write-Host "            O build vai continuar com o codigo LOCAL atual." -ForegroundColor Yellow
-    }
-  } finally { $ErrorActionPreference = $prev }
+  try { node scripts/git-sync.mjs } finally { $ErrorActionPreference = $prev }
 }
 
 Write-Host "==> ShvIA Desktop — build local (Windows)"
