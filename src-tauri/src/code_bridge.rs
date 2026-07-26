@@ -84,6 +84,10 @@ pub const BRIDGE_JS: &str = r#"(function () {
     onEvent: function (cb) { if (typeof cb === 'function') listeners.push(cb); },
     // pasta / vínculo
     pickFolder: function () { return post('pickFolder'); },
+    // Salva artefato gerado (imagem/código) com diálogo nativo do SO. A PÁGINA
+    // manda os bytes — ela tem a sessão autenticada, o Rust não. {name, dataBase64}
+    // → {saved:true, path} | {saved:false} quando o usuário cancela.
+    saveFile: function (o) { return post('saveFile', o || {}); },
     getBinding: function (pid) { return post('getBinding', { projectId: pid }); },
     setBinding: function (pid, path) { return post('setBinding', { projectId: pid, path: path }); },
     // painel da pasta (read-only, pelo app)
@@ -306,6 +310,7 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             reply(window, &req, true, serde_json::json!({ "ok": true }));
         }
         "pickFolder" => pick_folder(window, req),
+        "saveFile" => save_file(window, req, &v),
         "getBinding" => {
             let pid = v.get("projectId").and_then(|p| p.as_str()).unwrap_or_default();
             let path = load_bindings(window).get(pid).and_then(|x| x.as_str()).map(String::from);
@@ -457,6 +462,124 @@ fn notify(window: &WebviewWindow, v: &serde_json::Value) {
         .title(sanitize(title))
         .body(sanitize(body))
         .show();
+}
+
+/// Teto do artefato salvo pela ponte (50 MB). A página é confiável (host
+/// canônico), mas o base64 vem por `eval` de mensagem — um limite explícito
+/// evita que uma resposta malformada tente materializar meio gigabyte na RAM.
+const MAX_SAVE_BYTES: usize = 50 * 1024 * 1024;
+
+/// `saveFile` — salva um artefato GERADO pelo modelo onde o usuário ESCOLHER.
+///
+/// A página manda bytes (base64) + nome sugerido; nunca URL. O `/api/v1/files/
+/// {id}` do ShvIA é autenticado por sessão, e a sessão vive na WebView — o Rust
+/// não a tem. Com os bytes vindo prontos, o lado nativo só abre o diálogo e
+/// escreve, sem precisar saber nada de autenticação.
+///
+/// Cancelar NÃO é erro: volta `{saved:false}` e o web fica quieto.
+fn save_file(window: &WebviewWindow, req: String, v: &serde_json::Value) {
+    use base64::Engine;
+    use tauri_plugin_dialog::DialogExt;
+
+    let nome = sanitize_filename(v.get("name").and_then(|x| x.as_str()).unwrap_or(""));
+    let bytes = match v
+        .get("dataBase64")
+        .and_then(|x| x.as_str())
+        .and_then(|s| base64::engine::general_purpose::STANDARD.decode(s).ok())
+    {
+        Some(b) if !b.is_empty() && b.len() <= MAX_SAVE_BYTES => b,
+        _ => {
+            reply(window, &req, false, serde_json::json!({ "error": "conteudo invalido" }));
+            return;
+        }
+    };
+
+    let win = window.clone();
+    window
+        .app_handle()
+        .dialog()
+        .file()
+        .set_file_name(&nome)
+        .save_file(move |path| {
+            let Some(path) = path else {
+                reply(&win, &req, true, serde_json::json!({ "saved": false }));
+                return;
+            };
+            let resultado = path
+                .into_path()
+                .map_err(|e| e.to_string())
+                .and_then(|p| std::fs::write(&p, &bytes).map(|_| p).map_err(|e| e.to_string()));
+            match resultado {
+                Ok(p) => reply(
+                    &win,
+                    &req,
+                    true,
+                    serde_json::json!({ "saved": true, "path": p.to_string_lossy() }),
+                ),
+                Err(e) => reply(&win, &req, false, serde_json::json!({ "error": e })),
+            }
+        });
+}
+
+/// Nome de arquivo vindo da PÁGINA: só o basename, sem separador de diretório
+/// nem `..`. O diálogo já obriga o usuário a escolher a pasta, mas o campo do
+/// nome não pode carregar caminho — nem no macOS, onde "/" é separador e ":"
+/// tem herança de path.
+fn sanitize_filename(nome: &str) -> String {
+    let base = nome
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or("")
+        .trim()
+        .trim_matches('.')
+        .replace(':', "-");
+    let limpo: String = base
+        .chars()
+        .filter(|c| !c.is_control() && !matches!(c, '<' | '>' | '"' | '|' | '?' | '*'))
+        .take(120)
+        .collect();
+
+    if limpo.is_empty() {
+        "arquivo".to_string()
+    } else {
+        limpo
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_filename;
+
+    /// O nome vem da PÁGINA. O diálogo escolhe a pasta; o campo do nome não pode
+    /// reintroduzir caminho por cima dela.
+    #[test]
+    fn nome_de_arquivo_nunca_carrega_caminho() {
+        assert_eq!(sanitize_filename("../../etc/passwd"), "passwd");
+        assert_eq!(sanitize_filename("/tmp/imagem.png"), "imagem.png");
+        assert_eq!(sanitize_filename(r"C:\Windows\x.png"), "x.png");
+        // macOS: ":" tem herança de separador de path no Finder.
+        assert_eq!(sanitize_filename("pasta:arquivo.png"), "pasta-arquivo.png");
+    }
+
+    #[test]
+    fn nome_vazio_ou_so_pontos_vira_fallback() {
+        assert_eq!(sanitize_filename(""), "arquivo");
+        assert_eq!(sanitize_filename("   "), "arquivo");
+        assert_eq!(sanitize_filename("..."), "arquivo");
+        assert_eq!(sanitize_filename("/"), "arquivo");
+    }
+
+    #[test]
+    fn nome_normal_passa_intacto() {
+        assert_eq!(sanitize_filename("imagem-gerada-1.png"), "imagem-gerada-1.png");
+        assert_eq!(sanitize_filename("shvia-1785032029.svg"), "shvia-1785032029.svg");
+    }
+
+    #[test]
+    fn caracteres_de_controle_e_curinga_saem() {
+        assert_eq!(sanitize_filename("a\nb*c?.png"), "abc.png");
+        assert!(sanitize_filename(&"x".repeat(500)).len() <= 120);
+    }
 }
 
 fn pick_folder(window: &WebviewWindow, req: String) {

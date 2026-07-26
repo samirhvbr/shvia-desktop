@@ -361,3 +361,36 @@ how-to; linkar o ADR.
   seguinte. Validado ao vivo (spike): auth por assinatura, streaming, e gates nos
   dois sentidos (leitura=auto; `Bash`/`Write`/`Edit`=card; approve executa,
   reject bloqueia).
+
+---
+
+## ADR-015 — `saveFile` na ponte: salvar artefato gerado com diálogo nativo
+
+- **Contexto/Problema:** com a geração de imagem no ar (SHVIA 2.48/2.49), o
+  artefato passou a ser um **resultado que o usuário quer guardar** — imagem,
+  SVG, markdown, script. O menu de contexto do WebView ("Baixar imagem") não
+  resolvia: no macOS o WKWebView baixa **sozinho para `~/Downloads`**, sem
+  perguntar e sem avisar (o usuário clicou e concluiu que "não aconteceu nada"),
+  e num `<a download>` o comportamento varia por SO. Não havia como **escolher
+  onde salvar**, que é o que se espera de um app nativo.
+- **Decisão:** uma ação nova na ponte — `saveFile({name, dataBase64})` → diálogo
+  nativo (`dialog().file().set_file_name().save_file()`, o irmão do `pickFolder`
+  do ADR-005) → escreve onde o usuário escolher e responde `{saved, path}`.
+  **Quem lê os bytes é a PÁGINA**, não o Rust: o artefato vive em
+  `/api/v1/files/{id}`, que é **autenticado por sessão**, e a sessão mora na
+  WebView. Mandar a URL obrigaria o lado nativo a reproduzir autenticação; com os
+  bytes prontos ele só abre o diálogo e escreve — mantém o Rust ignorante de
+  auth, que é a mesma postura do resto da ponte.
+- **Segurança:** nada muda no perímetro — mesma mensagem nativa, mesmo token de
+  capacidade por sessão (iframe cross-origin segue descartado), **sem comando
+  Tauri e sem capability nova** (ADR-001 de pé). O `name` vem da página, então é
+  sanitizado para **basename** (sem `/`, `\`, `..`, `:` do macOS, controles e
+  curingas) — o diálogo escolhe a pasta e o campo do nome não pode reintroduzir
+  caminho por cima dela. Teto de 50 MB no artefato.
+- **Consequências/limites:** retrocompatível nos dois sentidos. O web testa
+  `typeof __shviaCode.saveFile === 'function'` e, sem a ponte nova, cai em
+  `showSaveFilePicker` (Chromium) e depois em `<a download>` + toast — ou seja,
+  **desktop antigo continua funcionando** com o comportamento atual. Cobertura:
+  4 testes de `sanitize_filename` (`cargo test`). Cancelar o diálogo **não é
+  erro** (`{saved:false}`, sem toast). O ganho só chega às máquinas com **build
+  novo** — ciclo diferente do deploy web, que é imediato.

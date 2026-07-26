@@ -1,6 +1,6 @@
 [package]
 name = "shvia-desktop"
-version = "0.10.1"
+version = "0.11.0"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
@@ -38,6 +38,9 @@ tauri-plugin-dialog = "2"
 # (app.notification().builder().show()) chamada pelo code_bridge; NENHUM comando/
 # capability é exposto à página remota (mantém o ADR-001). Cross-platform.
 tauri-plugin-notification = "2"
+# Decodifica o artefato que a página manda para o `saveFile` da ponte (bytes em
+# base64 — a página lê o /files/{id} com a sessão dela e repassa os bytes).
+base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Token de capacidade da ponte nativa (per-sessão, anti-iframe). Só v4 (CSPRNG).
