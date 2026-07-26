@@ -1,7 +1,7 @@
 //! ShvIA Desktop — shell fino Tauri 2.
 //!
 //! Cada janela abre a casca local (`src/`), que mostra um splash com a marca e
-//! redireciona o WebView para o ShvIA hospedado (`https://ia.blue3.com.br`).
+//! redireciona o WebView para o ShvIA hospedado (`https://ai.shvia.org`).
 //! A partir daí a UI é o próprio Blade do ShvIA — "mesmas funções" (ADR-002).
 //!
 //! Postura de menor privilégio: **nenhum comando nativo é exposto à página
@@ -12,7 +12,7 @@
 //! `tauri.conf.json`, para podermos:
 //! - **multi-janela** (F2): menu `Arquivo → Nova janela` (`Ctrl/Cmd+N`) — todas
 //!   compartilham a sessão (cookie), úteis para conversas/projetos lado a lado;
-//! - rotear **links externos** (fora de `*.blue3.com.br`) para o **navegador do
+//! - rotear **links externos** (fora dos hosts do servidor, `SERVER_HOSTS`) para o **navegador do
 //!   SO** via `on_navigation` (login do ShvIA é same-origin, então não quebra auth);
 //! - **persistir** tamanho/posição entre reinícios (`tauri-plugin-window-state`).
 
@@ -182,13 +182,23 @@ const PRICE_ALERT_NOTIFY_JS: &str = r#"(function () {
 /// menor privilégio, ver `docs/arquitetura.md`).
 ///
 /// - **Build (desktop)**: o Rust substitui `__SHVIA_BUILD__` pela versão do
-///   pacote (`version.md` → tauri.conf.json) e `__SHVIA_TAURI__` pela versão do
-///   crate `tauri` antes do `eval`.
+///   pacote (`version.md` → tauri.conf.json), `__SHVIA_TAURI__` pela versão do
+///   crate `tauri` e `__SHVIA_SERVER_HOST__` por [`SERVER_HOST`], antes do
+///   `eval`. Placeholder novo aqui exige `.replace` novo no handler do menu — é
+///   uma via de `eval` só, mas se esquecer, a string literal vaza pra UI.
+/// - **Servidor**: numa página REMOTA a linha mostra o `location.hostname` que a
+///   janela carregou de fato — durante a migração de domínio a pergunta do
+///   suporte é "esse binário aponta pra onde?", e casar o host contra uma lista
+///   fixa mentiria no dia em que um host novo entrasse. Só na casca local (sem
+///   host remoto) cai no canônico compilado.
 /// - **ShvIA (servidor)**: o rodapé da sidebar (`.account-mini__version`,
 ///   dashboard.blade.php) dá o valor imediato — mas ele é do load da página, e
 ///   a janela pode estar aberta há dias; então `GET /api/v1/health`
 ///   (`version.app`) é consultado **sempre** e corrige o valor se o servidor
-///   foi atualizado. Sem rodapé e com fetch falho (login/offline), "—".
+///   foi atualizado. Sem rodapé e com fetch falho (login/offline), "—". O fetch
+///   é **relativo** e só sai em página remota: da casca local a origem é
+///   `tauri://localhost`, que o CORS do servidor não libera (nem deve), então
+///   absoluto seria barrado na leitura e cairia em "—" de qualquer jeito.
 /// - **Visual**: usa os design tokens do ShvIA (`tokens.css` do servidor) via
 ///   `var(--token, fallback)` — na página remota herda o tema real; na casca
 ///   local os fallbacks reproduzem os mesmos valores. Esc/backdrop fecham,
@@ -249,7 +259,13 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
     wv = (os === 'macOS' ? 'WKWebView' : 'WebKitGTK') + (m ? ' (WebKit ' + m[1] + ')' : '');
   }
   var env = 'Tauri __SHVIA_TAURI__ · ' + wv + ' · ' + os;
-  var host = /(^|\.)blue3\.com\.br$/.test(location.hostname) ? location.hostname : 'ia.blue3.com.br';
+  // Linha "Servidor" do modal. Numa página REMOTA, mostra o host que a janela
+  // realmente carregou — é a pergunta que o suporte faz durante a migração
+  // ("esse binário aponta pra onde?"), e uma lista fixa aqui mentiria no dia em
+  // que um host novo entrasse. Só na casca local (tauri/localhost, sem host
+  // remoto nenhum) cai no canônico compilado.
+  var remoto = /^https?:$/.test(location.protocol) && !/^(localhost|tauri\.localhost)$/.test(location.hostname);
+  var host = remoto ? location.hostname : '__SHVIA_SERVER_HOST__';
 
   var overlay = document.createElement('div');
   overlay.id = 'shvia-about-overlay';
@@ -260,7 +276,7 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
   card.setAttribute('aria-labelledby', 'shvia-about-title');
   card.innerHTML =
     '<h2 class="shvia-about-title" id="shvia-about-title">ShvIA Desktop</h2>' +
-    '<p class="shvia-about-sub">Cliente desktop do ShvIA · Blue3</p>' +
+    '<p class="shvia-about-sub">Cliente desktop do ShvIA</p>' +
     '<dl class="shvia-about-rows">' +
     '<dt>Build desktop</dt><dd id="shvia-about-build"></dd>' +
     '<dt>ShvIA servidor</dt><dd id="shvia-about-server" aria-live="polite">…</dd>' +
@@ -298,15 +314,23 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
   var vTxt = vEl && vEl.textContent ? vEl.textContent.trim() : '';
   var temRodape = /^v?\d+(\.\d+)*$/.test(vTxt);
   if (temRodape) { setServer(vTxt); }
-  var base = /(^|\.)blue3\.com\.br$/.test(location.hostname) ? '' : 'https://ia.blue3.com.br';
-  fetch(base + '/api/v1/health', { headers: { 'Accept': 'application/json' } })
-    .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (j) {
-      var v = j && j.version && j.version.app;
-      if (v) { setServer('v' + String(v).replace(/^v/, '')); }
-      else if (!temRodape) { setServer('—'); }
-    })
-    .catch(function () { if (!temRodape) { setServer('—'); } });
+  // SEMPRE relativo, e só quando a página é remota. Tentar um FQDN absoluto a
+  // partir da casca local (origem tauri://localhost) é beco sem saída: o CORS do
+  // servidor só libera as origens de FRONT_DOOR_ORIGINS (config/cors.php), a
+  // casca não está — e não deve estar — nessa lista, então o navegador barra a
+  // LEITURA da resposta e a linha cai em "—" de qualquer maneira. Relativo
+  // funciona em qualquer host do servidor sem lista para manter; na casca local
+  // não há versão de servidor para mostrar, e "—" é a resposta honesta.
+  if (remoto) {
+    fetch('/api/v1/health', { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        var v = j && j.version && j.version.app;
+        if (v) { setServer('v' + String(v).replace(/^v/, '')); }
+        else if (!temRodape) { setServer('—'); }
+      })
+      .catch(function () { if (!temRodape) { setServer('—'); } });
+  } else if (!temRodape) { setServer('—'); }
 
   var copyBtn = card.querySelector('#shvia-about-copy');
   var closeBtn = card.querySelector('#shvia-about-close');
@@ -350,15 +374,33 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
   closeBtn.focus();
 })();"#;
 
-/// Host EXATO do servidor do ShvIA (fonte da verdade). Qualquer outro subdomínio
-/// de `blue3.com.br` é externo: limita a superfície injetada pela ponte (BRIDGE_JS,
-/// PRICE_ALERT_NOTIFY_JS) e a navegação interna ao servidor real.
-const SERVER_HOST: &str = "ia.blue3.com.br";
+/// Host CANÔNICO do servidor do ShvIA — o destino da navegação e o que o modal
+/// "Sobre" informa quando não há host remoto na página.
+const SERVER_HOST: &str = "ai.shvia.org";
 
-/// Hosts aceitos como navegação interna (casca local em dev + o servidor).
-/// Lista exata — sem sufixo curinga — para impedir que um subdomínio
-/// `.blue3.com.br` comprometido carregue dentro do app e ganhe a ponte nativa.
-const INTERNAL_HOSTS: &[&str] = &["localhost", "tauri.localhost", SERVER_HOST];
+/// Hosts EXATOS aceitos como o servidor do ShvIA (fonte da verdade). Governa duas
+/// coisas: a navegação que fica dentro do app (`is_internal`) e a injeção das
+/// pontes nativas (BRIDGE_JS, PRICE_ALERT_NOTIFY_JS) no `on_page_load`.
+///
+/// Lista exata, **sem sufixo curinga**, porque este é o perímetro de segurança do
+/// app: um curinga `.shvia.org` ou `.blue3.com.br` deixaria qualquer subdomínio
+/// comprometido carregar aqui dentro e ganhar spawn de processo local, leitura de
+/// FS e o token de capacidade. Cada entrada abaixo foi verificada por DNS:
+///
+/// - `ai.shvia.org` — canônico (200.36.196.254).
+/// - `ia.shvia.org` — CNAME de `ai.shvia.org`, mesma instância.
+/// - `ia.blue3.com.br` — domínio legado, MESMO IP. Fica só durante a transição;
+///   remover esta linha é tudo o que o desligamento dele exige.
+///
+/// O ápex `shvia.org` está FORA de propósito: ele resolve para outro IP
+/// (170.233.231.20) e serve a landing, não o app. Precisa abrir no navegador do
+/// SO como qualquer link externo.
+const SERVER_HOSTS: &[&str] = &[SERVER_HOST, "ia.shvia.org", "ia.blue3.com.br"];
+
+/// `true` se o host for uma das faces do servidor do ShvIA.
+fn is_server_host(host: &str) -> bool {
+    SERVER_HOSTS.contains(&host)
+}
 
 /// Contador monotônico de janelas abertas por `target=_blank` (handler
 /// `on_new_window`). Garante labels únicos.
@@ -384,13 +426,10 @@ fn is_internal(url: &tauri::Url) -> bool {
         Some(h) => h,
         None => return false,
     };
-    if !INTERNAL_HOSTS.contains(&host) {
-        return false;
-    }
     // Casca local: `http` (Vite dev + prod Windows/Android) e `tauri` (prod
     // macOS/Linux). O servidor exige https.
     match url.scheme() {
-        "https" => host == SERVER_HOST,
+        "https" => is_server_host(host),
         "http" => host == "localhost" || host == "tauri.localhost",
         "tauri" => host == "localhost",
         _ => false,
@@ -444,13 +483,16 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
             if let PageLoadEvent::Finished = payload.event() {
                 let host = payload.url().host_str().unwrap_or_default();
                 // As pontes injetam APIs nativas (spawn de processo, leitura de
-                // FS, notificações). Restringimos ao servidor EXATO do ShvIA:
-                // a casca local não tem sessão/alertas e qualquer outro host
-                // (subdomínio blue3.com.br não-canônico, por ex.) é externo.
-                if host == SERVER_HOST {
+                // FS, notificações). Restringimos aos hosts EXATOS do servidor do
+                // ShvIA (SERVER_HOSTS): a casca local não tem sessão/alertas e
+                // qualquer outro host — inclusive o ápex shvia.org, que é a
+                // landing em outro IP — é externo.
+                if is_server_host(host) {
                     let _ = webview.eval(OFFLINE_BANNER_JS);
                     // Notificações nativas dos alertas de preço — ADR-011. Injeta o
-                    // token de capacidade da sessão (só o host canônico o recebe).
+                    // token de capacidade da sessão (só páginas de SERVER_HOSTS o
+                    // recebem — são as três faces da MESMA instância; iframe
+                    // cross-origin e casca local continuam de fora).
                     let _ = webview.eval(code_bridge::inject_token(PRICE_ALERT_NOTIFY_JS));
                     let _ = webview.eval(CLIPBOARD_IMAGE_PASTE_JS);
                     // Ponte do Modo Code (window.__shviaCode/__shviaDesktop). Ver code_bridge.rs.
@@ -759,7 +801,8 @@ pub fn run() {
                 // Build vem do pacote (version.md → tauri.conf.json, via sync).
                 let js = ABOUT_MODAL_JS
                     .replace("__SHVIA_BUILD__", &app.package_info().version.to_string())
-                    .replace("__SHVIA_TAURI__", tauri::VERSION);
+                    .replace("__SHVIA_TAURI__", tauri::VERSION)
+                    .replace("__SHVIA_SERVER_HOST__", SERVER_HOST);
                 let windows = app.webview_windows();
                 let alvo = windows
                     .values()
@@ -830,8 +873,28 @@ mod tests {
 
     #[test]
     fn servidor_so_em_https() {
+        assert!(internal("https://ai.shvia.org/chat"));
+        assert!(!internal("http://ai.shvia.org/chat"));
+    }
+
+    /// Dual-host da migração (26/07): as três faces do servidor entram, e o dia
+    /// em que o legado sair é só tirar a linha dele de SERVER_HOSTS.
+    #[test]
+    fn as_tres_faces_do_servidor_sao_internas() {
+        assert!(internal("https://ai.shvia.org/chat"));
+        assert!(internal("https://ia.shvia.org/chat"));
         assert!(internal("https://ia.blue3.com.br/chat"));
-        assert!(!internal("http://ia.blue3.com.br/chat"));
+    }
+
+    /// O ápex shvia.org é a LANDING, em outro IP (170.233.231.20) — não o app.
+    /// Se ele entrasse aqui, um site que não é o ShvIA ganharia a ponte nativa
+    /// (spawn de processo local, leitura de FS, token de capacidade).
+    #[test]
+    fn apex_shvia_org_e_externo() {
+        assert!(!internal("https://shvia.org/"));
+        assert!(!internal("https://www.shvia.org/"));
+        assert!(!internal("https://evil.shvia.org/"));
+        assert!(!internal("https://ai.shvia.org.evil.com/"));
     }
 
     /// O endurecimento do 0.9.0: nada além do host canônico entra no app (nem

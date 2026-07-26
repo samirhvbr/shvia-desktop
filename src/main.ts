@@ -21,7 +21,10 @@
 // offline — pra estilizar o splash sem ser redirecionado (sem auto-retry).
 
 // URL do servidor ShvIA (fonte da verdade). Configurável na F2.
-const SHVIA_URL = "https://ia.blue3.com.br";
+// Domínio próprio desde 26/07/2026: o legado ia.blue3.com.br continua servindo a
+// MESMA instância (mesmo IP) e segue aceito como navegação interna
+// (SERVER_HOSTS em src-tauri/src/lib.rs), mas quem o app ABRE é este.
+const SHVIA_URL = "https://ai.shvia.org";
 // Intervalo do auto-retry no estado offline.
 const AUTO_RETRY_MS = 5_000;
 // Timeout do ping de alcance. O 1º request de rede do WebKitGTK "frio" (processo

@@ -27,6 +27,6 @@
 
 - **Este repo** — cliente desktop (Tauri 2).
 - **ShvIA** (`/Users/samir/x/IA`) — servidor Laravel, fonte da verdade
-  (`https://ia.blue3.com.br`).
+  (`https://ai.shvia.org`).
 - **SHVTERM** (`/Users/samir/Projetos/SHVTERM`) — base técnica (Tauri), repo irmão.
 - **`archive/claude-fork`** — snapshot do fork Claude Desktop descartado.

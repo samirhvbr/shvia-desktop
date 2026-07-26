@@ -68,7 +68,7 @@ PATH e validar o loop ao vivo. **Próximo passo (opcional):** empacotar o
 - [ ] **Verba + dono** do cert EV Windows (~US$300–600/ano) e Apple Developer
       (US$99/ano), incl. rotação da chave do updater.
 - [ ] **Funções idênticas ao web** ou haverá **telas desktop-only**?
-- [ ] **URL de DEV** do ShvIA (além de produção `ia.blue3.com.br`).
+- [ ] **URL de DEV** do ShvIA (além de produção `ai.shvia.org`).
 - [ ] **App ID** `cloud.blue3.shvia` — confirmar (usado como default).
 
 ## Ponteiros

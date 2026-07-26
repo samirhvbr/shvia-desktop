@@ -2,7 +2,7 @@
 
 > **Projeto interno da Blue3.** Cliente **desktop multiplataforma** (macOS,
 > Windows, Linux) do **ShvIA** — a plataforma interna de IA da Blue3
-> (`https://ia.blue3.com.br`). Documentação interna — não publicar.
+> (`https://ai.shvia.org`). Documentação interna — não publicar.
 
 **Ver também:** [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md) (convenções de
 código e do agente) · [docs/README.md](docs/README.md) (índice da documentação
@@ -33,7 +33,7 @@ macOS, Windows e Linux, com janela própria, ícone, bandeja (tray), notificaç�
 de SO e auto-update.
 
 O ShvIA em si **continua sendo o servidor Laravel hospedado** em
-`https://ia.blue3.com.br`: chat com IA (streaming SSE), comparação de modelos,
+`https://ai.shvia.org`: chat com IA (streaming SSE), comparação de modelos,
 workspaces/pastas com arquivos (RAG), base de conhecimento, skills, painel admin
 e rastreamento de uso/tokens. O desktop é o **cliente** dessa instância — não
 reescreve o backend nem o frontend.
@@ -51,7 +51,7 @@ reescreve o backend nem o frontend.
   **Tauri 2 + React** já multiplataforma, com CI dos 3 SOs, updater e padrões de
   empacotamento prontos. **O fork Claude Desktop foi descartado** (arquivado em
   `archive/claude-fork` + tag `archive/claude-fork-v0.2.2`).
-- **A janela Tauri abre o ShvIA hospedado** (`https://ia.blue3.com.br`). Assim
+- **A janela Tauri abre o ShvIA hospedado** (`https://ai.shvia.org`). Assim
   **"mesmas funções" é literal** — é a própria UI Blade do ShvIA. Zero código
   Laravel forkado, zero UI reescrita na Fase 1.
 - **Servidor remoto = fonte da verdade** (dados, senhas, permissões). O desktop
@@ -177,7 +177,7 @@ Resumo (detalhe em [.continue/escopo-projeto.md](.continue/escopo-projeto.md)):
 | Fase | Entrega |
 |------|---------|
 | **F0** | Decisões + colheita de ativos do SHVTERM + branding do ShvIA. |
-| **F1** | Esqueleto andante: Tauri abre `ia.blue3.com.br`; **smoke-test de streaming SSE no Linux** (risco #1); login por cookie; ícone/título ShvIA. **Já entrega "mesmas funções".** |
+| **F1** | Esqueleto andante: Tauri abre `ai.shvia.org`; **smoke-test de streaming SSE no Linux** (risco #1); login por cookie; ícone/título ShvIA. **Já entrega "mesmas funções".** |
 | **F2** | Polish nativo: tray, menu, About, estado de janela, config de URL, tela offline, deep-link `shvia://` + reconciliação de auth, notificações. (Sidecar entra aqui se necessário.) |
 | **F3** | Check de compatibilidade de versão de servidor (`/api/v1/health`). |
 | **F4** | CI + assinatura/notarização (macOS, Windows EV, Linux) + auto-update. |

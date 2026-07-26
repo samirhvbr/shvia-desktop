@@ -4,7 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0B0F17" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
+    <!-- Mesma marca do splash: o ícone da aba/janela é PRÉ-LOGIN, então segue a
+         regra de marca da migração (a Blue3 só depois do login). O favicon.png antigo
+         era a seta da Blue3; SVG porque o WebView renderiza vetor. -->
+    <link rel="icon" type="image/svg+xml" href="/brand-mark.svg" />
     <link rel="stylesheet" href="/src/styles.css" />
     <title>ShvIA</title>
     <script type="module" src="/src/main.ts" defer></script>
@@ -19,7 +22,7 @@
       <div class="mark-wrap">
         <span class="ripple" aria-hidden="true"></span>
         <span class="ripple ripple--late" aria-hidden="true"></span>
-        <img class="brand-mark" src="/brand-mark.png" alt="" width="176" height="176" />
+        <img class="brand-mark" src="/brand-mark.svg" alt="" width="176" height="176" />
       </div>
       <h1>ShvIA</h1>
       <p id="status">Conectando ao ShvIA…</p>
@@ -27,7 +30,6 @@
         <button id="retry" type="button">Tentar agora</button>
         <button id="force-open" type="button" class="ghost">Abrir mesmo assim</button>
       </div>
-      <span class="foot" aria-hidden="true">Blue3</span>
       <noscript>Este aplicativo precisa de JavaScript para carregar o ShvIA.</noscript>
     </main>
   </body>

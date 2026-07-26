@@ -11,7 +11,7 @@ product
 ## Users
 
 Equipe interna da Blue3 (uso profissional, jornada de trabalho inteira) usando o
-ShvIA — a plataforma de IA da empresa (`https://ia.blue3.com.br`) — como app de
+ShvIA — a plataforma de IA da empresa (`https://ai.shvia.org`) — como app de
 chat/trabalho: conversas com modelos, projetos/workspaces com arquivos (RAG),
 comparação de modelos, administração. O desktop existe para dar janela própria,
 ícone, atalhos e presença nativa (tray, notificações) ao mesmo produto web.

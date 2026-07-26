@@ -193,17 +193,9 @@ body {
   background: transparent;
 }
 
-/* ── Rodapé ────────────────────────────────────────────────────── */
-.foot {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(16px + env(safe-area-inset-bottom));
-  font-size: 0.78rem;
-  font-weight: 500;
-  color: var(--tx-dim);
-  opacity: 0.55;
-}
+/* O rodapé `.foot` saiu junto com o texto "Blue3" do splash (26/07): a tela é
+   PRÉ-LOGIN e a marca Blue3 só pode aparecer depois do login, para e-mail dela.
+   O <h1>ShvIA</h1> já nomeia o produto ali, então não entrou nada no lugar. */
 
 /* Janelas baixas: aperta os espaços. */
 @media (max-height: 460px) {

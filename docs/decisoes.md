@@ -394,3 +394,69 @@ how-to; linkar o ADR.
   4 testes de `sanitize_filename` (`cargo test`). Cancelar o diálogo **não é
   erro** (`{saved:false}`, sem toast). O ganho só chega às máquinas com **build
   novo** — ciclo diferente do deploy web, que é imediato.
+
+---
+
+## ADR-016 — Domínio próprio `ai.shvia.org`: dual-host por allowlist exata, e host deixa de decidir marca
+
+- **Contexto/Problema:** o ShvIA saiu do domínio corporativo (`ia.blue3.com.br`)
+  para o próprio (`ai.shvia.org`) — a Blue3 ficou como financiadora, não como
+  marca do produto. O apontamento estava espalhado em quatro repositórios
+  versionados independentemente (este, SHVIA-MOBILE, SHVIA-CODE e SHVIA-WEB), e
+  três dos pontos são **blocantes silenciosos**: `SHVIA_URL` (o destino), a
+  allowlist de navegação interna (`SERVER_HOSTS`, antes `SERVER_HOST` único) e o
+  `connect-src` da CSP da casca. Errar qualquer um não dá erro legível: com o
+  host fora da allowlist, `on_navigation` classifica a **própria navegação
+  inicial** como link externo e o ShvIA abre no navegador do SO com a janela
+  presa no splash; com o host fora do `connect-src`, o ping de alcance é barrado
+  pelo WebView e a casca fica em "Sem conexão" para sempre, com o servidor no ar.
+- **Decisão:** **dual-host durante a transição**, por allowlist EXATA de FQDN.
+  `SERVER_HOST` (canônico, o que o app abre e o que o modal "Sobre" informa na
+  casca) = `ai.shvia.org`; `SERVER_HOSTS` (o que é aceito como interno e recebe
+  as pontes nativas) = `ai.shvia.org`, `ia.shvia.org` e `ia.blue3.com.br`. As três
+  foram verificadas por DNS: o canônico e o legado respondem no **mesmo IP**
+  (200.36.196.254) e `ia.shvia.org` é CNAME do canônico. Desligar o domínio
+  legado é **remover uma linha** de `SERVER_HOSTS` (e a gêmea em
+  `windows_ipc.rs::ALLOWED_MESSAGE_ORIGINS`) — nada mais.
+- **O ápex `shvia.org` fica FORA, de propósito:** ele resolve para outro IP
+  (170.233.231.20) e serve a landing, não o app. `is_internal` é a **única**
+  fronteira que decide quem recebe `window.__shviaCode` — spawn de processo
+  local, leitura de FS, token de capacidade. Pôr um host que não é o app nessa
+  lista é exatamente o buraco que o endurecimento do 0.9.0 fechou. Coberto por
+  teste (`tests::apex_shvia_org_e_externo`).
+- **Marca no splash:** o `<span>Blue3</span>` do rodapé saiu e o `brand-mark.png`
+  (a seta da Blue3 em P&B + "AI") virou `brand-mark.svg` — a mesma marca do
+  favicon e do badge da sidebar do web. O splash é **pré-login** e aparece para
+  todo usuário, inclusive quem não é `@blue3.com.br`; a regra da migração é que a
+  Blue3 só apareça **depois** do login e só para e-mail dela
+  (SHVIA-WEB/`config/brand.php`). SVG e não PNG porque o WebView renderiza vetor
+  nativamente — nítido em qualquer DPI, transparente por natureza (o splash é
+  escuro; PNG com fundo branco apareceria como caixa).
+- **Modal "Sobre":** a linha "Servidor" passou a mostrar `location.hostname` da
+  página remota, em vez de casar o host contra uma lista fixa — durante a
+  migração a pergunta do suporte é "esse binário aponta pra onde?", e uma lista
+  fixa mentiria no dia em que um host novo entrasse. O fetch de
+  `/api/v1/health` virou **sempre relativo** e só roda em página remota: tentar
+  FQDN absoluto da casca local (origem `tauri://localhost`) é beco sem saída — o
+  CORS do servidor só libera `FRONT_DOOR_ORIGINS` (SHVIA-WEB/`config/cors.php`),
+  a casca não está nem deve estar nessa lista, então o navegador barra a leitura
+  e a linha cai em "—" de qualquer jeito. Na casca não há versão de servidor para
+  mostrar, e "—" é a resposta honesta.
+- **O que NÃO muda:** o `identifier` `cloud.blue3.shvia` fica. Ele é a chave do
+  sandbox/app-data em todos os SOs — trocar zera cookie de sessão, geometria de
+  janela (`tauri-plugin-window-state`) e o `modo-code-bindings.json` (os vínculos
+  projeto→pasta do Modo Code), e no macOS o SO passa a tratar como app NOVO
+  (assinatura/notarização e permissões pedidas de novo). Desde a 2.51.0 do
+  SHVIA-WEB há um acoplamento **servidor→bundle** novo: `APNS_BUNDLE_ID` tem de
+  ser igual ao bundle id, então renomear agora quebraria push no iOS **em
+  silêncio**. Se um dia for feito, é em commit próprio e deliberado, nunca junto
+  de uma troca de domínio.
+- **Consequências/limites:** trocar de origem **desloga todo mundo uma vez** — o
+  cookie de sessão é por origem, e o mesmo vale para `localStorage`/`IndexedDB`
+  do WebView (inclusive o dedupe `shvia_pt_notified` dos alertas de preço, que
+  pode disparar uma notificação-resumo no primeiro acesso). O binário antigo
+  instalado continua abrindo o host legado: é por isso que o legado **precisa**
+  seguir no ar até a frota atualizar. No mobile a atualização passa por **review
+  da Apple**, então o build novo tem de ser submetido ANTES de qualquer redirect
+  do host antigo, não depois. Cobertura: `cargo test` (allowlist, incluindo ápex
+  e sufixo-armadilha `ai.shvia.org.evil.com`) e `npm run build`.

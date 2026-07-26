@@ -30,7 +30,7 @@ Para só inspecionar antes: `git fetch && git status`.
 ## O que é este repo
 
 Cliente **desktop multiplataforma** (Tauri 2) do **ShvIA** — a plataforma de IA
-da Blue3 hospedada em `https://ia.blue3.com.br`. **Shell fino:** a janela carrega
+da Blue3 hospedada em `https://ai.shvia.org`. **Shell fino:** a janela carrega
 o ShvIA web (Blade) remoto; o servidor é a fonte da verdade (dados, senhas,
 permissões). Detalhes e o porquê em [README.md](README.md) e
 [docs/decisoes.md](docs/decisoes.md). **Não confundir** com o repo Laravel do
@@ -104,4 +104,4 @@ Formato: `versão - comentário em português`
 - Arquitetura técnica: [docs/arquitetura.md](docs/arquitetura.md)
 - Roteiro de fundação (F0/F1): [docs/roteiro-fundacao.md](docs/roteiro-fundacao.md)
 - Base técnica (colher ativos): SHVTERM em `/Users/samir/Projetos/SHVTERM`
-- Servidor/fonte da verdade: ShvIA em `/Users/samir/x/IA` (`https://ia.blue3.com.br`)
+- Servidor/fonte da verdade: ShvIA em `/Users/samir/x/SHVIA-WEB` (`https://ai.shvia.org`)

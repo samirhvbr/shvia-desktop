@@ -24,7 +24,7 @@ de streaming vem **antes** de qualquer scaffolding, porque é o maior risco.
 `ReadableStream`) dentro do **WebKitGTK**, antes de investir no resto.
 
 Caminho mais rápido (sem Tauri ainda): num **Linux** com WebKitGTK, carregar
-`https://ia.blue3.com.br`, logar e enviar uma mensagem no `/chat`, confirmando
+`https://ai.shvia.org`, logar e enviar uma mensagem no `/chat`, confirmando
 que a resposta **aparece token a token** (não de uma vez no fim, não trava).
 
 - [ ] Se **OK** → seguir para o Passo 2 (Tauri).
@@ -43,7 +43,7 @@ que a resposta **aparece token a token** (não de uma vez no fim, não trava).
 > dir temporário e integrado ao repo **sem sobrescrever** README/CLAUDE/docs.
 
 - [x] **Uma janela** carregando a casca local, que redireciona para a URL do
-      servidor; default = `https://ia.blue3.com.br` (constante em `src/main.ts`;
+      servidor; default = `https://ai.shvia.org` (constante em `src/main.ts`;
       configurável via store na F2).
 - [x] `identifier` = `cloud.blue3.shvia`, `productName`/título = `ShvIA`.
 - [x] **CSP da casca local** (modelada do SHVTERM). **Atenção:** a página remota

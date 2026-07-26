@@ -1,0 +1,30 @@
+<!--
+  ShvIA — marca do produto no splash da casca (26/07/2026). MESMO desenho de
+  SHVIA-WEB/public/img/brand/logo-shvia.svg e do favicon do app: a identidade é
+  uma só em toda superfície (aba do navegador, badge da sidebar, login, splash do
+  desktop e do mobile), então a transição casca→app não pisca marca diferente.
+
+  Substituiu o brand-mark.png, que era a SETA DA BLUE3 em P&B + "AI". O splash é
+  PRÉ-LOGIN e aparece para todo usuário, inclusive quem não é @blue3.com.br — e a
+  regra da migração é que a Blue3 só apareça DEPOIS do login e só para e-mail
+  dela. Ver SHVIA-WEB/config/brand.php.
+
+  SVG e não PNG de propósito: o WebView renderiza vetor nativamente, então a marca
+  fica nítida em qualquer DPI sem manter 4 tamanhos, e o fundo é transparente por
+  natureza — o splash é escuro (token bg, #0B0F17) e um PNG com fundo branco
+  apareceria como caixa. Sem width/height no <svg>: o CSS (.brand-mark em
+  src/styles.css) é quem dimensiona, com clamp() responsivo.
+
+  Bloco na cor da marca (token azure, #34B3EC) com o "S" na cor da superfície
+  profunda (token bg, #0B0F17). Terminais retos: a voz do produto é "instrumento
+  de engenharia", não caligrafia.
+
+  ATENÇÃO: dois hifens seguidos são ILEGAIS em comentário XML e quebram o arquivo
+  inteiro — por isso os tokens acima estão escritos sem os hifens de prefixo.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ShvIA">
+  <rect width="64" height="64" rx="15" fill="#34B3EC"/>
+  <path d="M44 21 C44 15.5 38.5 13 32 13 C25.5 13 20 15.5 20 21.5 C20 27.5 26 29.5 32 31
+           C38 32.5 44 34.5 44 41 C44 47.5 38.5 51 32 51 C25.5 51 20 48 20 42"
+        fill="none" stroke="#0B0F17" stroke-width="7.5" stroke-linecap="square"/>
+</svg>

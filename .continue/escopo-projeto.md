@@ -32,7 +32,7 @@ operar offline; rodar qualquer banco no cliente.
 │   • updater (latest.json)     • store (URL+estado janela)  • notifications    │
 │                                                                              │
 │  WebView nativo do SO (WKWebView / WebView2 / WebKitGTK)                      │
-│   └── navega  ──────────────►  https://ia.blue3.com.br  (ShvIA Blade)         │
+│   └── navega  ──────────────►  https://ai.shvia.org  (ShvIA Blade)         │
 │        (login Breeze → cookie de sessão Sanctum, same-origin)                 │
 │                                                                              │
 │  [F2] Sidecar Python (PyInstaller)  ── opcional ──► keychain / SSO / /api/v1  │
@@ -121,7 +121,7 @@ Electron da Anthropic.
    e validar o streaming `fetch` + `ReadableStream.getReader()`. Maior risco
    multiplataforma, concentrado no Linux.
 2. `npm create tauri-app@latest` (Tauri 2); **uma** WebView apontando para URL de
-   servidor configurável (default = `https://ia.blue3.com.br`).
+   servidor configurável (default = `https://ai.shvia.org`).
 3. Validar **login Breeze → sessão Sanctum** no WebView e a **persistência do
    cookie entre reinícios** do app (incl. "remember me"/lifetime).
 4. Título + ícone ShvIA. **Isto já entrega "mesmas funções garantidas".**

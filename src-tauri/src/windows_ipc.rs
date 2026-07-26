@@ -26,6 +26,12 @@ use windows::core::PWSTR;
 /// Mantém em sincronia com `is_internal` em lib.rs — só o servidor do ShvIA
 /// e a casca local (dev). Aceita path/querystring após a origem.
 const ALLOWED_MESSAGE_ORIGINS: &[&str] = &[
+    // Espelha SERVER_HOSTS de lib.rs — as três faces do servidor durante a
+    // migração de domínio (26/07). O ápex shvia.org NÃO entra: é a landing, em
+    // outro IP. Ao desligar o domínio legado, remover a linha dele nos DOIS
+    // arquivos.
+    "https://ai.shvia.org",
+    "https://ia.shvia.org",
     "https://ia.blue3.com.br",
     "http://localhost",
     "http://tauri.localhost",

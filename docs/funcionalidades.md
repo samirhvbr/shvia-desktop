@@ -8,7 +8,7 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 
 - **Shell fino Tauri 2** (`0.2.0`): janela com título/ícone **ShvIA**,
   `identifier` `cloud.blue3.shvia`. Uma casca local (`index.html` + `src/main.ts`)
-  mostra um splash e **redireciona o WebView para `https://ia.blue3.com.br`** — daí
+  mostra um splash e **redireciona o WebView para `https://ai.shvia.org`** — daí
   a UI é o próprio Blade do ShvIA ("mesmas funções", ADR-002). **Menor privilégio:**
   nenhum comando nativo exposto à página remota; `withGlobalTauri: false`.
 - **`version.md` como fonte única** (`0.2.0`): `scripts/sync-version.mjs` propaga a
@@ -35,7 +35,9 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 - **Estado da janela persistido** + **links externos no navegador** (`0.4.0`): as
   janelas são criadas **no Rust** (`build_shvia_window`); `tauri-plugin-window-state`
   guarda tamanho/posição entre reinícios, e `on_navigation` manda origens fora de
-  `*.blue3.com.br` para o **navegador do SO** (login é same-origin, não quebra).
+  `SERVER_HOSTS` (`ai.shvia.org`, `ia.shvia.org`, `ia.blue3.com.br` — allowlist
+  EXATA de FQDN + esquema desde o `0.9.0`, sem curinga; ver ADR-016) para o
+  **navegador do SO** (login é same-origin, não quebra).
 - **Tela offline v1** (`0.4.1`): **tarja vermelha "Sistema Offline"** injetada em
   cada página (`on_page_load` + `eval`, via `navigator.onLine`); some ao reconectar
   e é clicável p/ recarregar.

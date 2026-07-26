@@ -22,7 +22,7 @@ Laravel é a fonte da verdade. Decisões e o porquê em [decisoes.md](decisoes.m
 │                                                                            │
 │            WebView nativo (WKWebView / WebView2 / WebKitGTK)                │
 │            ───────────────────────────────────────────────                 │
-│            navega ──► https://ia.blue3.com.br  (UI Blade do ShvIA)         │
+│            navega ──► https://ai.shvia.org  (UI Blade do ShvIA)         │
 │                                                                            │
 │  [F2] sidecar/ (Python, PyInstaller) — opcional:                           │
 │        keychain de token · SSO handoff · chamadas a /api/v1                 │
@@ -36,7 +36,7 @@ Laravel é a fonte da verdade. Decisões e o porquê em [decisoes.md](decisoes.m
 
 ## Fluxo de autenticação (F1)
 
-1. App abre → WebView navega `https://ia.blue3.com.br`.
+1. App abre → WebView navega `https://ai.shvia.org`.
 2. Usuário cai na **tela de login Breeze** do próprio ShvIA.
 3. Login → ShvIA seta **cookie de sessão Sanctum** (guard `web`) para o FQDN.
 4. Toda navegação/requisição subsequente vai **autenticada** (como num browser).
