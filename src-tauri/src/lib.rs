@@ -97,17 +97,32 @@ const CLIPBOARD_IMAGE_PASTE_JS: &str = r#"(function () {
   }, true);
 })();"#;
 
-/// Injetado nas páginas remotas do ShvIA (`on_page_load`): **notificações nativas
-/// dos alertas de preço** (ADR-011). Faz *polling* de `GET /api/v1/price-alerts`
-/// (cookie de sessão same-origin) e, ao ver alertas novos, posta `{action:'notify',
-/// title, body}` no **mesmo canal nativo do Modo Code** (`shviaCode` no WebKit,
-/// `window.chrome.webview` no WebView2) — o Rust (`code_bridge::notify`) dispara a
-/// notificação do SO. Assim o alerta chega mesmo com a janela em segundo plano,
-/// sem depender do Telegram. Sem o canal nativo (navegador puro/mobile) é no-op —
-/// o badge in-app cobre esse caso. Dedup persistente por id em `localStorage`
-/// (`shvia_pt_notified`) evita repetir e coordena múltiplas janelas. Autocontido,
-/// ES5, self-guard. **Não é comando/IPC Tauri** — mantém a postura do ADR-001.
-const PRICE_ALERT_NOTIFY_JS: &str = r#"(function () {
+/// Injetado nas páginas remotas do ShvIA (`on_page_load`): **notificações nativas do
+/// SO + contagem no ícone** (ADR-011).
+///
+/// Faz *polling* de `GET /api/v1/notifications?unread=1` (cookie de sessão
+/// same-origin) e posta `{action:'notify'}` e `{action:'badge'}` no **mesmo canal
+/// nativo do Modo Code** (`shviaCode` no WebKit, `window.chrome.webview` no
+/// WebView2) — o Rust dispara a notificação do SO e a contagem no dock. Assim o
+/// evento chega com a janela em segundo plano, sem depender do Telegram.
+///
+/// ## Por que a rota é GENÉRICA (0.13.0)
+///
+/// Até a 0.12 o poll era em `/api/v1/price-alerts?unread=1`, que conhecia **um**
+/// tipo de evento. O ShvIA 2.60–2.63 passou a produzir notificação para resultado de
+/// **rotina**, fim de **lote** e aviso de **destino de entrega morto** — todos pelo
+/// mesmo `DeliveryRouter` — e nenhum deles chegava aqui. A rota genérica faz o
+/// desktop acompanhar o servidor sem precisar de um poll novo por feature.
+///
+/// O badge é postado em TODO poll (não só quando há novidade): é o que faz a
+/// contagem **zerar** quando o usuário lê no painel, e é o único sinal persistente
+/// depois que o toast do SO desaparece — ver `code_bridge::badge` para o porquê de
+/// não haver clique→navegar.
+///
+/// Sem o canal nativo (navegador puro/mobile) é no-op. Dedup persistente por id em
+/// `localStorage` (`shvia_pt_notified`) evita repetir e coordena múltiplas janelas.
+/// Autocontido, ES5, self-guard. **Não é comando/IPC Tauri** — mantém o ADR-001.
+const NATIVE_NOTIFY_JS: &str = r#"(function () {
   if (window.__shviaPriceAlerts) return;
   var wk = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.shviaCode;
   var w2 = window.chrome && window.chrome.webview;
@@ -132,11 +147,6 @@ const PRICE_ALERT_NOTIFY_JS: &str = r#"(function () {
     // voltariam a contar como novos e re-notificariam).
     try { localStorage.setItem(STORE_KEY, JSON.stringify(a.slice(-400))); } catch (e) {}
   }
-  function money(v, cur) {
-    try { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: cur || 'BRL' }).format(Number(v)); }
-    catch (e) { return (cur || 'BRL') + ' ' + v; }
-  }
-
   function poll() {
     // O ShvIA consome /api/v1 com o Bearer token do localStorage (mesmo do app);
     // mandamos ele + o cookie de sessão como fallback. Sem token/sessão → 401 → no-op.
@@ -144,10 +154,20 @@ const PRICE_ALERT_NOTIFY_JS: &str = r#"(function () {
     try { token = localStorage.getItem('access_token') || ''; } catch (e) {}
     var headers = { 'Accept': 'application/json' };
     if (token) { headers['Authorization'] = 'Bearer ' + token; }
-    fetch('/api/v1/price-alerts?unread=1', { headers: headers, credentials: 'same-origin' })
+    // Rota GENÉRICA (ShvIA 2.63.0): todo evento que passa pelo DeliveryRouter do
+    // servidor chega aqui — alerta de preço, resultado de rotina, fim de lote,
+    // aviso de destino de notificação morto. Antes o poll era em
+    // `/price-alerts?unread=1`, que conhecia UM tipo de evento e não escalava.
+    fetch('/api/v1/notifications?unread=1&limit=50', { headers: headers, credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) {
         if (!j || !Array.isArray(j.data)) return; // não logado / sem dados → no-op
+
+        // Badge SEMPRE, mesmo sem novidade: é o único sinal persistente depois que
+        // o toast do SO desaparece, e o servidor manda a contagem TOTAL de
+        // não-lidas (não a da página). Também zera quando o usuário lê no painel.
+        sendNative({ action: 'badge', count: Number(j.unread_count) || 0 });
+
         var seen = loadSeen();
         var fresh = j.data.filter(function (a) { return a && a.id != null && seen.indexOf(a.id) === -1; });
         if (!fresh.length) return;
@@ -157,16 +177,20 @@ const PRICE_ALERT_NOTIFY_JS: &str = r#"(function () {
         // blast); o dedup sequencial nos polls seguintes é garantido.
         fresh.forEach(function (a) { seen.push(a.id); });
         saveSeen(seen);
+
         if (fresh.length > MAX_INDIVIDUAL) {
-          sendNative({ action: 'notify', title: 'ShvIA — Precos',
-            body: fresh.length + ' novos alertas de preco. Abra os Precos para ver.' });
-        } else {
-          fresh.forEach(function (a) {
-            var name = (a.item && a.item.name) ? a.item.name : 'Equipamento';
-            var body = name + ' — ' + money(a.price, a.currency) + (a.store ? ' (' + a.store + ')' : '');
-            sendNative({ action: 'notify', title: 'ShvIA — Alerta de preco', body: body });
-          });
+          sendNative({ action: 'notify', title: 'ShvIA',
+            body: fresh.length + ' novas notificacoes. Abra o ShvIA para ver.' });
+          return;
         }
+        fresh.forEach(function (a) {
+          // `subject`/`body` vêm achatados do servidor de propósito — a casca não
+          // precisa conhecer a estrutura interna do Laravel.
+          var titulo = a.subject ? ('ShvIA — ' + a.subject) : 'ShvIA';
+          var corpo = a.body || a.subject || '';
+          if (!corpo) return;
+          sendNative({ action: 'notify', title: titulo, body: corpo });
+        });
       })
       .catch(function () {});
   }
@@ -380,7 +404,7 @@ const SERVER_HOST: &str = "ai.shvia.org";
 
 /// Hosts EXATOS aceitos como o servidor do ShvIA (fonte da verdade). Governa duas
 /// coisas: a navegação que fica dentro do app (`is_internal`) e a injeção das
-/// pontes nativas (BRIDGE_JS, PRICE_ALERT_NOTIFY_JS) no `on_page_load`.
+/// pontes nativas (BRIDGE_JS, NATIVE_NOTIFY_JS) no `on_page_load`.
 ///
 /// Lista exata, **sem sufixo curinga**, porque este é o perímetro de segurança do
 /// app: um curinga `.shvia.org` ou `.blue3.com.br` deixaria qualquer subdomínio
@@ -493,7 +517,7 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
                     // token de capacidade da sessão (só páginas de SERVER_HOSTS o
                     // recebem — são as três faces da MESMA instância; iframe
                     // cross-origin e casca local continuam de fora).
-                    let _ = webview.eval(code_bridge::inject_token(PRICE_ALERT_NOTIFY_JS));
+                    let _ = webview.eval(code_bridge::inject_token(NATIVE_NOTIFY_JS));
                     let _ = webview.eval(CLIPBOARD_IMAGE_PASTE_JS);
                     // Ponte do Modo Code (window.__shviaCode/__shviaDesktop). Ver code_bridge.rs.
                     let _ = webview.eval(code_bridge::inject_token(code_bridge::BRIDGE_JS));

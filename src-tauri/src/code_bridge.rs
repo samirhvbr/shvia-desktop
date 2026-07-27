@@ -331,6 +331,9 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
         // Notificação nativa do SO (alertas de preço, ADR-011). Fire-and-forget:
         // sem reqId/reply — a página só dispara, não espera resposta.
         "notify" => notify(window, &v),
+        // Contagem no ícone do dock/taskbar (ADR-011, revisado na 0.13.0).
+        // Fire-and-forget pela mesma razão do notify.
+        "badge" => badge(window, &v),
         _ => reply(window, &req, false, serde_json::json!({ "error": "ação desconhecida" })),
     }
 }
@@ -498,6 +501,37 @@ fn notify(window: &WebviewWindow, v: &serde_json::Value) {
         .title(sanitize(title))
         .body(sanitize(body))
         .show();
+}
+
+/// `badge` — contagem de não lidas no ícone do dock/taskbar.
+///
+/// É a metade do item D8 que o plugin de notificação **permite** fazer. A outra
+/// metade — clique na notificação abrindo a tela — NÃO é implementável: o
+/// `desktop.rs` do `tauri-plugin-notification` 2.3 expõe só `title`, `body`,
+/// `icon`, `sound` e `show`; `register_action_types` e o callback de ação existem
+/// apenas no `mobile.rs`. Ver ADR-011.
+///
+/// Por isso o badge importa mais do que pareceria: sem clique, ele é o único sinal
+/// persistente de "tem coisa te esperando" depois que o toast do SO desaparece.
+///
+/// ## Plataformas
+///
+/// `set_badge_count` cobre macOS e Linux. No **Windows** é `Unsupported` — lá o
+/// caminho é `set_overlay_icon`, que precisa de uma IMAGEM renderizada (o número
+/// desenhado num ícone), não de um inteiro. Fica de fora conscientemente: renderizar
+/// dígito em `Image` a cada mudança de contagem é trabalho de outra ordem, e o
+/// retorno é pequeno perto do resto do D8.
+fn badge(window: &WebviewWindow, v: &serde_json::Value) {
+    let n = v.get("count").and_then(|x| x.as_i64()).unwrap_or(0);
+
+    // 0 REMOVE o badge (contrato do Tauri: `None` ou `0` limpa). Mandar `Some(0)`
+    // deixaria um "0" pendurado no ícone em alguns ambientes.
+    let count = if n > 0 { Some(n) } else { None };
+
+    // Erro aqui é silencioso de propósito: badge é enfeite informativo, e um
+    // ambiente que não suporta (Windows, alguns WMs de Linux) não é motivo para
+    // poluir o log a cada 60 s.
+    let _ = window.set_badge_count(count);
 }
 
 /// Teto do artefato salvo pela ponte (50 MB). A página é confiável (host

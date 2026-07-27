@@ -71,9 +71,18 @@ nativas** que falem com a API (F2+, via sidecar + keychain).
 
 - O WebView remoto (Blade) roda no FQDN do ShvIA; o bridge JS↔Rust fica
   disponível só onde habilitado por capability.
-- Eventos da página → notificações de SO (ex.: "resposta pronta") via
-  `tauri-plugin-notification`, ponteados por um shim mínimo (a definir na F2 —
-  pode usar `eval`/inject controlado ou um observer no DOM da página).
+- Eventos da página → **notificação de SO + contagem no ícone** via
+  `tauri-plugin-notification` e `set_badge_count`, ponteados pelo shim
+  `NATIVE_NOTIFY_JS` (injetado em `on_page_load`), que faz *polling* de
+  `GET /api/v1/notifications?unread=1` e posta `{action:'notify'}` /
+  `{action:'badge'}` no **mesmo canal do Modo Code**. Nenhuma capability nova é
+  exposta à origem remota (ADR-001).
+  - A rota é **genérica**: todo evento do `DeliveryRouter` do servidor (alerta de
+    preço, resultado de rotina, fim de lote, destino de entrega morto) chega sem
+    precisar de um poll novo por feature.
+  - **Clique→navegar não existe**, e não é dívida: o `desktop.rs` do plugin não tem
+    callback de ação. **Windows não tem badge** (`set_badge_count` é `Unsupported`
+    lá). Ver [ADR-017](decisoes.md#adr-017--notificação-badge-no-ícone-entra-cliquenavegar-não-é-possível-com-o-plugin).
 
 ---
 

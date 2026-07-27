@@ -460,3 +460,46 @@ how-to; linkar o ADR.
   da Apple**, então o build novo tem de ser submetido ANTES de qualquer redirect
   do host antigo, não depois. Cobertura: `cargo test` (allowlist, incluindo ápex
   e sufixo-armadilha `ai.shvia.org.evil.com`) e `npm run build`.
+
+## ADR-017 — Notificação: badge no ícone entra, clique→navegar não é possível com o plugin
+
+- **Data:** 27/07/2026 · **Status:** Aceito · **Revisa:** [ADR-011](#adr-011--notificações-nativas-dos-alertas-de-preço-ponte-via-canal-do-modo-code)
+- **Contexto:** o ADR-011 entregou notificação nativa e registrou como limite "v1 sem
+  clique→abrir `/precos`; o badge navega", deixando o clique como coisa a fazer
+  depois. Ao ir implementar (item **D8** do
+  [comparativo 9router × hermes](../../SHVIA-WEB/docs/comparativos/9router-hermes.md)),
+  a leitura do `tauri-plugin-notification` **2.3.3** mostrou que não é questão de
+  esforço: o `desktop.rs` expõe só `title`, `body`, `icon`, `sound` e `show`. Não há
+  callback de clique nem ação. O `register_action_types` e o handler de ação existem
+  **apenas no `mobile.rs`**.
+- **Em paralelo,** o servidor mudou: o ShvIA 2.60–2.63 passou a produzir notificação
+  para resultado de **rotina**, fim de **lote** e aviso de **destino de entrega
+  morto**, todos pelo mesmo `DeliveryRouter`, e expôs `GET /api/v1/notifications`. O
+  shim daqui pollava `/api/v1/price-alerts?unread=1` — conhecia **um** tipo de evento
+  e não veria nenhum dos novos.
+- **Decisão:**
+  1. **Poll na rota genérica** `/api/v1/notifications?unread=1`. O desktop passa a
+     acompanhar o servidor sem precisar de um poll novo por feature. Título e corpo
+     vêm **achatados** do servidor, então a casca não conhece a estrutura do Laravel.
+  2. **Badge no ícone** via `WebviewWindow::set_badge_count`, nova ação `badge` na
+     ponte (fire-and-forget, como o `notify`). Postado em **todo** poll, não só
+     quando há novidade — é o que faz a contagem **zerar** quando o usuário lê no
+     painel.
+  3. **Clique→navegar fica FORA**, e não como dívida: é limitação do plugin no
+     desktop. Se algum dia importar de verdade, o caminho é trocar de plugin ou
+     chamar a API do SO direto — decisão de outra ordem, não um "to-do".
+- **Consequências / limites:**
+  - **Windows não tem badge.** `set_badge_count` é `Unsupported` lá; o caminho é
+    `set_overlay_icon`, que pede uma **imagem** com o número desenhado, não um
+    inteiro. Ficou de fora conscientemente: renderizar dígito em `Image` a cada
+    mudança de contagem é trabalho de outra ordem para retorno pequeno.
+  - Sem clique, **o badge é o único sinal persistente** depois que o toast do SO
+    desaparece. É por isso que ele deixou de ser enfeite e passou a ser a peça
+    central do item.
+  - Erro de `set_badge_count` é **silencioso**: ambiente sem suporte (Windows, alguns
+    WMs de Linux) não é motivo para poluir o log a cada 60 s.
+  - No **macOS**, notificação continua exigindo app empacotado/assinado — em
+    `tauri dev` pode não aparecer (limite herdado do ADR-011).
+  - **Validação:** `cargo clippy -D warnings` passa. O **teste ao vivo é na máquina do
+    Samir**: com uma rotina do ShvIA entregando em `inapp`, a notificação e a
+    contagem no dock têm de aparecer com a janela em segundo plano.
