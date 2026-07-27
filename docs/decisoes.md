@@ -675,3 +675,28 @@ how-to; linkar o ADR.
 - **De passagem:** os dois scripts diziam "replicando o que
   `.github/workflows/build.yml` faz nos runners". Esse arquivo **não existe desde a
   0.4.6** — a referência morta saiu.
+- **Adendo 0.17.0 (item D1):** o `release-manifest.mjs` passou a carregar também a
+  **assinatura minisign** — o `<artefato>.sig` que o Tauri grava quando
+  `TAURI_SIGNING_PRIVATE_KEY` está no ambiente. É o campo que o
+  `tauri-plugin-updater` exige; sem ele o plugin **recusa** o update, e o endpoint do
+  ShvIA (v2.74.0) trata o artefato como inexistente — melhor que o app baixar 80 MB
+  para depois rejeitar. O script **avisa quando NADA foi assinado**, porque o sintoma
+  sem esse aviso seria "o auto-update nunca oferece nada": silencioso e difícil de
+  rastrear até aqui.
+
+  **O plugin ainda NÃO está ligado, e é decisão.** Ele exige o par minisign, que só o
+  operador gera:
+
+  ```bash
+  npx tauri signer generate -w ~/.shvia/updater.key   # UMA vez, FORA do repo
+  ```
+
+  A **pública** vai em `tauri.conf.json` (`plugins.updater.pubkey`) e **é
+  versionada** — chave pública é para ser pública. A **privada** fica fora da árvore e
+  entra no ambiente do build.
+
+  Ligar o plugin com uma pubkey placeholder seria **pior que não ligar**: ou falha em
+  silêncio e ninguém descobre até precisar de um update urgente, ou alguém esquece de
+  trocar e a verificação de assinatura vira teatro. O lado do servidor já está pronto
+  e documentado em
+  `SHVIA-WEB/docs/INFRA/AUTO-UPDATE-DESKTOP.md`.

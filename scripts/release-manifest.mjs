@@ -23,6 +23,20 @@
 //
 // Node puro, sem dependência — igual ao sync-version.mjs e ao git-sync.mjs.
 //
+// ── Assinatura (item D1) ──────────────────────────────────────────────────────
+// Quando `TAURI_SIGNING_PRIVATE_KEY` está no ambiente, o Tauri grava um
+// `<artefato>.sig` (minisign) ao lado de cada bundle de updater. Este script
+// carrega esse conteúdo para o `release.json`, porque é o que o
+// `tauri-plugin-updater` exige — sem assinatura ele recusa o update.
+//
+// A CHAVE PRIVADA NUNCA MORA NO REPO. Gere uma vez, fora da árvore:
+//   npx tauri signer generate -w ~/.shvia/updater.key
+// e exporte na sessão do build:
+//   export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.shvia/updater.key)"
+//   export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=...
+// A PÚBLICA vai em `tauri.conf.json` (plugins.updater.pubkey) e é versionada —
+// chave pública é para ser pública.
+//
 // USO:
 //   node scripts/release-manifest.mjs                 # lê version.md, detecta o SO
 //   node scripts/release-manifest.mjs --out dist/     # copia os artefatos p/ uma pasta
@@ -135,7 +149,19 @@ const entradas = artefatos
       copyFileSync(`${caminho}.sha256`, join(destino, `${nome}.sha256`));
     }
 
-    return { file: nome, size: statSync(caminho).size, sha256: hash };
+    // Assinatura minisign do `tauri-plugin-updater` (item D1). O Tauri grava um
+    // `<artefato>.sig` ao lado quando `TAURI_SIGNING_PRIVATE_KEY` está no ambiente.
+    // Sem ela o plugin RECUSA o update — então o manifesto carrega o conteúdo do
+    // .sig, e o endpoint do ShvIA trata artefato sem assinatura como inexistente
+    // (melhor que o app baixar 80 MB para depois rejeitar).
+    const sig = existsSync(`${caminho}.sig`)
+      ? readFileSync(`${caminho}.sig`, "utf8").trim()
+      : null;
+
+    const entrada = { file: nome, size: statSync(caminho).size, sha256: hash };
+    if (sig) entrada.signature = sig;
+
+    return entrada;
   })
   .sort((a, b) => a.file.localeCompare(b.file));
 
@@ -175,6 +201,19 @@ for (const e of entradas) {
   console.log(`  ${e.sha256.slice(0, 16)}…  ${(e.size / 1048576).toFixed(1)} MB  ${e.file}`);
 }
 if (destino) console.log(`  copiados para ${destino}`);
+
+// Aviso EXPLÍCITO: sem assinatura minisign o `tauri-plugin-updater` recusa o update,
+// e o endpoint do ShvIA trata o artefato como inexistente. O sintoma seria "o
+// auto-update nunca oferece nada" — silencioso e difícil de rastrear até aqui.
+const semAssinatura = entradas.filter((e) => !e.signature).map((e) => e.file);
+if (semAssinatura.length === entradas.length) {
+  console.log("  ⚠️ NENHUM artefato assinado (sem TAURI_SIGNING_PRIVATE_KEY no ambiente).");
+  console.log("     O auto-update (D1) NÃO vai oferecer esta versão — o plugin exige assinatura.");
+  console.log("     Gere o par uma vez: npx tauri signer generate -w ~/.shvia/updater.key");
+} else if (semAssinatura.length > 0) {
+  // Só alguns: normal, porque o `.dmg` não é o artefato do updater (é o `.app.tar.gz`).
+  console.log(`  (sem .sig, e é esperado para estes: ${semAssinatura.join(", ")})`);
+}
 // Dizer o que FALTA é o ponto do manifesto mesclado: sem este aviso, publicar a
 // release com uma plataforma só é um erro silencioso.
 if (faltando.length > 0) {
