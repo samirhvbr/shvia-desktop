@@ -97,6 +97,110 @@ const CLIPBOARD_IMAGE_PASTE_JS: &str = r#"(function () {
   }, true);
 })();"#;
 
+/// Injetado nas páginas remotas (`on_page_load`): **gate de compatibilidade
+/// cliente↔servidor** (item D6 do comparativo 9router × hermes; ADR-018).
+///
+/// Lê `version.clients.desktop` do `GET /api/v1/health` (ShvIA 2.64.0) e compara
+/// com o build desta casca. Duas situações, dois tratamentos:
+///
+/// - **Casca abaixo do `min_version`** — tarja de aviso, com o motivo e o link do
+///   changelog. Dispensável, e o "dispensar" é lembrado por VERSÃO DO SERVIDOR: se
+///   o servidor subir de novo pedindo outra coisa, o aviso volta.
+/// - **Casca abaixo do `latest_version`** — nada na tela. "Existe uma versão nova"
+///   não é problema; virar tarja para isso é o caminho mais curto para o usuário
+///   aprender a ignorar tarjas.
+///
+/// ## AVISA, não bloqueia — e é decisão, não preguiça
+///
+/// Esta casca é fina: a UI é o Blade do próprio servidor. Na quase totalidade dos
+/// casos o cliente velho **funciona**, só perde uma ponte nativa nova. Bloquear
+/// transformaria um `min_version` digitado errado no servidor numa interrupção
+/// total. Ver ADR-018 e o `config/clients.php` do ShvIA.
+///
+/// ## Fail-open em cada passo
+///
+/// Sem canal nativo, sem rede, JSON inesperado, versão não-parseável: **no-op**. Um
+/// gate que se engana e atrapalha é pior que gate nenhum, porque o custo cai em cima
+/// de quem está tentando trabalhar.
+const VERSION_GATE_JS: &str = r#"(function () {
+  if (window.__shviaVersionGate) return;
+  window.__shviaVersionGate = true;
+
+  var BUILD = '__SHVIA_BUILD__';
+  var KEY = 'shvia_vg_dismissed'; // guarda a versão de servidor já dispensada
+
+  // Compara "0.13.0" com "0.9.2" numericamente, campo a campo. Comparar como
+  // string diria que 0.9.2 > 0.13.0, que é o erro clássico aqui.
+  function cmp(a, b) {
+    var x = String(a || '').split('.'), y = String(b || '').split('.');
+    for (var i = 0; i < Math.max(x.length, y.length); i++) {
+      var n = parseInt(x[i] || '0', 10), m = parseInt(y[i] || '0', 10);
+      if (isNaN(n) || isNaN(m)) return 0;   // não-parseável → empate → no-op
+      if (n !== m) return n > m ? 1 : -1;
+    }
+    return 0;
+  }
+
+  function tarja(texto, url) {
+    if (document.getElementById('shvia-vg')) return;
+    var d = document.createElement('div');
+    d.id = 'shvia-vg';
+    d.setAttribute('role', 'status');
+    d.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483500;' +
+      'display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap;' +
+      'padding:10px 16px;font:500 .875rem/1.4 var(--font-body,system-ui,sans-serif);' +
+      'color:var(--tx,#ECF1F8);background:var(--bg-elev,#1d2330);' +
+      'border-top:1px solid var(--bd,#333b4d);box-shadow:0 -4px 16px rgba(0,0,0,.25)';
+
+    var span = document.createElement('span');
+    span.textContent = texto;
+    d.appendChild(span);
+
+    if (url) {
+      var a = document.createElement('a');
+      a.href = url;                      // host externo → o Rust manda pro navegador
+      a.textContent = 'Ver o que mudou';
+      a.style.cssText = 'color:var(--ac,#7aa2ff);text-decoration:underline';
+      d.appendChild(a);
+    }
+
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = 'Dispensar';
+    b.style.cssText = 'padding:4px 10px;border:1px solid var(--bd,#333b4d);border-radius:6px;' +
+      'background:transparent;color:inherit;font:inherit;cursor:pointer';
+    b.onclick = function () {
+      try { localStorage.setItem(KEY, d.getAttribute('data-srv') || '1'); } catch (e) {}
+      d.remove();
+    };
+    d.appendChild(b);
+    document.body.appendChild(d);
+    return d;
+  }
+
+  fetch('/api/v1/health', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) {
+      var c = j && j.version && j.version.clients && j.version.clients.desktop;
+      if (!c || !c.min_version) return;                       // servidor antigo → no-op
+      if (cmp(BUILD, c.min_version) >= 0) return;             // em dia → nada na tela
+
+      // Dispensar é lembrado por versão DO SERVIDOR: se ele subir de novo pedindo
+      // outra coisa, o aviso volta. Guardar só um booleano faria o usuário
+      // dispensar uma vez e nunca mais ser avisado.
+      var srv = String((j.version && j.version.app) || '');
+      try { if (localStorage.getItem(KEY) === srv) return; } catch (e) {}
+
+      var texto = c.notice
+        ? String(c.notice)
+        : 'Este ShvIA Desktop (' + BUILD + ') é mais antigo que o mínimo suportado pelo servidor (' +
+          c.min_version + '). Ele deve seguir funcionando, mas vale atualizar.';
+      var el = tarja(texto, c.changelog_url || '');
+      if (el) { el.setAttribute('data-srv', srv); }
+    })
+    .catch(function () {});   // rede/JSON ruim → no-op
+})();"#;
+
 /// Injetado nas páginas remotas do ShvIA (`on_page_load`): **notificações nativas do
 /// SO + contagem no ícone** (ADR-011).
 ///
@@ -518,6 +622,15 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
                     // recebem — são as três faces da MESMA instância; iframe
                     // cross-origin e casca local continuam de fora).
                     let _ = webview.eval(code_bridge::inject_token(NATIVE_NOTIFY_JS));
+                    // Gate de versão (ADR-018): compara este build com o
+                    // `version.clients.desktop.min_version` do servidor.
+                    let _ = webview.eval(VERSION_GATE_JS.replace(
+                        "__SHVIA_BUILD__",
+                        // A versão do PACOTE (version.md → tauri.conf.json), a mesma
+                        // que o modal Sobre mostra. `tauri::VERSION` seria a do
+                        // framework, que não é o que o servidor compara.
+                        &webview.package_info().version.to_string(),
+                    ));
                     let _ = webview.eval(CLIPBOARD_IMAGE_PASTE_JS);
                     // Ponte do Modo Code (window.__shviaCode/__shviaDesktop). Ver code_bridge.rs.
                     let _ = webview.eval(code_bridge::inject_token(code_bridge::BRIDGE_JS));

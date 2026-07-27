@@ -83,6 +83,13 @@ nativas** que falem com a API (F2+, via sidecar + keychain).
   - **Clique→navegar não existe**, e não é dívida: o `desktop.rs` do plugin não tem
     callback de ação. **Windows não tem badge** (`set_badge_count` é `Unsupported`
     lá). Ver [ADR-017](decisoes.md#adr-017--notificação-badge-no-ícone-entra-cliquenavegar-não-é-possível-com-o-plugin).
+- **Gate de versão** (`VERSION_GATE_JS`): lê `version.clients.desktop` do
+  `/api/v1/health` e, se este build está abaixo do `min_version` que o servidor
+  declara, mostra tarja dispensável com o motivo e o changelog. **Avisa, nunca
+  bloqueia** — a casca é fina e o cliente velho quase sempre funciona. Dispensar é
+  lembrado por versão DO SERVIDOR, então o aviso volta se o servidor subir pedindo
+  outra coisa. Pré-requisito do auto-update (D1). Ver
+  [ADR-018](decisoes.md#adr-018--gate-de-versão-clienteservidor-avisa-nunca-bloqueia).
 
 ---
 

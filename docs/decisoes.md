@@ -503,3 +503,48 @@ how-to; linkar o ADR.
   - **Validação:** `cargo clippy -D warnings` passa. O **teste ao vivo é na máquina do
     Samir**: com uma rotina do ShvIA entregando em `inapp`, a notificação e a
     contagem no dock têm de aparecer com a janela em segundo plano.
+
+## ADR-018 — Gate de versão cliente↔servidor: avisa, nunca bloqueia
+
+- **Data:** 27/07/2026 · **Status:** Aceito
+- **Contexto:** o modal Sobre já lia `version.app` do `GET /api/v1/health` para
+  mostrar a versão do ShvIA, mas o uso era **puramente informativo** — não havia como
+  o servidor dizer "essa casca é velha demais para o que eu mudei". Item **D6** do
+  [comparativo 9router × hermes](../../SHVIA-WEB/docs/comparativos/9router-hermes.md),
+  e pré-requisito honesto do **D1** (auto-update): não se força atualização sem antes
+  saber avisar.
+- **Decisão:** o **servidor** declara o que espera, em
+  `version.clients.desktop` do `/api/v1/health` (ShvIA 2.64.0):
+  `min_version`, `latest_version`, `changelog_url`, `notice`. O cliente compara com o
+  build do pacote e:
+  - **abaixo do `min_version`** → tarja dispensável no rodapé, com o motivo e o link
+    do changelog;
+  - **abaixo do `latest_version`** → **nada na tela**. "Existe uma versão nova" não é
+    problema, e virar tarja para isso é o caminho mais curto para o usuário aprender
+    a ignorar tarjas.
+- **AVISA, nunca bloqueia — e isso é decisão, não preguiça:** esta casca é **fina**,
+  a UI é o Blade do próprio servidor. Na quase totalidade dos casos o cliente velho
+  **funciona**, só perde uma ponte nativa nova. Bloquear transformaria um
+  `min_version` digitado errado no servidor numa **interrupção total** de todo mundo.
+  Quebra real de contrato se resolve na **rota específica** devolvendo erro, não num
+  gate genérico de versão.
+- **Detalhes que evitam gate irritante:**
+  - **Dispensar é lembrado por versão DO SERVIDOR** (`shvia_vg_dismissed`), não por
+    booleano. Se o servidor subir de novo pedindo outra coisa, o aviso volta — com um
+    booleano, o usuário dispensaria uma vez e nunca mais seria avisado.
+  - **Comparação numérica campo a campo.** Como string, `0.9.2 > 0.13.0` — é o erro
+    clássico de comparar versão.
+  - **Fail-open em cada passo:** sem canal nativo, sem rede, JSON inesperado, versão
+    não-parseável → **no-op**. Gate que se engana e atrapalha é pior que gate nenhum,
+    porque o custo cai em cima de quem está tentando trabalhar. O `min_version`
+    default no servidor é `0.0.0`, então um deploy que esqueça de configurar não
+    avisa nada.
+  - O link do changelog é `https` externo, então o `on_navigation` já o manda para o
+    **navegador do SO** — o usuário não perde a sessão do ShvIA.
+- **Consequências / limites:** o gate roda só em **página remota** (`is_server_host`),
+  como as outras pontes; da casca local não há sessão nem CORS. Não há
+  auto-atualização — isso é o **D1**, e este ADR é o pré-requisito dele.
+  **Validação:** `cargo clippy -D warnings` passa. O **teste ao vivo é na máquina do
+  Samir**: subir `CLIENT_DESKTOP_MIN_VERSION=0.99.0` no servidor deve fazer a tarja
+  aparecer; dispensar e recarregar não deve trazê-la de volta; bumpar a versão do
+  servidor deve trazer.
