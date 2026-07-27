@@ -30,6 +30,45 @@
         <button id="retry" type="button">Tentar agora</button>
         <button id="force-open" type="button" class="ghost">Abrir mesmo assim</button>
       </div>
+
+      <!-- Formulário de servidor (item D4; ADR-019). Fica no MESMO <main> do
+           splash e é alternado pelo data-state, para a casca continuar sendo um
+           arquivo só sem roteador. -->
+      <form id="server-form" class="server-form only-server" novalidate>
+        <label for="server-url">Endereço do servidor ShvIA</label>
+        <input
+          id="server-url"
+          name="server-url"
+          type="text"
+          inputmode="url"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          placeholder="ai.shvia.org"
+        />
+        <p id="server-error" class="server-error" role="alert" aria-live="assertive"></p>
+        <!-- O aviso é obrigatório, não decorativo: o host configurado passa a
+             receber as pontes nativas (Modo Code executa processo local, lê
+             arquivo). Quem digita precisa saber o que está concedendo. -->
+        <p class="server-warn">
+          O servidor informado recebe <strong>acesso nativo</strong> do aplicativo
+          (Modo Code, notificações, badge). Use apenas um ShvIA em que você confia.
+        </p>
+        <div class="actions">
+          <button type="submit">Salvar e conectar</button>
+          <button id="server-reset" type="button" class="ghost" hidden>Voltar ao padrão</button>
+          <button id="server-cancel" type="button" class="ghost">Cancelar</button>
+        </div>
+      </form>
+
+      <!-- Sempre visível fora do formulário: saber PARA ONDE o app vai entrar
+           antes de entrar. É também o único caminho de configuração no 1º run,
+           porque quem usa o servidor padrão nunca vê a tela offline. -->
+      <p class="server-line hide-on-server">
+        <span class="server-line__label">Servidor</span>
+        <span id="server-label" class="server-line__value"></span>
+        <button id="server-change" type="button">trocar</button>
+      </p>
       <noscript>Este aplicativo precisa de JavaScript para carregar o ShvIA.</noscript>
     </main>
   </body>

@@ -36,7 +36,8 @@ Laravel é a fonte da verdade. Decisões e o porquê em [decisoes.md](decisoes.m
 
 ## Fluxo de autenticação (F1)
 
-1. App abre → WebView navega `https://ai.shvia.org`.
+1. App abre → WebView navega o servidor configurado (padrão `https://ai.shvia.org`
+   — ver [Endereço do servidor](#endereço-do-servidor-item-d4)).
 2. Usuário cai na **tela de login Breeze** do próprio ShvIA.
 3. Login → ShvIA seta **cookie de sessão Sanctum** (guard `web`) para o FQDN.
 4. Toda navegação/requisição subsequente vai **autenticada** (como num browser).
@@ -54,16 +55,61 @@ nativas** que falem com a API (F2+, via sidecar + keychain).
 ## Segurança (CSP / capabilities)
 
 - **CSP** da casca local (`security.csp` em `tauri.conf.json`): `default-src
-  'self'` + `connect-src` liberando o FQDN do ShvIA, `ipc:`/`http://ipc.localhost`
+  'self'` + `connect-src` com **apenas** `'self'` e `ipc:`/`http://ipc.localhost`
   para o bridge Tauri. Modelada do CSP do SHVTERM (`gui/src-tauri/tauri.conf.json`).
+  Os FQDNs do ShvIA **saíram** do `connect-src` na 0.15.0: a casca não faz mais
+  `fetch` no servidor (o probe é Rust), e um `connect-src` **estático** não poderia
+  listar uma URL digitada pelo usuário — era esse o bloqueio do servidor
+  configurável. Ver [ADR-019](decisoes.md#adr-019--servidor-configurável-probe-no-rust-e-o-csp-que-destravou).
   **Importante:** esse CSP governa **só a casca local** (splash/offline). Quando o
   WebView **navega para o FQDN**, a página passa a valer sob o **CSP do próprio
   servidor ShvIA** (cabeçalhos HTTP do Laravel) — o CSP do app **não** restringe
   nem protege a página remota.
 - **Capabilities por janela** (`src-tauri/capabilities/`): expor ao WebView só os
-  comandos/plugins necessários (store, notification, updater, deep-link). Postura
-  de menor privilégio.
+  comandos/plugins necessários. Postura de menor privilégio. A capability `default`
+  **não declara `remote`**, e isso é a guarda que faz o ADR-001 continuar valendo
+  agora que existe um `invoke_handler`: o ACL do Tauri recusa `invoke` vindo de
+  página remota, então um servidor comprometido **não** consegue chamar
+  `shvia_server_set` e se tornar o destino permanente do app.
 - **Segredos** (chaves de assinatura/updater) **nunca** no repo — secrets de CI.
+
+---
+
+## Endereço do servidor (item D4)
+
+O FQDN não é constante da casca desde a **0.15.0**. O Rust resolve, nesta ordem:
+
+1. `server.json` no diretório de config do app (gravado pela tela de servidor);
+2. o embutido `https://ai.shvia.org` (`server::DEFAULT_URL`).
+
+```
+casca local (index.html + main.ts)
+  │  invoke shvia_server_config   ──► server::load    (fail-open: lixo → padrão)
+  │  invoke shvia_server_probe    ──► TcpStream::connect_timeout (4 s)
+  │  invoke shvia_server_set      ──► server::normalize + gravar + trocar perímetro
+  │  invoke shvia_server_reset    ──► apagar → volta ao embutido
+  ▼
+alcançável → location.replace(url)   |   não → estado offline com auto-retry (5 s)
+```
+
+**O probe é Rust, e não é preferência de linguagem.** Dois motivos, na ordem de
+importância: (1) `connect-src` estático não pode listar URL digitada — era o
+bloqueio real do item; (2) o primeiro request do WebKit "frio" custava 5-6 s antes
+de qualquer resposta ([ADR-012](decisoes.md#adr-012--timeout-do-ping-de-alcance-o-cold-start-do-webkitgtk-custa-5-6-s)),
+o que forçava timeout de 15 s — agora são **4 s**.
+
+**Alcance ≠ identidade:** o probe abre um TCP e fecha. Não valida certificado nem
+confere que é um ShvIA — escopo declarado, entra com o cliente HTTP do D1.
+
+**O host configurado vira INTERNO** (`is_server_host`), logo recebe as pontes
+nativas: Modo Code, notificação, badge, gate de versão. É decisão de confiança
+deliberada, cercada por: `https` obrigatório fora de loopback, credencial na URL
+recusada, comandos inalcançáveis por página remota, e um aviso em português na
+tela. Ver [ADR-019](decisoes.md#adr-019--servidor-configurável-probe-no-rust-e-o-csp-que-destravou).
+
+**Onde mexer:** [`src-tauri/src/server.rs`](../src-tauri/src/server.rs) (regra e
+persistência), [`src/main.ts`](../src/main.ts) (estados da casca),
+[`index.html`](../index.html) (formulário).
 
 ---
 

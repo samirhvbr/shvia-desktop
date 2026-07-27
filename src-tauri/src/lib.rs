@@ -17,6 +17,8 @@
 //! - **persistir** tamanho/posição entre reinícios (`tauri-plugin-window-state`).
 
 mod code_bridge;
+/// Endereço do servidor: config persistida, validação e probe (item D4; ADR-019).
+mod server;
 #[cfg(target_os = "macos")]
 mod macos_ipc;
 #[cfg(target_os = "windows")]
@@ -525,9 +527,58 @@ const SERVER_HOST: &str = "ai.shvia.org";
 /// SO como qualquer link externo.
 const SERVER_HOSTS: &[&str] = &[SERVER_HOST, "ia.shvia.org", "ia.blue3.com.br"];
 
-/// `true` se o host for uma das faces do servidor do ShvIA.
+/// `true` se o host for uma das faces do servidor do ShvIA — a lista embutida
+/// **ou** o servidor que o dono da máquina configurou (item D4).
+///
+/// O host configurado entra aqui de propósito, e é a decisão mais pesada do D4:
+/// ele passa a receber as **pontes nativas** (Modo Code com spawn de processo,
+/// leitura de FS, notificação, badge, token de capacidade). Não existe meio termo
+/// útil — casca que abre o servidor do cliente sem as pontes é um navegador, não
+/// o ShvIA Desktop.
+///
+/// O que torna isso aceitável, e o que **precisa continuar valendo**:
+/// - a URL só entra por uma tela **nativa** da casca local, digitada por quem
+///   está no teclado; página remota nenhuma consegue chamar os comandos que
+///   gravam isso (a capability não declara `remote`, então o ACL recusa — ver
+///   `capabilities/default.json` e ADR-001);
+/// - `https` é obrigatório fora de loopback ([`server::normalize`]);
+/// - a tela diz, em português, que o servidor ganha acesso nativo.
 fn is_server_host(host: &str) -> bool {
-    SERVER_HOSTS.contains(&host)
+    if SERVER_HOSTS.contains(&host) {
+        return true;
+    }
+    server::configured_host().is_some_and(|h| h == host)
+}
+
+/// Configuração do servidor para a casca local desenhar a tela.
+#[tauri::command]
+fn shvia_server_config(app: tauri::AppHandle) -> server::ServerConfig {
+    server::load(&app)
+}
+
+/// `true` se alguém aceita conexão no endereço. Substitui o `fetch` com `no-cors`
+/// que a casca fazia: o primeiro request do WebKit frio custava 5-6 s (ADR-012) e
+/// um `connect-src` estático não pode listar URL digitada pelo usuário.
+///
+/// `spawn_blocking` porque DNS + connect bloqueiam, e a thread da UI não pode
+/// parar — é ela que anima o sonar do splash.
+#[tauri::command]
+async fn shvia_server_probe(url: String) -> bool {
+    tauri::async_runtime::spawn_blocking(move || server::probe(&url))
+        .await
+        .unwrap_or(false)
+}
+
+/// Grava o servidor. Devolve `Err` com texto pronto para a tela.
+#[tauri::command]
+fn shvia_server_set(app: tauri::AppHandle, url: String) -> Result<server::ServerConfig, String> {
+    server::save(&app, &url)
+}
+
+/// Volta ao servidor embutido.
+#[tauri::command]
+fn shvia_server_reset(app: tauri::AppHandle) -> server::ServerConfig {
+    server::reset(&app)
 }
 
 /// Contador monotônico de janelas abertas por `target=_blank` (handler
@@ -958,7 +1009,21 @@ pub fn run() {
         });
 
     let app = builder
+        // Os ÚNICOS comandos do app. A capability `default` não declara `remote`,
+        // então o ACL do Tauri recusa `invoke` vindo de página remota — o ADR-001
+        // ("nenhum comando exposto à página do servidor") continua valendo, e é o
+        // que impede um servidor comprometido de se auto-configurar como destino.
+        .invoke_handler(tauri::generate_handler![
+            shvia_server_config,
+            shvia_server_probe,
+            shvia_server_set,
+            shvia_server_reset,
+        ])
         .setup(|app| {
+            // ANTES de abrir a janela: o `is_server_host` é consultado na primeira
+            // navegação, e sem isto o servidor configurado seria tratado como link
+            // externo e abriria no navegador do SO.
+            server::load(app.handle());
             build_shvia_window(app.handle(), "main")?;
             Ok(())
         })
@@ -1032,6 +1097,36 @@ mod tests {
         assert!(!internal("https://www.shvia.org/"));
         assert!(!internal("https://evil.shvia.org/"));
         assert!(!internal("https://ai.shvia.org.evil.com/"));
+    }
+
+    /// Item D4: o servidor configurado pelo dono da máquina vira **interno** — é o
+    /// que faz o on-prem receber Modo Code, notificação e badge. Continua sendo
+    /// UM host: configurar `meu.servidor` não abre a vizinhança dele.
+    ///
+    /// Estes testes mexem no estado global de `server::CONFIGURED_HOST`, então
+    /// ficam num único `#[test]` — dois testes concorrentes na mesma thread pool
+    /// se atropelariam.
+    #[test]
+    fn servidor_configurado_vira_interno_e_so_ele() {
+        super::server::set_configured_host_para_teste("https://onprem.cliente.example:8443");
+
+        assert!(internal("https://onprem.cliente.example:8443/chat"));
+        // Mesmo host em outra porta: `is_server_host` compara HOST, e a porta não
+        // faz parte da identidade de origem para este perímetro.
+        assert!(internal("https://onprem.cliente.example/chat"));
+
+        // Vizinhança do host configurado NÃO entra.
+        assert!(!internal("https://outro.cliente.example/"));
+        assert!(!internal("https://onprem.cliente.example.evil.com/"));
+        // E http continua fora, mesmo sendo o host configurado.
+        assert!(!internal("http://onprem.cliente.example/"));
+
+        // Os embutidos seguem valendo junto com o configurado.
+        assert!(internal("https://ai.shvia.org/chat"));
+
+        // Limpa: outros testes deste módulo assumem só a lista embutida.
+        super::server::set_configured_host_para_teste(super::server::DEFAULT_URL);
+        assert!(!internal("https://onprem.cliente.example/chat"));
     }
 
     /// O endurecimento do 0.9.0: nada além do host canônico entra no app (nem

@@ -219,3 +219,136 @@ body {
     transition: none;
   }
 }
+
+/* ── Servidor configurável (item D4; ADR-019) ───────────────────── */
+
+/* Linha "Servidor: host — trocar". Discreta de propósito: no caminho comum ela é
+   informação, não ação. Mas é o ÚNICO ponto de entrada da configuração no 1º
+   run, porque quem usa o servidor padrão nunca chega à tela offline. */
+.server-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 26px;
+  font: 500 0.78rem/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--tx-dim);
+}
+
+.server-line__label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.68rem;
+  opacity: 0.75;
+}
+
+.server-line__value {
+  color: var(--tx);
+  /* URL de on-prem pode ser longa; corta em vez de esticar a janela. */
+  max-width: 46ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Servidor fora do padrão: marca visualmente que não é o ai.shvia.org. Sem isso,
+   uma máquina configurada por engano fica indistinguível da normal. */
+.bootstrap[data-custom="yes"] .server-line__value {
+  color: var(--azure-strong);
+}
+
+.server-line button {
+  font: 500 0.78rem/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: none;
+  border: 0;
+  padding: 2px 4px;
+  color: var(--azure-strong);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.server-line button:hover {
+  color: var(--azure);
+}
+
+.server-line button:focus-visible {
+  outline: 2px solid var(--azure);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.only-server {
+  display: none;
+}
+
+.bootstrap[data-state="server"] .only-server {
+  display: flex;
+}
+
+/* No formulário, o splash sai da frente: sem sonar, sem a linha de servidor
+   (o valor já está no input) e a marca para de respirar. */
+.bootstrap[data-state="server"] .ripple,
+.bootstrap[data-state="server"] .hide-on-server {
+  display: none;
+}
+
+.bootstrap[data-state="server"] .brand-mark {
+  animation: none;
+  width: 96px;
+  height: 96px;
+}
+
+.server-form {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: min(420px, 88vw);
+  margin-top: 20px;
+  text-align: left;
+}
+
+.server-form label {
+  font: 600 0.78rem/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--tx-dim);
+}
+
+.server-form input {
+  font: 500 0.95rem/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--azure-line);
+  color: var(--tx);
+}
+
+.server-form input:focus-visible {
+  outline: 2px solid var(--azure);
+  outline-offset: 1px;
+}
+
+/* O erro vem do Rust em português, já pronto para a tela. Sem `:empty` o
+   parágrafo vazio ainda ocuparia altura e a caixa "pularia" ao errar. */
+.server-error {
+  margin: 0;
+  min-height: 1.2em;
+  font: 500 0.8rem/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #F08A8A;
+}
+
+.server-warn {
+  margin: 2px 0 0;
+  font: 400 0.76rem/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--tx-dim);
+}
+
+.server-warn strong {
+  color: var(--tx);
+}
+
+.server-form .actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  margin-top: 10px;
+}

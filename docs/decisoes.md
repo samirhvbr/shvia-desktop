@@ -548,3 +548,66 @@ how-to; linkar o ADR.
   Samir**: subir `CLIENT_DESKTOP_MIN_VERSION=0.99.0` no servidor deve fazer a tarja
   aparecer; dispensar e recarregar não deve trazê-la de volta; bumpar a versão do
   servidor deve trazer.
+
+## ADR-019 — Servidor configurável, probe no Rust e o CSP que destravou
+
+- **Data:** 27/07/2026 · **Status:** Aceito
+- **Contexto:** o endereço do ShvIA era a constante `SHVIA_URL` em `src/main.ts`.
+  Item **D4** do [comparativo 9router × hermes](../../SHVIA-WEB/docs/comparativos/9router-hermes.md),
+  e o item (a) que faltava da F2. Sem ele não há **on-prem** (cliente com o próprio
+  ShvIA) nem apontar a casca para um servidor local em desenvolvimento.
+- **O bloqueio não era de UI, era de CSP.** O `csp` do `tauri.conf.json` é
+  **estático**, e o `connect-src` listava os FQDNs porque a casca fazia
+  `fetch(.../api/v1/health)`. Um `connect-src` estático **não pode** listar uma URL
+  que o usuário acabou de digitar. Enquanto o probe fosse JavaScript, servidor
+  configurável era impossível — não por decisão, por CSP.
+- **Decisão:** o probe **sai do JavaScript** e vira `TcpStream::connect_timeout` no
+  Rust (`server::probe`, exposto como `shvia_server_probe`). Com isso o
+  `connect-src` perdeu os três FQDNs e a casca lê o endereço de
+  `shvia_server_config`, que resolve o `server.json` do diretório de config do app e
+  cai no embutido quando não há nada.
+- **Ganho de lado:** o timeout caiu de **15 s para 4 s**. Os 15 s do
+  [ADR-012](#adr-012--timeout-do-ping-de-alcance-o-cold-start-do-webkitgtk-custa-5-6-s) existiam só para absorver o cold-start do WebKit — 5-6 s antes
+  de qualquer resposta no primeiro request da engine "fria". O `connect` do Rust
+  responde em dezenas de milissegundos, então o número que existia para esconder o
+  problema saiu junto com o problema.
+- **O host configurado passa a ser INTERNO** — a decisão mais pesada aqui. Ele
+  recebe as **pontes nativas**: Modo Code (spawn de processo local, leitura de FS),
+  notificação, badge, gate de versão, token de capacidade. Não existe meio termo
+  útil: casca que abre o servidor do cliente **sem** as pontes entrega um navegador,
+  não o ShvIA Desktop. O que torna isso aceitável, e o que precisa continuar
+  valendo:
+  - a URL só entra por uma tela **nativa da casca local**, digitada por quem está no
+    teclado. **Página remota não alcança os comandos:** a capability `default` não
+    declara `remote`, então o ACL do Tauri recusa `invoke` de origem remota — sem
+    isso, um servidor comprometido se auto-configuraria como destino permanente do
+    app. É o [ADR-001](#adr-001--base--shvterm-tauri-2-fork-claude-descartado) continuando a valer, agora com um `invoke_handler`
+    no meio;
+  - **`https` obrigatório** fora de loopback. `http` em rede entregaria a sessão em
+    claro — e aqui rebaixa o perímetro inteiro, não só o transporte;
+  - credencial embutida (`https://user:senha@host`) é **recusada**, não descartada
+    em silêncio: descarte calado deixaria a pessoa achando que está autenticada;
+  - a tela **diz em português** que o servidor recebe acesso nativo, antes de salvar.
+- **Alcance não é identidade, e isso é escopo declarado.** O probe abre um TCP e
+  fecha: responde "tem alguém escutando", exatamente como o `no-cors` respondia
+  (resposta opaca não deixava ler nada). Não valida certificado nem confere que é um
+  ShvIA. Falar HTTPS do Rust exigiria `reqwest` + rustls, e o binário ainda não paga
+  esse custo — o **D1** (auto-update) trará um cliente HTTP de verdade e a validação
+  de identidade entra com ele. Até lá o feedback é a própria página: URL errada abre
+  um site errado, e isso é visível na hora.
+- **Sem assistente de primeiro uso.** A linha "Servidor: host — trocar" fica visível
+  no splash e na tela offline, e é o ponto de entrada. Um wizard bloqueante puniria
+  os 99% que usam o padrão para servir os 1% de on-prem; a linha também responde
+  "para onde este app vai entrar?", que é informação útil sempre.
+- **Fail-open na leitura:** `server.json` ausente, com JSON corrompido ou com URL que
+  não passa na validação de **hoje** cai no embutido. Um arquivo editado à mão com
+  lixo dentro não pode virar tela branca. A revalidação na leitura também significa
+  que endurecer a regra desqualifica o que uma versão antiga gravou.
+- **Consequências / validação:** `cargo test` 21/21 (9 de `server::normalize`/`probe`
+  e o que trava o perímetro: host configurado entra, a vizinhança dele não, e `http`
+  continua fora mesmo sendo o host configurado), `cargo clippy -D warnings` e `tsc`
+  limpos. Entrou `@tauri-apps/api` no `package.json` — a casca não tinha como falar
+  com o Rust (`withGlobalTauri: false` e nenhum comando existia até aqui).
+  **Teste ao vivo na máquina do Samir:** `?server` abre o formulário; salvar um host
+  inalcançável deve cair em offline com auto-retry; "Voltar ao padrão" deve reaparecer
+  só quando não é o embutido; e o Modo Code deve continuar funcionando no host padrão.
