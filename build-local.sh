@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# build-local.sh — Build LOCAL do ShvIA Desktop no macOS e Linux (sem CI).
-# Gera os instaladores do app, replicando o que .github/workflows/build.yml faz
-# nos runners macos-latest / ubuntu-latest. O ShvIA é shell fino: SEM sidecar.
+# build-local.sh — Build LOCAL do ShvIA Desktop no macOS e Linux.
+# Gera os instaladores do app. O ShvIA é shell fino: SEM sidecar.
+#
+# NÃO HÁ CI: ela foi removida na 0.4.6 por custo, e o build é 100% local por
+# decisão. Este script É o pipeline — inclusive checksums e manifesto
+# (release.json), que o item D9 acrescentou e o D1 (auto-update) vai consumir.
 #   macOS  -> .dmg + .app.tar.gz
 #   Linux  -> .deb + .AppImage (+ .rpm)   (targets="all" do tauri.conf.json)
 #
@@ -39,7 +42,13 @@
 # WEBKIT_DISABLE_DMABUF_RENDERER=1 (render por software). Não afeta o build, só a
 # execução. Detalhes em docs/decisoes.md / .continue.
 #
-# Saída: src-tauri/target/release/bundle/
+# Saída: src-tauri/target/release/bundle/ (+ um .sha256 ao lado de cada instalador)
+#        release.json na raiz — o manifesto que o auto-update (D1) vai ler.
+#
+# O release.json é MESCLADO, não sobrescrito: cada SO é empacotado numa máquina
+# diferente e nenhuma vê os artefatos das outras, então o build do Windows não pode
+# apagar a entrada do macOS. O script avisa quais plataformas ainda faltam.
+#
 # Obs.: o 1º build compila o Rust inteiro (~minutos); os próximos são incrementais.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -403,4 +412,12 @@ if [ "$_BUILD_OS" = macOS ]; then
   step "[macOS] verificação (codesign / spctl / stapler)"
   verify_macos_signature
 fi
+
+# ── Checksums + release.json (item D9) ────────────────────────────────────────
+# DEPOIS da assinatura/notarização de propósito: assinar e stapler ALTERAM os
+# bytes do artefato, então um sha256 calculado antes descreveria um arquivo que
+# não existe mais — e o updater recusaria o download por hash divergente.
+step "[D9] checksums + release.json"
+node scripts/release-manifest.mjs || echo "  (manifesto não gerado — build segue válido)"
+
 _summary

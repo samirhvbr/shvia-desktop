@@ -64,8 +64,13 @@ Formato: `versão - comentário em português`
 
 - **Nenhum banco roda aqui.** Sem MySQL, sem SQLite, sem Postgres no cliente — a
   regra do ShvIA ("MariaDB/MySQL, nunca SQLite") é satisfeita por construção.
-- **Nenhum segredo do servidor mora neste repo.** Chaves de assinatura/updater
-  vivem em secrets de CI, nunca versionadas (ver `.gitignore`).
+- **Nenhum segredo do servidor mora neste repo.** E **não há "secrets de CI"** onde
+  guardá-los: a CI foi removida na 0.4.6 e o build é 100% local. Onde as
+  credenciais de assinatura vivem: no macOS, a senha de notarização no **keychain**
+  (serviço `shvia-notarize`); no Windows, o certificado no **repositório de
+  certificados do SO** (ou um `.pfx` fora da árvore do repo), apontado por
+  `SHVIA_WIN_CERT_THUMBPRINT` / `SHVIA_WIN_PFX` em variável de ambiente da sessão.
+  Nunca versionadas (ver `.gitignore`).
 - **Auth é cookie de sessão same-origin** (a janela navega o FQDN real). Não
   inventar fluxo de token na F1 — o login é a tela do próprio ShvIA.
 

@@ -71,7 +71,11 @@ nativas** que falem com a API (F2+, via sidecar + keychain).
   agora que existe um `invoke_handler`: o ACL do Tauri recusa `invoke` vindo de
   página remota, então um servidor comprometido **não** consegue chamar
   `shvia_server_set` e se tornar o destino permanente do app.
-- **Segredos** (chaves de assinatura/updater) **nunca** no repo — secrets de CI.
+- **Segredos** (chaves de assinatura/updater) **nunca** no repo. E não há "secrets de
+  CI" onde guardá-los, porque não há CI: no macOS a senha de notarização vive no
+  **keychain** da máquina; no Windows o certificado vive no **repositório de
+  certificados do SO** (ou um `.pfx` fora da árvore do repo), apontado por variável
+  de ambiente da sessão.
 
 ---
 
@@ -141,16 +145,37 @@ persistência), [`src/main.ts`](../src/main.ts) (estados da casca),
 
 ## Build & empacotamento
 
-- **Versão:** `tauri.conf.json` recebe o valor de `version.md` na CI (fonte única,
-  como o `config/app.php` do ShvIA lê `version.md`).
-- **Targets:** macOS (`.dmg`, universal arm64+x64), Windows (`.msi` WiX + NSIS),
-  Linux (`.AppImage` + `.deb`, `.rpm` opcional).
-- **Assinatura:** macOS Developer ID + `notarytool` + `stapler`; Windows
-  Authenticode **EV** (Azure Trusted Signing); Linux GPG.
-- **Auto-update:** Tauri updater com `latest.json` assinado em GitHub Releases
-  (fluxo colhido do SHVTERM).
-- **CI:** GitHub Actions, matriz `macos`/`windows`/`ubuntu` (`tauri-action`).
-  Sem serviço de banco (o cliente não tem DB).
+> ⚠️ **Não há CI.** Ela foi removida na **0.4.6** por custo, e o build é **100% local
+> por decisão**. Esta seção descrevia uma pipeline de GitHub Actions que não existe
+> mais (matriz de runners, `tauri-action`, Azure Trusted Signing, `latest.json` em
+> Releases) — corrigido na 0.16.0, junto do item D9.
+
+- **Onde roda:** `build-local.sh` (macOS/Linux) e `build-local.ps1` (Windows). **Cada
+  SO é empacotado numa máquina diferente**, e essa é a restrição que molda o resto.
+- **Versão:** `version.md` é a fonte única; o `scripts/sync-version.mjs` a propaga
+  para `package.json`, `tauri.conf.json`, `Cargo.toml` e os locks (roda no `prebuild`).
+- **Targets:** macOS (`.dmg` + `.app.tar.gz`), Windows (`.msi` WiX + `-setup.exe`
+  NSIS), Linux (`.AppImage` + `.deb` + `.rpm`).
+- **Assinatura:**
+  - **macOS** — Developer ID + `notarytool` + `stapler`, com a senha de app no
+    **keychain** (serviço `shvia-notarize`), nunca no repo.
+  - **Windows** (item D9) — `signtool` no `.msi` **e** no `-setup.exe`, com
+    timestamp RFC3161 (`/tr`). Sem `/tr` a assinatura expira junto com o
+    certificado. Credencial por env: `SHVIA_WIN_CERT_THUMBPRINT` (preferido — a
+    chave privada não vira arquivo) ou `SHVIA_WIN_PFX` + senha.
+  - **Linux** — sem assinatura hoje. O `.AppImage` e o `.deb` saem crus.
+  - Em qualquer SO, **sem credencial o build segue e avisa** — mas avisa em amarelo,
+    porque build não assinado que parece normal é o que faz alguém publicar e
+    descobrir pelo relato do usuário.
+- **Checksums e manifesto** (item D9, `scripts/release-manifest.mjs`): um `.sha256`
+  ao lado de cada instalador e o **`release.json`** na raiz, que é o manifesto que o
+  auto-update (D1) vai ler. Ele **mescla** por plataforma — build por máquina
+  significa que sobrescrever apagaria a entrada dos outros SOs — e **avisa quais
+  faltam**. O hash é calculado **depois** de assinar, porque assinar altera os bytes.
+  `release.json` é **gitignorado**: artefato de build, não fonte. Ver
+  [ADR-020](decisoes.md#adr-020--checksums-e-releasejson-saem-do-build-local-assinatura-no-windows).
+- **Auto-update:** **ainda não existe** — é o item **D1**, e o `release.json` acima é
+  o pré-requisito dele.
 
 ---
 

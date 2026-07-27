@@ -1,8 +1,11 @@
 ﻿#requires -Version 5.1
 <#
-  build-local.ps1 — Build LOCAL do ShvIA Desktop no Windows (sem CI).
-  Gera os instaladores (.msi + -setup.exe), replicando o runner windows-latest
-  do .github/workflows/build.yml. O ShvIA é shell fino: SEM sidecar.
+  build-local.ps1 — Build LOCAL do ShvIA Desktop no Windows.
+  Gera os instaladores (.msi + -setup.exe). O ShvIA é shell fino: SEM sidecar.
+
+  NÃO HÁ CI: ela foi removida na 0.4.6 por custo, e o build é 100% local por
+  decisão. Este script É o pipeline do Windows — inclusive checksums, manifesto
+  (release.json) e assinatura (item D9).
 
   PRE-REQUISITOS (instalar uma vez):
     - Node 20      (winget install OpenJS.NodeJS.LTS)
@@ -14,6 +17,17 @@
     .\build-local.ps1                # build normal (.msi + -setup.exe)
     .\build-local.ps1 -SkipNpmCi     # pula 'npm ci' (deps ja instaladas)
     .\build-local.ps1 -SkipGitPull   # NAO sincroniza com o remoto antes do build
+    .\build-local.ps1 -NoSign        # NÃO assina — build de teste
+
+  ASSINATURA (item D9): sem assinar, o SmartScreen mostra "Editor desconhecido" e
+  esconde o botão de instalar atrás de "Mais informações" — a maioria das pessoas
+  desiste ali. O certificado NUNCA vem do repo; vem de:
+    SHVIA_WIN_CERT_THUMBPRINT -> impressão digital de um cert já no repositório de
+                                 certificados do Windows. É o caminho preferido:
+                                 a chave privada não vira arquivo em disco.
+    SHVIA_WIN_PFX + SHVIA_WIN_PFX_PASSWORD -> caminho de um .pfx e a senha.
+  Sem nenhuma das duas, o build segue SEM assinar e avisa (mesma postura do
+  macOS). A senha vai em variável de ambiente da SESSÃO, nunca em arquivo.
 
   GIT PULL (padrao da casa): antes de tudo, o script sincroniza com o remoto via
   scripts/git-sync.mjs. Ele restaura ao HEAD SO os manifests cuja unica diferenca
@@ -29,7 +43,8 @@
 #>
 param(
   [switch]$SkipNpmCi,
-  [switch]$SkipGitPull
+  [switch]$SkipGitPull,
+  [switch]$NoSign
 )
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
@@ -112,14 +127,14 @@ Write-Host "==> ShvIA Desktop — build local (Windows)"
 Step "[git] sincroniza com o remoto (git pull --ff-only)"
 Invoke-GitSync
 
-Step "[1/3] dependencias do frontend (npm ci)"
+Step "[1/4] dependencias do frontend (npm ci)"
 if (-not $SkipNpmCi) {
   Invoke-Native "npm ci" { npm ci }
 } else {
   Write-Host "    (pulado: -SkipNpmCi)" -ForegroundColor Yellow
 }
 
-Step "[2/3] sincroniza versao (version.md -> manifests)"
+Step "[2/4] sincroniza versao (version.md -> manifests)"
 Invoke-Native "version:sync" { npm run version:sync }
 
 # Limpa instaladores de builds anteriores (padrao SHVTERM): o bundle dir acumula
@@ -127,8 +142,79 @@ Invoke-Native "version:sync" { npm run version:sync }
 # na listagem final.
 if (Test-Path src-tauri\target\release\bundle) { Remove-Item -Recurse -Force src-tauri\target\release\bundle }
 
-Step "[3/3] Tauri build"
+# ── Assinatura (item D9) ─────────────────────────────────────────────────────
+# Sem assinar, o SmartScreen mostra "Editor desconhecido" e esconde o botão de
+# instalar atrás de "Mais informações" — a maioria das pessoas desiste ali. É o
+# equivalente Windows do "app danificado" que o macOS mostra sem Developer ID.
+#
+# Assina o .msi E o -setup.exe: são dois instaladores distintos, e assinar só um
+# deixa metade dos usuários vendo o aviso.
+function Find-SignTool {
+  # O signtool.exe vive no Windows SDK, em caminho versionado. Pegar o MAIS NOVO
+  # evita fixar uma versão de SDK que a máquina pode não ter.
+  $cmd = Get-Command signtool.exe -ErrorAction SilentlyContinue
+  if ($cmd) { return $cmd.Source }
+  $raizes = @("${env:ProgramFiles(x86)}\Windows Kits\10\bin", "$env:ProgramFiles\Windows Kits\10\bin")
+  foreach ($raiz in $raizes) {
+    if (-not (Test-Path $raiz)) { continue }
+    $achado = Get-ChildItem $raiz -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+      Where-Object { $_.FullName -match '\\x64\\' } |
+      Sort-Object FullName -Descending | Select-Object -First 1
+    if ($achado) { return $achado.FullName }
+  }
+  return $null
+}
+
+function Invoke-Signing {
+  if ($NoSign) { Write-Host "    (pulado: -NoSign)" -ForegroundColor Yellow; return }
+
+  $thumb = $env:SHVIA_WIN_CERT_THUMBPRINT
+  $pfx   = $env:SHVIA_WIN_PFX
+  if (-not $thumb -and -not $pfx) {
+    # Aviso EXPLÍCITO e não silêncio: um build sem assinatura que parece normal é
+    # o que faz alguém publicar e só descobrir pelo relato do usuário.
+    Write-Host "    ⚠️ SEM CERTIFICADO — os instaladores sairão NÃO ASSINADOS." -ForegroundColor Yellow
+    Write-Host "       Defina SHVIA_WIN_CERT_THUMBPRINT (cert no repositório do Windows)" -ForegroundColor Yellow
+    Write-Host "       ou SHVIA_WIN_PFX + SHVIA_WIN_PFX_PASSWORD. O SmartScreen vai" -ForegroundColor Yellow
+    Write-Host "       mostrar 'Editor desconhecido' para quem baixar." -ForegroundColor Yellow
+    return
+  }
+
+  $signtool = Find-SignTool
+  if (-not $signtool) {
+    Write-Host "    ⚠️ signtool.exe não encontrado (instale o Windows SDK) — SEM assinar." -ForegroundColor Yellow
+    return
+  }
+
+  $alvos = Get-ChildItem -Recurse src-tauri\target\release\bundle -Include *.msi, *-setup.exe -ErrorAction SilentlyContinue
+  if (-not $alvos) { Write-Host "    (nenhum instalador para assinar)" -ForegroundColor Yellow; return }
+
+  # /fd sha256 e /td sha256: SHA-1 é recusado pelo Windows moderno.
+  # /tr (timestamp RFC3161): SEM ele a assinatura EXPIRA junto com o certificado, e
+  # um instalador de hoje para de ser confiável no dia em que o cert vencer.
+  $comuns = @('/fd', 'sha256', '/td', 'sha256', '/tr', 'http://timestamp.digicert.com')
+  $cred = if ($thumb) { @('/sha1', $thumb) } else { @('/f', $pfx, '/p', $env:SHVIA_WIN_PFX_PASSWORD) }
+
+  foreach ($a in $alvos) {
+    Write-Host "    assinando $($a.Name)"
+    & $signtool sign @cred @comuns $a.FullName
+    if ($LASTEXITCODE -ne 0) { throw "signtool falhou em $($a.Name) (exit $LASTEXITCODE)" }
+    # Verifica de verdade: assinar e não conferir deixa passar cert expirado ou
+    # cadeia incompleta, que o usuário descobre no SmartScreen.
+    & $signtool verify /pa /v $a.FullName | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "verificação da assinatura falhou em $($a.Name)" }
+    Write-Host "      ✓ assinado e verificado" -ForegroundColor Green
+  }
+}
+
+Step "[3/4] Tauri build"
 Invoke-Native "tauri build" { npx tauri build }
+
+Step "[4/4] assinatura + checksums + release.json (item D9)"
+Invoke-Signing
+# O manifesto vem DEPOIS da assinatura: assinar altera os bytes, então um sha256
+# calculado antes descreveria um arquivo que não existe mais.
+Invoke-Native "release-manifest" { node scripts/release-manifest.mjs }
 
 Write-Host "`n[OK] Instaladores em src-tauri\target\release\bundle\" -ForegroundColor Green
 Get-ChildItem -Recurse src-tauri\target\release\bundle -Include *.msi, *-setup.exe -ErrorAction SilentlyContinue |

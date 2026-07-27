@@ -1,7 +1,7 @@
 {
   "name": "shvia-desktop",
   "private": true,
-  "version": "0.15.0",
+  "version": "0.16.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,8 @@
     "tauri": "tauri",
     "version:sync": "node scripts/sync-version.mjs",
     "prebuild": "node scripts/sync-version.mjs",
-    "pull": "node scripts/git-sync.mjs"
+    "pull": "node scripts/git-sync.mjs",
+    "release:manifest": "node scripts/release-manifest.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

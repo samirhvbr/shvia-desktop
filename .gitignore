@@ -60,3 +60,11 @@ src-tauri/resources/sidecar-bin*
 # .vscode/ é versionado seletivamente (settings compartilhados) — ajustar se preciso
 
 # NÃO ignorar: .continue/ e .claude/ são versionados de propósito.
+
+# ── Manifesto de release (item D9) ──────────────────────────────────────────
+# `release.json` é ARTEFATO de build, não fonte: cada máquina o regenera para a
+# sua plataforma e o conteúdo depende de binários que não são versionados. Ele é
+# publicado junto dos instaladores, não commitado — versionar traria conflito em
+# todo build e um hash no git que não corresponde a nada.
+release.json
+dist/

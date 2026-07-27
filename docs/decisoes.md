@@ -611,3 +611,67 @@ how-to; linkar o ADR.
   **Teste ao vivo na máquina do Samir:** `?server` abre o formulário; salvar um host
   inalcançável deve cair em offline com auto-retry; "Voltar ao padrão" deve reaparecer
   só quando não é o embutido; e o Modo Code deve continuar funcionando no host padrão.
+
+## ADR-020 — Checksums e `release.json` saem do build LOCAL; assinatura no Windows
+
+- **Data:** 27/07/2026 · **Status:** Aceito
+- **Contexto:** item **D9** do
+  [comparativo 9router × hermes](../../SHVIA-WEB/docs/comparativos/9router-hermes.md),
+  e **insumo do D1** (auto-update): sem manifesto, o updater não tem o que ler. O
+  estado até aqui: o macOS assinava e notarizava no `build-local.sh`, mas havia
+  **zero checksum em qualquer plataforma** e o `build-local.ps1` não tinha **uma
+  linha** de assinatura.
+- **A restrição que define tudo:** a **CI foi removida na 0.4.6** por custo, e o
+  build é 100% local por decisão. Então cada SO é empacotado numa **máquina
+  diferente**, e nenhuma vê os artefatos das outras. O hermes gera o manifesto num
+  `scripts/release.py` de CI; aqui isso não existe para copiar.
+- **Decisão:** `scripts/release-manifest.mjs` (Node puro, uma implementação para os
+  três SOs — mesmo padrão do `git-sync.mjs` e do `sync-version.mjs`), chamado no fim
+  dos dois scripts de build. Ele produz:
+  - um **`.sha256` ao lado de cada instalador**, no formato que `sha256sum -c` e
+    `shasum -a 256 -c` leem direto. Quem baixa não precisa saber que existe um
+    manifesto para verificar um arquivo;
+  - o **`release.json`** na raiz: versão, data e, por plataforma, nome/tamanho/hash
+    de cada artefato.
+- **O manifesto MESCLA, não sobrescreve.** É a consequência direta de um build por
+  máquina: sobrescrever faria o build do Windows **apagar a entrada do macOS**, e o
+  D1 leria um manifesto que promete uma plataforma só. Cada build atualiza apenas a
+  sua e preserva as outras, e o script **diz quais faltam** — sem esse aviso,
+  publicar uma release com uma plataforma só é erro silencioso.
+- **Versão diferente descarta o manifesto inteiro.** Misturar artefatos de versões
+  no mesmo `release.json` é pior que recomeçar: o updater baixaria 0.15.0 no macOS e
+  0.14.0 no Windows achando que são a mesma release. Pelo mesmo motivo o script
+  **ignora artefato que não é da versão atual** — pego rodando, um
+  `ShvIA_0.8.2.dmg` esquecido no bundle dir entrou no manifesto da 0.15.0.
+- **O hash vem DEPOIS de assinar.** Assinatura e `stapler` **alteram os bytes**; um
+  sha256 calculado antes descreveria um arquivo que não existe mais, e o updater
+  recusaria o download por hash divergente. Nos dois scripts o manifesto é o último
+  passo.
+- **Assinatura no Windows:** `signtool` sobre o `.msi` **e** o `-setup.exe` — são
+  dois instaladores distintos, e assinar só um deixa metade dos usuários vendo
+  "Editor desconhecido" no SmartScreen (o equivalente Windows do "app danificado"
+  que o macOS mostra sem Developer ID; ele esconde o botão de instalar atrás de
+  "Mais informações", e a maioria desiste ali).
+  - `/tr` (timestamp RFC3161) **não é opcional**: sem ele a assinatura expira junto
+    com o certificado, e um instalador de hoje deixa de ser confiável no dia em que
+    o cert vencer.
+  - `signtool verify /pa` roda sempre depois: assinar sem conferir deixa passar cert
+    expirado ou cadeia incompleta, que o usuário descobre no SmartScreen.
+  - **Credencial nunca no repo**, e a preferência é
+    `SHVIA_WIN_CERT_THUMBPRINT` (cert no repositório do Windows, chave privada não
+    vira arquivo) sobre `SHVIA_WIN_PFX` + senha em env de sessão.
+  - **Sem certificado o build segue e AVISA em amarelo.** Mesma postura do macOS —
+    mas com aviso explícito, porque build sem assinatura que parece normal é o que
+    faz alguém publicar e descobrir pelo relato do usuário.
+- **`release.json` é gitignorado.** É artefato de build, não fonte: cada máquina
+  regenera para a sua plataforma e o conteúdo depende de binários não versionados.
+  Versionar traria conflito em todo build e um hash no git que não corresponde a nada.
+- **Consequências / validação:** `bash -n build-local.sh` e `node --check` passam, e
+  o manifesto foi exercitado com artefato de mentira (mesclagem, hash, filtro de
+  versão e o aviso de plataforma faltando). **NÃO validado:** o `build-local.ps1`
+  (não há PowerShell nesta máquina) e a assinatura de verdade (não há certificado).
+  **O teste real é na máquina Windows do Samir**, e ele deve rodar `-NoSign` uma vez
+  antes para ver o aviso amarelo.
+- **De passagem:** os dois scripts diziam "replicando o que
+  `.github/workflows/build.yml` faz nos runners". Esse arquivo **não existe desde a
+  0.4.6** — a referência morta saiu.
