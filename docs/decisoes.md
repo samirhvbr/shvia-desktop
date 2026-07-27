@@ -700,3 +700,53 @@ how-to; linkar o ADR.
   trocar e a verificação de assinatura vira teatro. O lado do servidor já está pronto
   e documentado em
   `SHVIA-WEB/docs/INFRA/AUTO-UPDATE-DESKTOP.md`.
+
+## ADR-021 — O `anna` viaja no instalador (`externalBin`), e o empacotado vence o do PATH
+
+- **Data:** 27/07/2026 · **Status:** Aceito
+- **Contexto:** item **D5**. O Modo Code é a feature mais cara de construir do
+  produto, e o `anna` era **pré-requisito externo**: quem instalava o ShvIA Desktop
+  **não tinha Modo Code** até rodar um `install.sh` de outro repo (ou pôr um `.exe`
+  no PATH, no Windows). É o gargalo de adoção — a funcionalidade existe e a maioria
+  nunca chega nela.
+- **Decisão:** o `anna` vai no bundle como **`externalBin`** (sidecar do Tauri),
+  preparado por `scripts/stage-anna.mjs` antes do `tauri build`.
+- **`externalBin` e não `resources`, por dois motivos concretos:**
+  1. o `externalBin` põe o binário **ao lado do executável do app**
+     (`Contents/MacOS/` no macOS), que é exatamente o **primeiro** lugar onde o
+     `resolve_bin()` já procurava. Com `resources` ele iria para
+     `Contents/Resources/` e o lookup existente não o acharia;
+  2. ele entra na **assinatura do bundle**. Isso não é conforto: um executável **não
+     assinado** dentro de um `.app` assinado **reprova na notarização** da Apple — e
+     o sintoma seria o **app inteiro** sendo recusado, não o `anna`.
+
+  O preço é o nome com **target triple** (`anna-aarch64-apple-darwin`), que é
+  justamente o que o script resolve.
+- **O empacotado VENCE o do PATH.** Ele é o que foi testado com **esta** versão do
+  app. Um `anna` velho esquecido no PATH — o caso comum de quem instalou à mão meses
+  atrás — passaria a decidir o comportamento do Modo Code, e o sintoma seria
+  "funciona na sua máquina" sem ninguém suspeitar do PATH. A ordem do `resolve_bin()`
+  já era essa; o que mudou é que agora **existe** um empacotado, então a ordem passou
+  a ter consequência e virou decisão documentada.
+- **Ausência não derruba o build.** Sem `anna` no PATH (ou com `--no-anna`), o app
+  sai sem o motor e o `resolve_bin()` continua procurando no PATH em runtime — o
+  comportamento de antes deste item. Derrubar o build aqui transformaria "não
+  consegui melhorar a adoção" em "não consegui empacotar o app".
+- **Mas binário que não responde `--version` é ERRO.** Provavelmente é de outra
+  arquitetura ou está corrompido; empacotar assim entregaria um Modo Code quebrado
+  **por dentro de um app que parece completo** — pior que não empacotar.
+- **A versão empacotada SEMPRE aparece no log do build.** Empacotar "o que estiver
+  instalado" é como uma versão velha vai parar dentro de um release; o número tem de
+  estar no log para alguém poder conferir depois.
+- **Handshake de prontidão** (`engineStatus` na ponte): devolve `found`, `bundled`,
+  `version` e `path`. `found` e `version` são campos **separados** de propósito —
+  `found: true` com `version: null` é "está lá e não roda", diagnóstico diferente de
+  "não está lá", e sem essa distinção o usuário fica reinstalando o que já está
+  instalado. É também o insumo do **D7** (doctor).
+- **`src-tauri/binaries/` é gitignorado:** artefato de 8 MB, e a versão certa depende
+  de qual `anna` a máquina de build tem.
+- **Consequências / validação:** `cargo clippy -D warnings`, `cargo test` 21/21,
+  `bash -n`, `node --check`, e o `stage-anna.mjs` exercitado de verdade (empacotou o
+  `anna 0.8.5` desta máquina). **NÃO validado:** o bundle final com o sidecar dentro
+  (exige `npx tauri build`, que é pesado) e o `build-local.ps1`. **O teste real é
+  instalar o `.dmg` numa máquina SEM `anna` e abrir o Modo Code.**

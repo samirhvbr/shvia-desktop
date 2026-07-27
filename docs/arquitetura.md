@@ -156,6 +156,12 @@ persistência), [`src/main.ts`](../src/main.ts) (estados da casca),
   para `package.json`, `tauri.conf.json`, `Cargo.toml` e os locks (roda no `prebuild`).
 - **Targets:** macOS (`.dmg` + `.app.tar.gz`), Windows (`.msi` WiX + `-setup.exe`
   NSIS), Linux (`.AppImage` + `.deb` + `.rpm`).
+- **Motor empacotado** (item D5): o `anna` viaja no instalador como `externalBin`
+  (sidecar), preparado por `scripts/stage-anna.mjs` antes do `tauri build`. Era o
+  **gargalo de adoção** do Modo Code — o binário era pré-requisito externo. O
+  empacotado **vence o do PATH** (é o testado com esta versão do app), e o
+  `engineStatus` da ponte responde `found`/`bundled`/`version`/`path`. Ver
+  [ADR-021](decisoes.md#adr-021--o-anna-viaja-no-instalador-externalbin-e-o-empacotado-vence-o-do-path).
 - **Assinatura:**
   - **macOS** — Developer ID + `notarytool` + `stapler`, com a senha de app no
     **keychain** (serviço `shvia-notarize`), nunca no repo.

@@ -224,10 +224,20 @@ impl Sidecars {
 }
 
 /// Localiza um binário de motor (`anna` ou `claude-runner`), cross-platform.
-/// Ordem: (1) ao lado do executável do ShvIA Desktop — permite empacotar o
-/// binário como resource/sidecar do instalador; (2) no PATH; (3) locais
+///
+/// Ordem: (1) **ao lado do executável do ShvIA Desktop**; (2) no PATH; (3) locais
 /// conhecidos por SO (`~/.local/bin/<base>` no Unix, `%LOCALAPPDATA%\Programs\
 /// <base>\<base>.exe` no Windows).
+///
+/// **O empacotado vence o do PATH, e isso é decisão** (item D5). Desde a 0.18.0 o
+/// `anna` viaja no instalador como `externalBin`, e ele é o que foi testado com
+/// ESTA versão do app. Um `anna` velho esquecido no PATH — o caso comum de quem
+/// instalou à mão meses atrás — passaria a decidir o comportamento do Modo Code,
+/// e o sintoma seria "funciona na sua máquina" sem ninguém suspeitar do PATH.
+///
+/// Quem quer usar o próprio `anna` de propósito ainda consegue: basta não haver
+/// binário empacotado (build sem `--anna`), ou apontar o do PATH por instalação
+/// separada e usar um build sem o sidecar.
 fn resolve_bin(base: &str) -> Option<PathBuf> {
     let exe_name = if cfg!(windows) { format!("{base}.exe") } else { base.to_string() };
 
@@ -284,6 +294,52 @@ fn resolve_bin(base: &str) -> Option<PathBuf> {
     None
 }
 
+/// Prontidão do motor: onde ele está e qual versão (item D5).
+///
+/// O handshake existe porque "o Modo Code não funciona" tem **duas** causas que se
+/// parecem na tela — não há binário, ou há um que não roda (arquitetura errada,
+/// corrompido, sem permissão de execução). Sem perguntar a versão não dá para
+/// distinguir, e o usuário fica tentando reinstalar o que já está lá.
+///
+/// `--version` com timeout curto: isto é chamado da UI, e um binário travado não
+/// pode segurar a tela.
+pub fn engine_status(base: &str) -> serde_json::Value {
+    let Some(bin) = resolve_bin(base) else {
+        return serde_json::json!({
+            "found": false,
+            "bundled": false,
+            "version": null,
+            "path": null,
+        });
+    };
+
+    // "Empacotado" = está ao lado do executável do app. É o que o instalador
+    // coloca lá, e distinguir isso do que veio do PATH é o que permite dizer ao
+    // usuário se ele está rodando o motor testado com esta versão.
+    let bundled = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|d| d.to_path_buf()))
+        .is_some_and(|dir| bin.parent() == Some(dir.as_path()));
+
+    let versao = Command::new(&bin)
+        .arg("--version")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    serde_json::json!({
+        // `found` é o binário EXISTIR; `version` é ele RESPONDER. Os dois separados
+        // de propósito: found=true com version=null é o caso "está lá e não roda",
+        // que é diagnóstico diferente de "não está lá".
+        "found": true,
+        "bundled": bundled,
+        "version": versao,
+        "path": bin.to_string_lossy(),
+    })
+}
+
 /// Ponto de entrada do handler nativo: recebe uma mensagem JSON da página.
 pub fn handle_message(window: &WebviewWindow, payload: &str) {
     let v: serde_json::Value = match serde_json::from_str(payload) {
@@ -334,6 +390,15 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
         // Contagem no ícone do dock/taskbar (ADR-011, revisado na 0.13.0).
         // Fire-and-forget pela mesma razão do notify.
         "badge" => badge(window, &v),
+        // Handshake de prontidão do motor (item D5). A página pergunta ANTES de
+        // oferecer o Modo Code, para a tela poder dizer "anna 0.8.5 pronto" ou
+        // "instale o anna" em vez de deixar a pessoa descobrir no primeiro turno.
+        "engineStatus" => {
+            let base = v.get("engine").and_then(|x| x.as_str()).unwrap_or("gateway");
+            let exe = if base == "claude" { "claude-runner" } else { "anna" };
+            let st = engine_status(exe);
+            reply(window, &req, true, st);
+        }
         _ => reply(window, &req, false, serde_json::json!({ "error": "ação desconhecida" })),
     }
 }
@@ -368,7 +433,7 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
         let err = if is_claude {
             "claude-runner não encontrado — rode claude-runner/install.sh (deixa em ~/.local/bin) e faça `claude login` (usa a assinatura; sem API key)."
         } else {
-            "anna não encontrado — instale o anna (SHVIA-CODE) e deixe no PATH (Unix: install.sh; Windows: anna.exe no PATH ou %LOCALAPPDATA%\\Programs\\anna)"
+            "anna não encontrado. Este build saiu SEM o motor empacotado — instale o anna (SHVIA-CODE) e deixe no PATH (Unix: install.sh; Windows: anna.exe no PATH ou %LOCALAPPDATA%\\Programs\\anna)"
         };
         return reply(window, req, false, serde_json::json!({ "error": err }));
     };

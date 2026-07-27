@@ -21,6 +21,16 @@
 #   ./build-local.sh --bundles deb   # só um target (deb|appimage|rpm|dmg|app)
 #   ./build-local.sh --no-sign       # (macOS) NÃO assina/notariza — build de teste
 #   ./build-local.sh --skip-git-pull # NÃO sincroniza com o remoto antes do build
+#   ./build-local.sh --anna /caminho/para/anna   # empacota ESTE anna (item D5)
+#   ./build-local.sh --no-anna       # NÃO empacota o motor (app sai sem Modo Code
+#                                    # pronto — o usuário terá de instalar à mão)
+#
+# MOTOR EMPACOTADO (item D5): o `anna` é o gargalo de adoção do Modo Code — hoje é
+# pré-requisito externo, e quem instala o app não tem a feature até resolver isso à
+# mão. Por padrão o build empacota o `anna` do PATH como sidecar (`externalBin`),
+# e SEMPRE imprime qual versão está indo — empacotar "o que estiver instalado" é
+# como uma versão velha vai parar dentro de um release. Sem `anna` no PATH, o build
+# segue e avisa.
 #
 # GIT PULL (padrão da casa): antes de tudo, o script faz 'git pull --ff-only'
 # para você não empacotar código velho sem querer. É fast-forward-only (nunca
@@ -52,6 +62,10 @@
 # Obs.: o 1º build compila o Rust inteiro (~minutos); os próximos são incrementais.
 set -euo pipefail
 cd "$(dirname "$0")"
+
+# Item D5: de onde vem o `anna` a empacotar, e se empacota.
+ANNA_FROM=""
+NO_ANNA=0
 
 # ── Cronômetro do build: tempo total (parede) + por etapa ───────────────────
 # Mesmo padrão do SHVTERM/build-local.sh: o "built in Xs" do Vite/cargo é só
@@ -338,6 +352,8 @@ while [ $# -gt 0 ]; do
     --no-sign)      NO_SIGN=1 ;;
     --skip-git-pull) SKIP_GIT_PULL=1 ;;
     --bundles)      shift; BUNDLES="${1:-}" ;;
+    --anna)         shift; ANNA_FROM="${1:-}" ;;
+    --no-anna)      NO_ANNA=1 ;;
     -h|--help)      usage; exit 0 ;;
     *) echo "opção desconhecida: $1 (use --help)" >&2; exit 2 ;;
   esac
@@ -393,6 +409,19 @@ if [ "$_BUILD_OS" = Linux ]; then
   export DISABLE_COPYRIGHT_FILES_DEPLOYMENT=1
   export APPIMAGE_EXTRACT_AND_RUN=1
   export NO_STRIP=1
+fi
+
+# ── Motor empacotado (item D5) ────────────────────────────────────────────────
+# ANTES do `tauri build`: o Tauri lê `bundle.externalBin` na hora de empacotar, e
+# um binário que chegue depois simplesmente não entra no bundle.
+step "[D5] motor (anna) para dentro do bundle"
+if [ "$NO_ANNA" = "1" ]; then
+  echo "    (pulado: --no-anna — o app sairá SEM Modo Code pronto)"
+  rm -rf src-tauri/binaries
+elif [ -n "$ANNA_FROM" ]; then
+  node scripts/stage-anna.mjs --from "$ANNA_FROM"
+else
+  node scripts/stage-anna.mjs
 fi
 
 step "[3/3] Tauri build"

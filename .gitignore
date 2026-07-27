@@ -68,3 +68,9 @@ src-tauri/resources/sidecar-bin*
 # todo build e um hash no git que não corresponde a nada.
 release.json
 dist/
+
+# ── Motor empacotado (item D5) ──────────────────────────────────────────────
+# O `anna` é copiado para cá pelo `scripts/stage-anna.mjs` antes do build e vira
+# sidecar do bundle. É ARTEFATO: binário de 8 MB versionado seria peso morto no
+# git, e a versão certa depende de qual `anna` a máquina de build tem.
+src-tauri/binaries/

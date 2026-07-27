@@ -18,6 +18,13 @@
     .\build-local.ps1 -SkipNpmCi     # pula 'npm ci' (deps ja instaladas)
     .\build-local.ps1 -SkipGitPull   # NAO sincroniza com o remoto antes do build
     .\build-local.ps1 -NoSign        # NÃO assina — build de teste
+    .\build-local.ps1 -Anna C:\bin\anna.exe   # empacota ESTE anna (item D5)
+    .\build-local.ps1 -NoAnna        # NÃO empacota o motor
+
+  MOTOR EMPACOTADO (item D5): o `anna` é o gargalo de adoção do Modo Code — hoje é
+  pré-requisito externo, e quem instala o app não tem a feature até resolver à mão.
+  Por padrão o build empacota o `anna` do PATH como sidecar (externalBin) e SEMPRE
+  imprime qual versão está indo. Sem `anna` no PATH, o build segue e avisa.
 
   ASSINATURA (item D9): sem assinar, o SmartScreen mostra "Editor desconhecido" e
   esconde o botão de instalar atrás de "Mais informações" — a maioria das pessoas
@@ -44,7 +51,9 @@
 param(
   [switch]$SkipNpmCi,
   [switch]$SkipGitPull,
-  [switch]$NoSign
+  [switch]$NoSign,
+  [string]$Anna,
+  [switch]$NoAnna
 )
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
@@ -205,6 +214,19 @@ function Invoke-Signing {
     if ($LASTEXITCODE -ne 0) { throw "verificação da assinatura falhou em $($a.Name)" }
     Write-Host "      ✓ assinado e verificado" -ForegroundColor Green
   }
+}
+
+# ── Motor empacotado (item D5) ────────────────────────────────────────────────
+# ANTES do `tauri build`: o Tauri lê bundle.externalBin na hora de empacotar, e um
+# binário que chegue depois simplesmente não entra no bundle.
+Step "[D5] motor (anna) para dentro do bundle"
+if ($NoAnna) {
+  Write-Host "    (pulado: -NoAnna — o app sairá SEM Modo Code pronto)" -ForegroundColor Yellow
+  if (Test-Path src-tauri\binaries) { Remove-Item -Recurse -Force src-tauri\binaries }
+} elseif ($Anna) {
+  Invoke-Native "stage-anna" { node scripts/stage-anna.mjs --from $Anna }
+} else {
+  Invoke-Native "stage-anna" { node scripts/stage-anna.mjs }
 }
 
 Step "[3/4] Tauri build"
