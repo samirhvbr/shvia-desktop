@@ -84,15 +84,19 @@ if (!PLATAFORMA) {
 // Extensões que interessam por plataforma. Em cada uma há DOIS papéis: o que o
 // updater do Tauri consome e o que humano baixa — e eles não são o mesmo arquivo
 // no macOS nem no Linux:
-//   macOS  → updater `.app.tar.gz`      · humano `.dmg`
-//   Linux  → updater `.AppImage.tar.gz` · humano `.AppImage`/`.deb`/`.rpm`
+//   macOS  → updater `.app.tar.gz`  · humano `.dmg`
+//   Linux  → updater É o próprio bundle instalado (`.AppImage`/`.deb`/`.rpm`,
+//            os três assinados) — e o servidor escolhe qual pelo `?bundle=`
 //   Windows→ updater É o próprio instalador (`-setup.exe`/`.msi`, assinados)
 //
-// ⚠️ `.AppImage.tar.gz` tem de estar listado EXPLICITAMENTE: o filtro é
-// `endsWith`, e `.AppImage` NÃO é sufixo de `Foo.AppImage.tar.gz`. Sem esta
-// entrada o artefato de updater do Linux nunca entrava no manifesto, e o
-// endpoint do ShvIA (que procura `.AppImage.tar.gz`) respondia 204 para sempre —
-// auto-update morto no Linux, em silêncio, com o build parecendo correto.
+// ⚠️ No Linux o artefato de updater é o `.AppImage` CRU, não um tarball. Com
+// `createUpdaterArtifacts: true` o Tauri 2 assina os bundles direto — um build
+// real produz `.deb.sig`, `.rpm.sig` e `.AppImage.sig`. O `.AppImage.tar.gz`
+// abaixo é o formato LEGADO (`v1Compatible`) e hoje NÃO é gerado: fica listado
+// só para o dia em que o bundle voltar a ele, e listar não custa nada. Não
+// confunda com o macOS, onde o `.app.tar.gz` É o artefato de verdade.
+// (Ver ADR-025: eu já apontei este arquivo como a causa do Linux em 204, e
+// errei — a causa era o servidor procurando o tarball.)
 const EXTENSOES = {
   macos: [".dmg", ".app.tar.gz"],
   windows: [".msi", "-setup.exe"],

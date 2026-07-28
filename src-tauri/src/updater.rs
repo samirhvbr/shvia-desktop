@@ -100,10 +100,31 @@ fn dispensar(app: &AppHandle, versao: &str) {
 /// (ela faz `explode('-')` no primeiro segmento); `{{current_version}}` é o que
 /// deixa o servidor responder `204` em vez de oferecer downgrade para um build
 /// local mais novo que o publicado.
+///
+/// ## `?bundle=` — e por que na QUERY, não no path
+///
+/// `{{bundle_type}}` vira `deb`, `rpm`, `appimage`, `msi` ou `nsis`: o formato pelo
+/// qual ESTA instalação foi feita. O plugin precisa dele porque despacha a
+/// instalação por aí (`install_inner` → `install_deb`/`install_rpm`/
+/// `install_appimage`) — quem instalou o `.deb` e recebe um AppImage quebra depois
+/// de baixar tudo. No macOS e no Windows não muda nada na prática; no Linux é a
+/// diferença entre atualizar e não.
+///
+/// Vai na query e **não** como segmento novo do path porque as instalações ≤ 1.1.0
+/// já existem e continuam pedindo a rota antiga: um path novo as deixaria tomando
+/// 404 (erro no log, sem nada a fazer) em vez do 204 que elas sabem tratar. Query
+/// desconhecida é ignorada pelo servidor antigo, e o novo trata a ausência como
+/// AppImage. O plugin substitui o placeholder na query igual ao path.
 fn endpoint(app: &AppHandle) -> Option<tauri::Url> {
-    let base = server::load(app).url;
+    endpoint_para(&server::load(app).url)
+}
+
+/// A montagem em si, separada do `AppHandle` para o teste exercitar ESTA string e
+/// não uma cópia dela. Antes o teste remontava o formato à mão — e um teste que
+/// duplica o que verifica passa verde enquanto o endpoint real está errado.
+fn endpoint_para(base: &str) -> Option<tauri::Url> {
     tauri::Url::parse(&format!(
-        "{base}/api/v1/desktop/update/{{{{target}}}}-{{{{arch}}}}/{{{{current_version}}}}"
+        "{base}/api/v1/desktop/update/{{{{target}}}}-{{{{arch}}}}/{{{{current_version}}}}?bundle={{{{bundle_type}}}}"
     ))
     .ok()
 }
@@ -320,6 +341,8 @@ pub fn verificar_agora(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
+    use super::endpoint_para;
+
     /// O `{{target}}-{{arch}}` tem de sobreviver ao `Url::parse` — que
     /// percent-encoda `{` e `}` no path. O plugin substitui as duas formas
     /// (literal e encodada), então o que este teste protege é a FORMA do path:
@@ -327,11 +350,7 @@ mod tests {
     /// `darwin/aarch64` e devolver 404 em vez do manifesto.
     #[test]
     fn endpoint_tem_target_e_arch_no_mesmo_segmento() {
-        let base = "https://ai.shvia.org";
-        let url = tauri::Url::parse(&format!(
-            "{base}/api/v1/desktop/update/{{{{target}}}}-{{{{arch}}}}/{{{{current_version}}}}"
-        ))
-        .expect("url válida");
+        let url = endpoint_para("https://ai.shvia.org").expect("url válida");
 
         let path = url.path();
         assert!(
@@ -352,5 +371,45 @@ mod tests {
             "a versão atual precisa ir no path (é o que habilita o 204): {}",
             segmentos[1]
         );
+    }
+
+    /// O `bundle` tem de ir na QUERY, e o placeholder tem de sobreviver literal ali.
+    ///
+    /// É o que faz o Linux atualizar: o plugin instala conforme o bundle do app em
+    /// execução, então um install de `.deb` que receba AppImage quebra depois de
+    /// baixar tudo. E na query — não no path — para as instalações ≤ 1.1.0, que
+    /// pedem a rota antiga, continuarem recebendo 204 em vez de 404.
+    #[test]
+    fn endpoint_manda_o_bundle_na_query() {
+        let url = endpoint_para("https://ai.shvia.org").expect("url válida");
+
+        let query = url.query().unwrap_or_default();
+        assert!(
+            query.contains("bundle="),
+            "o parâmetro bundle saiu da query: {query}"
+        );
+        assert!(
+            query.contains("bundle_type"),
+            "o placeholder {{{{bundle_type}}}} tem de chegar literal para o plugin \
+             substituir; se ele foi encodado ou perdido, o servidor recebe texto \
+             cru e cai no default: {query}"
+        );
+        // E não pode ter virado segmento de path — isso quebraria cliente antigo.
+        assert!(
+            !url.path().contains("bundle"),
+            "bundle não pode ser segmento de path: {}",
+            url.path()
+        );
+    }
+
+    /// Servidor on-prem: a base vem da config do usuário (D4/ADR-019), então a
+    /// montagem não pode assumir `ai.shvia.org` nem porta padrão.
+    #[test]
+    fn endpoint_respeita_base_on_prem_com_porta() {
+        let url = endpoint_para("https://shvia.interno.cliente:8443").expect("url válida");
+
+        assert_eq!(url.host_str(), Some("shvia.interno.cliente"));
+        assert_eq!(url.port(), Some(8443));
+        assert!(url.path().starts_with("/api/v1/desktop/update/"));
     }
 }

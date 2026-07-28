@@ -863,17 +863,30 @@ how-to; linkar o ADR.
   `SHVIA_PUBLIC_BASE`), sobrescrevíveis por flag. Não são segredo: o destino é host
   da tailnet e a base é a URL que o app já usa. On-prem sobrescreve as duas.
 
-### 🐛 Bug corrigido de passagem: auto-update do Linux nunca funcionaria
+### ⚠️ CORRIGIDO na 1.1.1 — este diagnóstico estava ERRADO (ver ADR-025)
 
-O `EXTENSOES.linux` do `release-manifest.mjs` era `[".deb", ".AppImage", ".rpm"]`. O
-filtro é `endsWith`, e **`.AppImage` não é sufixo de `Foo.AppImage.tar.gz`** — então o
-artefato de updater do Linux **nunca entrava no manifesto**. O endpoint do ShvIA
-procura `.AppImage.tar.gz`, não achava, e respondia `204` para sempre: auto-update
-morto no Linux, em silêncio, com o build parecendo perfeito. O macOS escapou porque
-`.app.tar.gz` estava listado explicitamente.
-
-Só apareceu ao escrever a publicação por plataforma — nenhum teste pegaria, porque
-não há build de Linux nesta máquina e o manifesto gerado no macOS está correto.
+> O texto abaixo ficou aqui porque a conclusão errada é a parte instrutiva: o
+> **sintoma** (Linux em 204) era real, a **causa** que eu apontei não era.
+>
+> Eu escrevi que o `EXTENSOES.linux` do `release-manifest.mjs` precisava de
+> `.AppImage.tar.gz` e que sem ele o artefato de updater do Linux não entrava no
+> manifesto. **O `.AppImage.tar.gz` não existe.** Ele é o formato LEGADO
+> (`createUpdaterArtifacts: "v1Compatible"`); com `true`, o Tauri 2 assina os bundles
+> **direto**, e um build real de Linux (1.1.0, 28/07) produziu `.deb.sig`, `.rpm.sig`
+> e `.AppImage.sig` — nenhum tarball. O manifesto do Linux sempre esteve **correto**,
+> com os três artefatos assinados.
+>
+> A causa real era do **lado do servidor**: o `artefatoPara` do ShvIA procurava
+> `.AppImage.tar.gz`. Corrigido na v2.86.6 do SHVIA-WEB. A entrada
+> `.AppImage.tar.gz` que adicionei ao `EXTENSOES.linux` ficou — é inofensiva e serve
+> se algum dia o bundle voltar a `v1Compatible` — mas **não** era o que faltava.
+>
+> **De onde veio o erro:** li o docblock do `install_appimage` do plugin, que desenha
+> a estrutura `[App].AppImage.tar.gz → [App].AppImage`, e tratei o desenho legado
+> como requisito. O código logo abaixo desmente: `if infer::archive::is_gz(bytes)`
+> extrai, **senão grava os bytes direto** — o plugin aceita as duas formas. Doc de
+> dependência descreve o que já existiu, não o que o build gera hoje; o que decide é
+> a saída do build, e ela estava disponível.
 
 ### Consequências
 
@@ -1063,3 +1076,78 @@ quebrar. Leitura nunca falha: ausente, ilegível ou com lixo cai no default.
 - **Dívida de asset, não de código:** no macOS a barra de menus espera um ícone
   **template** (monocromático, que inverte com o tema). Usamos o ícone colorido do app:
   funciona e fica fora do padrão do sistema. Trocar é substituir o png.
+
+## ADR-025 — No Linux o artefato de updater é o bundle INSTALADO, e o cliente diz qual
+
+- **Data:** 2026-07-28 · **Status:** aceito · **Versão:** 1.1.1 · **Item:** D1
+- **Contexto:** com a 1.1.0 publicada (macOS + Linux, os cinco artefatos assinados no
+  manifesto), o macOS atualizava e o **Linux dizia "você já está na versão mais
+  recente (1.0.3)"**. `curl` confirmou: `darwin-aarch64` → 200, `linux-x86_64` → 204.
+
+### A causa, e por que o diagnóstico anterior estava errado
+
+O `artefatoPara` do ShvIA (v2.74.0) procurava `.AppImage.tar.gz` no Linux. **Esse
+arquivo não existe.** O tarball é o formato **legado**
+(`createUpdaterArtifacts: "v1Compatible"`); com `true`, o Tauri 2 assina os bundles
+direto. O build real da 1.1.0 no Linux imprimiu:
+
+```
+Finished 3 updater signatures at:
+  ShvIA_1.1.0_amd64.deb.sig
+  ShvIA-1.1.0-1.x86_64.rpm.sig
+  ShvIA_1.1.0_amd64.AppImage.sig
+```
+
+Na ADR-023 eu atribuí o Linux em 204 ao `release-manifest.mjs` e "corrigi" o lado
+errado. O manifesto sempre esteve certo. **A lição não é sobre AppImage:** eu li o
+docblock do `install_appimage` do plugin, que desenha
+`[App].AppImage.tar.gz → [App].AppImage`, e tratei um desenho **legado** como
+requisito. O código três linhas abaixo desmente — `if infer::archive::is_gz(bytes)`
+extrai, senão **grava os bytes direto**. Doc de dependência descreve o que já
+existiu; o que decide é a saída do build, e ela estava na tela.
+
+### Não bastava trocar o sufixo
+
+O plugin despacha a instalação pelo bundle do app **em execução**:
+
+```rust
+match installer_for_bundle_type(bundle_type()) {
+    Some(Installer::Deb) => self.install_deb(bytes),
+    Some(Installer::Rpm) => self.install_rpm(bytes),
+    _ => self.install_appimage(bytes),
+}
+```
+
+Quem instalou pelo `.deb` e recebesse o AppImage quebraria — **depois** de baixar
+tudo. Então o cliente informa o formato em `?bundle={{bundle_type}}`.
+
+- **Na QUERY, não como segmento novo do path.** As instalações ≤ 1.1.0 já existem e
+  continuam pedindo a rota antiga; um path novo as deixaria tomando **404** — erro no
+  log, sem nada a fazer — em vez do **204** que elas sabem tratar. Query desconhecida
+  o servidor antigo ignora, e o servidor novo trata a ausência como AppImage. O plugin
+  substitui o placeholder na query igual ao path (verificado no `updater.rs` dele).
+- **Ausente → AppImage**, não 204: é o formato portável e o mais provável de quem
+  baixou do site. Quem instalou por `.deb` numa versão antiga atualiza à mão uma vez.
+- **Bundle desconhecido também cai no AppImage.** Um cliente novo com bundle que o
+  servidor não conhece não pode ficar sem update por causa de um rótulo.
+
+### O teste que duplicava o que verificava
+
+O `endpoint_tem_target_e_arch_no_mesmo_segmento` remontava o formato da URL à mão em
+vez de chamar a função. Teste que copia o que verifica **passa verde com o endpoint
+errado** — e era o caso: ele estava verde enquanto o Linux não atualizava. Extraí
+`endpoint_para(base)` e o teste passou a exercitar a string de verdade.
+
+### Consequências
+
+- **Validação:** `cargo test` 29/29 (+2: bundle na query, base on-prem com porta) e
+  `clippy` limpo aqui; `DesktopUpdateManifestTest` 22/22 (+5) no SHVIA-WEB (v2.86.6),
+  cobrindo AppImage sem bundle (a regressão), `deb`, `rpm`, bundle desconhecido e
+  "sem assinatura continua 204 mesmo com bundle certo".
+- **NÃO validado:** o ciclo de update de Linux de ponta a ponta — exige publicar a
+  1.1.1 e atualizar a partir da 1.1.0 numa máquina Linux. **O teste real é
+  `curl {BASE}/api/v1/desktop/update/linux-x86_64/1.1.0?bundle=deb` devolver 200 com
+  a URL do `.deb`**, e depois o menu Ajuda na máquina Linux.
+- **Nota de operação:** o servidor precisa estar em ≥ 2.86.6 antes de a 1.1.1 ser
+  publicada. Na ordem inversa nada quebra (o cliente novo manda uma query que o
+  servidor antigo ignora e segue em 204), mas o Linux continua sem atualizar.

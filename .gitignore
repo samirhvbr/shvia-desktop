@@ -34,6 +34,10 @@ src-tauri/resources/sidecar-bin*
 .env
 .env.*
 !.env.example
+# Credenciais de build/publicação (senha da chave do updater — ADR-022). O
+# `.example` é versionado; o preenchido, nunca.
+signing.env
+!signing.env.example
 *.pem
 *.key
 *.p12

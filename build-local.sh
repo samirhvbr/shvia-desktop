@@ -413,7 +413,24 @@ check_updater_key() {
 
   # Sem pubkey/createUpdaterArtifacts não há o que exigir.
   [ -z "$exige" ] && return 0
+
+  # O Tauri aceita a chave por CONTEÚDO (`..._KEY`) ou por CAMINHO (`..._KEY_PATH`).
+  # O `signing.env` usa o caminho — a chave fica só em ~/.shvia/updater.key em vez
+  # de ganhar uma segunda cópia dentro da árvore do repo.
   [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ] && return 0
+  if [ -n "${TAURI_SIGNING_PRIVATE_KEY_PATH:-}" ]; then
+    # Caminho apontando para nada é pior que caminho ausente: o Tauri seguiria e
+    # abortaria no fim do empacotamento, que é justamente o que este teste evita.
+    if [ -r "$TAURI_SIGNING_PRIVATE_KEY_PATH" ]; then
+      return 0
+    fi
+    echo "" >&2
+    echo "  ✗ TAURI_SIGNING_PRIVATE_KEY_PATH aponta para um arquivo ilegível:" >&2
+    echo "      $TAURI_SIGNING_PRIVATE_KEY_PATH" >&2
+    echo "    Confira o caminho no signing.env (ou restaure a chave do cofre)." >&2
+    echo "" >&2
+    return 1
+  fi
 
   # --no-sign já significa "build de teste, não publicável" no macOS. Estendido
   # aqui para os três SOs: desliga o artefato de updater em vez de abortar.
@@ -425,17 +442,27 @@ check_updater_key() {
   fi
 
   echo "" >&2
-  echo "  ✗ falta TAURI_SIGNING_PRIVATE_KEY, e este build gera artefato de updater." >&2
+  echo "  ✗ falta a chave do updater, e este build gera artefato de updater." >&2
   echo "    Sem ela o Tauri aborta — mas só no FIM do empacotamento (minutos)." >&2
   echo "" >&2
-  echo "    export TAURI_SIGNING_PRIVATE_KEY=\"\$(cat ~/.shvia/updater.key)\"" >&2
-  echo "    export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='...'    # a do cofre" >&2
+  echo "    Resolva UMA VEZ nesta máquina, e não a cada build:" >&2
+  echo "" >&2
+  echo "      cp signing.env.example signing.env && chmod 600 signing.env" >&2
+  echo "      \$EDITOR signing.env      # preencha só a SENHA da chave" >&2
+  echo "" >&2
+  echo "    O build carrega o signing.env sozinho daqui pra frente. Ele guarda o" >&2
+  echo "    CAMINHO da chave (~/.shvia/updater.key) e a senha — a chave em si não" >&2
+  echo "    ganha cópia dentro do repo, e o arquivo é gitignorado." >&2
+  echo "" >&2
+  echo "    Pontual, sem arquivo:" >&2
+  echo "      export TAURI_SIGNING_PRIVATE_KEY_PATH=\"\$HOME/.shvia/updater.key\"" >&2
+  echo "      export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='...'" >&2
   echo "" >&2
   echo "    O par é UM SÓ para as três máquinas (ADR-022): a mesma chave que" >&2
   echo "    assinou o release do macOS assina o do Linux e do Windows. Copie do" >&2
   echo "    gerenciador de senhas — nunca por chat." >&2
   echo "" >&2
-  echo "    Build de teste, sem publicar: ./build-local.sh --no-sign" >&2
+  echo "    Build de teste, sem chave: ./build-local.sh --no-sign" >&2
   echo "" >&2
   return 1
 }
@@ -656,6 +683,24 @@ while [ $# -gt 0 ]; do
 done
 
 echo "==> ShvIA Desktop — build local ($_BUILD_OS)"
+
+# ── signing.env: credenciais desta máquina, uma vez em vez de a cada build ────
+# Nasceu de um atrito real: sem isto, cada release exigia reexportar
+# TAURI_SIGNING_PRIVATE_KEY(_PASSWORD) na mão, e esquecer significava descobrir no
+# fim do empacotamento. Ver signing.env.example (versionado; o preenchido é
+# gitignorado) — ele guarda o CAMINHO da chave e a senha, não a chave.
+#
+# ANUNCIA que carregou, de propósito: "o build saiu assinado ou não" não pode
+# depender de um arquivo invisível. Se algo estiver estranho, a primeira linha da
+# saída já diz de onde vieram as credenciais.
+#
+# O `.example` usa `${VAR:-...}`, então um export feito no shell VENCE o arquivo —
+# um teste pontual não é sobrescrito por ele.
+if [ -f signing.env ]; then
+  # shellcheck source=/dev/null
+  . ./signing.env
+  echo "    credenciais: signing.env carregado"
+fi
 
 step "[git] sincroniza com o remoto (git pull --ff-only)"
 git_sync
