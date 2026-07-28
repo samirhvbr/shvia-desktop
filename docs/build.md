@@ -83,10 +83,26 @@ Depois é só `./build-local.sh` (ou `--bundles dmg`). Sem cert → sai **sem as
 com cert mas sem credencial → **assina mas não notariza** (`--no-sign` força build de
 teste). Detalhes da mecânica do Tauri: <https://v2.tauri.app/distribute/sign/macos/>.
 
+### Assinatura do updater (obrigatória a partir da 1.0.0)
+
+O par minisign existe desde 28/07/2026 e a **pública** está no `tauri.conf.json`
+(ADR-022). A **privada** vive na máquina de release + no cofre, e entra no ambiente
+**antes** do build — sem ela o Tauri não grava os `.sig`, o `release.json` sai sem o
+campo `signature` e o servidor passa a responder `204` para todo mundo (o app nunca
+oferece o update, em silêncio):
+
+```bash
+export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.shvia/updater.key)"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='…'   # a do cofre
+./build-local.sh
+```
+
+O `release-manifest.mjs` avisa em amarelo quando **nada** foi assinado — se esse aviso
+aparecer, as variáveis não estavam no ambiente e o release não serve para auto-update.
+
 ### Pendente
 
 - **Windows** — Authenticode **EV** (Azure Trusted Signing preferível).
-- **Updater Tauri** — chave `TAURI_SIGNING_PRIVATE_KEY` + `latest.json`.
 
 ## CI (GitHub Actions) — omitida de propósito
 

@@ -19,6 +19,9 @@
 mod code_bridge;
 /// Endereço do servidor: config persistida, validação e probe (item D4; ADR-019).
 mod server;
+/// Auto-update: checa o manifesto que o ShvIA serve, pergunta e instala (D1; ADR-022).
+#[cfg(desktop)]
+mod updater;
 #[cfg(target_os = "macos")]
 mod macos_ipc;
 #[cfg(target_os = "windows")]
@@ -908,6 +911,9 @@ pub fn run() {
     #[cfg(desktop)]
     let builder = builder
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        // Auto-update (D1; ADR-022). Registrado sem capability: quem dirige é o
+        // `updater.rs` pela API Rust — a página remota não alcança o plugin.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .menu(|handle| {
             let nova_janela = MenuItem::with_id(
                 handle,
@@ -963,12 +969,35 @@ pub fn run() {
                 true,
                 None::<&str>,
             )?;
-            let ajuda = Submenu::with_items(handle, "Ajuda", true, &[&sobre])?;
+            // Checagem manual do updater (D1; ADR-022). A automática é a cada 6 h e
+            // silenciosa; este item existe porque quem acabou de ouvir "tem versão
+            // nova" não quer esperar o próximo ciclo — e porque ele passa por cima
+            // de um "Depois" clicado antes.
+            let atualizar = MenuItem::with_id(
+                handle,
+                "check-update",
+                "Verificar atualizações…",
+                true,
+                None::<&str>,
+            )?;
+            let ajuda = Submenu::with_items(
+                handle,
+                "Ajuda",
+                true,
+                &[
+                    &atualizar,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &sobre,
+                ],
+            )?;
             Menu::with_items(handle, &[&arquivo, &editar, &ajuda])
         })
         .on_menu_event(|app, event| match event.id().as_ref() {
             "new-window" => {
                 let _ = open_new_window(app);
+            }
+            "check-update" => {
+                updater::verificar_agora(app);
             }
             "reload" => {
                 // Recarrega a janela em foco; se não achar foco, recarrega todas.
@@ -1025,6 +1054,11 @@ pub fn run() {
             // externo e abriria no navegador do SO.
             server::load(app.handle());
             build_shvia_window(app.handle(), "main")?;
+            // Depois da janela: o updater espera 20 s antes da primeira checagem,
+            // mas agendar antes de haver janela deixaria um diálogo nativo sem
+            // janela-mãe se a rede fosse instantânea.
+            #[cfg(desktop)]
+            updater::agendar(app.handle());
             Ok(())
         })
         .build(tauri::generate_context!())

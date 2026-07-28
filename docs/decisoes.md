@@ -750,3 +750,65 @@ how-to; linkar o ADR.
   `anna 0.8.5` desta máquina). **NÃO validado:** o bundle final com o sidecar dentro
   (exige `npx tauri build`, que é pesado) e o `build-local.ps1`. **O teste real é
   instalar o `.dmg` numa máquina SEM `anna` e abrir o Modo Code.**
+
+## ADR-022 — Auto-update ligado: o par minisign existe, e o updater é dirigido pelo Rust
+
+- **Data:** 2026-07-28 · **Status:** aceito · **Versão:** 1.0.0 · **Item:** D1
+- **Contexto:** o servidor já servia o manifesto desde a v2.74.0 do ShvIA e o
+  `release-manifest.mjs` já capturava o `.sig` desde a 0.17.0 (ADR-020). Faltava **uma
+  ação de operador**: gerar o par minisign. O Samir gerou em 28/07/2026 na máquina que
+  também tem o material da Apple, e a pública entrou no `tauri.conf.json`.
+
+### O que foi decidido
+
+- **A chave privada vive em UMA máquina** (a de release, que é a que tem o certificado
+  da Apple) **+ o cofre**. Não é espalhada pelas máquinas de desenvolvimento. O
+  `.pub` é versionado — chave pública é para ser pública.
+- **Nenhuma capability para a página remota.** A capability `default` **não** declara
+  `updater:default`. O plugin é dirigido só pela API Rust, como `dialog` e
+  `notification` já eram. Updater é o pior candidato possível a exceção do ADR-001:
+  um servidor comprometido que alcança `install` **escolhe qual binário roda na
+  máquina do usuário** — deixa de ser XSS e passa a ser execução de código nativo.
+- **O endpoint é remontado em runtime a partir do servidor CONFIGURADO.** O
+  `plugins.updater.endpoints` do `tauri.conf.json` é estático, e desde o D4 (ADR-019)
+  o servidor é configurável. Endpoint fixo faria uma instalação **on-prem** consultar
+  o `ai.shvia.org` e instalar o build de outra infraestrutura — o mesmo tipo de furo
+  de perímetro que o `is_server_host` fecha na navegação. O valor do
+  `tauri.conf.json` vale só como default.
+- **`createUpdaterArtifacts: true` no bundle.** Sem isso o Tauri **não gera** o
+  `.app.tar.gz` / `.AppImage.tar.gz` nem os `.sig` — e o sintoma seria o
+  `release-manifest.mjs` avisando "nada assinado" para sempre, com a chave já no
+  lugar. É a peça que faz a assinatura existir, não só ser lida.
+- **AVISA e pergunta; não instala sozinho.** Uma pergunta só, com o reinício dito na
+  própria pergunta. Update silencioso que reinicia o app no meio de uma conversa com
+  a Anna é pior que o problema que resolve. E **uma** pergunta e não duas
+  ("baixar?" → "reiniciar?") porque no Windows o instalador toma a mão do processo:
+  a segunda pergunta seria uma promessa que não se pode cumprir.
+- **"Depois" é gravado por VERSÃO** (`updater.json`), não como booleano. Booleano
+  faria um "Depois" clicado uma vez desligar o updater para sempre — a falha
+  silenciosa que este item existe para não ter. Mesmo raciocínio do "dispensar por
+  versão de servidor" do gate de compatibilidade (ADR-018).
+- **Guarda de reentrância** (`EM_ANDAMENTO`): o timer de 6 h e o clique no menu são
+  independentes e podem coincidir. Sem a guarda, dois downloads de ~80 MB e duas
+  chamadas concorrentes de `install` sobre o mesmo bundle.
+- **Checagem automática é silenciosa; a manual sempre responde.** Quem não pediu para
+  checar não recebe diálogo de erro por falha de rede. Mas menu que não dá sinal
+  nenhum parece quebrado, então a manual responde até "você já está na mais recente".
+- **Thread própria, não `async_runtime::spawn`.** O ciclo bloqueia em diálogo nativo
+  por tempo indeterminado (esperando o usuário); num worker do runtime compartilhado
+  isso prenderia um slot do resto do app.
+
+### Consequências
+
+- **Esta é a última instalação manual.** Quem está na 0.18.0 ou anterior **não tem
+  updater** e precisa instalar a 1.0.0 à mão; da 1.0.0 em diante o app se mantém.
+  É o que faz os itens seguintes da trilha desktop (D2, D3, D7) chegarem aos usuários
+  sem reinstalação em cada máquina — e é o motivo do bump para **1.0.0**.
+- **Perder a chave privada é irreversível na prática:** a pubkey fica compilada no
+  binário, então todo install existente recusa update assinado por chave nova. O
+  caminho de recuperação é reinstalação manual em cada máquina.
+- **Validação:** `cargo clippy` limpo, `cargo test` 22/22 (+1: o formato do path do
+  endpoint, que se errado devolveria 404 em vez do manifesto). **NÃO validado:** o
+  ciclo de update de ponta a ponta — exige duas versões assinadas publicadas, e a
+  0.18.0 não tem `.sig`. **O teste real é publicar a 1.0.0 assinada e depois uma
+  1.0.1**, com o `curl` das duas respostas (200 e 204) antes de instalar nada.

@@ -1,6 +1,6 @@
 [package]
 name = "shvia-desktop"
-version = "0.18.0"
+version = "1.0.0"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
@@ -59,6 +59,11 @@ time = "=0.3.41"
 # restringimos pelo alvo real: qualquer coisa que não seja Android/iOS.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-window-state = "2"
+# Auto-update (item D1 — ADR-022). Dirigido SÓ pela API Rust (`src/updater.rs`):
+# a capability não declara `updater:default`, senão a página remota poderia
+# escolher o binário que roda na máquina (ADR-001). É **desktop-only** — no mobile
+# a atualização é da loja, e o plugin não tem implementação lá.
+tauri-plugin-updater = "2"
 
 # Permissões de mídia (mic/câmera) no Linux: tratamos o signal `permission-request`
 # do WebKitGTK via `with_webview`. A versão acompanha a do wry (não duplicar crate).

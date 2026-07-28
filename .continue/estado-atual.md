@@ -55,8 +55,10 @@ PATH e validar o loop ao vivo. **Próximo passo (opcional):** empacotar o
 - **F4 (assinatura/release):** **macOS ✅** — Developer ID + notarização + staple já
   no `build-local.sh` (credencial no keychain, serviço `shvia-notarize`; ver
   [../docs/build.md](../docs/build.md#macos--implementado-no-build-localsh)). Impede o
-  macOS de mandar o app baixado p/ a **lixeira**. **Pendente:** Authenticode **EV**
-  Windows, chave do **updater** Tauri (`latest.json`). **CI (Actions) removida por custo.**
+  macOS de mandar o app baixado p/ a **lixeira**. **Updater ✅ (1.0.0)** — par minisign
+  gerado 28/07, plugin ligado, endpoint segue o servidor configurado (ADR-022); a
+  privada mora na máquina de release + cofre e tem de estar no ambiente do build.
+  **Pendente:** Authenticode **EV** Windows. **CI (Actions) removida por custo.**
 - **Roadmap (ideias do time, em [SAMIR-v1.md](SAMIR-v1.md)):** Anthropic como
   **infra/modelo** alternativo; **rotinas agendadas**; **conectores** (Carbonio mail,
   Google Calendar, etc.).
@@ -66,7 +68,9 @@ PATH e validar o loop ao vivo. **Próximo passo (opcional):** empacotar o
 - [ ] **Online-only é aceitável** como propriedade de produto? (toda a arquitetura
       fina depende disso). Ver [escopo](escopo-projeto.md#decisões-em-aberto).
 - [ ] **Verba + dono** do cert EV Windows (~US$300–600/ano) e Apple Developer
-      (US$99/ano), incl. rotação da chave do updater.
+      (US$99/ano). A **rotação** da chave do updater ganhou custo real com a 1.0.0:
+      a pubkey fica compilada no binário, então rotacionar exige que todo install
+      existente seja reinstalado à mão. Definir dono e periodicidade.
 - [ ] **Funções idênticas ao web** ou haverá **telas desktop-only**?
 - [ ] **URL de DEV** do ShvIA (além de produção `ai.shvia.org`).
 - [ ] **App ID** `cloud.blue3.shvia` — confirmar (usado como default).
