@@ -132,9 +132,14 @@ Reexportar `TAURI_SIGNING_PRIVATE_KEY*` em cada release é atrito que só produz
 esquecidos sem assinatura. Uma vez por máquina:
 
 ```bash
+security add-generic-password -U -s shvia-updater -a "$USER" -w
 cp signing.env.example signing.env && chmod 600 signing.env
-$EDITOR signing.env      # preencha só a SENHA da chave
 ```
+
+O `security` pede a senha da chave escondida e a guarda no **keychain** — não no
+arquivo. Depois disso o `signing.env` **não contém segredo nenhum**: a chave é lida do
+caminho, a senha do keychain. É o mesmo lugar onde a senha de notarização já mora
+(`shvia-notarize`).
 
 **Ou fora do repo**, que é o que a máquina de release usa hoje — sobrevive a clone
 novo, a `git clean -xdf` e a apagar a árvore inteira:
