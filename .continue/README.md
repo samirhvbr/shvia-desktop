@@ -17,7 +17,12 @@ construídas, briefings para "continuar" depois.
 | Arquivo | Papel |
 |---------|-------|
 | [`estado-atual.md`](estado-atual.md) | **Ler primeiro.** Onde paramos, decisões tomadas, próximos passos. |
-| [`escopo-projeto.md`](escopo-projeto.md) | Escopo detalhado, arquitetura, plano de fases, riscos, decisões em aberto. |
+| [`escopo-projeto.md`](escopo-projeto.md) | Escopo, arquitetura e riscos de 30/06. O **plano de fases está quase todo entregue** e traz aviso no topo — ler como pendência faria alguém refazer coisa pronta. |
+
+Removido em 28/07/2026: `NEW-escopo-projeto.md` — era a especificação de **provedores de
+nuvem no gateway**, ou seja, assunto do SHVIA-**WEB**, parada neste repo por engano e com
+o trabalho entregue há muito (os três drivers existem). O conteúdo está preservado em
+[`SHVIA-WEB/docs/ARQUIVO/NEW-provedores-nuvem-gateway.md`](../../SHVIA-WEB/docs/ARQUIVO/NEW-provedores-nuvem-gateway.md).
 
 ## Convenção
 

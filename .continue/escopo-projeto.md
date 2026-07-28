@@ -109,6 +109,22 @@ Electron da Anthropic.
 
 ## 5. Plano em fases (cada fase entregável)
 
+> ⚠️ **Este plano é de 30/06/2026 e está QUASE TODO ENTREGUE.** Ele fica como registro
+> do raciocínio (§6 riscos ainda vale), mas **não é lista de tarefas** — ler como
+> pendência levaria alguém a refazer coisa pronta. Estado real em
+> [estado-atual.md](estado-atual.md); as decisões estão em
+> [../docs/decisoes.md](../docs/decisoes.md).
+>
+> | Fase | Estado |
+> |---|---|
+> | **F0** decisões + colheita | ✅ |
+> | **F1** esqueleto andante | ✅ — o smoke-test do WebKitGTK passou, e o risco #1 abaixo não se materializou |
+> | **F2** polish nativo | ✅ menu, About, tray/menubar + autostart (ADR-024), config de URL (ADR-019), notificações (ADR-011). **Falta a offline v2** (ping no Rust) e o deep-link `shvia://` |
+> | **F3** compat. de versão de servidor | ✅ ADR-018 — avisa, nunca bloqueia |
+> | **F4** assinatura + auto-update | ✅ macOS (Developer ID + notarização), Windows (Authenticode), updater minisign validado em campo 1.0.0 → 1.0.1 (ADR-022/023). ⚠️ **A "matriz GitHub Actions" desta fase NÃO existe:** a CI foi removida na 0.4.6 e o build é 100% local, por decisão. O texto abaixo está desatualizado nesse ponto |
+> | **F5** beta + docs | 🟡 docs sim; **beta interno nos 3 SOs não foi feito** — bandeja, diagnóstico e gravação de config de CLI só têm validação de compilação/teste |
+
+
 ### F0 — Decisões + colheita (½ semana)
 - Travar a arquitetura (este doc).
 - Criar `version.md` (0.1.0) e regra de commit pt-BR. ✅ (feito hoje)
