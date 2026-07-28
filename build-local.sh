@@ -44,8 +44,11 @@
 # CHAVE DO UPDATER: como o bundle gera artefato de updater (ADR-022), o build
 # EXIGE `TAURI_SIGNING_PRIVATE_KEY` no ambiente e isto é verificado ANTES de
 # compilar — o Tauri só reclamaria no fim (na máquina Linux custou 2m01s antes de
-# abortar). Para build de teste sem chave, use --no-sign: sai sem artefato de
-# updater e NÃO deve ser publicado.
+# abortar). E a variável preenchida não basta: o preflight ASSINA um arquivo
+# descartável (~1s) para provar que a senha abre a chave e que ela é a do par
+# publicado — assinar com outro par gera um release que nenhum cliente instalado
+# aceita, sem conserto pelo próprio updater. Para build de teste sem chave, use
+# --no-sign: sai sem artefato de updater e NÃO deve ser publicado.
 #
 # PUBLICAR (--publish, item D1): manda os artefatos DESTA plataforma + o
 # release.json para o servidor por scp, e confere o resultado pela URL pública.
@@ -401,6 +404,107 @@ _sha256() {
 # been found, but no private key". Este teste custa milissegundos e falha no
 # primeiro segundo — e o erro do Tauri não diz onde a chave mora, este diz.
 UPDATER_ARTIFACTS=1
+
+# O keyid (8 bytes) que mora DENTRO da pubkey declarada no tauri.conf.json — é
+# ele que todo cliente já instalado usa para aceitar ou recusar um update.
+updater_pubkey_id() {
+  node -e '
+    try {
+      const c = require("./src-tauri/tauri.conf.json");
+      const pub = Buffer.from(c.plugins.updater.pubkey, "base64").toString();
+      const raw = Buffer.from(pub.trim().split("\n").pop(), "base64");
+      process.stdout.write(raw.slice(2, 10).toString("hex").toUpperCase());
+    } catch { process.stdout.write(""); }
+  ' 2>/dev/null || true
+}
+
+# O mesmo keyid, lido de uma assinatura recém-gerada ($1 = arquivo .sig).
+updater_sig_id() {
+  node -e '
+    try {
+      const fs = require("fs");
+      const sig = Buffer.from(fs.readFileSync(process.argv[1], "utf8").trim(), "base64").toString();
+      const raw = Buffer.from(sig.trim().split("\n")[1], "base64");
+      process.stdout.write(raw.slice(2, 10).toString("hex").toUpperCase());
+    } catch { process.stdout.write(""); }
+  ' "$1" 2>/dev/null || true
+}
+
+# ── A chave existir não é prova: ela tem de ABRIR e ser a chave CERTA ────────
+# Duas coisas ainda podem estar erradas depois de TAURI_SIGNING_PRIVATE_KEY estar
+# preenchida, e nenhuma das duas aparece antes do fim do empacotamento:
+#
+#   a) a SENHA não abre a chave — o `tauri build` aborta no último passo, e os
+#      minutos de compilação vão junto;
+#   b) a chave é de OUTRO par — e este é o caro. O build termina, o release sai,
+#      e todo cliente já instalado RECUSA o update ("signature error"): quem está
+#      na versão antiga fica preso nela, sem volta possível pelo próprio updater.
+#      Não é hipótese: esta máquina tem mais de uma chave minisign no disco
+#      (~/.shvia/updater.key, ~/.tauri/*.key, a do SSHVTERM) e a errada é
+#      igualmente válida aos olhos do bundler.
+#
+# Assinar um arquivo descartável custa ~1s e elimina as duas.
+verify_updater_key() {
+  local cli tmpd sigfile sigid pubid
+  cli="./node_modules/.bin/tauri"
+
+  # O npm ci só roda depois deste passo: em árvore recém-clonada não há CLI para
+  # a prova. Avisar e seguir é melhor que baixar a CLI aqui — a alternativa seria
+  # rede no meio de um preflight que se vende como instantâneo.
+  if [ ! -x "$cli" ]; then
+    echo "    ⚠️ chave presente; prova de assinatura adiada (node_modules ainda não existe)."
+    return 0
+  fi
+
+  pubid="$(updater_pubkey_id)"
+  tmpd="$(mktemp -d)" || return 0
+  printf 'shvia-updater-keycheck' > "$tmpd/probe"
+
+  # Chave e senha viajam por AMBIENTE, nunca por argumento: argv é legível no `ps`
+  # por qualquer processo desta máquina. E a senha vazia precisa estar EXPORTADA,
+  # não apenas ausente — sem a variável a CLI abre prompt e o build para esperando
+  # alguém que não está olhando a tela.
+  export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+
+  if ! "$cli" signer sign "$tmpd/probe" >"$tmpd/out" 2>&1 </dev/null; then
+    echo "" >&2
+    echo "  ✗ a chave do updater não abriu:" >&2
+    echo "      $(grep -m1 -i 'error\|password\|key' "$tmpd/out" | sed 's/^ *//')" >&2
+    echo "" >&2
+    echo "    Quase sempre é a SENHA: ela está no cofre, e é a mesma nos três SOs" >&2
+    echo "    (ADR-022). Preencha TAURI_SIGNING_PRIVATE_KEY_PASSWORD em:" >&2
+    echo "      ${CREDS_FILE:-signing.env}" >&2
+    echo "" >&2
+    rm -rf "$tmpd"
+    return 1
+  fi
+
+  # `|| true` nos dois: com `set -o pipefail`, um SIGPIPE do find ou um .sig
+  # ilegível derrubariam o build inteiro por causa da VERIFICAÇÃO — o preflight
+  # não pode ser mais frágil que aquilo que ele protege.
+  sigfile="$(find "$tmpd" -name '*.sig' -type f 2>/dev/null | head -1 || true)"
+  sigid=""
+  if [ -n "$sigfile" ]; then sigid="$(updater_sig_id "$sigfile")"; fi
+  rm -rf "$tmpd"
+
+  if [ -n "$pubid" ] && [ -n "$sigid" ] && [ "$pubid" != "$sigid" ]; then
+    echo "" >&2
+    echo "  ✗ chave do updater ERRADA — é de outro par de chaves." >&2
+    echo "      assina com: $sigid" >&2
+    echo "      publicado : $pubid   (pubkey no src-tauri/tauri.conf.json)" >&2
+    echo "" >&2
+    echo "    Publicar assim entrega um release que NENHUM cliente instalado" >&2
+    echo "    aceita, e o updater não conserta a si mesmo depois. Aponte" >&2
+    echo "    TAURI_SIGNING_PRIVATE_KEY para a chave do par publicado — nesta" >&2
+    echo "    máquina há outras chaves minisign no disco, e todas 'funcionam'." >&2
+    echo "" >&2
+    return 1
+  fi
+
+  echo "    ✔ chave do updater: abre com a senha e confere com a pubkey (${sigid:-?})"
+  return 0
+}
+
 check_updater_key() {
   local exige
   exige="$(node -e '
@@ -423,7 +527,11 @@ check_updater_key() {
   #
   # Para não guardar a chave DENTRO do arquivo de credenciais, use substituição de
   # comando no signing.env: o arquivo fica com o caminho, a variável com o conteúdo.
-  [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ] && return 0
+  # Presente não basta — verify_updater_key prova que abre e que é a chave certa.
+  if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+    verify_updater_key
+    return $?
+  fi
 
   if [ -n "${TAURI_SIGNING_PRIVATE_KEY_PATH:-}" ]; then
     echo "" >&2
@@ -458,8 +566,12 @@ check_updater_key() {
   echo "    CAMINHO da chave (~/.shvia/updater.key) e a senha — a chave em si não" >&2
   echo "    ganha cópia dentro do repo, e o arquivo é gitignorado." >&2
   echo "" >&2
-  echo "    Pontual, sem arquivo:" >&2
-  echo "      export TAURI_SIGNING_PRIVATE_KEY=\"\$(cat ~/.shvia/updater.key)\"" >&2
+  echo "    Fora do repo (sobrevive a clone novo e a git clean, como no SSHVTERM):" >&2
+  echo "      mkdir -p ~/.config/shvia && cp signing.env.example ~/.config/shvia/build.env" >&2
+  echo "      chmod 600 ~/.config/shvia/build.env" >&2
+  echo "" >&2
+  echo "    Pontual, sem arquivo (KEY, não KEY_PATH — o bundler ignora o PATH):" >&2
+  echo "      export TAURI_SIGNING_PRIVATE_KEY=\"\$(cat \"\$HOME/.shvia/updater.key\")\"" >&2
   echo "      export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='...'" >&2
   echo "" >&2
   echo "    O par é UM SÓ para as três máquinas (ADR-022): a mesma chave que" >&2
@@ -688,22 +800,36 @@ done
 
 echo "==> ShvIA Desktop — build local ($_BUILD_OS)"
 
-# ── signing.env: credenciais desta máquina, uma vez em vez de a cada build ────
+# ── Credenciais desta máquina, uma vez em vez de a cada build ────────────────
 # Nasceu de um atrito real: sem isto, cada release exigia reexportar
 # TAURI_SIGNING_PRIVATE_KEY(_PASSWORD) na mão, e esquecer significava descobrir no
 # fim do empacotamento. Ver signing.env.example (versionado; o preenchido é
 # gitignorado) — ele guarda o CAMINHO da chave e a senha, não a chave.
 #
-# ANUNCIA que carregou, de propósito: "o build saiu assinado ou não" não pode
-# depender de um arquivo invisível. Se algo estiver estranho, a primeira linha da
-# saída já diz de onde vieram as credenciais.
+# DOIS lugares aceitos, nesta ordem — o primeiro que existir vence:
+#
+#   1. ./signing.env             — dentro do repo, gitignorado.
+#   2. ~/.config/shvia/build.env — FORA do repo. Sobrevive a clone novo, a
+#      `git clean -xdf` e a apagar a árvore inteira. É o mesmo endereço que o
+#      SSHVTERM-DESKTOP usa (~/.config/sshvterm/build.env): a máquina de release é
+#      a mesma, e um hábito só para os dois repos é menos coisa para lembrar.
+#
+# Outro caminho: $SHVIA_BUILD_ENV. O arquivo é o mesmo modelo nos três casos.
+#
+# ANUNCIA que carregou e DE ONDE, de propósito: "o build saiu assinado ou não" não
+# pode depender de um arquivo invisível. Se algo estiver estranho, a primeira linha
+# da saída já diz de onde vieram as credenciais.
 #
 # O `.example` usa `${VAR:-...}`, então um export feito no shell VENCE o arquivo —
 # um teste pontual não é sobrescrito por ele.
-if [ -f signing.env ]; then
+CREDS_FILE=""
+for _c in "${SHVIA_BUILD_ENV:-}" "./signing.env" "$HOME/.config/shvia/build.env"; do
+  [ -n "$_c" ] && [ -f "$_c" ] && { CREDS_FILE="$_c"; break; }
+done
+if [ -n "$CREDS_FILE" ]; then
   # shellcheck source=/dev/null
-  . ./signing.env
-  echo "    credenciais: signing.env carregado"
+  . "$CREDS_FILE"
+  echo "    credenciais: $CREDS_FILE carregado"
 fi
 
 step "[git] sincroniza com o remoto (git pull --ff-only)"

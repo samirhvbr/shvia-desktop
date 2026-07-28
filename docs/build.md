@@ -136,8 +136,24 @@ cp signing.env.example signing.env && chmod 600 signing.env
 $EDITOR signing.env      # preencha só a SENHA da chave
 ```
 
-O `build-local.sh` carrega o arquivo **sozinho** e **anuncia na primeira linha** que
-carregou — "o build saiu assinado ou não" não pode depender de um arquivo invisível.
+**Ou fora do repo**, que é o que a máquina de release usa hoje — sobrevive a clone
+novo, a `git clean -xdf` e a apagar a árvore inteira:
+
+```bash
+mkdir -p ~/.config/shvia
+cp signing.env.example ~/.config/shvia/build.env && chmod 600 ~/.config/shvia/build.env
+```
+
+Mesmo modelo de arquivo, mesmo endereço que o SSHVTERM-DESKTOP já usa
+(`~/.config/sshvterm/build.env`): a máquina de release é a mesma, e um hábito só para
+os dois repos é menos coisa para lembrar. A ordem de procura é
+`$SHVIA_BUILD_ENV` → `./signing.env` → `~/.config/shvia/build.env`, e vence o primeiro
+que existir.
+
+O `build-local.sh` carrega o arquivo **sozinho** e **anuncia na primeira linha** qual
+deles carregou — "o build saiu assinado ou não" não pode depender de um arquivo
+invisível, e com dois endereços possíveis o caminho na tela é o que evita editar um
+arquivo enquanto o build lê o outro.
 
 Duas escolhas do formato:
 
@@ -166,6 +182,23 @@ Como o bundle gera artefato de updater, o build **exige**
 `TAURI_SIGNING_PRIVATE_KEY`. O script verifica isso no primeiro segundo — o Tauri só
 reclamaria no fim do empacotamento (na máquina Linux, em 28/07/2026, custou **2m01s**
 de compilação antes de abortar com `A public key has been found, but no private key`).
+
+A variável estar preenchida **não é prova**, então o preflight assina um arquivo
+descartável (~1s) e checa as duas coisas que sobram:
+
+1. **A senha abre a chave.** Senha errada aborta o `tauri build` no último passo, e
+   leva os minutos de compilação junto.
+2. **É a chave do par publicado.** O keyid da assinatura é comparado com o da `pubkey`
+   do `tauri.conf.json`. Este é o caro: com a chave de outro par o build termina, o
+   release sai, e **todo cliente já instalado recusa o update** — quem está na versão
+   antiga fica preso nela, e o próprio updater não conserta isso depois. Não é
+   hipótese: esta máquina tem mais de uma chave minisign no disco
+   (`~/.shvia/updater.key`, `~/.tauri/*.key`, a do SSHVTERM) e todas são igualmente
+   válidas aos olhos do bundler.
+
+Em árvore recém-clonada (sem `node_modules`, que o `npm ci` só instala no passo
+seguinte) não há CLI para a prova: o script avisa que adiou e segue — buscar a CLI da
+rede dentro de um preflight que se vende como instantâneo seria pior.
 
 O par é **único** (ADR-022): a mesma chave que assina o release do macOS assina o do
 Linux e o do Windows. Cada máquina de build precisa dela no ambiente — copiada pelo
