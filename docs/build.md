@@ -126,6 +126,35 @@ Três coisas que o passo manual não fazia, e cada uma corresponde a um erro rea
 
 O `.sig` **não** sobe: o conteúdo dele já está embutido no `release.json`.
 
+### `signing.env`: as credenciais uma vez, não a cada build
+
+Reexportar `TAURI_SIGNING_PRIVATE_KEY*` em cada release é atrito que só produz builds
+esquecidos sem assinatura. Uma vez por máquina:
+
+```bash
+cp signing.env.example signing.env && chmod 600 signing.env
+$EDITOR signing.env      # preencha só a SENHA da chave
+```
+
+O `build-local.sh` carrega o arquivo **sozinho** e **anuncia na primeira linha** que
+carregou — "o build saiu assinado ou não" não pode depender de um arquivo invisível.
+
+Duas escolhas do formato:
+
+- **Guarda o CAMINHO da chave, não o conteúdo** (`TAURI_SIGNING_PRIVATE_KEY_PATH`, que
+  o Tauri aceita). A chave continua só em `~/.shvia/updater.key`, então o arquivo tem
+  **um** segredo (a senha) em vez de dois — e um `signing.env` vazado sem o arquivo da
+  chave não assina nada. O script recusa um caminho ilegível **antes** de compilar, em
+  vez de deixar o Tauri descobrir no fim.
+- **Não é `.env`.** O Vite lê `.env` neste projeto (só expõe `VITE_*` ao bundle, então
+  nada daqui vazaria para o JavaScript) — mas `.env` é o nome que toda ferramenta
+  procura, e já houve incidente de `.env` sobrescrito nesta máquina. É também o padrão
+  já usado no SSHVTERM-DESKTOP.
+
+`signing.env` está no `.gitignore`; o `.example` é versionado. O `.example` usa
+`${VAR:-...}`, então um `export` feito no shell **vence** o arquivo — um teste pontual
+não é sobrescrito por ele.
+
 ### A chave é exigida ANTES de compilar (e é UMA para as três máquinas)
 
 Como o bundle gera artefato de updater, o build **exige**
