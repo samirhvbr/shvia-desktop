@@ -808,7 +808,19 @@ how-to; linkar o ADR.
   binário, então todo install existente recusa update assinado por chave nova. O
   caminho de recuperação é reinstalação manual em cada máquina.
 - **Validação:** `cargo clippy` limpo, `cargo test` 22/22 (+1: o formato do path do
-  endpoint, que se errado devolveria 404 em vez do manifesto). **NÃO validado:** o
-  ciclo de update de ponta a ponta — exige duas versões assinadas publicadas, e a
-  0.18.0 não tem `.sig`. **O teste real é publicar a 1.0.0 assinada e depois uma
-  1.0.1**, com o `curl` das duas respostas (200 e 204) antes de instalar nada.
+  endpoint, que se errado devolveria 404 em vez do manifesto).
+- **✅ Ciclo de ponta a ponta VALIDADO em 28/07/2026 (1.0.0 → 1.0.1).** A 1.0.1 foi
+  publicada em `ai.shvia.org` e a 1.0.0 instalada neste Mac achou, baixou, instalou e
+  reiniciou pelo menu **Ajuda → Verificar atualizações…**; depois do reinício o modal
+  Sobre mostra `v1.0.1` e a mesma checagem responde "você já está na versão mais
+  recente". A **1.0.1 não tem mudança de código** — é um bump puro, feito só para
+  exercitar o updater, e está registrada como tal.
+- **🐛 O que o teste real pegou, e nenhum teste automatizado pegaria:** o
+  `.app.tar.gz` **não subiu** para o servidor na primeira tentativa. O artefato do
+  updater fica em `bundle/macos/` e o `.dmg` em `bundle/dmg/` — um upload de um
+  diretório só perde exatamente o único arquivo que o updater baixa. E o sintoma
+  engana: o endpoint devolve **200 com `signature` e `url` preenchidos**, porque o
+  manifesto está correto; a falha só aparece quando o app tenta baixar. Por isso o
+  passo de publicação virou checklist com verificação de `sha256` **pela URL
+  pública** em `SHVIA-WEB/docs/INFRA/AUTO-UPDATE-DESKTOP.md` §4 — vai acontecer de
+  novo na máquina Windows.
