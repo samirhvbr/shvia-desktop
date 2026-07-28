@@ -94,11 +94,41 @@ oferece o update, em silêncio):
 ```bash
 export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.shvia/updater.key)"
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='…'   # a do cofre
-./build-local.sh
+./build-local.sh --publish                      # build + sobe pro servidor
 ```
 
 O `release-manifest.mjs` avisa em amarelo quando **nada** foi assinado — se esse aviso
 aparecer, as variáveis não estavam no ambiente e o release não serve para auto-update.
+
+### Publicar: `--publish` (macOS e Linux)
+
+`./build-local.sh --publish` sobe os artefatos desta plataforma + o `release.json` por
+`scp` e **verifica pela URL pública**. Destino padrão em `SHVIA_PUBLISH_DEST`
+(sobrescrevível com `--dest`), base pública em `SHVIA_PUBLIC_BASE` (`--base-url`).
+Uma senha só — é um `scp` com todos os arquivos; `ssh-copy-id root@HOST` elimina o
+prompt de vez.
+
+Três coisas que o passo manual não fazia, e cada uma corresponde a um erro real:
+
+1. **A lista sai do próprio `release.json`.** No macOS o artefato do updater
+   (`ShvIA.app.tar.gz`) mora em `bundle/macos/` e o `.dmg` em `bundle/dmg/` — um
+   `scp` de um diretório só perde exatamente o arquivo que o updater baixa
+   (aconteceu em 28/07/2026). Artefato declarado no manifesto e ausente no disco
+   **aborta** a publicação em vez de subir um manifesto quebrado.
+2. **O manifesto publicado é baixado ANTES de gerar o novo**, para o merge de
+   plataformas acontecer sozinho. Sem isso, publicar do macOS apaga a entrada do
+   Windows que estava no servidor, e o sintoma é nenhum: build passa, endpoint
+   responde, e só os usuários de Windows param de receber update. Isso substitui o
+   passo manual de "copiar o `release.json` de uma máquina para a outra".
+3. **Verificação pela URL pública, não pelo diretório.** Confere o `sha256` do
+   artefato assinado baixando-o de verdade — é o que pega upload truncado, cujo
+   sintoma seria falha de assinatura sem explicação.
+
+O `.sig` **não** sobe: o conteúdo dele já está embutido no `release.json`.
+
+> **Windows:** o `build-local.ps1` ainda **não** tem o `--publish` — publique à mão
+> lá, mandando o `-setup.exe`/`.msi` **e** o `release.json`, e confira o `sha256`
+> pela URL pública antes de confiar.
 
 ### Pendente
 

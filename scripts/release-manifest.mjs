@@ -81,12 +81,22 @@ if (!PLATAFORMA) {
   process.exit(1);
 }
 
-// Extensões que interessam por plataforma. `.app.tar.gz` é o formato que o
-// updater do Tauri consome no macOS; o `.dmg` é o que humano baixa.
+// Extensões que interessam por plataforma. Em cada uma há DOIS papéis: o que o
+// updater do Tauri consome e o que humano baixa — e eles não são o mesmo arquivo
+// no macOS nem no Linux:
+//   macOS  → updater `.app.tar.gz`      · humano `.dmg`
+//   Linux  → updater `.AppImage.tar.gz` · humano `.AppImage`/`.deb`/`.rpm`
+//   Windows→ updater É o próprio instalador (`-setup.exe`/`.msi`, assinados)
+//
+// ⚠️ `.AppImage.tar.gz` tem de estar listado EXPLICITAMENTE: o filtro é
+// `endsWith`, e `.AppImage` NÃO é sufixo de `Foo.AppImage.tar.gz`. Sem esta
+// entrada o artefato de updater do Linux nunca entrava no manifesto, e o
+// endpoint do ShvIA (que procura `.AppImage.tar.gz`) respondia 204 para sempre —
+// auto-update morto no Linux, em silêncio, com o build parecendo correto.
 const EXTENSOES = {
   macos: [".dmg", ".app.tar.gz"],
   windows: [".msi", "-setup.exe"],
-  linux: [".deb", ".AppImage", ".rpm"],
+  linux: [".deb", ".AppImage", ".AppImage.tar.gz", ".rpm"],
 }[PLATAFORMA];
 
 function encontrarArtefatos(dir, achados = []) {

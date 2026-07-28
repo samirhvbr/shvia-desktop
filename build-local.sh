@@ -24,6 +24,26 @@
 #   ./build-local.sh --anna /caminho/para/anna   # empacota ESTE anna (item D5)
 #   ./build-local.sh --no-anna       # NÃO empacota o motor (app sai sem Modo Code
 #                                    # pronto — o usuário terá de instalar à mão)
+#   ./build-local.sh --publish       # publica no servidor por scp (item D1)
+#   ./build-local.sh --publish --dest root@HOST:/caminho/   # outro destino
+#
+# PUBLICAR (--publish, item D1): manda os artefatos DESTA plataforma + o
+# release.json para o servidor por scp, e confere o resultado pela URL pública.
+# Funciona igual no macOS e no Linux — a lista de arquivos sai do próprio
+# release.json, então o que sobe é exatamente o que o manifesto declara.
+#
+#   - Uma senha só: é UM `scp` com todos os arquivos (uma conexão). Para não
+#     digitar nada, `ssh-copy-id root@HOST` uma vez e o scp passa a usar a chave.
+#   - O `.sig` NÃO sobe, e é de propósito: o conteúdo dele já está embutido no
+#     release.json (campo `signature`), que é de onde o servidor lê.
+#   - ANTES de gerar o manifesto, o script BAIXA o release.json publicado para a
+#     raiz do repo. É o que faz a mescla de plataformas acontecer sozinha: sem
+#     isso, publicar do macOS apagaria a entrada do Windows do servidor e os
+#     usuários de Windows paravam de receber update SEM NENHUM SINTOMA no build.
+#   - DEPOIS de subir, confere o sha256 do artefato de updater **pela URL
+#     pública**. É o passo que pega o erro real de 28/07/2026: o `.app.tar.gz`
+#     ficou de fora do upload e o endpoint continuou devolvendo 200 (o manifesto
+#     estava certo), então a falha só aparecia quando o app tentava baixar.
 #
 # MOTOR EMPACOTADO (item D5): o `anna` é o gargalo de adoção do Modo Code — hoje é
 # pré-requisito externo, e quem instala o app não tem a feature até resolver isso à
@@ -342,15 +362,132 @@ detach_stale_build_images() {
   done
 }
 
+# ── Publicação no servidor (item D1) ─────────────────────────────────────────
+# Destino e base pública são CONSTANTES documentadas, sobrescrevíveis por env ou
+# flag. Não há segredo aqui: o destino é um host da tailnet e a base é a URL que o
+# app já usa. A senha do scp NUNCA entra em variável nem em arquivo — o scp
+# pergunta, ou você instala a chave com ssh-copy-id.
+PUBLISH_DEST="${SHVIA_PUBLISH_DEST:-root@100.64.100.242:/srv/shvia/storage/app/public/desktop/}"
+PUBLIC_BASE="${SHVIA_PUBLIC_BASE:-https://ai.shvia.org}"
+
+# Baixa o release.json JÁ PUBLICADO para a raiz, para o release-manifest.mjs
+# mesclar a plataforma desta máquina em cima dele em vez de recomeçar.
+#
+# Sem este passo, o fluxo "cada SO numa máquina" perde entradas: o macOS publica
+# um manifesto só-macOS, e a entrada do Windows que estava no servidor desaparece.
+# O sintoma é o pior possível — nada falha no build, nada falha no endpoint, e os
+# usuários de Windows simplesmente param de receber update.
+#
+# Fail-open: sem rede, sem manifesto publicado ou JSON ilegível, segue sem mesclar
+# (o release-manifest.mjs recomeça, que é o comportamento de antes deste passo).
+fetch_remote_manifest() {
+  local url="$PUBLIC_BASE/storage/desktop/release.json"
+  local tmp; tmp="$(mktemp)"
+  if ! curl -fsS --max-time 20 -o "$tmp" "$url" 2>/dev/null; then
+    echo "    (sem manifesto publicado em $url — nada a mesclar)"
+    rm -f "$tmp"; return 0
+  fi
+  if ! node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$tmp" 2>/dev/null; then
+    echo "    ⚠️ o release.json publicado não é JSON válido — ignorando"
+    rm -f "$tmp"; return 0
+  fi
+  # shellcheck disable=SC2016  # `${...}` aqui é template literal de JS, não de bash
+  local plats; plats="$(node -e '
+    const m = JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));
+    process.stdout.write(`${m.version} [${Object.keys(m.platforms||{}).join(", ")}]`);
+  ' "$tmp")"
+  mv "$tmp" release.json
+  echo "    publicado hoje: $plats — o manifesto novo mescla em cima disto"
+}
+
+# Sobe os artefatos DESTA plataforma + o release.json, e verifica pela URL pública.
+publish_release() {
+  if [ ! -f release.json ]; then
+    echo "  ⚠️ sem release.json — nada a publicar." >&2
+    return 1
+  fi
+
+  # A lista sai do PRÓPRIO manifesto: garante que sobe exatamente o que ele
+  # declara. Um arquivo declarado e não encontrado no disco é ERRO, não aviso —
+  # publicar um manifesto que aponta para arquivo ausente é justamente o 404 que
+  # só aparece quando o app tenta baixar.
+  local arquivos=() faltando=() nome caminho
+  while IFS= read -r nome; do
+    [ -z "$nome" ] && continue
+    caminho="$(find src-tauri/target/release/bundle -maxdepth 3 -type f -name "$nome" -print -quit 2>/dev/null || true)"
+    if [ -z "$caminho" ]; then faltando+=("$nome"); continue; fi
+    arquivos+=("$caminho")
+    [ -f "$caminho.sha256" ] && arquivos+=("$caminho.sha256")
+  done < <(node -e '
+    const m = JSON.parse(require("fs").readFileSync("release.json","utf8"));
+    const p = {darwin:"macos", linux:"linux", win32:"windows"}[process.platform];
+    for (const a of (m.platforms?.[p]?.artifacts ?? [])) console.log(a.file);
+  ')
+
+  if [ "${#faltando[@]}" -gt 0 ]; then
+    echo "  ✗ declarados no release.json e AUSENTES no bundle: ${faltando[*]}" >&2
+    echo "    (rode o build antes de publicar — não vou publicar manifesto quebrado)" >&2
+    return 1
+  fi
+  if [ "${#arquivos[@]}" -eq 0 ]; then
+    echo "  ⚠️ o manifesto não lista artefato desta plataforma — nada a publicar." >&2
+    return 1
+  fi
+
+  echo "    destino: $PUBLISH_DEST"
+  for f in "${arquivos[@]}"; do echo "      $(basename "$f")"; done
+  echo "      release.json"
+  echo "    (uma senha só — é um scp com todos os arquivos)"
+
+  # UM scp: uma conexão, um prompt de senha.
+  scp "${arquivos[@]}" release.json "$PUBLISH_DEST"
+
+  # ── Verificação PELA URL PÚBLICA ────────────────────────────────────────────
+  # Não basta o arquivo estar no diretório: tem de ser servido, e chegar inteiro.
+  # Upload truncado dá 200 com bytes errados, e aí o updater falha na verificação
+  # de assinatura com uma mensagem que não explica nada.
+  step "[D1] verifica a publicação pela URL pública"
+  local alvo esperado obtido
+  # shellcheck disable=SC2016  # `${...}` aqui é template literal de JS, não de bash
+  alvo="$(node -e '
+    const m = JSON.parse(require("fs").readFileSync("release.json","utf8"));
+    const p = {darwin:"macos", linux:"linux", win32:"windows"}[process.platform];
+    const a = (m.platforms?.[p]?.artifacts ?? []).find(x => x.signature);
+    if (a) console.log(`${a.file}\t${a.sha256}`);
+  ')"
+  if [ -z "$alvo" ]; then
+    echo "    ⚠️ nenhum artefato ASSINADO nesta plataforma — o auto-update não vai"
+    echo "       oferecer esta versão. Faltou TAURI_SIGNING_PRIVATE_KEY no build?"
+    return 0
+  fi
+  nome="${alvo%%$'\t'*}"; esperado="${alvo##*$'\t'}"
+
+  obtido="$(curl -fsS --max-time 300 "$PUBLIC_BASE/storage/desktop/$nome" \
+            | shasum -a 256 | awk '{print $1}')" || obtido=""
+  if [ "$obtido" = "$esperado" ]; then
+    echo "    ✅ $nome servido e íntegro (${esperado:0:16}…)"
+  else
+    echo "    ✗ $nome NÃO confere pela URL pública" >&2
+    echo "      esperado: $esperado" >&2
+    echo "      obtido:   ${obtido:-<falhou ao baixar>}" >&2
+    echo "      O endpoint vai devolver 200 e o app vai falhar no DOWNLOAD." >&2
+    return 1
+  fi
+}
+
 SKIP_NPM_CI=0
 NO_SIGN=0
 SKIP_GIT_PULL=0
+PUBLISH=0
 BUNDLES=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --skip-npm-ci)  SKIP_NPM_CI=1 ;;
     --no-sign)      NO_SIGN=1 ;;
     --skip-git-pull) SKIP_GIT_PULL=1 ;;
+    --publish)      PUBLISH=1 ;;
+    --dest)         shift; PUBLISH_DEST="${1:-}" ;;
+    --base-url)     shift; PUBLIC_BASE="${1:-}" ;;
     --bundles)      shift; BUNDLES="${1:-}" ;;
     --anna)         shift; ANNA_FROM="${1:-}" ;;
     --no-anna)      NO_ANNA=1 ;;
@@ -446,7 +583,22 @@ fi
 # DEPOIS da assinatura/notarização de propósito: assinar e stapler ALTERAM os
 # bytes do artefato, então um sha256 calculado antes descreveria um arquivo que
 # não existe mais — e o updater recusaria o download por hash divergente.
+# Com --publish, o manifesto publicado vem ANTES para o merge de plataformas
+# acontecer sozinho. Ver o comentário de fetch_remote_manifest: sem isso, publicar
+# do macOS apaga a entrada do Windows do servidor sem nenhum sintoma.
+if [ "$PUBLISH" -eq 1 ]; then
+  step "[D1] baixa o manifesto publicado (para mesclar as outras plataformas)"
+  fetch_remote_manifest
+fi
+
 step "[D9] checksums + release.json"
 node scripts/release-manifest.mjs || echo "  (manifesto não gerado — build segue válido)"
+
+# ── Publicação (item D1) ─────────────────────────────────────────────────────
+# Depois do manifesto de propósito: é ele que diz o que subir.
+if [ "$PUBLISH" -eq 1 ]; then
+  step "[D1] publica no servidor (scp)"
+  publish_release
+fi
 
 _summary

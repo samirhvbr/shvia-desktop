@@ -824,3 +824,64 @@ how-to; linkar o ADR.
   passo de publicação virou checklist com verificação de `sha256` **pela URL
   pública** em `SHVIA-WEB/docs/INFRA/AUTO-UPDATE-DESKTOP.md` §4 — vai acontecer de
   novo na máquina Windows.
+
+## ADR-023 — Publicar é passo do build (`--publish`), e o manifesto mescla pelo servidor
+
+- **Data:** 2026-07-28 · **Status:** aceito · **Versão:** 1.0.2 · **Item:** D1
+- **Contexto:** a 1.0.1 validou o auto-update, mas o passo de publicação era `scp` à
+  mão — e na primeira tentativa o `.app.tar.gz` **ficou de fora**. O endpoint
+  continuou devolvendo `200` com `signature` e `url` preenchidos (o manifesto estava
+  correto), então nada acusou o problema até o app tentar baixar.
+
+### O que foi decidido
+
+- **A lista de arquivos sai do `release.json`, não de um glob de diretório.** É a
+  correção direta da causa: no macOS o artefato do updater está em `bundle/macos/` e o
+  instalador humano em `bundle/dmg/`; no Linux, `.AppImage.tar.gz` e `.AppImage` no
+  mesmo diretório mas com papéis diferentes. Qualquer lista escrita à mão erra em
+  algum SO. Derivando do manifesto, **o que sobe é por construção o que o manifesto
+  declara** — e artefato declarado que não existe no disco **aborta** a publicação,
+  porque publicar manifesto apontando para arquivo ausente é exatamente o 404 que só
+  aparece no download.
+- **O manifesto publicado é baixado ANTES de gerar o novo.** O merge de plataformas
+  passa a acontecer sozinho, contra o que está no ar. Isso **substitui** o passo
+  manual de "copiar o `release.json` de uma máquina para a próxima antes de buildar
+  lá", que era frágil pela pior razão possível: esquecê-lo não quebra nada visível —
+  publicar do macOS apagaria a entrada do Windows e só os usuários de Windows
+  parariam de receber update, sem sintoma no build nem no endpoint.
+- **Verificação pela URL pública, não pelo diretório do servidor.** Baixa o artefato
+  assinado e compara o `sha256` com o do manifesto. Conferir no diretório provaria
+  só que o arquivo existe; pela URL prova que o Apache o serve **e** que chegou
+  inteiro. Upload truncado dá `200` com bytes errados, e o sintoma seria falha de
+  assinatura no cliente — mensagem que não aponta para o upload.
+- **A senha do scp nunca entra em variável nem em arquivo.** Um `scp` só com todos os
+  arquivos (uma conexão, um prompt), e `ssh-copy-id` documentado para quem quiser
+  eliminar o prompt. Guardar senha de root em env de build seria trocar um
+  inconveniente de 5 segundos por um segredo em texto claro na máquina de release —
+  a mesma que guarda a chave do updater.
+- **Destino e base pública são constantes documentadas** (`SHVIA_PUBLISH_DEST`,
+  `SHVIA_PUBLIC_BASE`), sobrescrevíveis por flag. Não são segredo: o destino é host
+  da tailnet e a base é a URL que o app já usa. On-prem sobrescreve as duas.
+
+### 🐛 Bug corrigido de passagem: auto-update do Linux nunca funcionaria
+
+O `EXTENSOES.linux` do `release-manifest.mjs` era `[".deb", ".AppImage", ".rpm"]`. O
+filtro é `endsWith`, e **`.AppImage` não é sufixo de `Foo.AppImage.tar.gz`** — então o
+artefato de updater do Linux **nunca entrava no manifesto**. O endpoint do ShvIA
+procura `.AppImage.tar.gz`, não achava, e respondia `204` para sempre: auto-update
+morto no Linux, em silêncio, com o build parecendo perfeito. O macOS escapou porque
+`.app.tar.gz` estava listado explicitamente.
+
+Só apareceu ao escrever a publicação por plataforma — nenhum teste pegaria, porque
+não há build de Linux nesta máquina e o manifesto gerado no macOS está correto.
+
+### Consequências
+
+- **Validação:** `bash -n`, `node --check`, `--help` conferido, e os três trechos
+  `node -e` do publish exercitados contra o `release.json` real da 1.0.1 — a lista
+  montada acha os dois artefatos nos **dois diretórios diferentes** (que é o bug que
+  o item existe para impedir), e a verificação de `sha256` pela URL pública passa
+  contra o que está publicado agora.
+- **NÃO validado:** o `scp` em si (exigiria republicar) e o caminho do Linux (não há
+  build de Linux nesta máquina). **O `build-local.ps1` continua sem `--publish`** —
+  publicação no Windows segue manual, e está avisado em `docs/build.md`.
