@@ -414,20 +414,24 @@ check_updater_key() {
   # Sem pubkey/createUpdaterArtifacts não há o que exigir.
   [ -z "$exige" ] && return 0
 
-  # O Tauri aceita a chave por CONTEÚDO (`..._KEY`) ou por CAMINHO (`..._KEY_PATH`).
-  # O `signing.env` usa o caminho — a chave fica só em ~/.shvia/updater.key em vez
-  # de ganhar uma segunda cópia dentro da árvore do repo.
+  # ⚠️ SÓ `TAURI_SIGNING_PRIVATE_KEY` serve. O `..._KEY_PATH` existe e funciona no
+  # `tauri signer sign`, mas o BUNDLER (`tauri build`) o IGNORA — e só reclama no FIM
+  # do empacotamento. Verificado na prática em 28/07/2026 num build do SSHVTERM: o
+  # .app foi assinado e notarizado, o .dmg saiu, e só então veio "A public key has
+  # been found, but no private key". Aceitar o KEY_PATH aqui derrotaria o propósito
+  # deste teste, que é falhar no primeiro segundo em vez de no vigésimo minuto.
+  #
+  # Para não guardar a chave DENTRO do arquivo de credenciais, use substituição de
+  # comando no signing.env: o arquivo fica com o caminho, a variável com o conteúdo.
   [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ] && return 0
+
   if [ -n "${TAURI_SIGNING_PRIVATE_KEY_PATH:-}" ]; then
-    # Caminho apontando para nada é pior que caminho ausente: o Tauri seguiria e
-    # abortaria no fim do empacotamento, que é justamente o que este teste evita.
-    if [ -r "$TAURI_SIGNING_PRIVATE_KEY_PATH" ]; then
-      return 0
-    fi
     echo "" >&2
-    echo "  ✗ TAURI_SIGNING_PRIVATE_KEY_PATH aponta para um arquivo ilegível:" >&2
-    echo "      $TAURI_SIGNING_PRIVATE_KEY_PATH" >&2
-    echo "    Confira o caminho no signing.env (ou restaure a chave do cofre)." >&2
+    echo "  ✗ só TAURI_SIGNING_PRIVATE_KEY_PATH está definida, e o bundler a IGNORA." >&2
+    echo "    (ela vale para o 'tauri signer sign', não para o 'tauri build'.)" >&2
+    echo "" >&2
+    echo "    No signing.env, troque por:" >&2
+    echo "      export TAURI_SIGNING_PRIVATE_KEY=\"\$(cat ~/.shvia/updater.key)\"" >&2
     echo "" >&2
     return 1
   fi

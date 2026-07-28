@@ -141,11 +141,16 @@ carregou — "o build saiu assinado ou não" não pode depender de um arquivo in
 
 Duas escolhas do formato:
 
-- **Guarda o CAMINHO da chave, não o conteúdo** (`TAURI_SIGNING_PRIVATE_KEY_PATH`, que
-  o Tauri aceita). A chave continua só em `~/.shvia/updater.key`, então o arquivo tem
-  **um** segredo (a senha) em vez de dois — e um `signing.env` vazado sem o arquivo da
-  chave não assina nada. O script recusa um caminho ilegível **antes** de compilar, em
-  vez de deixar o Tauri descobrir no fim.
+- **Guarda o caminho da chave, não a chave** — via substituição de comando:
+  `TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.shvia/updater.key)"`. O arquivo fica com o
+  caminho (um `signing.env` vazado sem a chave não assina nada) e a variável recebe o
+  conteúdo, que é o que o `tauri build` exige.
+
+  > ⚠️ **Não use `TAURI_SIGNING_PRIVATE_KEY_PATH`.** Ela funciona no
+  > `tauri signer sign`, mas o **bundler a ignora** e só reclama no FIM do
+  > empacotamento. Descoberto do jeito caro em 28/07/2026: um build do SSHVTERM
+  > assinou e notarizou o `.app`, gerou o `.dmg`, e só então morreu com "A public key
+  > has been found, but no private key". O preflight recusa esse caso agora.
 - **Não é `.env`.** O Vite lê `.env` neste projeto (só expõe `VITE_*` ao bundle, então
   nada daqui vazaria para o JavaScript) — mas `.env` é o nome que toda ferramenta
   procura, e já houve incidente de `.env` sobrescrito nesta máquina. É também o padrão
