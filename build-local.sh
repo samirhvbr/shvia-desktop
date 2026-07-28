@@ -459,7 +459,7 @@ check_updater_key() {
   echo "    ganha cópia dentro do repo, e o arquivo é gitignorado." >&2
   echo "" >&2
   echo "    Pontual, sem arquivo:" >&2
-  echo "      export TAURI_SIGNING_PRIVATE_KEY_PATH=\"\$HOME/.shvia/updater.key\"" >&2
+  echo "      export TAURI_SIGNING_PRIVATE_KEY=\"\$(cat ~/.shvia/updater.key)\"" >&2
   echo "      export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='...'" >&2
   echo "" >&2
   echo "    O par é UM SÓ para as três máquinas (ADR-022): a mesma chave que" >&2
