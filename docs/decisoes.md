@@ -1151,3 +1151,91 @@ errado** — e era o caso: ele estava verde enquanto o Linux não atualizava. Ex
 - **Nota de operação:** o servidor precisa estar em ≥ 2.86.6 antes de a 1.1.1 ser
   publicada. Na ordem inversa nada quebra (o cliente novo manda uma query que o
   servidor antigo ignora e segue em 204), mas o Linux continua sem atualizar.
+
+---
+
+## ADR-025 — "Diagnóstico" verifica, o "Sobre" exibe
+
+- **Data:** 28/07/2026 · **Status:** Aceito · **Item:** **D7** do
+  [comparativo 9router × hermes](../../SHVIA-WEB/docs/comparativos/9router-hermes.md)
+
+### Contexto
+
+O modal "Sobre" já reunia build do desktop, versão do ShvIA no servidor, host e WebView,
+com botão Copiar. Mas ele **exibe**: mostra o host configurado e não diz se aquele host
+responde; mostra a versão e não diz se ela consegue se atualizar.
+
+As três perguntas mais frequentes de suporte — "por que abre em branco?", "por que o
+alerta de preço não chega?", "por que o Modo Code não responde?" — não tinham resposta
+dentro do app. Todas exigiam alguém com terminal.
+
+### Decisão
+
+`Ajuda → Diagnóstico…`, vizinho do "Sobre" de propósito: quem procura um procura o
+outro, e separá-los faria o usuário achar só o que não resolve.
+
+**Veredito por item, em três níveis.** `ok` / `aviso` / `falha`, e a distinção importa:
+`aviso` é o que **pode** atrapalhar (e às vezes é escolha do usuário), `falha` é o que
+**está** quebrado. Colapsar os dois faria o painel gritar em situação normal, e painel
+que sempre grita é painel que ninguém lê.
+
+**Cada item existe porque corresponde a uma falha silenciosa.** O critério de inclusão
+não foi "o que dá para medir", foi "o que hoje quebra sem avisar":
+
+| Item | Como falha hoje, sem o painel |
+|---|---|
+| **Servidor alcançável** | janela abre em branco, ou a tarja offline aparece "sem motivo" |
+| **Permissão de notificação** | o alerta de preço do [ADR-011](#adr-011--notificações-nativas-dos-alertas-de-preço-ponte-via-canal-do-modo-code) **nunca** chega, e nada acusa — nem log, nem erro |
+| **Motor `anna`** | o Modo Code não responde e parece travado ([D5](#adr-021)) |
+| **Local de instalação** | rodando de dentro do DMG, o auto-update **nunca** instala e o sintoma não aponta para a causa |
+| **Bandeja criada** | com o [ADR-024](#adr-024--bandejamenubar-e-fechar-a-janela-deixa-de-encerrar-o-app) ligado, fechar a janela faria o app **desaparecer** |
+
+O item do motor separa `found` de `version` porque o [ADR-021](#adr-021) já tinha
+separado: binário que existe e não responde `--version` está corrompido ou sem permissão
+de execução, e isso é **diferente** de binário ausente — a ação do usuário é outra.
+
+**O relatório copiável é metade do item.** Diagnóstico que o usuário tem de
+**transcrever** é diagnóstico que chega errado. O texto tem uma linha por item, com
+`[ok]`/`[!]`/`[ERRO]` e a dica indentada, e cabe numa mensagem.
+
+O botão tem **fallback para `execCommand('copy')`**: o WebKitGTK recusa a
+`navigator.clipboard` sem permissão explícita, e sem esse caminho o botão que É metade do
+item não faria nada em um dos três SOs.
+
+**Resumo antes da lista.** "Tudo em ordem" ou "N pontos de atenção". Quem abre o painel
+quer saber *se* tem algo errado antes de ler sete linhas; sem o resumo, o painel obriga a
+auditar a lista para descobrir.
+
+**Nada de comando novo exposto à página.** Os dados são resolvidos no Rust e embutidos
+como JSON num `eval` autocontido — mesmo desenho do modal "Sobre". O
+[ADR-001](#adr-001) segue valendo: um servidor comprometido não ganha um `invoke` que
+enumera caminhos de arquivo do host.
+
+### Um bug do ADR-024 que este item revelou
+
+Escrever a verificação da bandeja expôs uma combinação perigosa que o D2 tinha
+introduzido: **em ambiente sem host de bandeja** (algumas sessões GNOME precisam de
+extensão), o ícone não aparece — e com "fechar mantém rodando" ligado por default,
+fechar a janela esconderia o app **sem volta**: nem janela, nem ícone.
+
+Corrigido no mesmo commit: quando `tray::instalar` falha, o `setup` chama
+`tray::desligar_recolher`. O painel reporta a combinação; o `setup` a evita antes de
+acontecer.
+
+Vale registrar o mecanismo: o bug não apareceu ao escrever o D2 nem em teste nenhum —
+apareceu ao ter de **explicar por escrito** o que o painel checaria e por quê.
+
+### Consequências
+
+- **Validado aqui:** `cargo check`, `cargo clippy --all-targets` limpo, `cargo test`
+  **32/32** (3 novos). Os testes cobrem o que quebraria calado: valor com `"` escapado no
+  JSON embutido (caminho com aspas fecharia a string e o modal não abriria, sem erro), a
+  grafia minúscula do veredito (é contrato entre o Rust e o CSS) e **todo placeholder do
+  modal tendo um `.replace`** — esquecer um faz a string `__SHVIA_OS__` vazar para a tela.
+- **NÃO validado:** a aparência do painel (não há build gráfico aqui) e o item da bandeja
+  em Windows/Linux. O caminho de falha do `permission_state` também não foi exercitado —
+  exige negar a permissão no SO.
+- **Fica de fora:** verificar a **versão mínima exigida pelo servidor**. Ela é comparada
+  no [ADR-018](#adr-018), em JS, contra o `/api/v1/version`; trazer isso para o Rust
+  duplicaria a regra de comparação — que é justamente onde o ADR-018 registra o erro
+  clássico de comparar versão como string. Melhor um lugar só.

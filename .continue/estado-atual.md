@@ -50,7 +50,8 @@ PATH e validar o loop ao vivo. **Próximo passo (opcional):** empacotar o
 
 ## Radar / próximos passos
 
-- **F2:** menu nativo ✅, About ✅, **config de URL** ✅ (ADR-019) e **tray/menubar** ✅
+- **F2:** menu nativo ✅, About ✅, **Diagnóstico** ✅ (1.1.1, ADR-025 — o About exibe,
+  este VERIFICA), **config de URL** ✅ (ADR-019) e **tray/menubar** ✅
   na **1.1.0** (ADR-024) — com "iniciar com o sistema" nos 3 SOs e fechar recolhendo em
   vez de encerrar, que é o que fecha o buraco do ADR-011 (alerta de preço com a janela
   fechada). Resta a **offline v2** (ping no Rust, p/ quedas que o `navigator.onLine` não

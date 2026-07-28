@@ -20,6 +20,8 @@ mod code_bridge;
 /// Endereço do servidor: config persistida, validação e probe (item D4; ADR-019).
 mod server;
 #[cfg(desktop)]
+mod diagnostico;
+#[cfg(desktop)]
 mod tray;
 /// Auto-update: checa o manifesto que o ShvIA serve, pergunta e instala (D1; ADR-022).
 #[cfg(desktop)]
@@ -1031,6 +1033,16 @@ pub fn run() {
                 true,
                 None::<&str>,
             )?;
+            // Ajuda → Diagnóstico (item D7; ADR-025). Vizinho do "Sobre" de propósito:
+            // o Sobre EXIBE (build, host, WebView) e este VERIFICA — quem procura um
+            // procura o outro, e separá-los faria o usuário achar só o que não resolve.
+            let diagnostico = MenuItem::with_id(
+                handle,
+                "diagnostics",
+                "Diagnóstico…",
+                true,
+                None::<&str>,
+            )?;
             let ajuda = Submenu::with_items(
                 handle,
                 "Ajuda",
@@ -1038,6 +1050,7 @@ pub fn run() {
                 &[
                     &atualizar,
                     &PredefinedMenuItem::separator(handle)?,
+                    &diagnostico,
                     &sobre,
                 ],
             )?;
@@ -1049,6 +1062,9 @@ pub fn run() {
             }
             "check-update" => {
                 updater::verificar_agora(app);
+            }
+            "diagnostics" => {
+                diagnostico::abrir(app);
             }
             "reload" => {
                 // Recarrega a janela em foco; se não achar foco, recarrega todas.
@@ -1116,6 +1132,11 @@ pub fn run() {
             #[cfg(desktop)]
             if let Err(e) = tray::instalar(app.handle()) {
                 eprintln!("ShvIA: não foi possível criar o ícone de bandeja: {e}");
+                // Sem bandeja, "fechar mantém rodando" (D2) esconderia o app SEM VOLTA:
+                // não há janela e não há ícone para reabrir. Desligar a preferência aqui
+                // é o que impede o app de virar um processo invisível — descoberto ao
+                // escrever o item D7, que precisava reportar exatamente esta combinação.
+                tray::desligar_recolher(app.handle());
             }
             Ok(())
         })

@@ -127,6 +127,19 @@ fn gravar(app: &AppHandle, p: Prefs) {
     let _ = std::fs::write(path, json.to_string());
 }
 
+/// Desliga o "fechar mantém rodando".
+///
+/// Chamado pelo `setup` quando a criação da bandeja FALHA. Sem ícone e com a preferência
+/// ligada, fechar a janela esconderia o app sem volta — nem janela, nem ícone. É a
+/// combinação que o item D7 reporta, e aqui ela é evitada antes de acontecer.
+pub fn desligar_recolher(app: &AppHandle) {
+    let mut p = ler(app);
+    if p.close_to_tray {
+        p.close_to_tray = false;
+        gravar(app, p);
+    }
+}
+
 /// Monta o menu da bandeja **lendo o estado real** a cada chamada.
 fn montar_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let prefs = ler(app);
