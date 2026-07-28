@@ -162,6 +162,40 @@ fn avisar(app: &AppHandle, titulo: &str, texto: &str, kind: MessageDialogKind) {
         .blocking_show();
 }
 
+/// Traduz a falha de instalação para algo que dê para AGIR.
+///
+/// Existe por causa de um caso real (28/07/2026, máquina Linux): o diálogo dizia só
+/// "não pôde ser concluída — tente de novo mais tarde", e "mais tarde" nunca ia
+/// resolver, porque a causa era estrutural. Diagnosticar exigiu rodar o app pelo
+/// terminal para ler o `eprintln`. Mensagem de erro que não distingue "tente de novo"
+/// de "isto nunca vai funcionar assim" custa uma sessão de investigação.
+fn explicar_falha(e: &tauri_plugin_updater::Error) -> String {
+    use tauri_plugin_updater::Error as E;
+
+    match e {
+        // O pacote baixado não é do formato que ESTA instalação sabe instalar. No
+        // Linux é o caso comum: o plugin instala conforme o bundle em execução, e
+        // cliente ≤ 1.1.0 não informa o formato ao servidor (o default é AppImage).
+        E::InvalidUpdaterFormat => {
+            "O pacote recebido não é do formato desta instalação.\n\n\
+             No Linux isso acontece quando o app foi instalado por .deb/.rpm mas o \
+             servidor entregou o AppImage. Instale esta versão à mão UMA vez — a \
+             partir dela o app informa o próprio formato e o problema não volta."
+                .to_string()
+        }
+        // Chegou a rodar dpkg/rpm e não completou: quase sempre é a elevação
+        // (pkexec/sudo) negada ou ausente.
+        E::PackageInstallFailed => {
+            "O instalador do sistema não completou.\n\n\
+             Atualizar um install por .deb/.rpm precisa de senha de administrador \
+             (pkexec/sudo) — se o pedido não apareceu ou foi cancelado, é isso. O \
+             AppImage atualiza sem precisar de senha."
+                .to_string()
+        }
+        outro => format!("Motivo: {outro}"),
+    }
+}
+
 /// Uma passada completa: checa, pergunta, baixa, instala, reinicia.
 ///
 /// `manual` = veio do menu Ajuda. Muda duas coisas: passa por cima da versão
@@ -291,7 +325,10 @@ async fn executar(app: &AppHandle, manual: bool) {
             avisar(
                 app,
                 "Atualização",
-                "A atualização não pôde ser concluída. Você segue na versão atual — tente de novo mais tarde.",
+                &format!(
+                    "A atualização não pôde ser concluída. Você segue na versão atual.\n\n{}",
+                    explicar_falha(&e)
+                ),
                 MessageDialogKind::Error,
             );
         }
