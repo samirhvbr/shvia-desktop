@@ -88,6 +88,11 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // manda os bytes — ela tem a sessão autenticada, o Rust não. {name, dataBase64}
     // → {saved:true, path} | {saved:false} quando o usuário cancela.
     saveFile: function (o) { return post('saveFile', o || {}); },
+    // Item D3: grava a config de um cliente de CLI no host. {client, baseUrl, apiKey, model}
+    // → {written:true, path, backup} | {written:false} quando o usuário cancela o diálogo.
+    // `client` só aceita 'continue' | 'claude-code' | 'env' — os outros do gerador da web
+    // não produzem arquivo.
+    writeCliConfig: function (o) { return post('writeCliConfig', o || {}); },
     getBinding: function (pid) { return post('getBinding', { projectId: pid }); },
     setBinding: function (pid, path) { return post('setBinding', { projectId: pid, path: path }); },
     // painel da pasta (read-only, pelo app)
@@ -393,6 +398,11 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
         // Handshake de prontidão do motor (item D5). A página pergunta ANTES de
         // oferecer o Modo Code, para a tela poder dizer "anna 0.8.5 pronto" ou
         // "instale o anna" em vez de deixar a pessoa descobrir no primeiro turno.
+        // Item D3 (ADR-026): escreve a config de um cliente de CLI no host. A página manda
+        // VALORES (cliente, base, chave, modelo) — nunca caminho nem conteúdo de arquivo.
+        // Quem monta o JSON e escolhe o destino de uma lista fechada é o Rust, e o usuário
+        // confirma num diálogo nativo com o caminho à vista.
+        "writeCliConfig" => crate::cli_config::escrever(window, req, &v),
         "engineStatus" => {
             let base = v.get("engine").and_then(|x| x.as_str()).unwrap_or("gateway");
             let exe = if base == "claude" { "claude-runner" } else { "anna" };
@@ -833,7 +843,7 @@ fn list_tree(path: &str) -> serde_json::Value {
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 /// Responde uma requisição da página (`_reply`), no main thread.
-fn reply(window: &WebviewWindow, req: &str, ok: bool, data: serde_json::Value) {
+pub(crate) fn reply(window: &WebviewWindow, req: &str, ok: bool, data: serde_json::Value) {
     // `data` vai como JSON.parse(<string>) — mesmo caminho seguro do stdout — pra
     // que js_str neutralize aspas e U+2028/2029 (um path/erro com esses chars
     // quebraria o eval se `data` fosse interpolado cru).

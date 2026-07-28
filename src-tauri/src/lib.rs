@@ -16,6 +16,7 @@
 //!   SO** via `on_navigation` (login do ShvIA é same-origin, então não quebra auth);
 //! - **persistir** tamanho/posição entre reinícios (`tauri-plugin-window-state`).
 
+mod cli_config;
 mod code_bridge;
 /// Endereço do servidor: config persistida, validação e probe (item D4; ADR-019).
 mod server;
@@ -550,7 +551,7 @@ const SERVER_HOSTS: &[&str] = &[SERVER_HOST, "ia.shvia.org", "ia.blue3.com.br"];
 ///   `capabilities/default.json` e ADR-001);
 /// - `https` é obrigatório fora de loopback ([`server::normalize`]);
 /// - a tela diz, em português, que o servidor ganha acesso nativo.
-fn is_server_host(host: &str) -> bool {
+pub(crate) fn is_server_host(host: &str) -> bool {
     if SERVER_HOSTS.contains(&host) {
         return true;
     }

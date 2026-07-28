@@ -1239,3 +1239,112 @@ apareceu ao ter de **explicar por escrito** o que o painel checaria e por quê.
   no [ADR-018](#adr-018), em JS, contra o `/api/v1/version`; trazer isso para o Rust
   duplicaria a regra de comparação — que é justamente onde o ADR-018 registra o erro
   clássico de comparar versão como string. Melhor um lugar só.
+
+---
+
+## ADR-026 — A config de CLI é escrita pelo nativo; a página só propõe valores
+
+- **Data:** 28/07/2026 · **Status:** Aceito · **Item:** **D3** do
+  [comparativo 9router × hermes](../../SHVIA-WEB/docs/comparativos/9router-hermes.md)
+
+### Contexto
+
+O ShvIA-WEB **gera** a configuração de CLI desde a 2.41.0 (Conta → "Conectar meu CLI"):
+escolhe cliente e modelo, mostra o trecho pronto, botão Copiar. O que faltava era o passo
+em que a maioria desiste — **descobrir onde colar**. Cada cliente guarda a config em outro
+lugar, e um JSON colado por cima apaga o que a pessoa já tinha.
+
+Escrever arquivo no host a pedido de uma página remota é, no entanto, exatamente o tipo de
+privilégio que o [ADR-001](#adr-001) nega. A pergunta do item não era "como escrever", era
+**"quanta autoridade a página ganha"**.
+
+### Decisão
+
+**A página manda VALORES; o Rust monta o arquivo.** Chegam `client`, `baseUrl`, `apiKey` e
+`model` — nunca o caminho, nunca o conteúdo. O destino sai de uma **lista fechada** no
+nativo e o JSON é montado aqui.
+
+É a diferença entre *"a página propõe uma configuração"* e *"a página escreve um arquivo
+arbitrário no seu computador"*. O `saveFile` da ponte aceita bytes da página porque ali o
+destino é escolhido pelo usuário num diálogo de salvar; aqui o destino é um arquivo de
+configuração **que já existe e importa**.
+
+O canal é a ponte do Modo Code, que já é gated pelo token de sessão (só páginas de
+`SERVER_HOSTS` o recebem; iframe cross-origin não). Não há comando novo no
+`invoke_handler` — o ADR-001 continua intacto.
+
+#### A validação que mais importa: a base tem de ser o NOSSO servidor
+
+Um servidor comprometido que pudesse escolher a `baseUrl` configuraria o Claude Code do
+usuário para falar com **um terceiro** — e ele nunca notaria, porque o CLI continuaria
+funcionando. Todo o tráfego de código dele, com prompts e trechos de repositório, passaria
+pelo atacante.
+
+A base é conferida contra o **mesmo perímetro da navegação** (`is_server_host`): a lista
+embutida mais o servidor configurado pelo dono da máquina (item D4). Uma segunda lista
+aqui divergiria da primeira no dia em que um host novo entrasse.
+
+#### Confirmação nativa, com o caminho à vista
+
+Antes de gravar, diálogo do SO com o caminho exato. A página propõe; **só a pessoa
+autoriza**. Sem isso, "o servidor escreve arquivos no seu computador" seria uma frase
+verdadeira sobre este código. A chave de API **não** entra no diálogo: ela não acrescenta
+nada à decisão e um print de tela vazaria a credencial.
+
+#### Detecta, mescla, desfaz
+
+- **Detecta:** o diretório do cliente tem de existir. Criar `~/.continue/` para quem não
+  usa o Continue é sujeira que ninguém pediu — e a ausência da pasta é o sinal mais
+  confiável de "não instalado" que existe sem varrer o sistema.
+- **Mescla:** mexe **só no que é nosso** — a entrada de modelo com `title: "ShvIA"`, ou as
+  três variáveis `ANTHROPIC_*`. O resto do arquivo volta intacto. Sobrescrever apagaria a
+  configuração de outros provedores, e o pior é que **funcionaria**: nenhum erro, e a
+  pessoa descobriria depois. O `retain` pelo título também torna reexecutar **idempotente**
+  em vez de acumular uma entrada por clique.
+- **Desfaz:** cópia `.shvia-bak` antes de gravar, com nome fixo (um `.bak` por gravação
+  encheria a pasta, e o que se quer desfazer é sempre a última). O caminho volta na
+  resposta, porque backup que o usuário não sabe que existe não desfaz nada.
+
+**JSON inválido aborta em vez de sobrescrever.** Um `config.json` que a pessoa estava
+editando e deixou com uma vírgula sobrando não pode ser trocado por um arquivo novo: ela
+perderia tudo, e o backup não a salvaria — ela não sabe que existe um.
+
+#### Três clientes, e os outros três ficam fora com motivo
+
+O gerador da web cobre seis. Só três produzem **arquivo**:
+
+| Cliente | Destino | Por quê |
+|---|---|---|
+| `continue` | `~/.continue/config.json` | caminho documentado e estável |
+| `claude-code` | `~/.claude/settings.json` → `env` | é o jeito **permanente**; o trecho que a web mostra manda editar o `~/.zshrc` na mão |
+| `env` | `~/.shvia/env.sh` | arquivo **nosso**, para `source` |
+
+`curl` é um comando. **`cline` e `roo` são instruções** para a tela de ajustes da extensão
+— e mesmo que não fossem, a config deles mora no `globalStorage` de uma extensão do VS
+Code, cujo caminho varia por sabor de editor (Code, Insiders, Cursor, VSCodium) e por
+versão da extensão. Escrever ali no escuro corromperia o editor de alguém.
+
+**Não tocamos no `.zshrc`.** Mexer no shell de alguém é invasivo, e desfazer viraria
+adivinhar qual linha era nossa. Daí o `~/.shvia/env.sh` com o `source` explicado no
+cabeçalho.
+
+#### Arquivo novo com credencial nasce `0600`
+
+Em arquivo que **já existia** não mexemos na permissão: mudar o modo de um arquivo de
+configuração de alguém é atrevimento e pode quebrar o que o lê com outro usuário.
+
+### Consequências
+
+- **A metade web entra junto** (SHVIA-WEB): um botão "Gravar no meu computador" que só
+  aparece **no desktop** e **nos três clientes que têm arquivo** — botão que só explica que
+  não funciona é pior que botão nenhum. O campo da chave é limpo assim que serve: deixá-la
+  num input é deixá-la num print de tela.
+- **Validado aqui:** `cargo check`, `cargo clippy --all-targets` **sem um aviso**,
+  `cargo test` **41/41** (9 novos), `node --check` e `php -l` na metade web. Os testes
+  cobrem a mesclagem (preserva outros provedores, idempotente), o abort em JSON inválido, a
+  lista fechada de clientes, o destino sempre dentro do home e o perímetro da base.
+- **NÃO validado:** a gravação de verdade e o diálogo (exigem build gráfico) e o caminho
+  de Windows — `~/.continue/config.json` existe lá, mas o `0600` é `#[cfg(unix)]` e o
+  equivalente de ACL no Windows não foi feito.
+- **Fica de fora:** Cline e Roo Code, por escrito acima. Detectar o `globalStorage` do
+  VS Code com segurança é um item maior que este.
