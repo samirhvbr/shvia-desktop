@@ -86,19 +86,43 @@ teste). Detalhes da mecânica do Tauri: <https://v2.tauri.app/distribute/sign/ma
 ### Assinatura do updater (obrigatória a partir da 1.0.0)
 
 O par minisign existe desde 28/07/2026 e a **pública** está no `tauri.conf.json`
-(ADR-022). A **privada** vive na máquina de release + no cofre, e entra no ambiente
-**antes** do build — sem ela o Tauri não grava os `.sig`, o `release.json` sai sem o
-campo `signature` e o servidor passa a responder `204` para todo mundo (o app nunca
-oferece o update, em silêncio):
+(ADR-022). A **privada** vive na máquina de release + no cofre, e precisa estar
+disponível **antes** do build — sem ela o Tauri não grava os `.sig`, o `release.json`
+sai sem o campo `signature` e o servidor passa a responder `204` para todo mundo (o
+app nunca oferece o update, em silêncio).
 
-```bash
-export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.shvia/updater.key)"
-export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='…'   # a do cofre
-./build-local.sh --publish                      # build + sobe pro servidor
+**Configuração da máquina de release: dois arquivos, e nada de `export`.**
+
+```
+~/.shvia/updater.key     a chave privada (copiada da outra máquina de release)
+~/.shvia/updater.pass    A SENHA e mais nada — sem export, sem aspas
 ```
 
+```bash
+chmod 600 ~/.shvia/updater.key ~/.shvia/updater.pass
+./build-local.sh --publish     # build + sobe pro servidor
+```
+
+O `build-local.sh` (1.1.9+) lê os dois **sozinho**, sem `signing.env`, sem variável de
+ambiente e sem depender do terminal aberto — que é o ponto: `export` morre quando a
+janela fecha, e o sintoma disso é "ontem assinava, hoje não", sem nada ter mudado no
+repo.
+
+A senha é resolvida nesta ordem, e a primeira que existir vence:
+
+| ordem | de onde | serve para |
+|---|---|---|
+| 1 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` no ambiente | teste pontual |
+| 2 | `~/.shvia/updater.pass` (ou `$SHVIA_UPDATER_PASS_FILE`) | os três SOs |
+| 3 | keychain, item `shvia-updater` | só macOS |
+
+O keychain (item 3, entrou na 1.1.8) é melhor que arquivo — mas é **só macOS**:
+`security` não existe no Linux nem no Windows, e um `signing.env` que o chama sem
+guarda devolve senha **vazia em silêncio** ali. Por isso a resolução mora no script e
+não no arquivo de credenciais.
+
 O `release-manifest.mjs` avisa em amarelo quando **nada** foi assinado — se esse aviso
-aparecer, as variáveis não estavam no ambiente e o release não serve para auto-update.
+aparecer, a chave não chegou ao bundler e o release não serve para auto-update.
 
 ### Publicar: `--publish` (macOS e Linux)
 
@@ -126,23 +150,25 @@ Três coisas que o passo manual não fazia, e cada uma corresponde a um erro rea
 
 O `.sig` **não** sobe: o conteúdo dele já está embutido no `release.json`.
 
-### `signing.env`: as credenciais uma vez, não a cada build
+### `signing.env`: opcional (as credenciais já são resolvidas sozinhas)
 
-Reexportar `TAURI_SIGNING_PRIVATE_KEY*` em cada release é atrito que só produz builds
-esquecidos sem assinatura. Uma vez por máquina:
+Com `~/.shvia/updater.key` + `~/.shvia/updater.pass` no lugar, **não é preciso arquivo
+de credenciais nenhum** — esta seção existe para quem precisa apontar outro destino de
+publicação, outra chave, ou guardar a senha no keychain do Mac.
+
+No macOS, para não ter arquivo de senha:
 
 ```bash
 security add-generic-password -U -s shvia-updater -a "$USER" -w
-cp signing.env.example signing.env && chmod 600 signing.env
 ```
 
-O `security` pede a senha da chave escondida e a guarda no **keychain** — não no
-arquivo. Depois disso o `signing.env` **não contém segredo nenhum**: a chave é lida do
-caminho, a senha do keychain. É o mesmo lugar onde a senha de notarização já mora
-(`shvia-notarize`).
+O `security` pede a senha escondida e a guarda no **keychain**, o mesmo lugar onde a
+senha de notarização já mora (`shvia-notarize`). O `build-local.sh` consulta esse item
+sozinho quando não há `~/.shvia/updater.pass`.
 
-**Ou fora do repo**, que é o que a máquina de release usa hoje — sobrevive a clone
-novo, a `git clean -xdf` e a apagar a árvore inteira:
+Se ainda quiser o arquivo de credenciais, ele pode ficar no repo
+(`cp signing.env.example signing.env && chmod 600 signing.env`) ou **fora dele** —
+sobrevive a clone novo, a `git clean -xdf` e a apagar a árvore inteira:
 
 ```bash
 mkdir -p ~/.config/shvia

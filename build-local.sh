@@ -405,6 +405,10 @@ _sha256() {
 # primeiro segundo — e o erro do Tauri não diz onde a chave mora, este diz.
 UPDATER_ARTIFACTS=1
 
+# Onde a senha mora quando não vem do ambiente. Definido aqui, antes das funções
+# que a citam, para não depender da ordem em que o corpo do script executa.
+UPDATER_PASS_FILE="${SHVIA_UPDATER_PASS_FILE:-$HOME/.shvia/updater.pass}"
+
 # O keyid (8 bytes) que mora DENTRO da pubkey declarada no tauri.conf.json — é
 # ele que todo cliente já instalado usa para aceitar ou recusar um update.
 updater_pubkey_id() {
@@ -471,9 +475,24 @@ verify_updater_key() {
     echo "  ✗ a chave do updater não abriu:" >&2
     echo "      $(grep -m1 -i 'error\|password\|key' "$tmpd/out" | sed 's/^ *//')" >&2
     echo "" >&2
-    echo "    Quase sempre é a SENHA: ela está no cofre, e é a mesma nos três SOs" >&2
-    echo "    (ADR-022). Preencha TAURI_SIGNING_PRIVATE_KEY_PASSWORD em:" >&2
-    echo "      ${CREDS_FILE:-signing.env}" >&2
+    # Dizer o ESTADO do arquivo, não só o nome dele: "preencha X" é inútil quando
+    # X já foi preenchido, e "senha errada" com o arquivo vazio é ruído.
+    if [ -s "$UPDATER_PASS_FILE" ]; then
+      echo "    A senha veio de $UPDATER_PASS_FILE e o rsign a recusou." >&2
+      echo "    Confira contra o cofre — e olhe espaço sobrando no fim da linha" >&2
+      echo "    (a quebra de linha o build já remove sozinho)." >&2
+    else
+      echo "    Falta a senha. Ela está no cofre e é a mesma nos três SOs (ADR-022)." >&2
+      echo "    Cole no arquivo abaixo — só a senha, nada de export nem aspas:" >&2
+      echo "" >&2
+      echo "      \$EDITOR $UPDATER_PASS_FILE" >&2
+      echo "" >&2
+      echo "    O build lê esse arquivo sozinho, em toda máquina e todo terminal." >&2
+      if [ "$_BUILD_OS" = macOS ]; then
+        echo "    No Mac dá para usar o keychain no lugar do arquivo (1.1.8):" >&2
+        echo "      security add-generic-password -U -s shvia-updater -a \"\$USER\" -w" >&2
+      fi
+    fi
     echo "" >&2
     rm -rf "$tmpd"
     return 1
@@ -557,22 +576,15 @@ check_updater_key() {
   echo "  ✗ falta a chave do updater, e este build gera artefato de updater." >&2
   echo "    Sem ela o Tauri aborta — mas só no FIM do empacotamento (minutos)." >&2
   echo "" >&2
-  echo "    Resolva UMA VEZ nesta máquina, e não a cada build:" >&2
+  echo "    Resolva UMA VEZ nesta máquina, e não a cada build — dois arquivos," >&2
+  echo "    sem export e sem sintaxe de shell:" >&2
   echo "" >&2
-  echo "      cp signing.env.example signing.env && chmod 600 signing.env" >&2
-  echo "      \$EDITOR signing.env      # preencha só a SENHA da chave" >&2
+  echo "      ~/.shvia/updater.key    a chave (copie da outra máquina de release)" >&2
+  echo "      ~/.shvia/updater.pass   A SENHA e mais nada" >&2
   echo "" >&2
-  echo "    O build carrega o signing.env sozinho daqui pra frente. Ele guarda o" >&2
-  echo "    CAMINHO da chave (~/.shvia/updater.key) e a senha — a chave em si não" >&2
-  echo "    ganha cópia dentro do repo, e o arquivo é gitignorado." >&2
-  echo "" >&2
-  echo "    Fora do repo (sobrevive a clone novo e a git clean, como no SSHVTERM):" >&2
-  echo "      mkdir -p ~/.config/shvia && cp signing.env.example ~/.config/shvia/build.env" >&2
-  echo "      chmod 600 ~/.config/shvia/build.env" >&2
-  echo "" >&2
-  echo "    Pontual, sem arquivo (KEY, não KEY_PATH — o bundler ignora o PATH):" >&2
-  echo "      export TAURI_SIGNING_PRIVATE_KEY=\"\$(cat \"\$HOME/.shvia/updater.key\")\"" >&2
-  echo "      export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='...'" >&2
+  echo "    O build lê os dois sozinho, em qualquer terminal, para sempre." >&2
+  echo "    Também aceita ./signing.env ou ~/.config/shvia/build.env (modelo:" >&2
+  echo "    signing.env.example) e um export pontual — mas nada disso é preciso." >&2
   echo "" >&2
   echo "    O par é UM SÓ para as três máquinas (ADR-022): a mesma chave que" >&2
   echo "    assinou o release do macOS assina o do Linux e do Windows. Copie do" >&2
@@ -830,6 +842,50 @@ if [ -n "$CREDS_FILE" ]; then
   # shellcheck source=/dev/null
   . "$CREDS_FILE"
   echo "    credenciais: $CREDS_FILE carregado"
+fi
+
+# ── O caminho que NÃO depende de shell: dois arquivos em ~/.shvia/ ───────────
+# O arquivo de credenciais acima é sintaxe de shell, e o `export` no terminal
+# morre junto com o terminal. As duas coisas produzem o mesmo estrago: o build
+# assinava ontem e hoje não, sem nada ter mudado no repo.
+#
+# Então, sem configuração nenhuma, o build procura por CONTEÚDO no lugar óbvio:
+#
+#   ~/.shvia/updater.key    — a chave (já era o endereço de sempre)
+#   ~/.shvia/updater.pass   — A SENHA e mais nada. Sem `export`, sem aspas, sem
+#                             `${VAR:-}`: abre, cola do cofre, salva.
+#
+# Um `export` feito no shell continua vencendo (teste pontual), e quem preferir o
+# signing.env também continua funcionando — isto é só o piso, para que uma máquina
+# que TEM a chave e a senha no disco nunca mais precise lembrar de nada.
+if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ] && [ -s "$HOME/.shvia/updater.key" ]; then
+  TAURI_SIGNING_PRIVATE_KEY="$(cat "$HOME/.shvia/updater.key")"
+  export TAURI_SIGNING_PRIVATE_KEY
+  echo "    chave do updater: ~/.shvia/updater.key"
+fi
+
+if [ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ] && [ -s "$UPDATER_PASS_FILE" ]; then
+  # `head -1` e `tr -d '\r\n'`: o arquivo é feito à mão num editor, e editor põe
+  # quebra de linha no fim. Um "\n" a mais é senha errada para o rsign, e o erro
+  # ("Wrong password") não sugere em momento nenhum que o problema é invisível.
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(head -1 "$UPDATER_PASS_FILE" | tr -d '\r\n')"
+  export TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+  echo "    senha do updater: $UPDATER_PASS_FILE"
+fi
+
+# No macOS há um cofre melhor que arquivo, e a 1.1.8 passou a usá-lo: o keychain,
+# o mesmo lugar onde a senha de notarização (`shvia-notarize`) já mora. Fica DEPOIS
+# do arquivo por um motivo prático: `security` não existe no Linux nem no Windows,
+# e o `signing.env` que chama isso direto devolve senha VAZIA fora do Mac — sem
+# erro, sem aviso, e o build só morre lá no fim. Aqui cada SO usa o que tem.
+if [ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ] && command -v security >/dev/null 2>&1; then
+  _kc="$(security find-generic-password -s shvia-updater -w 2>/dev/null || true)"
+  if [ -n "$_kc" ]; then
+    TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$_kc"
+    export TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+    echo "    senha do updater: keychain (shvia-updater)"
+  fi
+  unset _kc
 fi
 
 step "[git] sincroniza com o remoto (git pull --ff-only)"
