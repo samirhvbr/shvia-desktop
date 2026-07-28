@@ -13,7 +13,7 @@ Laravel é a fonte da verdade. Decisões e o porquê em [decisoes.md](decisoes.m
 │  src-tauri/ (Rust)                          src/ (casca web mínima, Vite)  │
 │  ─────────────────                          ─────────────────────────────  │
 │  • criação da janela + branding             • bootstrap/splash             │
-│  • tray / menu nativo                        • tela offline + auto-retry    │
+│  • tray/menubar + autostart ✅               • tela offline + auto-retry    │
 │  • deep-link  shvia://                        • config de URL (1º run)      │
 │  • updater (latest.json)                                                    │
 │  • store (URL servidor + estado janela)                                    │

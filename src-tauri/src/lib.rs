@@ -19,6 +19,8 @@
 mod code_bridge;
 /// Endereço do servidor: config persistida, validação e probe (item D4; ADR-019).
 mod server;
+#[cfg(desktop)]
+mod tray;
 /// Auto-update: checa o manifesto que o ShvIA serve, pergunta e instala (D1; ADR-022).
 #[cfg(desktop)]
 mod updater;
@@ -618,6 +620,18 @@ fn is_internal(url: &tauri::Url) -> bool {
     }
 }
 
+/// Recria a janela principal, ignorando o erro.
+///
+/// Existe para a bandeja (item D2) e para o `Reopen` do macOS: os dois querem "traga o
+/// app de volta" e nenhum dos dois tem o que fazer com um `Result` — falhar ali só
+/// deixaria o app sem janela, que é o estado que se está tentando sair.
+#[cfg(desktop)]
+pub(crate) fn rebuild_main_window(app: &tauri::AppHandle) {
+    if let Err(e) = build_shvia_window(app, "main") {
+        eprintln!("ShvIA: não foi possível recriar a janela principal: {e}");
+    }
+}
+
 /// Cria uma janela do ShvIA com o comportamento padrão do shell: links externos
 /// no navegador do SO e estado (tamanho/posição) restaurado e persistido.
 fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<WebviewWindow> {
@@ -703,6 +717,36 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
         .visible(false);
 
     let win = builder.build()?;
+
+    // Item D2 (ADR-024): fechar a ÚLTIMA janela RECOLHE para a bandeja em vez de
+    // encerrar — é o que mantém o app vivo para o alerta de preço chegar com a janela
+    // fechada, que era o buraco do ADR-011.
+    //
+    // `hide()` e não destruir: recolher tem de devolver a janela como ela estava.
+    // Destruir e recriar no clique da bandeja recarregaria a página remota — o usuário
+    // perderia a rolagem da conversa e pagaria um page load para "voltar" de algo que
+    // nunca deveria ter saído.
+    //
+    // Só a ÚLTIMA. Com duas janelas abertas, `Cmd+W` fecha aquela ali, como em qualquer
+    // app multi-janela — recolher a primeira de duas seria um bug com cara de feature.
+    #[cfg(desktop)]
+    {
+        let alvo = win.clone();
+        win.on_window_event(move |event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let app = alvo.app_handle();
+                // `<= 1` e não `== 1`: durante o fechamento a contagem pode já não
+                // incluir esta janela, dependendo do SO. Errar para o lado de recolher
+                // é melhor que errar para o lado de sair com o app devendo um alerta.
+                let ultima = app.webview_windows().len() <= 1;
+                if ultima && tray::ler(app).close_to_tray {
+                    api.prevent_close();
+                    let _ = alvo.hide();
+                    tray::avisar_uma_vez(app);
+                }
+            }
+        });
+    }
 
     // habilita mídia (getUserMedia) + clipboard no WebKitGTK e concede a permissão.
     #[cfg(target_os = "linux")]
@@ -914,6 +958,13 @@ pub fn run() {
         // Auto-update (D1; ADR-022). Registrado sem capability: quem dirige é o
         // `updater.rs` pela API Rust — a página remota não alcança o plugin.
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // "Iniciar com o sistema" (item D2; ADR-024). LaunchAgent no macOS, chave Run
+        // no Windows, .desktop em ~/.config/autostart no Linux — o plugin cuida das
+        // três. Sem capability: quem liga e desliga é o menu da bandeja, em Rust.
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .menu(|handle| {
             let nova_janela = MenuItem::with_id(
                 handle,
@@ -1059,6 +1110,13 @@ pub fn run() {
             // janela-mãe se a rede fosse instantânea.
             #[cfg(desktop)]
             updater::agendar(app.handle());
+            // Bandeja depois da janela: o menu mostra o servidor configurado, que só
+            // existe depois do `server::load` acima. E `instalar` não pode derrubar o
+            // `setup` — app sem bandeja é degradação; app que não abre é falha.
+            #[cfg(desktop)]
+            if let Err(e) = tray::instalar(app.handle()) {
+                eprintln!("ShvIA: não foi possível criar o ícone de bandeja: {e}");
+            }
             Ok(())
         })
         .build(tauri::generate_context!())

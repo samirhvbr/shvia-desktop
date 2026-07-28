@@ -957,3 +957,109 @@ verificação que o `--publish` existe para fazer.
   máquina) e o `--config` que desliga o artefato de updater no `--no-sign`.
 - **Efeito colateral aceito:** bumpar a versão invalida o reuso (passo 1), então o
   primeiro build de cada versão nova compila inteiro — que é o correto.
+
+---
+
+## ADR-024 — Bandeja/menubar, e fechar a janela deixa de encerrar o app
+
+- **Data:** 28/07/2026 · **Status:** Aceito · **Item:** **D2** do
+  [comparativo 9router × hermes](../../SHVIA-WEB/docs/comparativos/9router-hermes.md)
+  · **Fecha o buraco de:** [ADR-011](#adr-011--notificações-nativas-dos-alertas-de-preço-ponte-via-canal-do-modo-code)
+
+### Contexto
+
+O ADR-011 entregou notificação nativa dos alertas de preço e resolveu, nas palavras
+dele, "o caso do meio": **janela aberta, mas em segundo plano**. O caso de baixo ficou
+aberto — **janela fechada**. Sem janela o app saía; sem app, nada notifica. O alerta só
+chegava por **Telegram**, que era justamente a dependência que o ADR-011 quis dispensar.
+
+Um alerta que só existe com a janela na frente do usuário não é alerta, é badge.
+
+E havia um agravante que ninguém tinha escrito: **o comportamento divergia por SO**. No
+macOS fechar a janela nunca encerrou o app (o ícone segue no Dock, e o `RunEvent::Reopen`
+recria a janela). No Windows e no Linux, fechar mata o processo. Então o mesmo produto
+entregava alerta com a janela fechada num sistema e não nos outros — **sem erro, sem
+tela, sem log**. Só a notificação que não chega.
+
+### Decisão
+
+Três peças, e nenhuma resolve sozinha:
+
+1. **Ícone de bandeja/menubar** (`tray.rs`, feature `tray-icon` do Tauri). Um processo
+   que roda sem janela **e** sem ícone é um processo que o usuário mata no gerenciador
+   de tarefas achando que é vírus.
+2. **Fechar a ÚLTIMA janela recolhe** em vez de encerrar (`CloseRequested` →
+   `prevent_close()` + `hide()`). É o que mantém o processo vivo para o alerta chegar.
+3. **"Iniciar com o sistema"** (`tauri-plugin-autostart`): LaunchAgent no macOS, chave
+   `Run` no Windows, `.desktop` em `~/.config/autostart` no Linux. É o que faz o app
+   estar de pé depois do boot, quando ninguém lembrou de abri-lo.
+
+#### `hide()`, não destruir
+
+Recolher tem de devolver a janela **como ela estava**. Destruir e recriar no clique da
+bandeja recarregaria a página remota: o usuário perderia a rolagem da conversa e pagaria
+um page load para "voltar" de algo que nunca deveria ter saído.
+
+#### Só a ÚLTIMA janela
+
+O app é multi-janela (`Cmd+N`). Com duas abertas, `Cmd+W` fecha aquela ali, como em
+qualquer app — recolher a primeira de duas seria um bug com cara de feature. A checagem
+é `webview_windows().len() <= 1`, com `<=` e não `==` porque a contagem durante o
+fechamento depende do SO, e **errar para o lado de recolher é melhor que errar para o
+lado de sair devendo um alerta**.
+
+#### Default LIGADO, com três saídas
+
+`close_to_tray = true` por default não é agressividade: sem ele o item não entrega nada,
+e é o comportamento que o macOS já tinha — o default faz os outros dois SOs pararem de
+divergir. O incômodo conhecido ("app que não morre") é respondido de três jeitos, porque
+um só não bastaria:
+
+- **`Sair do ShvIA`** na bandeja e `Sair` no menu `Arquivo` — a saída de verdade
+  continua a um clique. Os dois usam o `PredefinedMenuItem::quit`, que encerra pela via
+  oficial do Tauri, não pelo caminho que interceptamos.
+- **Aviso nativo na primeira vez**, uma única vez na vida da instalação. Sem ele a
+  janela desaparece e a conclusão natural é "o app travou". Repetido, viraria ruído que
+  o usuário aprende a ignorar — e ele precisa ser lido exatamente na primeira vez.
+- **A preferência é desligável na própria bandeja**, onde a confusão acontece.
+
+#### O estado é LIDO, não lembrado
+
+O menu é reconstruído a cada mudança, consultando o estado real: `is_enabled()` do
+autostart e o host configurado do [ADR-019](#adr-019). Guardar cópias dos itens e
+atualizá-las deixaria a bandeja **mentir** no dia em que algo mudasse por fora —
+alguém apagando o LaunchAgent na mão, por exemplo. Bandeja que mostra estado errado é
+pior que bandeja sem estado: a primeira faz o usuário confiar.
+
+O menu mostra **`Servidor: <host>`** desabilitado no topo. Numa instalação on-prem,
+"para qual servidor este app está apontando?" é a primeira pergunta de qualquer suporte,
+e até aqui só o modal "Sobre" respondia.
+
+#### Sem capability para a página remota
+
+Igual ao updater ([ADR-022](#adr-022)): o plugin de autostart é dirigido **só pelo
+Rust**. Autostart alcançável pelo servidor deixaria um servidor comprometido decidir que
+o app sobe com a máquina — o [ADR-001](#adr-001) segue valendo.
+
+#### `tray.json`, separado do `server.json`
+
+Preferência da bandeja num arquivo próprio. O `server.json` é o **perímetro** (o host
+que a navegação considera interno), e JSON corrompido lá é tela branca. Misturar
+preferência cosmética no mesmo arquivo aumentaria as chances de mexer no que não pode
+quebrar. Leitura nunca falha: ausente, ilegível ou com lixo cai no default.
+
+### Consequências
+
+- **A partir da 1.1.0 o app é residente.** Quem fechava a janela para "sair" agora
+  precisa usar `Sair` — e é avisado na primeira vez.
+- **Validado nesta máquina:** `cargo check`, `cargo clippy --all-targets` limpo,
+  `cargo test` **27/27** (+5 novos), `npm run build`. Os testes novos cobrem a parte que
+  falha em silêncio: um `unwrap_or(false)` no lugar do default desligaria o item inteiro
+  sem erro nenhum, e o alerta de preço voltaria a não chegar.
+- **NÃO validado:** o comportamento de bandeja em Windows e Linux (não há build desses
+  SOs aqui) e o autostart de verdade nos três — exige instalar e reiniciar a máquina.
+  O que dá para afirmar é que o plugin é o oficial e a leitura de estado é do próprio
+  plugin, não uma cópia nossa.
+- **Dívida de asset, não de código:** no macOS a barra de menus espera um ícone
+  **template** (monocromático, que inverte com o tema). Usamos o ícone colorido do app:
+  funciona e fica fora do padrão do sistema. Trocar é substituir o png.
