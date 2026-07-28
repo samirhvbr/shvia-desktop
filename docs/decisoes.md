@@ -885,3 +885,75 @@ não há build de Linux nesta máquina e o manifesto gerado no macOS está corre
 - **NÃO validado:** o `scp` em si (exigiria republicar) e o caminho do Linux (não há
   build de Linux nesta máquina). **O `build-local.ps1` continua sem `--publish`** —
   publicação no Windows segue manual, e está avisado em `docs/build.md`.
+
+## ADR-024 — Reusar build da mesma versão, e exigir a chave do updater ANTES de compilar
+
+- **Data:** 2026-07-28 · **Status:** aceito · **Versão:** 1.0.3 · **Item:** D1
+- **Contexto:** dois atritos reais no mesmo dia. (a) Esquecer o `--publish` custava
+  um rebuild inteiro só para subir arquivo que já existia no disco. (b) Na máquina
+  **Linux**, o build compilou por **2m01s**, gerou `.deb`/`.rpm`/`.AppImage` e então
+  abortou com `A public key has been found, but no private key` — porque
+  `createUpdaterArtifacts: true` (ADR-022) faz o Tauri **exigir**
+  `TAURI_SIGNING_PRIVATE_KEY`, e ele só verifica isso no fim do empacotamento.
+
+### Reuso de build — e por que "o arquivo existe" não serve como teste
+
+O macOS mostra o problema: o artefato do updater é `ShvIA.app.tar.gz`, **sem versão
+no nome**. Presença não distingue o build de agora de sobra de um build anterior. A
+identidade vem do `sha256` que o `release.json` gravou, então o teste é:
+
+1. `release.json` existe e é da versão de `version.md`;
+2. todo artefato declarado para esta plataforma existe no disco;
+3. o `sha256` de cada um **ainda confere** — é isto que dá identidade ao arquivo sem
+   versão no nome;
+4. **nenhuma fonte é mais nova que o artefato mais antigo.**
+
+**O passo 4 é o que torna o atalho seguro, e sem ele o atalho seria uma armadilha:**
+editar código sem bumpar a versão passa em 1–3 — o `release.json` antigo continua
+descrevendo os binários antigos *corretamente* — e publicaríamos **binário velho,
+assinado, como se fosse a versão nova**. Falha silenciosa e com selo de autenticidade,
+que é pior que erro. Fontes observadas: `src/`, `src-tauri/src/`,
+`src-tauri/capabilities/`, `src-tauri/binaries/` (o `anna` do D5 não aparece em
+nenhuma outra), `index.html`, os manifests e `tauri.conf.json`.
+
+`scripts/` **não** entra de propósito: mudar o gerador de manifesto não invalida os
+binários, e o manifesto é regenerado em toda execução de qualquer forma.
+
+Incluir os manifests só é seguro porque o `sync-version.mjs` **escreve apenas quando
+o conteúdo muda** — se reescrevesse sempre, o passo 4 daria falso positivo eterno e o
+reuso nunca aconteceria.
+
+### A chave do updater é verificada no primeiro segundo
+
+`check_updater_key` roda depois do `preflight`, antes de qualquer compilação. Além de
+falhar em milissegundos em vez de minutos, a mensagem diz **onde a chave mora** — a do
+Tauri diz apenas que ela falta.
+
+- **`--no-sign` passou a significar o mesmo nos três SOs:** "build de teste, não
+  publicável". Sem chave e com `--no-sign`, o build sai **sem artefato de updater**
+  (via `--config '{"bundle":{"createUpdaterArtifacts":false}}'`) em vez de abortar.
+  Antes o flag só afetava o `codesign` do macOS.
+- **A chave é UMA para as três máquinas.** O par é único (ADR-022): a mesma chave que
+  assina o release do macOS assina o do Linux e do Windows. A máquina Linux precisa
+  dela no ambiente — não é uma chave por SO.
+
+### Nota de bash: nada de array de argumentos
+
+A chamada do `tauri build` tem quatro braços explícitos em vez de montar um array. O
+bash do macOS é **3.2**, e ali `"${arr[@]}"` de array **vazio** com `set -u` aborta com
+`unbound variable` (verificado nesta máquina). Mesmo motivo do `_sha256()`, que escolhe
+entre `shasum` e `sha256sum`: sem ele o caminho de Linux morreria justamente na
+verificação que o `--publish` existe para fazer.
+
+### Consequências
+
+- **Validação:** `bash -n` nos dois bashes (3.2 e 5.x), e o reuso exercitado **de
+  verdade** — execução completa em **2s** em vez de recompilar, com o manifesto
+  regenerado. As cinco decisões testadas em isolamento: reusa no estado bom; **não**
+  reusa com `--force`, com fonte mais nova (arquivo novo em `src/`), com
+  `version.md` divergente do manifesto, e com artefato corrompido de mesmo nome
+  (sha256 divergente). O artefato foi restaurado e reconferido.
+- **NÃO validado:** o caminho de Linux de ponta a ponta (não há build de Linux nesta
+  máquina) e o `--config` que desliga o artefato de updater no `--no-sign`.
+- **Efeito colateral aceito:** bumpar a versão invalida o reuso (passo 1), então o
+  primeiro build de cada versão nova compila inteiro — que é o correto.

@@ -126,6 +126,35 @@ Três coisas que o passo manual não fazia, e cada uma corresponde a um erro rea
 
 O `.sig` **não** sobe: o conteúdo dele já está embutido no `release.json`.
 
+### A chave é exigida ANTES de compilar (e é UMA para as três máquinas)
+
+Como o bundle gera artefato de updater, o build **exige**
+`TAURI_SIGNING_PRIVATE_KEY`. O script verifica isso no primeiro segundo — o Tauri só
+reclamaria no fim do empacotamento (na máquina Linux, em 28/07/2026, custou **2m01s**
+de compilação antes de abortar com `A public key has been found, but no private key`).
+
+O par é **único** (ADR-022): a mesma chave que assina o release do macOS assina o do
+Linux e o do Windows. Cada máquina de build precisa dela no ambiente — copiada pelo
+gerenciador de senhas, nunca por chat.
+
+Para empacotar sem chave (teste, não publicável): `--no-sign`. O build sai **sem**
+artefato de updater em vez de abortar.
+
+### Reuso: não recompila o que já está pronto
+
+Se já existe build **desta versão** no disco e nenhuma fonte mudou, `build-local.sh`
+pula `npm ci`/`version:sync`/`tauri build` e vai direto ao manifesto (e à publicação,
+com `--publish`). Existe para o caso de esquecer o `--publish` e não pagar um rebuild
+inteiro só para subir arquivo que já existe — na prática, 2s em vez de minutos.
+
+"O arquivo existe" **não** é o teste, e o macOS mostra por quê: o artefato do updater
+é `ShvIA.app.tar.gz`, sem versão no nome. O script confere o **`sha256` do
+`release.json`** (é o que dá identidade ao arquivo) e, além disso, **recompila se
+qualquer fonte for mais nova que o artefato** — senão editar código sem bumpar a
+versão publicaria binário velho, assinado, como se fosse a versão nova.
+
+Para forçar: `--force`, ou apague `src-tauri/target/release/bundle`.
+
 > **Windows:** o `build-local.ps1` ainda **não** tem o `--publish` — publique à mão
 > lá, mandando o `-setup.exe`/`.msi` **e** o `release.json`, e confira o `sha256`
 > pela URL pública antes de confiar.

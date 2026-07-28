@@ -26,6 +26,26 @@
 #                                    # pronto — o usuário terá de instalar à mão)
 #   ./build-local.sh --publish       # publica no servidor por scp (item D1)
 #   ./build-local.sh --publish --dest root@HOST:/caminho/   # outro destino
+#   ./build-local.sh --force         # reconstrói mesmo já havendo build da versão
+#
+# REUSO DE BUILD: se já existe build DESTA versão no disco e nenhuma fonte mudou,
+# o script NÃO recompila — vai direto ao manifesto (e à publicação, com
+# --publish). Foi feito para o caso de esquecer o --publish e não pagar um rebuild
+# inteiro só para subir arquivo que já existe.
+#
+# "O arquivo existe" não é prova: no macOS o artefato do updater é
+# `ShvIA.app.tar.gz`, SEM versão no nome. A identidade vem do sha256 gravado no
+# release.json pelo build que o gerou, e o script CONFERE esse hash. Além disso,
+# se qualquer fonte (src/, src-tauri/src/, capabilities/, binaries/, manifests)
+# for mais nova que o artefato, ele RECOMPILA — senão editar código sem bumpar a
+# versão publicaria binário velho assinado como se fosse a versão nova.
+# Para forçar: --force, ou apague src-tauri/target/release/bundle.
+#
+# CHAVE DO UPDATER: como o bundle gera artefato de updater (ADR-022), o build
+# EXIGE `TAURI_SIGNING_PRIVATE_KEY` no ambiente e isto é verificado ANTES de
+# compilar — o Tauri só reclamaria no fim (na máquina Linux custou 2m01s antes de
+# abortar). Para build de teste sem chave, use --no-sign: sai sem artefato de
+# updater e NÃO deve ser publicado.
 #
 # PUBLICAR (--publish, item D1): manda os artefatos DESTA plataforma + o
 # release.json para o servidor por scp, e confere o resultado pela URL pública.
@@ -362,6 +382,138 @@ detach_stale_build_images() {
   done
 }
 
+# sha256 de um arquivo, portátil. No macOS existe `shasum`; em muitas distros o
+# que existe é `sha256sum`. Sem isto o caminho de Linux morreria justamente na
+# verificação que este script existe para fazer.
+_sha256() {
+  if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  else echo ""; fi
+}
+
+# ── A chave do updater tem de existir ANTES de compilar ──────────────────────
+# Com `bundle.createUpdaterArtifacts: true` + `plugins.updater.pubkey` no
+# tauri.conf.json (ADR-022), o Tauri EXIGE `TAURI_SIGNING_PRIVATE_KEY` — e só
+# descobre a ausência dela no FIM do empacotamento, depois de compilar tudo.
+#
+# Aconteceu na máquina Linux em 28/07/2026: **2m01s** de compilação, os três
+# bundles gerados (.deb, .rpm, .AppImage), e então `exit 1` com "A public key has
+# been found, but no private key". Este teste custa milissegundos e falha no
+# primeiro segundo — e o erro do Tauri não diz onde a chave mora, este diz.
+UPDATER_ARTIFACTS=1
+check_updater_key() {
+  local exige
+  exige="$(node -e '
+    try {
+      const c = require("./src-tauri/tauri.conf.json");
+      const tem = c && c.plugins && c.plugins.updater && c.plugins.updater.pubkey;
+      process.stdout.write(tem && c.bundle && c.bundle.createUpdaterArtifacts ? "1" : "");
+    } catch { process.stdout.write(""); }
+  ' 2>/dev/null || true)"
+
+  # Sem pubkey/createUpdaterArtifacts não há o que exigir.
+  [ -z "$exige" ] && return 0
+  [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ] && return 0
+
+  # --no-sign já significa "build de teste, não publicável" no macOS. Estendido
+  # aqui para os três SOs: desliga o artefato de updater em vez de abortar.
+  if [ "$NO_SIGN" -eq 1 ]; then
+    UPDATER_ARTIFACTS=0
+    echo "    ⚠️ sem TAURI_SIGNING_PRIVATE_KEY e com --no-sign: build de TESTE."
+    echo "       Sai SEM artefato de updater — NÃO publique este build."
+    return 0
+  fi
+
+  echo "" >&2
+  echo "  ✗ falta TAURI_SIGNING_PRIVATE_KEY, e este build gera artefato de updater." >&2
+  echo "    Sem ela o Tauri aborta — mas só no FIM do empacotamento (minutos)." >&2
+  echo "" >&2
+  echo "    export TAURI_SIGNING_PRIVATE_KEY=\"\$(cat ~/.shvia/updater.key)\"" >&2
+  echo "    export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='...'    # a do cofre" >&2
+  echo "" >&2
+  echo "    O par é UM SÓ para as três máquinas (ADR-022): a mesma chave que" >&2
+  echo "    assinou o release do macOS assina o do Linux e do Windows. Copie do" >&2
+  echo "    gerenciador de senhas — nunca por chat." >&2
+  echo "" >&2
+  echo "    Build de teste, sem publicar: ./build-local.sh --no-sign" >&2
+  echo "" >&2
+  return 1
+}
+
+# ── Reaproveitar build (evita recompilar o que já está pronto) ────────────────
+# Devolve 0 quando os artefatos no disco são PROVADAMENTE desta versão e nada
+# mudou desde que foram gerados. Motivador: esquecer o `--publish` custava um
+# rebuild inteiro só para subir arquivo que já existia.
+#
+# "O arquivo existe" NÃO é prova suficiente, e o macOS mostra por quê: o artefato
+# do updater é `ShvIA.app.tar.gz`, SEM versão no nome. A identidade dele vem do
+# `sha256` gravado no release.json pelo build que o produziu. Então o teste é:
+#
+#   1. release.json existe e é da versão de version.md;
+#   2. todo artefato que ele declara para ESTA plataforma existe no disco;
+#   3. o sha256 de cada um ainda confere — é isto que prova que o arquivo sem
+#      versão no nome é o desta versão, e não sobra de um build anterior;
+#   4. nenhuma FONTE é mais nova que o artefato mais antigo.
+#
+# O passo 4 é o que impede o pior resultado possível deste atalho: editar código
+# sem bumpar a versão passaria em 1-3 (o release.json antigo continua descrevendo
+# os binários antigos corretamente) e publicaríamos **binário velho como se fosse
+# a versão nova** — silencioso e assinado, o que é pior que um erro.
+can_reuse_build() {
+  [ "$FORCE_BUILD" -eq 1 ] && return 1
+  [ -f release.json ] || return 1
+
+  local ver_disco ver_manifesto
+  ver_disco="$(tr -d ' \t\n\r' < version.md)"
+  ver_manifesto="$(node -e '
+    try { console.log(JSON.parse(require("fs").readFileSync("release.json","utf8")).version || ""); }
+    catch { console.log(""); }
+  ')"
+  if [ -z "$ver_manifesto" ] || [ "$ver_disco" != "$ver_manifesto" ]; then
+    return 1
+  fi
+
+  # Artefatos declarados para esta plataforma + hash esperado.
+  local linhas nome esperado caminho ref="" n=0
+  # shellcheck disable=SC2016  # `${...}` aqui é template literal de JS, não de bash
+  linhas="$(node -e '
+    const m = JSON.parse(require("fs").readFileSync("release.json","utf8"));
+    const p = {darwin:"macos", linux:"linux", win32:"windows"}[process.platform];
+    for (const a of (m.platforms?.[p]?.artifacts ?? [])) console.log(`${a.file}\t${a.sha256}`);
+  ' 2>/dev/null)" || return 1
+  [ -z "$linhas" ] && return 1
+
+  while IFS=$'\t' read -r nome esperado; do
+    [ -z "$nome" ] && continue
+    caminho="$(find src-tauri/target/release/bundle -maxdepth 3 -type f -name "$nome" -print -quit 2>/dev/null || true)"
+    [ -z "$caminho" ] && return 1
+    [ "$(_sha256 "$caminho")" = "$esperado" ] || return 1
+    # Referência de tempo: o artefato MAIS ANTIGO (o mais estrito).
+    if [ -z "$ref" ] || [ "$caminho" -ot "$ref" ]; then ref="$caminho"; fi
+    n=$((n + 1))
+  done <<< "$linhas"
+  [ "$n" -eq 0 ] && return 1
+  [ -z "$ref" ] && return 1
+
+  # Passo 4: alguma fonte mudou depois do build?
+  # `version:sync` só reescreve os manifests quando a versão muda de verdade
+  # (scripts/sync-version.mjs), então incluí-los aqui não gera falso positivo.
+  # `src-tauri/binaries/` entra por causa do D5: um `anna` novo empacotado exige
+  # rebuild, e ele não aparece em nenhuma outra fonte.
+  local novas
+  novas="$(find src src-tauri/src src-tauri/capabilities src-tauri/binaries \
+                index.html package.json vite.config.ts tsconfig.json \
+                src-tauri/Cargo.toml src-tauri/tauri.conf.json \
+             -type f -newer "$ref" -print -quit 2>/dev/null || true)"
+  if [ -n "$novas" ]; then
+    REUSE_MOTIVO="fonte mais nova que o build: $novas"
+    return 1
+  fi
+
+  REUSE_REF="$ref"; REUSE_N="$n"
+  return 0
+}
+
 # ── Publicação no servidor (item D1) ─────────────────────────────────────────
 # Destino e base pública são CONSTANTES documentadas, sobrescrevíveis por env ou
 # flag. Não há segredo aqui: o destino é um host da tailnet e a base é a URL que o
@@ -479,13 +631,19 @@ SKIP_NPM_CI=0
 NO_SIGN=0
 SKIP_GIT_PULL=0
 PUBLISH=0
+FORCE_BUILD=0
 BUNDLES=""
+# Preenchidos por can_reuse_build para o relatório de "por que reusei / por que não".
+REUSE_REF=""
+REUSE_N=0
+REUSE_MOTIVO=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --skip-npm-ci)  SKIP_NPM_CI=1 ;;
     --no-sign)      NO_SIGN=1 ;;
     --skip-git-pull) SKIP_GIT_PULL=1 ;;
     --publish)      PUBLISH=1 ;;
+    --force|-f)     FORCE_BUILD=1 ;;
     --dest)         shift; PUBLISH_DEST="${1:-}" ;;
     --base-url)     shift; PUBLIC_BASE="${1:-}" ;;
     --bundles)      shift; BUNDLES="${1:-}" ;;
@@ -502,82 +660,127 @@ echo "==> ShvIA Desktop — build local ($_BUILD_OS)"
 step "[git] sincroniza com o remoto (git pull --ff-only)"
 git_sync
 
-step "[pré-requisitos] verifica o toolchain (Rust, Node, Xcode/WebKitGTK)"
-preflight
-
-step "[1/3] dependências do frontend (npm ci)"
-if [ "$SKIP_NPM_CI" -eq 0 ]; then
-  npm ci
+# ── Reusar ou construir? ──────────────────────────────────────────────────────
+# Esquecer o `--publish` custava um rebuild inteiro para subir arquivo que já
+# existia. Ver can_reuse_build: reusa só quando os artefatos são PROVADAMENTE
+# desta versão (sha256 do release.json) e nenhuma fonte mudou desde então.
+step "[reuso] há build desta versão pronto no disco?"
+if can_reuse_build; then
+  REUSE=1
+  echo "    ✅ sim — $REUSE_N artefato(s) da $(tr -d ' \t\n\r' < version.md) com sha256 conferido."
+  # De QUANDO é o build reusado: sem isto, "reusei" é uma afirmação que não se
+  # pode auditar, e reusar build de ontem sem perceber é o susto que o passo 4 do
+  # can_reuse_build existe para impedir.
+  if [ -n "$REUSE_REF" ]; then
+    if _dt="$(date -r "$REUSE_REF" '+%d/%m %H:%M' 2>/dev/null)"; then
+      echo "       gerado em $_dt"
+    fi
+  fi
+  echo "       Pulando npm ci / version:sync / tauri build."
+  echo "       Para reconstruir: --force (ou apague src-tauri/target/release/bundle)."
 else
-  echo "    (pulado: --skip-npm-ci)"
+  REUSE=0
+  if [ "$FORCE_BUILD" -eq 1 ]; then
+    echo "    não (--force)"
+  elif [ -n "$REUSE_MOTIVO" ]; then
+    echo "    não — $REUSE_MOTIVO"
+  else
+    echo "    não — sem build desta versão no disco (ou artefato/hash divergente)"
+  fi
 fi
 
-step "[2/3] sincroniza versão (version.md -> manifests)"
-npm run version:sync
+if [ "$REUSE" -eq 0 ]; then
+  step "[pré-requisitos] verifica o toolchain (Rust, Node, Xcode/WebKitGTK)"
+  preflight
+  # ANTES de compilar: sem a chave do updater, o Tauri só reclamaria no fim.
+  check_updater_key
 
-# Ejeta imagens .dmg montadas de um build anterior ANTES do rm abaixo: se um rw.*.dmg
-# ainda está attachado e apagamos o arquivo de origem, sobra um volume "ShvIA" órfão
-# em /Volumes/ que quebra o AppleScript do próximo bundle_dmg.sh (ver a função).
-detach_stale_build_images
+  step "[1/3] dependências do frontend (npm ci)"
+  if [ "$SKIP_NPM_CI" -eq 0 ]; then
+    npm ci
+  else
+    echo "    (pulado: --skip-npm-ci)"
+  fi
 
-# Limpa instaladores de builds anteriores (padrão SHVTERM): o bundle dir acumula
-# .deb/.AppImage/.rpm de versões antigas (ex.: ShvIA_0.4.6 ao lado do 0.5.0).
-# Instalar o errado faz o app rodar versão velha — só o artefato do build ATUAL
-# deve sobrar na listagem final.
-rm -rf src-tauri/target/release/bundle
+  step "[2/3] sincroniza versão (version.md -> manifests)"
+  npm run version:sync
 
-if [ "$_BUILD_OS" = macOS ]; then
-  step "[macOS] assinatura + notarização (Developer ID + notarytool)"
-  setup_macos_signing
+  # Ejeta imagens .dmg montadas de um build anterior ANTES do rm abaixo: se um rw.*.dmg
+  # ainda está attachado e apagamos o arquivo de origem, sobra um volume "ShvIA" órfão
+  # em /Volumes/ que quebra o AppleScript do próximo bundle_dmg.sh (ver a função).
+  detach_stale_build_images
+
+  # Limpa instaladores de builds anteriores (padrão SHVTERM): o bundle dir acumula
+  # .deb/.AppImage/.rpm de versões antigas (ex.: ShvIA_0.4.6 ao lado do 0.5.0).
+  # Instalar o errado faz o app rodar versão velha — só o artefato do build ATUAL
+  # deve sobrar na listagem final.
+  rm -rf src-tauri/target/release/bundle
+
+  if [ "$_BUILD_OS" = macOS ]; then
+    step "[macOS] assinatura + notarização (Developer ID + notarytool)"
+    setup_macos_signing
+  fi
+
+  # ── AppImage (Linux): destrava o linuxdeploy nesta e em qualquer VM ──────────────
+  # App WebKitGTK tem árvore de deps ENORME. Por padrão o linuxdeploy roda um
+  # `dpkg-query` de copyright POR biblioteca — em VM isso arrasta por minutos e o build
+  # morria com "failed to run linuxdeploy" (reproduzido: >120s travado no dpkg-query;
+  # com as env abaixo, 41s e "Success"). Também há FUSE aninhado (linuxdeploy e
+  # appimagetool são AppImages). As env são lidas direto por essas ferramentas:
+  #   DISABLE_COPYRIGHT_FILES_DEPLOYMENT → pula o dpkg-query de copyright (o gargalo)
+  #   APPIMAGE_EXTRACT_AND_RUN → extrai+roda os AppImages (sem depender de FUSE aninhado)
+  #   NO_STRIP → não faz strip (rpath $ORIGIN já bloqueava caso a caso; evita o passo)
+  #   ARCH → o appimagetool exige a arquitetura explícita
+  if [ "$_BUILD_OS" = Linux ]; then
+    ARCH="$(uname -m)"; export ARCH
+    export DISABLE_COPYRIGHT_FILES_DEPLOYMENT=1
+    export APPIMAGE_EXTRACT_AND_RUN=1
+    export NO_STRIP=1
+  fi
+
+  # ── Motor empacotado (item D5) ────────────────────────────────────────────────
+  # ANTES do `tauri build`: o Tauri lê `bundle.externalBin` na hora de empacotar, e
+  # um binário que chegue depois simplesmente não entra no bundle.
+  step "[D5] motor (anna) para dentro do bundle"
+  if [ "$NO_ANNA" = "1" ]; then
+    echo "    (pulado: --no-anna — o app sairá SEM Modo Code pronto)"
+    rm -rf src-tauri/binaries
+  elif [ -n "$ANNA_FROM" ]; then
+    node scripts/stage-anna.mjs --from "$ANNA_FROM"
+  else
+    node scripts/stage-anna.mjs
+  fi
+
+  step "[3/3] Tauri build"
+  # Quatro braços explícitos em vez de montar array de argumentos: o bash do macOS
+  # é 3.2, e ali `"${arr[@]}"` de array VAZIO com `set -u` aborta com "unbound
+  # variable" (testado). Verboso, mas roda nos três SOs.
+  _CFG_SEM_UPDATER='{"bundle":{"createUpdaterArtifacts":false}}'
+  if [ -n "$BUNDLES" ] && [ "$UPDATER_ARTIFACTS" -eq 0 ]; then
+    npx tauri build --bundles "$BUNDLES" --config "$_CFG_SEM_UPDATER"
+  elif [ -n "$BUNDLES" ]; then
+    npx tauri build --bundles "$BUNDLES"
+  elif [ "$UPDATER_ARTIFACTS" -eq 0 ]; then
+    npx tauri build --config "$_CFG_SEM_UPDATER"
+  else
+    npx tauri build
+  fi
+
+
+  if [ "$_BUILD_OS" = macOS ]; then
+    step "[macOS] verificação (codesign / spctl / stapler)"
+    verify_macos_signature
+  fi
 fi
 
-# ── AppImage (Linux): destrava o linuxdeploy nesta e em qualquer VM ──────────────
-# App WebKitGTK tem árvore de deps ENORME. Por padrão o linuxdeploy roda um
-# `dpkg-query` de copyright POR biblioteca — em VM isso arrasta por minutos e o build
-# morria com "failed to run linuxdeploy" (reproduzido: >120s travado no dpkg-query;
-# com as env abaixo, 41s e "Success"). Também há FUSE aninhado (linuxdeploy e
-# appimagetool são AppImages). As env são lidas direto por essas ferramentas:
-#   DISABLE_COPYRIGHT_FILES_DEPLOYMENT → pula o dpkg-query de copyright (o gargalo)
-#   APPIMAGE_EXTRACT_AND_RUN → extrai+roda os AppImages (sem depender de FUSE aninhado)
-#   NO_STRIP → não faz strip (rpath $ORIGIN já bloqueava caso a caso; evita o passo)
-#   ARCH → o appimagetool exige a arquitetura explícita
-if [ "$_BUILD_OS" = Linux ]; then
-  ARCH="$(uname -m)"; export ARCH
-  export DISABLE_COPYRIGHT_FILES_DEPLOYMENT=1
-  export APPIMAGE_EXTRACT_AND_RUN=1
-  export NO_STRIP=1
-fi
-
-# ── Motor empacotado (item D5) ────────────────────────────────────────────────
-# ANTES do `tauri build`: o Tauri lê `bundle.externalBin` na hora de empacotar, e
-# um binário que chegue depois simplesmente não entra no bundle.
-step "[D5] motor (anna) para dentro do bundle"
-if [ "$NO_ANNA" = "1" ]; then
-  echo "    (pulado: --no-anna — o app sairá SEM Modo Code pronto)"
-  rm -rf src-tauri/binaries
-elif [ -n "$ANNA_FROM" ]; then
-  node scripts/stage-anna.mjs --from "$ANNA_FROM"
-else
-  node scripts/stage-anna.mjs
-fi
-
-step "[3/3] Tauri build"
-if [ -n "$BUNDLES" ]; then
-  npx tauri build --bundles "$BUNDLES"
-else
-  npx tauri build
-fi
-
+# Com reuso, a listagem abaixo mostra o que será publicado — o mesmo que o
+# build imprimiria, e é a confirmação visual de qual artefato está indo.
 echo ""
 echo "[OK] Instaladores em src-tauri/target/release/bundle/:"
 find src-tauri/target/release/bundle -maxdepth 2 -type f \
   \( -name '*.deb' -o -name '*.AppImage' -o -name '*.rpm' -o -name '*.dmg' \
      -o -name '*.app.tar.gz' \) -exec ls -lh {} \; 2>/dev/null || true
 
-if [ "$_BUILD_OS" = macOS ]; then
-  step "[macOS] verificação (codesign / spctl / stapler)"
-  verify_macos_signature
-fi
 
 # ── Checksums + release.json (item D9) ────────────────────────────────────────
 # DEPOIS da assinatura/notarização de propósito: assinar e stapler ALTERAM os
