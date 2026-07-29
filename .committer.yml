@@ -1,0 +1,7 @@
+# Opt-in do COMMITTER neste repositório (ADR-004 do skill-COMMITTER).
+# A presença deste arquivo é o opt-in; as chaves só RESTRINGEM (SPEC.md §2).
+# Varredura: ~/x/GIT/run.sh (cron de 30 min) descobre quem tem este marcador.
+enabled: true
+push: true
+branch_only: master
+fallback: sonnet
