@@ -2,7 +2,7 @@
 
 > **Data:** 2026-07-09 · **Fase:** F0 (mapeamento, SEM código) · **Status:** aguardando ratificação do Samir
 > **Spec:** [MODO-CODE-20260709.md](MODO-CODE-20260709.md) · **Mockup:** [modo-code-mockup.html](modo-code-mockup.html)
-> **Repos lidos:** app `~/x/SHVIA-DESKTOP` (0.5.8, master) · `anna` `~/x/SHVIA-CODE` (0.5.3, master)
+> **Repos lidos:** app `~/x/SHVIA/SHVIA-DESKTOP` (0.5.8, master) · `anna` `~/x/SHVIA/SHVIA-CODE` (0.5.3, master)
 
 ## 0. Resumo (as 3 conclusões que importam)
 

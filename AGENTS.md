@@ -109,4 +109,4 @@ Formato: `versão - comentário em português`
 - Arquitetura técnica: [docs/arquitetura.md](docs/arquitetura.md)
 - Roteiro de fundação (F0/F1): [docs/roteiro-fundacao.md](docs/roteiro-fundacao.md)
 - Base técnica (colher ativos): SHVTERM em `/Users/samir/Projetos/SHVTERM`
-- Servidor/fonte da verdade: ShvIA em `/Users/samir/x/SHVIA-WEB` (`https://ai.shvia.org`)
+- Servidor/fonte da verdade: ShvIA em `/Users/samir/x/SHVIA/SHVIA-WEB` (`https://ai.shvia.org`)
