@@ -533,6 +533,14 @@ const SERVER_HOST: &str = "ai.shvia.org";
 /// O ápex `shvia.org` está FORA de propósito: ele resolve para outro IP
 /// (170.233.231.20) e serve a landing, não o app. Precisa abrir no navegador do
 /// SO como qualquer link externo.
+///
+/// No MESMO IP do ápex passou a viver `mem.shvia.org` (servidor ai-memory, TLS
+/// na 443, desde 31/07/2026) — e ele é o melhor argumento contra o curinga que
+/// esta lista recusa: é `.shvia.org`, é nosso, é legítimo, e mesmo assim **não
+/// pode entrar**. O que ele serve é uma wiki markdown **escrita por agentes**;
+/// dar `window.__shviaCode` a ela seria transformar texto gerado em spawn de
+/// processo local. Um sufixo curinga teria admitido esse host sozinho, no dia
+/// em que o DNS subiu, sem ninguém decidir nada.
 const SERVER_HOSTS: &[&str] = &[SERVER_HOST, "ia.shvia.org", "ia.blue3.com.br"];
 
 /// `true` se o host for uma das faces do servidor do ShvIA — a lista embutida
@@ -1205,10 +1213,16 @@ mod tests {
     /// O ápex shvia.org é a LANDING, em outro IP (170.233.231.20) — não o app.
     /// Se ele entrasse aqui, um site que não é o ShvIA ganharia a ponte nativa
     /// (spawn de processo local, leitura de FS, token de capacidade).
+    ///
+    /// `mem.shvia.org` (ai-memory, no mesmo IP do ápex) está na lista porque é o
+    /// caso REAL, não hipotético: subdomínio nosso, legítimo, no ar — servindo
+    /// wiki escrita por agentes. É exatamente o que um curinga `.shvia.org`
+    /// deixaria entrar sem ninguém decidir nada.
     #[test]
     fn apex_shvia_org_e_externo() {
         assert!(!internal("https://shvia.org/"));
         assert!(!internal("https://www.shvia.org/"));
+        assert!(!internal("https://mem.shvia.org/"));
         assert!(!internal("https://evil.shvia.org/"));
         assert!(!internal("https://ai.shvia.org.evil.com/"));
     }

@@ -424,6 +424,15 @@ how-to; linkar o ADR.
   local, leitura de FS, token de capacidade. Pôr um host que não é o app nessa
   lista é exatamente o buraco que o endurecimento do 0.9.0 fechou. Coberto por
   teste (`tests::apex_shvia_org_e_externo`).
+- **`mem.shvia.org` (31/07/2026) provou a regra na prática.** O servidor
+  ai-memory subiu **no mesmo IP do ápex** (170.233.231.20, TLS na 443) e é o
+  caso que a allowlist exata existe para tratar: subdomínio nosso, legítimo, no
+  ar — e mesmo assim externo. O conteúdo dele é wiki markdown **escrita por
+  agentes**; se um curinga `.shvia.org` estivesse valendo, esse host teria
+  entrado no perímetro **sozinho, no dia em que o DNS subiu**, sem code review,
+  sem decisão, sem ninguém notar — e texto gerado por agente ganharia spawn de
+  processo local. O custo da lista exata é uma linha por host novo; o de errar
+  aqui não tem tamanho. Assertion junto do ápex, no mesmo teste.
 - **Marca no splash:** o `<span>Blue3</span>` do rodapé saiu e o `brand-mark.png`
   (a seta da Blue3 em P&B + "AI") virou `brand-mark.svg` — a mesma marca do
   favicon e do badge da sidebar do web. O splash é **pré-login** e aparece para
