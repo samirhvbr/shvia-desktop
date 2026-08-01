@@ -44,10 +44,15 @@ use tauri_plugin_opener::OpenerExt;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 
 /// Injetado em cada página carregada (`on_page_load`): uma **tarja vermelha
-/// "Sistema Offline"** que aparece quando o WebView perde conexão (eventos
-/// `online`/`offline` do navegador) e some ao reconectar; clicável para recarregar.
-/// O `eval` do Tauri roda fora da CSP da página, então a injeção funciona mesmo
-/// na página remota do ShvIA. (v1 — baseada em `navigator.onLine`.)
+/// "Sistema Offline"** clicável para recarregar.
+///
+/// v2 (01/08/2026, bug real no Linux): a v1 confiava no `navigator.onLine`, e no
+/// WebKitGTK ele vem do GNetworkMonitor, que **mente** com VPN/rotas incomuns
+/// (Tailscale etc.) — a tarja ficava acesa com o chat funcionando por baixo.
+/// Agora `onLine=false` é só um GATILHO DE SUSPEITA: a tarja apenas aparece se
+/// uma sonda REAL ao `/up` (health barato do Laravel, ~30 ms) falhar; enquanto
+/// visível, re-sonda a cada 15 s e some sozinha quando o servidor voltar —
+/// a v1 também dependia do evento `online`, que no WebKitGTK pode nunca vir.
 const OFFLINE_BANNER_JS: &str = r#"(function () {
   if (window.__shviaOffline) return;
   window.__shviaOffline = true;
@@ -60,8 +65,20 @@ const OFFLINE_BANNER_JS: &str = r#"(function () {
   s.font='600 14px system-ui,sans-serif'; s.letterSpacing='.02em'; s.cursor='pointer';
   s.boxShadow='0 2px 8px rgba(0,0,0,.35)';
   bar.addEventListener('click', function () { location.reload(); });
-  function update(){ bar.style.display = navigator.onLine ? 'none' : 'block'; }
   function mount(){ var r=document.body||document.documentElement; if(r&&!document.getElementById('shvia-offline-bar')) r.appendChild(bar); }
+  var checking=false, timer=null;
+  function show(){ bar.style.display='block'; if(!timer) timer=setInterval(check, 15000); }
+  function hide(){ bar.style.display='none'; if(timer){ clearInterval(timer); timer=null; } }
+  function check(){
+    if (checking) return; checking = true;
+    var ctl = ('AbortController' in window) ? new AbortController() : null;
+    var to = setTimeout(function(){ if (ctl) ctl.abort(); }, 5000);
+    fetch('/up', { cache:'no-store', signal: ctl && ctl.signal })
+      .then(function(r){ if (r.ok) { hide(); } else { show(); } })
+      .catch(function(){ show(); })
+      .finally(function(){ clearTimeout(to); checking = false; });
+  }
+  function update(){ if (navigator.onLine) { hide(); } else { check(); } }
   mount(); update();
   window.addEventListener('online', update);
   window.addEventListener('offline', update);
