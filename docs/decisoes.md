@@ -1357,3 +1357,64 @@ configuração de alguém é atrevimento e pode quebrar o que o lê com outro us
   equivalente de ACL no Windows não foi feito.
 - **Fica de fora:** Cline e Roo Code, por escrito acima. Detectar o `globalStorage` do
   VS Code com segurança é um item maior que este.
+
+---
+
+## ADR-027 — O diálogo de arquivo é nativo, e a última pasta é estado do dispositivo
+
+- **Data:** 03/08/2026 · **Status:** Aceito
+
+### Contexto
+
+Anexar arquivo ao projeto (e à mensagem) sempre foi `<input type="file">` na página. O
+`<input>` **não deixa escolher a pasta inicial** — quem decide é a WebView, e no WebKitGTK
+ela abre nos favoritos/atalhos toda vez. Quem anexa `biblia.md` e em seguida quer
+`roteiro.md`, ao lado, refaz o caminho inteiro na segunda vez. Relatado em 03/08/2026 sobre
+um projeto com nove arquivos na mesma pasta.
+
+Não há conserto possível no web: a pasta inicial não é exposta ao HTML por decisão de
+segurança dos navegadores, e não deveria ser mesmo.
+
+### Decisão
+
+**A casca abre o diálogo (`pickFiles`) e devolve os BYTES; a página faz o upload.**
+
+É o desenho do `saveFile` ([ADR-026](#adr-026) segue a mesma linha: o nativo executa, a
+página propõe) na direção contrária. A alternativa — devolver caminhos e o Rust subir o
+arquivo — foi descartada pelo mesmo motivo de sempre: a sessão autenticada mora na WebView,
+e mandar o token de sessão para o lado nativo é privilégio que o [ADR-001](#adr-001) nega.
+
+**A última pasta é estado do DISPOSITIVO,** em `ultimas-pastas.json` no `app_config_dir`,
+ao lado do `modo-code-bindings.json`. Não sobe para o servidor e não segue a pessoa para
+outra máquina — "onde eu estava no meu Linux" não é um fato sobre a conta.
+
+**Uma chave por propósito** (`arquivos`, `pasta`, `salvar`): a pasta de onde se anexa
+contexto raramente é a pasta onde se salva um artefato ou a que se vincula a um projeto de
+código. Uma chave só faria os três se atrapalharem em rodízio.
+
+Detalhes que a implementação precisa manter:
+
+- **Caminho morto é ignorado.** Pasta removida/desmontada desde a última vez: alguns
+  backends de diálogo abrem VAZIOS em vez de cair no default, o que é pior que não lembrar.
+- **`pickFolder` guarda o PAI** da pasta escolhida. Quem escolheu `~/x/TDAH` quase sempre
+  volta para escolher outro projeto em `~/x`, não para entrar de novo no TDAH.
+- **Arquivo acima de 10 MB sai em `skipped`,** não derruba a seleção inteira. O teto é o
+  mesmo `MAX_FOLDER_FILE_BYTES` do servidor — recusar aqui é economizar um upload que ia
+  falhar lá.
+
+### Consequências
+
+- **A metade web entra junto** (SHVIA-WEB 2.91.8): três pontos de escolha de arquivo
+  passam a preferir a ponte — anexo do compositor, arquivos do projeto, e o "Escolher outra
+  imagem" do card de erro. Sem ponte, ou com casca velha (sem `pickFiles` no dispatch), cai
+  no `<input type="file">` de antes.
+- **Exige build novo do desktop.** Até o usuário atualizar, a metade web usa o fallback e
+  nada quebra.
+- **`saveFile` ganhou a mesma memória** — salvar dois artefatos seguidos também obrigava a
+  refazer o caminho.
+- **Validado aqui:** `cargo check` limpo. **NÃO validado:** o diálogo de verdade e a
+  gravação do `ultimas-pastas.json` (exigem build gráfico), e o comportamento do
+  `set_directory` no macOS/Windows — só o WebKitGTK do Linux foi raciocinado.
+- **Fica de fora:** filtro de extensão no diálogo nativo. O `<input>` tem um `accept=` com
+  60 extensões; replicá-lo em `add_filter` sem manter os dois em sincronia daria uma lista
+  que mente. O servidor valida de qualquer forma.

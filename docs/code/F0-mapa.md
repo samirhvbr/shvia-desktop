@@ -158,7 +158,7 @@ Como o desktop é só a casca, o trabalho de app se divide:
   Chat; aparece só quando `window.__shviaDesktop` existe.
 - **SHVIA-DESKTOP (ponte):** os plugins + comandos Tauri de §4.2, expostos à
   página via bridge `window.__shviaCode.*` (spawn/send/kill do `anna`, `onEvent`,
-  `pickFolder`, `listTree`, `gitStatus`, `get/setBinding`) + o flag `__shviaDesktop`.
+  `pickFolder`, `pickFiles`, `listTree`, `gitStatus`, `get/setBinding`) + o flag `__shviaDesktop`.
 - **SHVIA-CODE (`anna`):** as 2 lacunas de §4.1 (F1).
 
 A coexistência Chat↔Code **não** é problema do desktop: é um webview só e a troca

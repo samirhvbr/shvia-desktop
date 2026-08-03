@@ -84,6 +84,12 @@ pub const BRIDGE_JS: &str = r#"(function () {
     onEvent: function (cb) { if (typeof cb === 'function') listeners.push(cb); },
     // pasta / vínculo
     pickFolder: function () { return post('pickFolder'); },
+    // Escolhe arquivos com o diálogo NATIVO, que abre na última pasta usada
+    // (o <input type="file"> do WebView não deixa escolher a pasta inicial e
+    // caía sempre nos favoritos — queixa de 03/08). Devolve os BYTES, porque
+    // a página não tem acesso ao disco: {files:[{name, dataBase64, size}],
+    // skipped:[str]}. Cancelar volta {files:[], canceled:true}.
+    pickFiles: function () { return post('pickFiles'); },
     // Salva artefato gerado (imagem/código) com diálogo nativo do SO. A PÁGINA
     // manda os bytes — ela tem a sessão autenticada, o Rust não. {name, dataBase64}
     // → {saved:true, path} | {saved:false} quando o usuário cancela.
@@ -371,6 +377,7 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             reply(window, &req, true, serde_json::json!({ "ok": true }));
         }
         "pickFolder" => pick_folder(window, req),
+        "pickFiles" => pick_files(window, req),
         "saveFile" => save_file(window, req, &v),
         "getBinding" => {
             let pid = v.get("projectId").and_then(|p| p.as_str()).unwrap_or_default();
@@ -640,30 +647,36 @@ fn save_file(window: &WebviewWindow, req: String, v: &serde_json::Value) {
     };
 
     let win = window.clone();
-    window
-        .app_handle()
-        .dialog()
-        .file()
-        .set_file_name(&nome)
-        .save_file(move |path| {
-            let Some(path) = path else {
-                reply(&win, &req, true, serde_json::json!({ "saved": false }));
-                return;
-            };
-            let resultado = path
-                .into_path()
-                .map_err(|e| e.to_string())
-                .and_then(|p| std::fs::write(&p, &bytes).map(|_| p).map_err(|e| e.to_string()));
-            match resultado {
-                Ok(p) => reply(
+    let mut dialogo = window.app_handle().dialog().file().set_file_name(&nome);
+    // Mesma dor do anexo: salvar dois artefatos seguidos obrigava a refazer o
+    // caminho na segunda vez.
+    if let Some(dir) = ultima_pasta(window, "salvar") {
+        dialogo = dialogo.set_directory(dir);
+    }
+    dialogo.save_file(move |path| {
+        let Some(path) = path else {
+            reply(&win, &req, true, serde_json::json!({ "saved": false }));
+            return;
+        };
+        let resultado = path
+            .into_path()
+            .map_err(|e| e.to_string())
+            .and_then(|p| std::fs::write(&p, &bytes).map(|_| p).map_err(|e| e.to_string()));
+        match resultado {
+            Ok(p) => {
+                if let Some(pai) = p.parent() {
+                    grava_ultima_pasta(&win, "salvar", pai);
+                }
+                reply(
                     &win,
                     &req,
                     true,
                     serde_json::json!({ "saved": true, "path": p.to_string_lossy() }),
-                ),
-                Err(e) => reply(&win, &req, false, serde_json::json!({ "error": e })),
+                )
             }
-        });
+            Err(e) => reply(&win, &req, false, serde_json::json!({ "error": e })),
+        }
+    });
 }
 
 /// Nome de arquivo vindo da PÁGINA: só o basename, sem separador de diretório
@@ -755,12 +768,140 @@ mod tests {
     }
 }
 
+// ── última pasta usada nos diálogos ─────────────────────────────────────────
+//
+// O diálogo do SO não lembra onde você estava: cada abertura nasce nos
+// favoritos/atalhos, e para anexar o arquivo vizinho do que você acabou de
+// anexar era preciso refazer o caminho inteiro (queixa de 03/08/2026). Isso é
+// estado do DISPOSITIVO, não do usuário nem do projeto — mora aqui, ao lado do
+// `modo-code-bindings.json`, e não sobe para o servidor.
+//
+// Uma chave por PROPÓSITO ('arquivos', 'pasta', 'salvar'): a pasta de onde você
+// anexa contexto raramente é a pasta onde você salva um artefato, e uma chave só
+// faria os três se atrapalharem.
+const MAX_PICK_BYTES: usize = 10 * 1024 * 1024; // = MAX_FOLDER_FILE_BYTES do web
+const MAX_PICK_FILES: usize = 30;
+
+fn ultimas_pastas_path(window: &WebviewWindow) -> Option<PathBuf> {
+    let dir = window.app_handle().path().app_config_dir().ok()?;
+    let _ = std::fs::create_dir_all(&dir);
+    Some(dir.join("ultimas-pastas.json"))
+}
+
+fn ultima_pasta(window: &WebviewWindow, chave: &str) -> Option<PathBuf> {
+    let map: serde_json::Map<String, serde_json::Value> = ultimas_pastas_path(window)
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    let p = PathBuf::from(map.get(chave)?.as_str()?);
+    // A pasta pode ter sido removida/desmontada desde a última vez. Apontar o
+    // diálogo para um caminho morto é pior que não apontar: alguns backends
+    // abrem vazios em vez de cair no default.
+    p.is_dir().then_some(p)
+}
+
+fn grava_ultima_pasta(window: &WebviewWindow, chave: &str, dir: &std::path::Path) {
+    if !dir.is_dir() {
+        return;
+    }
+    let mut map: serde_json::Map<String, serde_json::Value> = ultimas_pastas_path(window)
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    map.insert(chave.to_string(), serde_json::json!(dir.to_string_lossy()));
+    if let (Some(p), Ok(s)) = (ultimas_pastas_path(window), serde_json::to_string_pretty(&map)) {
+        let _ = std::fs::write(p, s);
+    }
+}
+
 fn pick_folder(window: &WebviewWindow, req: String) {
     use tauri_plugin_dialog::DialogExt;
     let win = window.clone();
-    window.app_handle().dialog().file().pick_folder(move |path| {
-        let data = serde_json::json!({ "path": path.map(|p| p.to_string()) });
+    let mut dialogo = window.app_handle().dialog().file();
+    if let Some(dir) = ultima_pasta(window, "pasta") {
+        dialogo = dialogo.set_directory(dir);
+    }
+    dialogo.pick_folder(move |path| {
+        let escolhido = path.and_then(|p| p.into_path().ok());
+        // Guarda o PAI: quem escolheu ~/x/TDAH quase sempre volta para escolher
+        // outro projeto em ~/x, não para entrar de novo no TDAH.
+        if let Some(pai) = escolhido.as_ref().and_then(|p| p.parent()) {
+            grava_ultima_pasta(&win, "pasta", pai);
+        }
+        let data = serde_json::json!({
+            "path": escolhido.map(|p| p.to_string_lossy().to_string()),
+        });
         reply(&win, &req, true, data);
+    });
+}
+
+/// Seletor de arquivos NATIVO para os anexos do chat (arquivos do projeto).
+///
+/// Existe porque o `<input type="file">` da WebView não deixa escolher a pasta
+/// inicial — é decisão do navegador, e no WebKitGTK ela cai nos favoritos toda
+/// vez. Aqui o diálogo é nosso, então abre onde você estava.
+///
+/// Devolve os BYTES em base64, não os caminhos: a página é quem tem a sessão
+/// autenticada e faz o upload, e ela não enxerga o disco. Mesmo desenho do
+/// `save_file`, na direção contrária.
+///
+/// Arquivo acima do teto do servidor (10 MB) sai em `skipped` em vez de derrubar
+/// a seleção inteira — o resto do que foi escolhido continua valendo.
+fn pick_files(window: &WebviewWindow, req: String) {
+    use base64::Engine;
+    use tauri_plugin_dialog::DialogExt;
+
+    let win = window.clone();
+    let mut dialogo = window.app_handle().dialog().file();
+    if let Some(dir) = ultima_pasta(window, "arquivos") {
+        dialogo = dialogo.set_directory(dir);
+    }
+    dialogo.pick_files(move |paths| {
+        let Some(paths) = paths else {
+            reply(&win, &req, true, serde_json::json!({ "files": [], "canceled": true }));
+            return;
+        };
+
+        let mut arquivos = Vec::new();
+        let mut skipped: Vec<String> = Vec::new();
+        let mut pasta_lembrada = false;
+
+        for fp in paths.into_iter().take(MAX_PICK_FILES) {
+            let Ok(path) = fp.into_path() else { continue };
+            let nome = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if nome.is_empty() {
+                continue;
+            }
+            // A pasta vem do PRIMEIRO arquivo que deu certo — é onde o usuário
+            // estava quando confirmou.
+            if !pasta_lembrada {
+                if let Some(pai) = path.parent() {
+                    grava_ultima_pasta(&win, "arquivos", pai);
+                    pasta_lembrada = true;
+                }
+            }
+            match std::fs::read(&path) {
+                Ok(bytes) if bytes.len() > MAX_PICK_BYTES => {
+                    skipped.push(format!("{nome}: acima de 10 MB"));
+                }
+                Ok(bytes) => arquivos.push(serde_json::json!({
+                    "name": nome,
+                    "size": bytes.len(),
+                    "dataBase64": base64::engine::general_purpose::STANDARD.encode(&bytes),
+                })),
+                Err(e) => skipped.push(format!("{nome}: {e}")),
+            }
+        }
+
+        reply(
+            &win,
+            &req,
+            true,
+            serde_json::json!({ "files": arquivos, "skipped": skipped }),
+        );
     });
 }
 
