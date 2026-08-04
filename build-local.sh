@@ -7,6 +7,7 @@
 # (release.json), que o item D9 acrescentou e o D1 (auto-update) vai consumir.
 #   macOS  -> .dmg + .app.tar.gz
 #   Linux  -> .deb + .AppImage (+ .rpm)   (targets="all" do tauri.conf.json)
+#             + .pkg.tar.zst (Arch)       (conversão do .deb via fpm — best-effort)
 #
 # PRÉ-REQUISITOS (instalar uma vez):
 #   Comum:   Node 20, Rust (rustup default stable)
@@ -1004,13 +1005,50 @@ if [ "$REUSE" -eq 0 ]; then
   fi
 fi
 
+# ── Pacote Arch Linux (.pkg.tar.zst): conversão do .deb via fpm ───────────────
+# O bundler do Tauri (2.x) só conhece deb/rpm/appimage no Linux; o pacote pacman
+# sai convertendo o .deb recém-gerado com o fpm — na própria máquina Debian, sem
+# precisar de um host Arch. Dependências trocadas À MÃO pelos nomes do Arch
+# (--no-auto-depends): os nomes Debian (libwebkit2gtk-4.1-0, libgtk-3-0) não
+# existem no pacman e o pacote sairia ininstalável; libayatana-appindicator
+# porque o app usa tray-icon (Cargo.toml). Best-effort: sem fpm, avisa e segue.
+# Idempotente: se o .pkg desta versão já está no disco (reuso), pula.
+# NB: fica FORA do release.json/publish por enquanto — o fpm não gera o .sig do
+# updater, e o endpoint do ShvIA trata artefato sem assinatura como inexistente;
+# entrar no manifesto quebraria a verificação da publicação. Distribuição manual
+# até o endpoint servir artefato de download sem assinatura.
+if [ "$_BUILD_OS" = Linux ]; then
+  _versao_pkg="$(tr -d ' \t\n\r' < version.md)"
+  _bundle_pkg=src-tauri/target/release/bundle
+  _deb_pkg="$(find "$_bundle_pkg/deb" -maxdepth 1 -name "*_${_versao_pkg}_*.deb" 2>/dev/null | head -1)"
+  if [ -n "$_deb_pkg" ] && \
+     ! find "$_bundle_pkg/pacman" -name "*${_versao_pkg}*.pkg.tar.*" 2>/dev/null | grep -q .; then
+    if command -v fpm >/dev/null 2>&1; then
+      echo "==> Linux: convertendo o .deb em pacote Arch (.pkg.tar.zst) via fpm..."
+      mkdir -p "$_bundle_pkg/pacman"
+      _deb_abs="$(cd "$(dirname "$_deb_pkg")" && pwd)/$(basename "$_deb_pkg")"
+      # -a explícito: amd64 no mundo deb, x86_64 no pacman — o fpm não traduz sozinho.
+      if (cd "$_bundle_pkg/pacman" && fpm -s deb -t pacman --no-auto-depends \
+            -d webkit2gtk-4.1 -d gtk3 -d libayatana-appindicator \
+            --pacman-compression zstd -a "$(uname -m)" "$_deb_abs" >/dev/null); then
+        echo "    ✓ $(find "$_bundle_pkg/pacman" -name '*.pkg.tar.*' 2>/dev/null | head -1)"
+      else
+        echo "AVISO: fpm falhou ao gerar o pacote Arch — o build segue sem ele." >&2
+      fi
+    else
+      echo "AVISO: sem fpm no PATH — pulando o pacote Arch (.pkg.tar.zst)." >&2
+      echo "       instale: sudo apt install ruby ruby-dev build-essential zstd libarchive-tools && sudo gem install fpm" >&2
+    fi
+  fi
+fi
+
 # Com reuso, a listagem abaixo mostra o que será publicado — o mesmo que o
 # build imprimiria, e é a confirmação visual de qual artefato está indo.
 echo ""
 echo "[OK] Instaladores em src-tauri/target/release/bundle/:"
 find src-tauri/target/release/bundle -maxdepth 2 -type f \
   \( -name '*.deb' -o -name '*.AppImage' -o -name '*.rpm' -o -name '*.dmg' \
-     -o -name '*.app.tar.gz' \) -exec ls -lh {} \; 2>/dev/null || true
+     -o -name '*.app.tar.gz' -o -name '*.pkg.tar.*' \) -exec ls -lh {} \; 2>/dev/null || true
 
 
 # ── Checksums + release.json (item D9) ────────────────────────────────────────
