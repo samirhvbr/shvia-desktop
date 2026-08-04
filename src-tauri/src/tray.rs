@@ -215,10 +215,19 @@ pub fn instalar(app: &AppHandle) -> tauri::Result<()> {
             }
         });
 
-    // O ícone do app serve, mas no macOS a barra de menus espera um **template**
-    // (monocromático, que inverte com o tema): o colorido funciona e fica visualmente
-    // fora do padrão do sistema. É dívida de ASSET, não de código — trocar é substituir
-    // o png, sem tocar aqui.
+    // macOS (04/08, pedido do Samir): a barra de menus usa o TEMPLATE "AI" —
+    // sem o logo da Blue3, "fica mais óbvio do que se trata". Preto + alpha com
+    // `icon_as_template`, então o sistema o inverte conforme o tema (era a
+    // dívida de asset anotada aqui desde a v1). Windows/Linux seguem com o
+    // ícone colorido do app: tray colorido é a convenção nesses sistemas.
+    #[cfg(target_os = "macos")]
+    {
+        let ai = tauri::image::Image::from_bytes(include_bytes!(
+            "../icons/tray-ai-template.png"
+        ))?;
+        builder = builder.icon(ai).icon_as_template(true);
+    }
+    #[cfg(not(target_os = "macos"))]
     if let Some(icon) = app.default_window_icon() {
         builder = builder.icon(icon.clone());
     }
