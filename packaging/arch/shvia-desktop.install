@@ -1,0 +1,33 @@
+# Mensagens pós-instalação do pacote Arch.
+#
+# Existem por um motivo específico: num Mac ou num Windows o app se atualiza
+# sozinho, e quem instala pelo pacman esperaria o mesmo. Não é o caso (ADR-028),
+# e descobrir isso só quando a atualização falha é a pior hora. Melhor dizer aqui.
+
+post_install() {
+  cat <<'MSG'
+
+  ShvIA Desktop instalado.
+
+  Atualização: quem cuida é o pacman, não o app. Para receber as próximas
+  versões automaticamente, adicione o repositório em /etc/pacman.conf:
+
+      [shvia]
+      SigLevel = Optional TrustAll
+      Server = https://ai.shvia.org/storage/desktop
+
+  E então:  sudo pacman -Syu
+
+  O app avisa quando há versão nova, mas manda você rodar o pacman — ele não
+  pode se substituir sozinho num arquivo que o gerenciador de pacotes é dono.
+
+MSG
+}
+
+post_upgrade() {
+  cat <<'MSG'
+
+  ShvIA Desktop atualizado. Feche e abra o app para usar a versão nova.
+
+MSG
+}

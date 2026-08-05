@@ -97,10 +97,17 @@ if (!PLATAFORMA) {
 // confunda com o macOS, onde o `.app.tar.gz` É o artefato de verdade.
 // (Ver ADR-025: eu já apontei este arquivo como a causa do Linux em 204, e
 // errei — a causa era o servidor procurando o tarball.)
+//
+// O `.pkg.tar.zst` (Arch) entra como artefato de DOWNLOAD, nunca de updater: ele
+// sai sem `.sig` de propósito, porque o `tauri-plugin-updater` não tem instalador
+// de pacman e nunca vai consumi-lo (ADR-028). Listar aqui é o que faz o `--publish`
+// subir o arquivo e gravar o sha256 — quem instala vem pelo `pacman -Syu`. Como o
+// endpoint do ShvIA ignora artefato sem assinatura, a entrada é inerte para o
+// auto-update: não há como o app oferecer um pacote que ele não saberia instalar.
 const EXTENSOES = {
   macos: [".dmg", ".app.tar.gz"],
   windows: [".msi", "-setup.exe"],
-  linux: [".deb", ".AppImage", ".AppImage.tar.gz", ".rpm"],
+  linux: [".deb", ".AppImage", ".AppImage.tar.gz", ".rpm", ".pkg.tar.zst"],
 }[PLATAFORMA];
 
 function encontrarArtefatos(dir, achados = []) {

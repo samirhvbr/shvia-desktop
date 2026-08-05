@@ -7,7 +7,9 @@
 # (release.json), que o item D9 acrescentou e o D1 (auto-update) vai consumir.
 #   macOS  -> .dmg + .app.tar.gz
 #   Linux  -> .deb + .AppImage (+ .rpm)   (targets="all" do tauri.conf.json)
-#             + .pkg.tar.zst (Arch)       (conversão do .deb via fpm — best-effort)
+#             + .pkg.tar.zst (Arch)       — nativo por makepkg quando o build roda
+#                                           NUM Arch; conversão do .deb por fpm
+#                                           quando roda num Debian (best-effort)
 #
 # PRÉ-REQUISITOS (instalar uma vez):
 #   Comum:   Node 20, Rust (rustup default stable)
@@ -15,6 +17,10 @@
 #   Linux (Debian/Ubuntu):
 #     sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
 #       libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+#   Linux (Arch):
+#     sudo pacman -S --needed base-devel webkit2gtk-4.1 curl wget file openssl \
+#       libayatana-appindicator librsvg xdotool patchelf
+#     (base-devel traz makepkg + fakeroot, que empacotam o .pkg.tar.zst)
 #
 # USO (na raiz do repo):
 #   ./build-local.sh                 # build normal (todos os targets do SO)
@@ -118,6 +124,29 @@ NO_ANNA=0
 # Serve p/ comparar Linux × macOS × Windows e achar em qual fase otimizar.
 SECONDS=0
 _BUILD_OS=$(uname -s); [ "$_BUILD_OS" = Darwin ] && _BUILD_OS=macOS
+
+# ── Qual Linux? ──────────────────────────────────────────────────────────────
+# Duas coisas dependem disto e nenhuma é cosmética: (1) o comando de instalar
+# dependência que o preflight sugere — dizer "apt-get install" para quem está num
+# Arch é uma mensagem de erro que não resolve; (2) COMO o pacote pacman é gerado
+# (makepkg nativo aqui, fpm convertendo o .deb lá). Ver o bloco do .pkg.tar.zst.
+#
+# `ID_LIKE` entra junto porque derivada é o caso comum: Manjaro/EndeavourOS têm
+# ID próprio e `ID_LIKE=arch`; Ubuntu/Mint têm `ID_LIKE=debian`. Ler só o `ID`
+# faria o script tratar um EndeavourOS como distro desconhecida.
+_LINUX_FAMILIA=""   # arch | debian | "" (desconhecida ou não-Linux)
+if [ "$_BUILD_OS" = Linux ] && [ -r /etc/os-release ]; then
+  # shellcheck source=/dev/null  # arquivo do SISTEMA, não do repo — nada a seguir
+  _os_id="$(. /etc/os-release 2>/dev/null; printf '%s' "${ID:-}")"
+  # shellcheck source=/dev/null
+  _os_like="$(. /etc/os-release 2>/dev/null; printf '%s' "${ID_LIKE:-}")"
+  case " $_os_id $_os_like " in
+    *" arch "*)   _LINUX_FAMILIA=arch   ;;
+    *" debian "*) _LINUX_FAMILIA=debian ;;
+    *" ubuntu "*) _LINUX_FAMILIA=debian ;;
+  esac
+  unset _os_id _os_like
+fi
 _PH_NAMES=(); _PH_TIMES=(); _PH_CUR=""; _PH_START=0
 _fmt() {  # $1 = segundos -> "1h 02m 03s" / "4m 05s" / "37s"
   local t=$1
@@ -223,14 +252,36 @@ preflight() {
     )
   fi
 
-  # Linux (Debian/Ubuntu): o WebKitGTK dev é obrigatório pro WebView do Tauri.
+  # Linux: o WebKitGTK dev é obrigatório pro WebView do Tauri. O pacote tem nome
+  # diferente em cada família, e sugerir o comando da família ERRADA é o mesmo que
+  # não sugerir nada — quem está no Arch não tem apt-get para rodar.
   if [ "$_BUILD_OS" = Linux ] && command -v pkg-config >/dev/null 2>&1 \
      && ! pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
-    missing+=(
+    case "$_LINUX_FAMILIA" in
+      arch)
+        missing+=(
+"webkit2gtk-4.1 ausente (e outras deps do Tauri no Linux). Instale:
+       sudo pacman -S --needed base-devel webkit2gtk-4.1 curl wget file openssl \\
+         libayatana-appindicator librsvg xdotool patchelf"
+        )
+        ;;
+      *)
+        missing+=(
 "libwebkit2gtk-4.1-dev ausente (e outras deps do Tauri no Linux). Instale:
        sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \\
          libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf"
-    )
+        )
+        ;;
+    esac
+  fi
+
+  # Arch: makepkg/fakeroot empacotam o .pkg.tar.zst no fim do build. NÃO entram em
+  # `missing` — faltar empacotador do pacman não é motivo para abortar um build que
+  # ainda produz .deb, .rpm e AppImage. Aviso agora, no primeiro segundo, em vez de
+  # 20 minutos adiante, quando o bloco do pacote roda.
+  if [ "$_LINUX_FAMILIA" = arch ] && ! command -v makepkg >/dev/null 2>&1; then
+    echo "    ⚠️ sem makepkg (grupo base-devel) — o build sai SEM o pacote Arch."
+    echo "       sudo pacman -S --needed base-devel"
   fi
 
   if [ "${#missing[@]}" -gt 0 ]; then
@@ -742,6 +793,23 @@ publish_release() {
     return 1
   fi
 
+  # ── Banco do repositório pacman ────────────────────────────────────────────
+  # Entra FORA da lista do manifesto de propósito: o release.json descreve
+  # artefatos versionados (nome, tamanho, sha256, assinatura), e o banco do repo
+  # não é um deles — é índice, tem nome fixo e é regravado a cada versão. Colocá-lo
+  # no manifesto obrigaria a inventar uma entrada que o endpoint do updater teria
+  # de aprender a ignorar.
+  # Sem estes quatro arquivos no servidor, `pacman -Syu` não enxerga a versão nova
+  # (o .pkg sozinho só serve para `pacman -U` à mão).
+  # `if` e não `[ … ] && …`: sob `set -e`, um `&&` que dá falso como ÚLTIMO comando
+  # do corpo do laço derruba o script. Aqui o falso é o caso NORMAL — no macOS não
+  # existe pasta pacman/ nenhuma —, então isso abortaria a publicação do Mac.
+  local _nome_db _achado_db
+  for _nome_db in shvia.db shvia.db.tar.gz shvia.files shvia.files.tar.gz; do
+    _achado_db="$(find src-tauri/target/release/bundle/pacman -maxdepth 1 -name "$_nome_db" -print -quit 2>/dev/null || true)"
+    if [ -n "$_achado_db" ]; then arquivos+=("$_achado_db"); fi
+  done
+
   echo "    destino: $PUBLISH_DEST"
   for f in "${arquivos[@]}"; do echo "      $(basename "$f")"; done
   echo "      release.json"
@@ -1005,39 +1073,134 @@ if [ "$REUSE" -eq 0 ]; then
   fi
 fi
 
-# ── Pacote Arch Linux (.pkg.tar.zst): conversão do .deb via fpm ───────────────
-# O bundler do Tauri (2.x) só conhece deb/rpm/appimage no Linux; o pacote pacman
-# sai convertendo o .deb recém-gerado com o fpm — na própria máquina Debian, sem
-# precisar de um host Arch. Dependências trocadas À MÃO pelos nomes do Arch
-# (--no-auto-depends): os nomes Debian (libwebkit2gtk-4.1-0, libgtk-3-0) não
-# existem no pacman e o pacote sairia ininstalável; libayatana-appindicator
-# porque o app usa tray-icon (Cargo.toml). Best-effort: sem fpm, avisa e segue.
-# Idempotente: se o .pkg desta versão já está no disco (reuso), pula.
-# NB: fica FORA do release.json/publish por enquanto — o fpm não gera o .sig do
-# updater, e o endpoint do ShvIA trata artefato sem assinatura como inexistente;
-# entrar no manifesto quebraria a verificação da publicação. Distribuição manual
-# até o endpoint servir artefato de download sem assinatura.
+# ── Pacote Arch Linux (.pkg.tar.zst) ─────────────────────────────────────────
+# O bundler do Tauri (2.x) só conhece deb/rpm/appimage no Linux, então o pacote
+# pacman sai daqui. DOIS caminhos, escolhidos pela distro que roda o build:
+#
+#   Arch   → `makepkg` com o packaging/arch/PKGBUILD. Pacote nativo de verdade:
+#            .PKGINFO correto, hook de pós-instalação, deps declaradas uma vez só
+#            no PKGBUILD. É o caminho bom.
+#   Debian → `fpm` convertendo o .deb (o que existia antes desta versão). Continua
+#            porque a máquina de build do Linux pode não ser um Arch, e um pacote
+#            convertido é melhor que nenhum. As deps aqui são MAPEADAS À MÃO e
+#            precisam casar com as do PKGBUILD — dois lugares, mesma lista.
+#
+# Idempotente nos dois: se o .pkg desta versão já está no disco (reuso), pula.
+#
+# ⚠️ O pacote pacman NÃO se auto-atualiza (ADR-028). O `tauri-plugin-updater` não
+# tem instalador de pacman — `bundle_type()` só devolve Deb/Rpm/AppImage/Msi/Nsis
+# — e como este pacote sai do payload do .deb, o binário vem marcado como DEB. Sem
+# o guard do src-tauri/src/updater.rs o app baixaria ~80 MB e chamaria `dpkg -i`,
+# que não existe no Arch. Quem atualiza é o `pacman -Syu`, contra o repo publicado
+# logo abaixo.
 if [ "$_BUILD_OS" = Linux ]; then
   _versao_pkg="$(tr -d ' \t\n\r' < version.md)"
   _bundle_pkg=src-tauri/target/release/bundle
   _deb_pkg="$(find "$_bundle_pkg/deb" -maxdepth 1 -name "*_${_versao_pkg}_*.deb" 2>/dev/null | head -1)"
   if [ -n "$_deb_pkg" ] && \
      ! find "$_bundle_pkg/pacman" -name "*${_versao_pkg}*.pkg.tar.*" 2>/dev/null | grep -q .; then
-    if command -v fpm >/dev/null 2>&1; then
-      echo "==> Linux: convertendo o .deb em pacote Arch (.pkg.tar.zst) via fpm..."
-      mkdir -p "$_bundle_pkg/pacman"
-      _deb_abs="$(cd "$(dirname "$_deb_pkg")" && pwd)/$(basename "$_deb_pkg")"
+    mkdir -p "$_bundle_pkg/pacman"
+    _deb_abs="$(cd "$(dirname "$_deb_pkg")" && pwd)/$(basename "$_deb_pkg")"
+    _pkgdest_abs="$(cd "$_bundle_pkg/pacman" && pwd)"
+
+    if [ "$_LINUX_FAMILIA" = arch ] && command -v makepkg >/dev/null 2>&1; then
+      echo "==> Arch: empacotando com makepkg (packaging/arch/PKGBUILD)..."
+      # PKGDEST põe o .pkg.tar.zst junto dos outros bundles em vez de dentro de
+      # packaging/arch/ — o resto do pipeline (manifesto, publish, listagem final)
+      # varre bundle/, e um pacote fora dali seria invisível para os três.
+      # BUILDDIR sai do repo: makepkg escreve src/ e pkg/ ao lado do PKGBUILD, e
+      # isso sujaria a árvore versionada a cada build.
+      # SHVIA_DEB é o contrato com o PKGBUILD (ver o cabeçalho dele).
+      # --nodeps: as deps do PKGBUILD são de RUNTIME do usuário final; exigi-las
+      # instaladas aqui só para reempacotar um .deb pronto não prova nada.
+      _mk_tmp="$(mktemp -d)"
+      if (cd packaging/arch && \
+          SHVIA_DEB="$_deb_abs" \
+          PKGDEST="$_pkgdest_abs" \
+          BUILDDIR="$_mk_tmp" \
+          makepkg --force --clean --nodeps >/dev/null); then
+        echo "    ✓ $(find "$_bundle_pkg/pacman" -name '*.pkg.tar.*' 2>/dev/null | head -1)"
+      else
+        echo "AVISO: makepkg falhou — o build segue sem o pacote Arch." >&2
+        echo "       rode à mão para ver o erro: cd packaging/arch && makepkg -f" >&2
+      fi
+      rm -rf "$_mk_tmp"
+
+    elif command -v fpm >/dev/null 2>&1; then
+      echo "==> Linux ($_LINUX_FAMILIA): convertendo o .deb em .pkg.tar.zst via fpm..."
       # -a explícito: amd64 no mundo deb, x86_64 no pacman — o fpm não traduz sozinho.
+      # --no-auto-depends: os nomes Debian (libwebkit2gtk-4.1-0, libgtk-3-0) não
+      # existem no pacman e o pacote sairia ininstalável.
       if (cd "$_bundle_pkg/pacman" && fpm -s deb -t pacman --no-auto-depends \
             -d webkit2gtk-4.1 -d gtk3 -d libayatana-appindicator \
             --pacman-compression zstd -a "$(uname -m)" "$_deb_abs" >/dev/null); then
         echo "    ✓ $(find "$_bundle_pkg/pacman" -name '*.pkg.tar.*' 2>/dev/null | head -1)"
+        # O fpm converte o payload do .deb e NÃO conhece o PKGBUILD, então o
+        # marcador de origem não vem junto. Sem ele o app não sabe que foi
+        # instalado por pacman e tentaria o auto-update que falha (ADR-028).
+        echo "    ⚠️ pacote convertido: SEM o marcador /usr/share/shvia-desktop/instalado-por."
+        echo "       O app instalado por ele vai tentar o auto-update e falhar."
+        echo "       Para o pacote bom, rode este build numa máquina Arch."
       else
         echo "AVISO: fpm falhou ao gerar o pacote Arch — o build segue sem ele." >&2
       fi
+
     else
-      echo "AVISO: sem fpm no PATH — pulando o pacote Arch (.pkg.tar.zst)." >&2
-      echo "       instale: sudo apt install ruby ruby-dev build-essential zstd libarchive-tools && sudo gem install fpm" >&2
+      echo "AVISO: sem makepkg (Arch) nem fpm (Debian) — pulando o .pkg.tar.zst." >&2
+      if [ "$_LINUX_FAMILIA" = arch ]; then
+        echo "       instale: sudo pacman -S --needed base-devel" >&2
+      else
+        echo "       instale: sudo apt install ruby ruby-dev build-essential zstd libarchive-tools && sudo gem install fpm" >&2
+      fi
+    fi
+  fi
+
+  # ── Banco do repositório pacman ────────────────────────────────────────────
+  # É o que faz `pacman -Syu` funcionar: sem o .db o usuário teria de baixar o
+  # arquivo e rodar `pacman -U` à mão a cada versão.
+  #
+  # O banco é REGERADO DO ZERO (apagando os arquivos antes), listando só a versão
+  # corrente. Duas razões: esta máquina só tem o pacote que ela acabou de gerar, e
+  # o repo existe para servir a última versão.
+  #
+  # ⚠️ Regenerar é apagar mesmo — NÃO existe flag do repo-add para isso, e as duas
+  # que parecem servir fazem outra coisa:
+  #   --new    só adiciona pacote AINDA NÃO presente no banco, e explicitamente
+  #            NÃO atualiza a entrada de um que já existe. Como bundle/pacman/ não
+  #            é limpo entre builds, o banco sobreviveria e a versão nova jamais
+  #            entraria nele — `pacman -Syu` continuaria oferecendo a antiga.
+  #   --remove APAGA DO DISCO o arquivo do pacote antigo ao atualizar a entrada.
+  #
+  # `repo-add` vem do pacote `pacman`: nativo no Arch, e no Debian está em
+  # `pacman-package-manager`. Sem ele o .pkg ainda é publicado e instalável por
+  # `pacman -U`; só não há `-Syu`.
+  _pkg_arch_file="$(find "$_bundle_pkg/pacman" -name "*${_versao_pkg}*.pkg.tar.*" ! -name '*.sig' ! -name '*.sha256' 2>/dev/null | head -1)"
+  if [ -n "$_pkg_arch_file" ]; then
+    if command -v repo-add >/dev/null 2>&1; then
+      echo "==> Linux: gerando o banco do repositório pacman (shvia.db)..."
+      rm -f "$_bundle_pkg/pacman"/shvia.db* "$_bundle_pkg/pacman"/shvia.files*
+      if (cd "$(dirname "$_pkg_arch_file")" && \
+          repo-add shvia.db.tar.gz "$(basename "$_pkg_arch_file")" >/dev/null 2>&1); then
+        # repo-add cria shvia.db/shvia.files como LINKS para os .tar.gz. O pacman
+        # busca justamente `shvia.db`, então o link tem de virar arquivo de verdade
+        # antes de subir — um symlink pendurado no servidor devolve 404.
+        # `if` e não `[ -L … ] && …`: sob `set -e`, o teste falso no fim do corpo do
+        # laço abortaria o subshell e o segundo arquivo nunca seria convertido.
+        (cd "$(dirname "$_pkg_arch_file")" && \
+         for _l in shvia.db shvia.files; do
+           if [ -L "$_l" ]; then
+             cp --remove-destination "$(readlink -f "$_l")" "$_l"
+           fi
+         done) || true
+        echo "    ✓ shvia.db + shvia.files ao lado do pacote"
+      else
+        echo "AVISO: repo-add falhou — o pacote sai sem repositório (só pacman -U)." >&2
+      fi
+    else
+      echo "AVISO: sem repo-add — o .pkg é publicado, mas sem repo para 'pacman -Syu'." >&2
+      if [ "$_LINUX_FAMILIA" != arch ]; then
+        echo "       instale: sudo apt install pacman-package-manager" >&2
+      fi
     fi
   fi
 fi

@@ -66,6 +66,59 @@ const CONFIG_FILE: &str = "updater.json";
 /// botões para fora da tela em vez de informar.
 const MAX_NOTAS: usize = 280;
 
+/// Marcador que o pacote Arch instala para se identificar (ADR-028).
+///
+/// É um contrato com `packaging/arch/PKGBUILD` — mudar o caminho ou o conteúdo
+/// aqui exige mudar lá junto, e o efeito de esquecer é silencioso: o app volta a
+/// tentar o auto-update que não funciona.
+#[cfg(target_os = "linux")]
+const MARCADOR_PACMAN: &str = "/usr/share/shvia-desktop/instalado-por";
+
+/// Esta instalação veio do pacote do Arch?
+///
+/// ## Por que um arquivo em vez de perguntar ao plugin
+///
+/// O `tauri-plugin-updater` não tem como responder isso: `bundle_type()` lê um
+/// marcador que o BUNDLER grava no binário, e os valores possíveis são só
+/// Deb/Rpm/AppImage/Msi/Nsis — não existe variante pacman. Como o pacote Arch é
+/// remontado a partir do payload do `.deb`, o binário chega aqui se dizendo DEB.
+///
+/// O que aconteceria sem esta checagem (verificado no fonte do plugin 2.10.1):
+/// `install_inner` despacharia para `install_deb`, que roda `pkexec dpkg -i` —
+/// e `dpkg` não existe no Arch. O usuário baixaria ~80 MB para receber um erro.
+/// Com dpkg vindo do AUR seria pior: arquivos Debian num sistema pacman, sem o
+/// banco de pacotes saber.
+///
+/// Ler um arquivo custa um `stat` a cada 6 h; consultar `pacman -Qo` custaria um
+/// processo. O arquivo também é a resposta certa quando o pacman nem está no PATH.
+#[cfg(target_os = "linux")]
+fn instalado_por_pacman() -> bool {
+    marcador_diz_pacman(std::path::Path::new(MARCADOR_PACMAN))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn instalado_por_pacman() -> bool {
+    false
+}
+
+/// A leitura em si, separada do caminho fixo para o teste exercitar ESTA função e
+/// não uma reimplementação dela (mesmo motivo do `endpoint_para`).
+///
+/// Ausente, ilegível ou com outro conteúdo = não é pacman. Fail-open de propósito:
+/// errar para "tenta atualizar" mantém o comportamento de hoje em toda instalação
+/// que não é do pacote Arch; errar para "não atualiza" desligaria o auto-update de
+/// quem depende dele, e em silêncio.
+///
+/// `cfg(test)` junto do `cfg(linux)` porque fora do Linux ninguém a chama em build
+/// normal — sem isso, o build do macOS/Windows acusa dead_code por uma função que
+/// existe de propósito.
+#[cfg(any(target_os = "linux", test))]
+fn marcador_diz_pacman(caminho: &std::path::Path) -> bool {
+    std::fs::read_to_string(caminho)
+        .map(|s| s.trim() == "pacman")
+        .unwrap_or(false)
+}
+
 fn config_path(app: &AppHandle) -> Option<PathBuf> {
     app.path().app_config_dir().ok().map(|d| d.join(CONFIG_FILE))
 }
@@ -289,6 +342,29 @@ async fn executar(app: &AppHandle, manual: bool) {
         .map(|s| format!("\n\n{s}"))
         .unwrap_or_default();
 
+    // Instalação por pacman: avisa e PARA aqui (ADR-028). O gerenciador de pacotes
+    // é dono dos arquivos em /usr, e o plugin não sabe atualizar um pacote dele —
+    // oferecer "instalar agora" seria prometer o que só falharia depois de ~80 MB
+    // de download. `dispensar` no fim para o ciclo automático não repetir o mesmo
+    // aviso de 6 em 6 horas; a checagem manual passa por cima e sempre responde.
+    if instalado_por_pacman() {
+        avisar(
+            app,
+            "Atualização disponível",
+            &format!(
+                "O ShvIA Desktop {} está disponível (você tem a {}).{}\n\n\
+                 Esta instalação veio do pacote do Arch, então quem atualiza é o \
+                 pacman:\n\n    sudo pacman -Syu\n\n\
+                 O app não pode se substituir sozinho em arquivos que o gerenciador \
+                 de pacotes é dono.",
+                update.version, atual, notas
+            ),
+            MessageDialogKind::Info,
+        );
+        dispensar(app, &update.version);
+        return;
+    }
+
     let texto = format!(
         "O ShvIA Desktop {} está disponível (você tem a {}).{}\n\nBaixar e instalar agora? O app vai reiniciar quando terminar.",
         update.version, atual, notas
@@ -378,7 +454,38 @@ pub fn verificar_agora(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use super::endpoint_para;
+    use super::{endpoint_para, marcador_diz_pacman};
+
+    /// O marcador é o ÚNICO sinal de que o app não deve tentar se atualizar
+    /// sozinho (ADR-028). Se a leitura afrouxar — aceitar arquivo vazio, casar por
+    /// prefixo, ignorar o conteúdo — o guard passa a disparar em instalação que
+    /// não é do pacman, e o auto-update do .deb/AppImage morre em silêncio.
+    #[test]
+    fn marcador_so_vale_com_o_conteudo_exato() {
+        let dir = std::env::temp_dir().join("shvia-teste-marcador");
+        std::fs::create_dir_all(&dir).expect("criar dir de teste");
+
+        let caso = |nome: &str, conteudo: &str| -> bool {
+            let p = dir.join(nome);
+            std::fs::write(&p, conteudo).expect("escrever marcador");
+            marcador_diz_pacman(&p)
+        };
+
+        assert!(caso("ok", "pacman"), "o conteúdo exato tem de valer");
+        // O PKGBUILD escreve com heredoc, que deixa o \n no fim — se o trim sair,
+        // o pacote real para de ser reconhecido e ninguém percebe até o update.
+        assert!(caso("nl", "pacman\n"), "quebra de linha no fim tem de valer");
+
+        assert!(!caso("vazio", ""), "arquivo vazio não é marcador");
+        assert!(!caso("outro", "deb"), "outro conteúdo não é pacman");
+        assert!(!caso("prefixo", "pacman-ish"), "casamento é exato, não por prefixo");
+        assert!(
+            !marcador_diz_pacman(&dir.join("nao-existe")),
+            "arquivo ausente é o caso comum (todo install que não é do Arch)"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// O `{{target}}-{{arch}}` tem de sobreviver ao `Url::parse` — que
     /// percent-encoda `{` e `}` no path. O plugin substitui as duas formas

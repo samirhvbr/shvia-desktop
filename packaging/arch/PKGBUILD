@@ -1,0 +1,93 @@
+# Maintainer: Samir Hanna Verza <samirhv@me.com>
+#
+# ShvIA Desktop — pacote BINÁRIO para Arch Linux.
+#
+# ── Por que binário (e não build do zero no makepkg) ─────────────────────────
+# O build é 100% local por decisão (a CI foi removida na 0.4.6) e o
+# `build-local.sh` já É o pipeline: ele compila, assina o artefato do updater e
+# publica. Um PKGBUILD que rodasse `npm ci` + `tauri build` de novo recompilaria
+# o Rust inteiro para produzir o MESMO binário — e, pior, teria de receber a
+# chave privada do updater para assinar, o que tiraria o segredo do lugar onde
+# ele mora hoje. Então este PKGBUILD apenas REEMPACOTA o `.deb` que o
+# `tauri build` acabou de gerar nesta árvore.
+#
+# ── Atualização: quem manda é o pacman, não o app (ADR-028) ──────────────────
+# O `tauri-plugin-updater` não conhece pacote pacman: `bundle_type()` só sabe
+# devolver Deb/Rpm/AppImage/Msi/Nsis (o bundler grava esse marcador no binário
+# por binary-patching). Como este pacote sai do payload do `.deb`, o binário vem
+# marcado como DEB — e o plugin tentaria `pkexec dpkg -i`, que não existe no
+# Arch, depois de baixar ~80 MB.
+#
+# Por isso o pacote instala o marcador `/usr/share/shvia-desktop/instalado-por`
+# com o conteúdo `pacman`: o app lê esse arquivo (`src-tauri/src/updater.rs`) e,
+# em vez de baixar e falhar, avisa para rodar `pacman -Syu`. Se você mudar o
+# caminho ou o conteúdo aqui, mude lá junto — é um contrato entre os dois.
+#
+# ── Uso ──────────────────────────────────────────────────────────────────────
+#   ./build-local.sh                 # gera o .pkg.tar.zst como parte do build
+#   cd packaging/arch && makepkg -f  # avulso, a partir do .deb já no disco
+#   SHVIA_DEB=/caminho/x.deb makepkg -f   # apontando um .deb específico
+#
+# `makepkg` NÃO roda como root (ele recusa) e precisa de `fakeroot`, que vem no
+# grupo base-devel.
+
+pkgname=shvia-desktop
+pkgdesc="ShvIA Desktop — cliente da plataforma de IA da Blue3 (ai.shvia.org)"
+arch=('x86_64' 'aarch64')
+url="https://ai.shvia.org"
+license=('custom:proprietary')
+
+# Runtime do Tauri no Linux, com os nomes do pacman — os do Debian
+# (libwebkit2gtk-4.1-0, libgtk-3-0) não existem aqui e o pacote sairia
+# ininstalável. `libayatana-appindicator` entra porque o app usa tray-icon
+# (ADR-024, bandeja); `hicolor-icon-theme` porque o pacote instala ícones em
+# /usr/share/icons/hicolor.
+depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'hicolor-icon-theme')
+
+# `!strip`: o binário já veio empacotado e assinado pelo pipeline; deixar o
+# makepkg reescrevê-lo não traz ganho e mexe num artefato que o release.json
+# descreve por sha256.
+# `!debug`: sem pacote -debug, que exigiria símbolos que este binário não traz.
+options=('!strip' '!debug')
+
+install="${pkgname}.install"
+
+# ── Versão e origem: a mesma fonte única do resto do repo ────────────────────
+# `version.md` é a fonte da versão em todo o projeto (AGENTS.md). Ler daqui evita
+# a classe de erro "PKGBUILD com a versão de ontem", que produz um pacote que o
+# pacman considera mais VELHO que o instalado e se recusa a atualizar sem -f.
+_raiz="$(cd "${startdir}/../.." && pwd)"
+pkgver="$(tr -d ' \t\n\r' < "${_raiz}/version.md")"
+pkgrel=1
+
+# amd64/arm64 no mundo deb, x86_64/aarch64 no pacman — ninguém traduz sozinho.
+case "$CARCH" in
+  x86_64)  _debarch=amd64 ;;
+  aarch64) _debarch=arm64 ;;
+  *)       _debarch="$CARCH" ;;
+esac
+
+# Sem `source=()`: o insumo é um artefato desta árvore, não algo a baixar. Um
+# `file://` obrigaria a duplicar 7 MB dentro de src/ a cada empacotamento e
+# ainda pediria noextract, porque o makepkg tentaria abrir o .deb sozinho.
+_deb="${SHVIA_DEB:-${_raiz}/src-tauri/target/release/bundle/deb/ShvIA_${pkgver}_${_debarch}.deb}"
+source=()
+sha256sums=()
+
+prepare() {
+  if [ ! -f "$_deb" ]; then
+    echo "==> .deb não encontrado: $_deb" >&2
+    echo "    rode ./build-local.sh (ou aponte com SHVIA_DEB=/caminho/x.deb)" >&2
+    return 1
+  fi
+}
+
+package() {
+  # O .deb é um arquivo `ar` com data.tar.<comp> dentro; o bsdtar lê os dois
+  # níveis. Ele vem do libarchive, que o próprio pacman exige — está sempre
+  # presente num Arch, não precisa entrar em makedepends.
+  bsdtar -xOf "$_deb" 'data.tar.*' | bsdtar -xf - -C "$pkgdir"
+
+  # Marcador de origem — o contrato com src-tauri/src/updater.rs (ver cabeçalho).
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/${pkgname}/instalado-por" <<<'pacman'
+}

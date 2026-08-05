@@ -21,7 +21,9 @@ Saída em `src-tauri/target/release/bundle/`. Opções (Linux/macOS): `--skip-np
 
 ## Targets por SO
 
-- **Linux** — `.deb` + `.AppImage` (+ `.rpm`), via `targets: "all"` do `tauri.conf.json`.
+- **Linux** — `.deb` + `.AppImage` (+ `.rpm`), via `targets: "all"` do `tauri.conf.json`,
+  **+ `.pkg.tar.zst`** (Arch), que não vem do bundler do Tauri — ver
+  [Arch Linux](#arch-linux-pkgtarzst--repo-pacman).
 - **macOS** — `.dmg` + `.app.tar.gz`.
 - **Windows** — `.msi` (WiX) + `-setup.exe` (NSIS).
 
@@ -30,6 +32,9 @@ Saída em `src-tauri/target/release/bundle/`. Opções (Linux/macOS): `--skip-np
 - **Comum:** Node 20, Rust (`rustup default stable`).
 - **Linux (Debian/Ubuntu):**
   `sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf`
+- **Linux (Arch):**
+  `sudo pacman -S --needed base-devel webkit2gtk-4.1 curl wget file openssl libayatana-appindicator librsvg xdotool patchelf`
+  (`base-devel` traz `makepkg` + `fakeroot`, que empacotam o `.pkg.tar.zst`)
 - **macOS:** `xcode-select --install`.
 - **Windows:** Rust + MSVC ("Desktop development with C++") e WebView2 (já vem no Win 11).
 
@@ -45,6 +50,60 @@ Em ambiente **remoto/VM/NVIDIA sem acesso a DRM**, o app empacotado pode abrir c
 **janela em branco** (quirk do WebKitGTK — ver [decisoes.md](decisoes.md), ADR-006).
 Para abrir ali, rode com **`WEBKIT_DISABLE_DMABUF_RENDERER=1`** (render por
 software). Não afeta o build, só a execução. Em máquina com GPU real, abre normal.
+
+## Arch Linux (`.pkg.tar.zst` + repo pacman)
+
+O bundler do Tauri 2.x não gera pacote pacman, então ele sai do
+[`packaging/arch/PKGBUILD`](../packaging/arch/PKGBUILD), que **reempacota o `.deb`**
+recém-gerado em vez de recompilar. Dois caminhos, escolhidos pela distro que roda
+o build (o `build-local.sh` detecta por `/etc/os-release`, `ID` + `ID_LIKE`):
+
+| Build roda em | Ferramenta | Resultado |
+|---|---|---|
+| Arch (ou derivada) | `makepkg` com o PKGBUILD | pacote nativo, com hook de pós-instalação e o marcador de origem |
+| Debian/Ubuntu | `fpm -s deb -t pacman` | conversão best-effort, **sem** o marcador de origem |
+
+A diferença não é cosmética: sem o marcador o app tenta se auto-atualizar e falha
+(próxima seção). **Para o pacote bom, rode o build numa máquina Arch.**
+
+Avulso, a partir de um `.deb` que já está no disco:
+
+```bash
+cd packaging/arch && makepkg -f
+SHVIA_DEB=/caminho/x.deb makepkg -f     # apontando outro .deb
+```
+
+### No Arch, quem atualiza é o pacman — não o app (ADR-028)
+
+O `tauri-plugin-updater` não tem instalador de pacman: `bundle_type()` só devolve
+`Deb`/`Rpm`/`AppImage`/`Msi`/`Nsis`. Como o pacote sai do payload do `.deb`, o
+binário chega marcado como **DEB** — e o plugin rodaria `pkexec dpkg -i`, que não
+existe no Arch, **depois** de baixar ~80 MB.
+
+Por isso o pacote instala `/usr/share/shvia-desktop/instalado-por` com o conteúdo
+`pacman`, e o [`src-tauri/src/updater.rs`](../src-tauri/src/updater.rs) lê esse
+arquivo: havendo versão nova, ele **avisa e manda rodar `pacman -Syu`** em vez de
+oferecer o download. É um contrato entre os dois arquivos — mudou um, mude o outro.
+
+O `--publish` sobe, junto dos artefatos, o banco do repositório
+(`shvia.db`, `shvia.db.tar.gz`, `shvia.files`, `shvia.files.tar.gz`, gerados por
+`repo-add`). Do lado do usuário, em `/etc/pacman.conf`:
+
+```ini
+[shvia]
+SigLevel = Optional TrustAll
+Server = https://ai.shvia.org/storage/desktop
+```
+
+`SigLevel = Optional TrustAll` porque o pacote **não é assinado por GPG** — a
+assinatura minisign do pipeline cobre os artefatos do updater, e o pacman não a
+entende. Assinar o repo com GPG é o passo que falta para tirar o `TrustAll`.
+
+O banco é regerado a cada build e lista **só a versão corrente**: a máquina de build
+só tem o pacote que ela acabou de gerar, e o repo existe para servir a última versão.
+
+Sem `repo-add` no PATH (no Debian ele vem em `pacman-package-manager`), o `.pkg` ainda
+é publicado — só não há `pacman -Syu`, e a instalação vira `pacman -U <arquivo>`.
 
 ## Distribuição
 

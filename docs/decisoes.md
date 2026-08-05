@@ -1418,3 +1418,95 @@ Detalhes que a implementação precisa manter:
 - **Fica de fora:** filtro de extensão no diálogo nativo. O `<input>` tem um `accept=` com
   60 extensões; replicá-lo em `add_filter` sem manter os dois em sincronia daria uma lista
   que mente. O servidor valida de qualquer forma.
+
+---
+
+## ADR-028 — No Arch, quem atualiza o app é o pacman; o auto-update se cala
+
+- **Data:** 05/08/2026 · **Status:** Aceito
+
+### Contexto
+
+A máquina de desenvolvimento do Samir passou a ser Arch Linux, e o `build-local.sh`
+só sabia falar Debian: o preflight sugeria `apt-get install` (comando que não existe
+lá) e o pacote pacman saía de uma conversão do `.deb` por `fpm` — desenho feito para
+gerar pacote de Arch **sem ter um Arch**, que deixa de fazer sentido quando o build
+roda num.
+
+Ao ligar o pacote no `--publish`, apareceu a pergunta que decide o desenho: um app
+instalado por pacman se atualiza sozinho, como no macOS e no Windows?
+
+**Não.** Verificado no fonte do `tauri-plugin-updater` 2.10.1:
+
+- `bundle_type()` (`tauri-utils`) lê um marcador que o **bundler grava no binário**
+  por binary-patching. Os valores possíveis são `Deb`, `Rpm`, `AppImage`, `Msi`,
+  `Nsis`. **Não existe variante pacman,** e o enum `Installer` também não tem.
+- `install_inner` despacha `Deb → dpkg -i`, `Rpm → rpm -U`, e **todo o resto cai no
+  `install_appimage`**, que sobrescreve o executável em execução.
+
+Os dois finais possíveis para um pacote Arch, portanto:
+
+| Pacote montado a partir de | Marcador | O que acontece no update |
+|---|---|---|
+| payload do `.deb` | `DEB` | pede `?bundle=deb`, baixa ~80 MB e roda `pkexec dpkg -i` — **não há dpkg no Arch**. Com dpkg do AUR seria pior: arquivo Debian em sistema pacman, fora do banco de pacotes |
+| binário cru | `UNK` | cai no `install_appimage` e tenta sobrescrever `/usr/bin/shvia-desktop`. Root-owned → nega; como root, corrompe o pacote instalado |
+
+Não é um bug a corrigir: é o modelo do Arch. Em `/usr` quem manda é o gerenciador de
+pacotes, e um app que se reescreve ali sai do banco de dados do pacman.
+
+### Decisão
+
+**O pacote Arch é de instalação, não de auto-update. Quem atualiza é o `pacman -Syu`.**
+
+- O `build-local.sh` detecta a distro por `/etc/os-release` (`ID` + `ID_LIKE`, para
+  cobrir Manjaro/EndeavourOS e Ubuntu/Mint) e escolhe: **`makepkg`** com o
+  `packaging/arch/PKGBUILD` num Arch, **`fpm`** convertendo o `.deb` num Debian. O
+  caminho `fpm` fica porque a máquina de build pode não ser Arch — e um pacote
+  convertido é melhor que nenhum.
+- O PKGBUILD **reempacota o `.deb`**, não recompila. Compilar de novo produziria o
+  mesmo binário e exigiria a chave privada do updater dentro do `makepkg`, tirando o
+  segredo de onde ele mora.
+- O pacote instala **`/usr/share/shvia-desktop/instalado-por`** com o conteúdo
+  `pacman`. O `updater.rs` lê esse arquivo e, havendo versão nova, **avisa e manda
+  rodar `pacman -Syu`** em vez de oferecer o download.
+- O `--publish` sobe também o **banco do repositório** (`repo-add`), para o usuário
+  receber versão nova por `pacman -Syu` em vez de baixar arquivo à mão.
+
+### Por que um arquivo marcador, e não perguntar ao plugin
+
+Porque o plugin não tem a resposta — ele se diz `DEB`, que é verdade sobre a origem
+do payload e mentira sobre a instalação. `pacman -Qo` responderia, mas custa um
+processo a cada checagem e falha quando o pacman não está no PATH. Um `stat` a cada
+6 h resolve, e vale mesmo com o sistema meio quebrado.
+
+O preço é um contrato entre `packaging/arch/PKGBUILD` e `src-tauri/src/updater.rs`:
+mudar o caminho ou o conteúdo num exige mudar no outro, e esquecer é **silencioso** —
+o app volta a tentar o update que não funciona. Está escrito no cabeçalho dos dois.
+
+A leitura é **fail-open**: ausente, ilegível ou com outro conteúdo = não é pacman.
+Errar para "tenta atualizar" preserva o comportamento de toda instalação que não é do
+pacote Arch; errar para o outro lado desligaria o auto-update de quem depende dele, em
+silêncio.
+
+### Consequências
+
+- **O `.pkg.tar.zst` entra no `release.json`** como artefato de **download**, nunca de
+  updater: sai sem `.sig` de propósito. Como o endpoint do ShvIA ignora artefato sem
+  assinatura, a entrada é inerte para o auto-update — não há como o app oferecer um
+  pacote que não saberia instalar. Isto **revoga** a nota de 1.1.15 que mantinha o
+  pacote fora do manifesto.
+- **O repo pacman não é assinado com GPG,** então o `pacman.conf` do usuário pede
+  `SigLevel = Optional TrustAll`. A assinatura minisign do pipeline cobre os artefatos
+  do updater e o pacman não a entende. Assinar o repo é o passo que falta para tirar o
+  `TrustAll` — enquanto isso, a integridade vem do HTTPS e do sha256 no manifesto.
+- **Pacote gerado por `fpm` (build num Debian) sai SEM o marcador** e, instalado, tenta
+  o auto-update que falha. O build avisa isso na hora. Para o pacote bom, buildar num
+  Arch.
+- **O banco do repo lista só a versão corrente.** A máquina de build só tem o pacote
+  que acabou de gerar, e o repo existe para servir a última versão.
+- **Quem quer auto-update no Linux continua tendo o AppImage** — é o único formato que
+  se substitui sozinho, porque o arquivo é do usuário.
+- **Validado:** `cargo test` (4/4, inclusive o novo teste do marcador), `cargo clippy`
+  limpo, `bash -n` no script. **NÃO validado:** o caminho `makepkg` de ponta a ponta —
+  a máquina onde isto foi escrito é Debian 13, sem `makepkg`, `bsdtar` nem `repo-add`.
+  Precisa de uma passada num Arch antes de publicar.

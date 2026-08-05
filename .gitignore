@@ -78,3 +78,12 @@ dist/
 # sidecar do bundle. É ARTEFATO: binário de 8 MB versionado seria peso morto no
 # git, e a versão certa depende de qual `anna` a máquina de build tem.
 src-tauri/binaries/
+
+# ── makepkg (pacote Arch) ───────────────────────────────────────────────────
+# O build passa BUILDDIR=/tmp, mas `cd packaging/arch && makepkg -f` à mão (fluxo
+# documentado em docs/build.md) escreve src/ e pkg/ AQUI, dentro da árvore
+# versionada. São diretórios de trabalho: src/ é a cópia do insumo e pkg/ é o
+# staging do $pkgdir. O .pkg.tar.zst em si sai em src-tauri/target/ (já ignorado).
+packaging/arch/src/
+packaging/arch/pkg/
+packaging/arch/*.pkg.tar.*
