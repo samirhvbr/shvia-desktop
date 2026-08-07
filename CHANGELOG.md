@@ -3,6 +3,29 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.17 - Saneia o .continue: estado-atual descrevia a 0.8.0 com o repo na 1.1.16
+
+- `estado-atual.md` reconstruído a partir do `git log` real. Ele listava como
+  pendência coisa entregue há semanas — offline v2 (1.1.13), updater (1.0.0),
+  tray (1.1.0), diagnóstico (1.1.4) e o `anna` no instalador (0.18.0) — e quem
+  lesse ia refazer trabalho pronto. O que não deu para confirmar (microfone e
+  Ctrl+V de imagem no WebKitGTK) ficou marcado como **não reavaliado**, não como
+  pendente: afirmar que continua quebrado sem testar seria inventar status.
+- Entram as duas pendências reais que a 1.1.16 criou: o caminho `makepkg` nunca
+  rodou (foi escrito numa máquina Debian, sem makepkg/bsdtar/repo-add), e o
+  `release-manifest.mjs` derruba a entrada do `.pkg` do manifesto quando se
+  publica de uma máquina Linux que não gera pacote Arch.
+- Dois links mortos consertados: `SAMIR-v1.md` (removido na 1.1.6) e a âncora
+  `#decisões-em-aberto`, que no escopo é `#7-decisões-em-aberto`.
+- `arch.md` encolhido para o que segue em aberto — SSHVTERM-DESKTOP e
+  GITHUB-DESKTOP ainda na rota `fpm`. A parte que virou decisão estável está em
+  docs/build.md e no ADR-028, que é a convenção da pasta (nota madura vira doc e
+  sai daqui). Fica registrado ali que qualquer repo que ganhe pacote pacman
+  herda o problema do auto-update, e sem o marcador entrega um update que falha
+  no fim do download.
+- `README.md` do `.continue` passa a listar o `arch.md`, que existia desde 04/08
+  sem estar na tabela.
+
 ## 1.1.16 - Build nativo no Arch (makepkg + repo pacman) e o app para de tentar auto-update lá
 
 - `build-local.sh` detecta a distro por `/etc/os-release` (`ID` + `ID_LIKE`, cobrindo

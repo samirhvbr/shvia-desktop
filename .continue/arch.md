@@ -1,18 +1,71 @@
-Sim — agora os três build scripts geram pacote Arch (.pkg.tar.zst)
-Rota implementada: conversão do .deb via fpm no próprio host Debian de build (web1), sem precisar de máquina Arch. Em todos, é best-effort: sem fpm no PATH, o script avisa como instalar e segue sem derrubar o build.
+# Pacote Arch (.pkg.tar.zst) nos repos de desktop
 
-SSHVTERM-DESKTOP (1.2.45) — build-local.sh: bloco novo após o bundle do Tauri converte o .deb com deps mapeadas para o Arch (webkit2gtk-4.1, gtk3); sai em bundle/pacman/ e aparece na listagem final. Idempotente no reuso de build.
+> **Saneado em 07/08/2026.** Este arquivo descrevia o `fpm` como "a rota
+> implementada" nos três repos. Para **este** repo isso deixou de ser verdade na
+> 1.1.16, e a parte que virou decisão estável migrou para
+> [`../docs/build.md`](../docs/build.md#arch-linux-pkgtarzst--repo-pacman) e o
+> **ADR-028** — que é a convenção do `.continue/` (nota madura vira doc e sai
+> daqui). O que sobrou aqui é o que continua **em aberto**: os outros dois repos.
 
-SHVIA-DESKTOP (1.1.14 → 1.1.15) — mesmo bloco no build-local.sh, com libayatana-appindicator a mais (o app usa tray-icon). Criei o CHANGELOG.md que faltava (o handoff que o COMMITTER espera).
+## Contexto
 
-GITHUB-DESKTOP (0.4.0 → 0.4.1) — buildPacman novo em script/package.ts registrado no fan-out best-effort do Linux (default agora deb,rpm,appimage,pacman, selecionável por LINUX_FORMATS); deps espelham o github-desktop-bin do AUR. tsc limpo.
+Em 04/08/2026 os três repos de desktop ganharam pacote Arch pela mesma rota:
+**converter o `.deb` com `fpm`** no próprio host Debian de build, sem precisar de
+máquina Arch. Fazia sentido enquanto a máquina de desenvolvimento era macOS e a
+de build era Debian.
 
-Avisos importantes
-Não testei o caminho Linux — estamos no macOS e esse código só roda em host Linux. No web1, antes do primeiro build:
+Desde então o Samir passou a usar **Arch Linux**, e a premissa virou pelo avesso:
+num Arch, converter `.deb` é contorno sem motivo — `makepkg` faz o pacote nativo.
 
-sudo apt install ruby ruby-dev build-essential zstd libarchive-tools && sudo gem install fpm
-O .pkg.tar.zst fica fora do --publish por enquanto, nos dois Tauri — motivos diferentes, anotados nos scripts:
-sshvterm: o releases:add do site recusa a extensão (ALLOWED_EXTENSIONS no SSHVTERM-WEB) → follow-up lá;
-shvia: o fpm não gera .sig e o endpoint trata artefato sem assinatura como inexistente — entraria no manifesto e quebraria a verificação da publicação.
-Commits: sshvterm e shvia estão com árvore pronta para o COMMITTER (version.md + changelog). O GITHUB-DESKTOP não tem .committer.yml — deixei as mudanças sem commit; me avisa se quiser que eu commite (development).
-Lembrete: o AppImage que os três já geram roda no Arch hoje, sem esperar nada disso.
+## Situação por repo
+
+| Repo | Rota hoje | Pendência |
+|---|---|---|
+| **SHVIA-DESKTOP** | ✅ `makepkg` + PKGBUILD + repo pacman (1.1.16) | validar numa máquina Arch — ver [`estado-atual.md`](estado-atual.md) §1 |
+| **SSHVTERM-DESKTOP** (1.2.46) | `fpm` puro em `build-local.sh` | mesmo retrabalho da 1.1.16 |
+| **GITHUB-DESKTOP** | `buildPacman`/fpm em `script/package.ts` | mesmo retrabalho da 1.1.16 |
+
+Caminhos: `/home/samir/x/SSHVTERM/SSHVTERM-DESKTOP/build-local.sh` e
+`/home/samir/x/GITHUB-DESKTOP/script/package.ts`.
+
+## O que o retrabalho da 1.1.16 envolveu (o molde para os outros dois)
+
+1. **Detecção de distro** por `/etc/os-release` (`ID` + `ID_LIKE`, para cobrir
+   Manjaro/EndeavourOS e Ubuntu/Mint), escolhendo `makepkg` num Arch e mantendo
+   `fpm` como fallback num Debian.
+2. **PKGBUILD que reempacota o `.deb`** em vez de recompilar — mesmo binário, e
+   sem levar a chave privada do updater para dentro do `makepkg`.
+3. **`repo-add`** gerando o banco do repositório, para o usuário atualizar com
+   `pacman -Syu` em vez de baixar arquivo à mão.
+4. **O guard do auto-update** — ver abaixo, é o item que não é óbvio.
+
+## ⚠️ O que descobrimos e vale para os três: pacman não se auto-atualiza
+
+Verificado no fonte do `tauri-plugin-updater` 2.10.1:
+
+- `bundle_type()` lê um marcador que o **bundler grava no binário**; os valores
+  possíveis são `Deb`, `Rpm`, `AppImage`, `Msi`, `Nsis`. **Não existe pacman.**
+- `install_inner` despacha `Deb → dpkg -i`, `Rpm → rpm -U`, e **todo o resto cai
+  no `install_appimage`**, que sobrescreve o executável em execução.
+
+Como o pacote Arch sai do payload do `.deb`, o binário se diz **DEB** — e o app
+tentaria `pkexec dpkg -i` **depois de baixar ~80 MB**, num sistema que não tem
+dpkg. A solução em SHVIA-DESKTOP foi um marcador
+(`/usr/share/shvia-desktop/instalado-por`) que o app lê para avisar
+"rode `pacman -Syu`" em vez de tentar instalar.
+
+**Qualquer um dos outros dois que ganhe pacote pacman herda esse problema**, e um
+pacote sem o guard entrega ao usuário um update que falha no fim do download.
+
+## Bloqueio conhecido no SSHVTERM
+
+O `.pkg.tar.zst` de lá está fora do `--publish` por um motivo diferente do nosso:
+o `releases:add` do site **recusa a extensão** (`ALLOWED_EXTENSIONS` no
+SSHVTERM-WEB). Enquanto isso não mudar, a distribuição do pacote Arch daquele
+repo é manual — mesmo com o build gerando o arquivo.
+
+## Lembrete
+
+O **AppImage** que os três já geram roda no Arch hoje, sem depender de nada
+disso — e é o único formato Linux que **se auto-atualiza de verdade**, porque o
+arquivo é do usuário.

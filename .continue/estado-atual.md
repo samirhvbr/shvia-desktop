@@ -1,91 +1,103 @@
 # ShvIA Desktop — Estado e Continuidade
 
-> **Ler primeiro.** Notas de continuidade (WIP/pendências). O que **já está
-> implementado** migrou para [`../docs/funcionalidades.md`](../docs/funcionalidades.md).
-> Última atualização: **30/06/2026**.
+> **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
+> está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
+> e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
+> Última atualização: **07/08/2026** (versão 1.1.16).
+
+> ⚠️ **Saneado em 07/08/2026.** Este arquivo estava descrevendo a **0.8.0** —
+> catorze versões atrás — e listava como pendência coisa entregue há semanas
+> (offline v2, updater, tray, anna no instalador). Quem lesse ia refazer trabalho
+> pronto. As seções abaixo foram reconstruídas a partir do `git log` real, e o
+> que não deu para confirmar está marcado como **não reavaliado**, não como
+> pendente.
 
 ## Onde estamos
 
-> **0.8.0 (15/07/2026) — Notificações nativas dos alertas de preço.** O rastreador
-> de preços do ShvIA (server) ganhou alertas; o desktop agora os mostra como
-> **notificação nativa do SO** mesmo com a janela em segundo plano. Ponte reusa o
-> canal do Modo Code + `tauri-plugin-notification` (só API Rust, sem capability —
-> ADR-011). `cargo check`/`clippy` passam. **Pendente:** teste ao vivo no **`.app`
-> build** (no macOS a notificação exige app empacotado/assinado — em `tauri dev`
-> pode não aparecer).
+**1.1.16** — o app se auto-atualiza (ADR-022), tem bandeja nos 3 SOs (ADR-024),
+diagnóstico próprio (ADR-025), diálogo de arquivo nativo (ADR-027) e empacota
+para Linux (deb/rpm/AppImage/**pacman**), macOS (dmg) e Windows (msi/nsis). O
+`anna` viaja dentro do instalador desde a 0.18.0 — o Modo Code não tem mais
+pré-requisito externo.
 
-**Versão lançada com 2 pendências conhecidas.** A **Fase 1** está completa e validada
-(app abre, loga por cookie, chat com **streaming SSE** funciona) e a **Fase 2** está
-bem encorpada (multi-janela, branding, estado de janela, links externos, tela
-offline, **empacotamento local** — `build-local.*` nos 3 SOs). O que funciona em detalhe está em
-[../docs/funcionalidades.md](../docs/funcionalidades.md); como buildar em
-[../docs/build.md](../docs/build.md).
+As fases F1 e F2 estão entregues. O detalhe do que funciona está em
+[`../docs/funcionalidades.md`](../docs/funcionalidades.md); como buildar, em
+[`../docs/build.md`](../docs/build.md).
 
-## Pendências ativas (os 2 problemas desta versão)
+## Pendências ativas
 
-> Lançamos **com** esses dois em aberto — são **limitações do WebKitGTK no Linux**
-> (ADR-008), não do nosso código (que faz a parte dele).
+### 1. O caminho `makepkg` (Arch) nunca rodou de verdade — 1.1.16
 
-1. **Microfone (voz) não captura.** O shell habilita `getUserMedia`
-   (`enable-media-stream`/`mediasource`/`webrtc` + concede o `permission-request`) e
-   o WebKitGTK **enumera o device** (ex.: BRIO), mas a **captura efetiva** não vai.
-2. **Ctrl+V de imagem não cola.** `javascript-can-access-clipboard` ligado, mas o
-   WebKitGTK não expõe a **imagem** do clipboard à página (texto funciona).
+A 1.1.16 trocou a geração do pacote Arch de `fpm` (conversão do `.deb`) para
+`makepkg` nativo com [`../packaging/arch/PKGBUILD`](../packaging/arch/PKGBUILD),
+e ligou o repositório pacman no `--publish`. **Nada disso foi executado:** foi
+escrito numa máquina Debian, que não tem `makepkg`, `bsdtar` nem `repo-add`.
 
-**Caminhos:** (a) validar em **macOS (WKWebView)** e **Windows (WebView2/Chromium)** —
-tendem a suportar; (b) se virarem **must-have no Linux**, **fallback Electron**
-(Chromium — ADR-003/006/008). Decisão de produto.
+O que precisa de uma passada **numa máquina Arch**:
 
-## Modo Code no Windows (11/07/2026 — ADR-010)
+- `./build-local.sh` até o fim — o `.pkg.tar.zst` sai em `bundle/pacman/`?
+- `repo-add` gera `shvia.db`/`shvia.files` e os links viram arquivo de verdade?
+- `sudo pacman -U` instala, e o marcador
+  `/usr/share/shvia-desktop/instalado-por` aparece com o conteúdo `pacman`?
+- Com o marcador presente, o app **avisa para rodar `pacman -Syu`** em vez de
+  tentar baixar o update (é o ponto do ADR-028).
 
-Implementada a **ponte do Modo Code no Windows (WebView2)** — antes o toggle
-Chat|Code só aparecia no Linux/macOS (a ponte só falava WebKit). Agora o
-`BRIDGE_JS` também fala `window.chrome.webview`, com o novo `windows_ipc.rs`
-(`add_WebMessageReceived`) espelhando o `macos_ipc.rs`, e `resolve_anna()`
-cross-platform. `cargo check`/`clippy` **cruzados p/ windows-msvc passam**;
-o **`anna.exe`** ganhou CI (`SHVIA-CODE/.github/workflows/build-windows.yml`).
-**Pendente de você:** buildar o desktop no Windows + colocar o `anna.exe` no
-PATH e validar o loop ao vivo. **Próximo passo (opcional):** empacotar o
-`anna.exe` como resource do instalador (hoje precisa estar no PATH).
+Contexto e o porquê: [ADR-028](../docs/decisoes.md) e
+[`../docs/build.md`](../docs/build.md#arch-linux-pkgtarzst--repo-pacman).
 
-## Radar / próximos passos
+### 2. `release-manifest.mjs` derruba o `.pkg` do manifesto
 
-- **F2:** menu nativo ✅, About ✅, **Diagnóstico** ✅ (1.1.1, ADR-025 — o About exibe,
-  este VERIFICA), **config de URL** ✅ (ADR-019) e **tray/menubar** ✅
-  na **1.1.0** (ADR-024) — com "iniciar com o sistema" nos 3 SOs e fechar recolhendo em
-  vez de encerrar, que é o que fecha o buraco do ADR-011 (alerta de preço com a janela
-  fechada). Resta a **offline v2** (ping no Rust, p/ quedas que o `navigator.onLine` não
-  pega).
-- **F4 (assinatura/release):** **macOS ✅** — Developer ID + notarização + staple já
-  no `build-local.sh` (credencial no keychain, serviço `shvia-notarize`; ver
-  [../docs/build.md](../docs/build.md#macos--implementado-no-build-localsh)). Impede o
-  macOS de mandar o app baixado p/ a **lixeira**. **Updater ✅ (1.0.0)** — par minisign
-  gerado 28/07, plugin ligado, endpoint segue o servidor configurado (ADR-022); a
-  privada mora na máquina de release + cofre e tem de estar no ambiente do build.
-  **Pendente:** Authenticode **EV** Windows. **CI (Actions) removida por custo.**
-- **Roadmap (ideias do time, em [SAMIR-v1.md](SAMIR-v1.md)):** Anthropic como
-  **infra/modelo** alternativo; **rotinas agendadas**; **conectores** (Carbonio mail,
-  Google Calendar, etc.).
+O merge do `release.json` é **por plataforma** — `manifesto.platforms[PLATAFORMA]`
+é substituído inteiro. Com duas máquinas Linux (uma Arch que gera `.pkg`, uma
+Debian que não gera), publicar da Debian **apaga do manifesto** a entrada que a
+Arch publicou.
+
+É a mesma classe do bug que o `fetch_remote_manifest` já resolve entre
+macOS/Windows/Linux, só que agora **dentro** do linux. O repositório pacman em si
+sobrevive (o `shvia.db` é arquivo separado); o que se perde é a entrada no
+manifesto. Correção estimada em ~10 linhas, ainda não feita.
+
+### 3. WebKitGTK no Linux — **não reavaliado desde julho/2026**
+
+Os dois vieram da 0.8.0 e **não há commit indicando conserto**, mas também não
+foram testados de novo. São limitações do WebKitGTK (ADR-008), não do nosso
+código:
+
+1. **Microfone não captura.** O shell habilita `getUserMedia` e o WebKitGTK
+   enumera o device, mas a captura efetiva não vai.
+2. **Ctrl+V de imagem não cola.** Texto funciona; o WebKitGTK não expõe a imagem
+   do clipboard à página.
+
+**Caminhos:** validar em macOS (WKWebView) e Windows (WebView2), que tendem a
+suportar; se virarem must-have no Linux, o fallback é Electron (ADR-003/006/008).
+Decisão de produto, não de engenharia.
+
+### 4. Windows — validação ao vivo
+
+A ponte do Modo Code no Windows (WebView2) entrou na ADR-010 e o `cargo check`
+cruzado passa, mas **o loop nunca foi validado numa máquina Windows real**. O
+sub-item "colocar o `anna.exe` no PATH" **caiu**: desde a 0.18.0 o `anna` vai
+dentro do instalador.
+
+Falta também o **Authenticode EV** (o macOS já tem Developer ID + notarização +
+staple no `build-local.sh`).
 
 ## Decisões em aberto (confirmar com o time)
 
-- [ ] **Online-only é aceitável** como propriedade de produto? (toda a arquitetura
-      fina depende disso). Ver [escopo](escopo-projeto.md#decisões-em-aberto).
+- [ ] **Online-only é aceitável** como propriedade de produto? Toda a arquitetura
+      de casca fina depende disso. Ver [escopo](escopo-projeto.md#7-decisões-em-aberto).
 - [ ] **Verba + dono** do cert EV Windows (~US$300–600/ano) e Apple Developer
-      (US$99/ano). A **rotação** da chave do updater ganhou custo real com a 1.0.0:
+      (US$99/ano). A **rotação da chave do updater** ganhou custo real na 1.0.0:
       a pubkey fica compilada no binário, então rotacionar exige que todo install
       existente seja reinstalado à mão. Definir dono e periodicidade.
-- [ ] **Funções idênticas ao web** ou haverá **telas desktop-only**?
-- [ ] **URL de DEV** do ShvIA (além de produção `ai.shvia.org`).
-- [ ] **App ID** `cloud.blue3.shvia` — confirmar (usado como default).
+- [ ] **Funções idênticas ao web** ou haverá telas desktop-only?
+- [ ] **URL de DEV** do ShvIA, além da produção `ai.shvia.org`.
 
 ## Ponteiros
 
-- O que já funciona: [../docs/funcionalidades.md](../docs/funcionalidades.md)
-- Build/empacotamento: [../docs/build.md](../docs/build.md)
-- Arquitetura: [../docs/arquitetura.md](../docs/arquitetura.md) · ADRs:
-  [../docs/decisoes.md](../docs/decisoes.md)
-- Escopo/fases: [escopo-projeto.md](escopo-projeto.md) · Roteiro F0/F1:
-  [../docs/roteiro-fundacao.md](../docs/roteiro-fundacao.md)
-- **A verificar no ShvIA (servidor):** middleware de auth de `/chat`
-  (`routes/web.php`, ADR-005); streaming SSE em `public/js/app.js` (~linha 4003, ADR-006).
+- O que já funciona: [`../docs/funcionalidades.md`](../docs/funcionalidades.md)
+- Build/empacotamento: [`../docs/build.md`](../docs/build.md)
+- Arquitetura: [`../docs/arquitetura.md`](../docs/arquitetura.md) · ADRs:
+  [`../docs/decisoes.md`](../docs/decisoes.md)
+- Escopo/fases: [`escopo-projeto.md`](escopo-projeto.md)
+- Pacote Arch nos repos irmãos: [`arch.md`](arch.md)

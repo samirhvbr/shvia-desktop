@@ -16,7 +16,8 @@ construídas, briefings para "continuar" depois.
 
 | Arquivo | Papel |
 |---------|-------|
-| [`estado-atual.md`](estado-atual.md) | **Ler primeiro.** Onde paramos, decisões tomadas, próximos passos. |
+| [`estado-atual.md`](estado-atual.md) | **Ler primeiro.** O que está em aberto. Saneado em 07/08/2026 — antes descrevia a 0.8.0 estando o repo na 1.1.16. |
+| [`arch.md`](arch.md) | Pacote Arch (`.pkg.tar.zst`) nos três repos de desktop. Aqui só o que segue em aberto: SSHVTERM-DESKTOP e GITHUB-DESKTOP ainda na rota antiga (`fpm`). |
 | [`escopo-projeto.md`](escopo-projeto.md) | Escopo, arquitetura e riscos de 30/06. O **plano de fases está quase todo entregue** e traz aviso no topo — ler como pendência faria alguém refazer coisa pronta. |
 
 Removido em 28/07/2026: `NEW-escopo-projeto.md` — era a especificação de **provedores de
