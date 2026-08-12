@@ -44,6 +44,16 @@ license=('custom:proprietary')
 # /usr/share/icons/hicolor.
 depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'hicolor-icon-theme')
 
+# ── Migração do nome antigo ──────────────────────────────────────────────────
+# Até a 1.1.17 a rota `fpm` do build-local.sh publicava este mesmo app com o nome
+# `shv-ia` (herdado do pacote Debian de onde ela convertia). Sem `replaces` o
+# `pacman -Syu` não vê relação entre os dois nomes: quem instalou o `shv-ia`
+# ficaria parado na 1.1.17 para sempre, sem erro nenhum na tela. `conflicts`
+# porque os dois entregam /usr/bin/shvia-desktop — sem ele o pacman aborta a
+# transação por conflito de arquivo em vez de substituir o pacote (ADR-029).
+replaces=('shv-ia')
+conflicts=('shv-ia')
+
 # `!strip`: o binário já veio empacotado e assinado pelo pipeline; deixar o
 # makepkg reescrevê-lo não traz ganho e mexe num artefato que o release.json
 # descreve por sha256.

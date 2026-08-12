@@ -60,11 +60,19 @@ o build (o `build-local.sh` detecta por `/etc/os-release`, `ID` + `ID_LIKE`):
 
 | Build roda em | Ferramenta | Resultado |
 |---|---|---|
-| Arch (ou derivada) | `makepkg` com o PKGBUILD | pacote nativo, com hook de pós-instalação e o marcador de origem |
-| Debian/Ubuntu | `fpm -s deb -t pacman` | conversão best-effort, **sem** o marcador de origem |
+| Arch (ou derivada) | `makepkg` com o PKGBUILD | pacote nativo, com hook de pós-instalação |
+| Debian/Ubuntu | `fpm -s dir` sobre o payload extraído do `.deb` | mesmo `pkgname`, mesmas deps, mesmo marcador |
 
-A diferença não é cosmética: sem o marcador o app tenta se auto-atualizar e falha
-(próxima seção). **Para o pacote bom, rode o build numa máquina Arch.**
+As duas rotas têm de entregar pacote **equivalente** — mesmo nome (`shvia-desktop`),
+mesmas dependências e o marcador de origem dentro. Não é preciosismo: até a 1.1.17 a
+rota `fpm` saía sem o marcador e com outro nome (`shv-ia`), e o pacote publicado dessa
+forma entregou ao usuário do Arch um update que falha no fim do download
+([ADR-029](decisoes.md#adr-029--o-guard-do-auto-update-não-pode-depender-do-empacotamento)).
+A rota `makepkg` segue sendo a preferida — ela é nativa e tem uma lista de deps só —,
+mas nenhuma das duas é "best-effort".
+
+Quem instalou o `shv-ia` antigo migra sozinho: o PKGBUILD e o `fpm` declaram
+`replaces`/`conflicts` para aquele nome, e o `pacman -Syu` troca o pacote.
 
 Avulso, a partir de um `.deb` que já está no disco:
 
@@ -84,6 +92,11 @@ Por isso o pacote instala `/usr/share/shvia-desktop/instalado-por` com o conteú
 `pacman`, e o [`src-tauri/src/updater.rs`](../src-tauri/src/updater.rs) lê esse
 arquivo: havendo versão nova, ele **avisa e manda rodar `pacman -Syu`** em vez de
 oferecer o download. É um contrato entre os dois arquivos — mudou um, mude o outro.
+
+E o app **não depende só desse contrato** (ADR-029): mesmo sem o marcador, um install
+que se diz `deb` num sistema sem `dpkg` é impedimento suficiente para não oferecer o
+download. É o que segura o caso de um pacote pacman montado por fora do PKGBUILD —
+inclusive um empacotado errado por nós.
 
 O `--publish` sobe, junto dos artefatos, o banco do repositório
 (`shvia.db`, `shvia.db.tar.gz`, `shvia.files`, `shvia.files.tar.gz`, gerados por

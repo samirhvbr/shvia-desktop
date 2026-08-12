@@ -1499,9 +1499,12 @@ silêncio.
   `SigLevel = Optional TrustAll`. A assinatura minisign do pipeline cobre os artefatos
   do updater e o pacman não a entende. Assinar o repo é o passo que falta para tirar o
   `TrustAll` — enquanto isso, a integridade vem do HTTPS e do sha256 no manifesto.
-- **Pacote gerado por `fpm` (build num Debian) sai SEM o marcador** e, instalado, tenta
+- ~~**Pacote gerado por `fpm` (build num Debian) sai SEM o marcador** e, instalado, tenta
   o auto-update que falha. O build avisa isso na hora. Para o pacote bom, buildar num
-  Arch.
+  Arch.~~ **Revogado pelo [ADR-029](#adr-029--o-guard-do-auto-update-não-pode-depender-do-empacotamento)
+  (12/08/2026):** aceitar essa consequência foi o erro. O pacote da 1.1.17 saiu por essa
+  rota e quebrou o update no Arch de verdade. A rota `fpm` passou a instalar o marcador,
+  e o app ganhou um segundo guard que não depende de arquivo nenhum.
 - **O banco do repo lista só a versão corrente.** A máquina de build só tem o pacote
   que acabou de gerar, e o repo existe para servir a última versão.
 - **Quem quer auto-update no Linux continua tendo o AppImage** — é o único formato que
@@ -1510,3 +1513,101 @@ silêncio.
   limpo, `bash -n` no script. **NÃO validado:** o caminho `makepkg` de ponta a ponta —
   a máquina onde isto foi escrito é Debian 13, sem `makepkg`, `bsdtar` nem `repo-add`.
   Precisa de uma passada num Arch antes de publicar.
+
+---
+
+## ADR-029 — O guard do auto-update não pode depender do empacotamento
+
+- **Data:** 12/08/2026 · **Status:** Aceito
+- **Corrige:** [ADR-028](#adr-028--no-arch-quem-atualiza-o-app-é-o-pacman-o-auto-update-se-cala)
+
+### Contexto
+
+O ADR-028 desligou o auto-update no Arch com um marcador de arquivo
+(`/usr/share/shvia-desktop/instalado-por`) instalado pelo `packaging/arch/PKGBUILD`, e
+aceitou por escrito que a rota `fpm` — a que roda quando o build acontece num Debian —
+sairia **sem** o marcador. A frase estava lá, com aviso no terminal do build e tudo.
+
+Cinco dias depois foi exatamente isso que chegou ao usuário. O pacote publicado na
+1.1.17 é `shv-ia-1.1.17-1-x86_64.pkg.tar.zst`, gerado por `fpm` nesta máquina Debian.
+Instalado num Arch, o resultado ao clicar em **Ajuda → Verificar atualizações**:
+
+1. sem marcador, `instalado_por_pacman()` devolve `false`;
+2. o binário vem do payload do `.deb`, então `bundle_type()` diz **DEB** (confirmado:
+   `__TAURI_BUNDLE_TYPE_VAR_DEB` no binário dentro do `.pkg.tar.zst` publicado);
+3. o app pede `?bundle=deb`, o servidor entrega o `.deb` — certíssimo, do ponto de
+   vista dele;
+4. o plugin chama `pkexec dpkg -i` e cai para `sudo dpkg -i`. **Não há dpkg no Arch.**
+5. diálogo: *"A atualização não pôde ser concluída. Você segue na versão atual"* + o
+   texto do `PackageInstallFailed`, que fala de **senha de administrador** e de
+   `.deb/.rpm`. Nada disso era o problema, e o conselho manda tentar de novo uma coisa
+   que nunca vai funcionar.
+
+Duas falhas, não uma. A primeira é de empacotamento. A segunda é de desenho: **o app
+delegou uma decisão de segurança de si mesmo a um arquivo que um caminho de build
+consegue esquecer em silêncio.** O aviso no terminal do build não protege ninguém — ele
+aparece na máquina de quem builda, não na de quem instala.
+
+### Decisão
+
+**Duas camadas independentes, e as duas rotas de empacotamento entregam o mesmo pacote.**
+
+1. **O marcador continua**, e continua com precedência: quando existe, o app *sabe* que
+   veio do pacote Arch e dá a instrução exata (`sudo pacman -Syu`).
+2. **Guard novo, sem depender de arquivo:** bundle se dizendo `deb` sem `dpkg` no
+   sistema (ou `rpm` sem `rpm`) é impedimento suficiente. O app avisa e não baixa nada.
+3. **A rota `fpm` passou a extrair o payload do `.deb`, injetar o marcador e empacotar
+   com `-s dir`** — em vez de converter o `.deb` direto, que não deixava injetar nada.
+4. **Um nome só:** `shvia-desktop` nas duas rotas. O `fpm` vinha publicando `shv-ia`
+   (nome herdado do pacote Debian), e o PKGBUILD, `shvia-desktop`. Dois nomes para o
+   mesmo app fariam o `pacman -Syu` de quem instalou um **não ver** o outro — parado
+   para sempre, sem erro na tela. `replaces`/`conflicts` no PKGBUILD e no `fpm` migram
+   quem já instalou o `shv-ia`.
+
+### Por que aqui o fail-open sai de cena
+
+A leitura do marcador é **fail-open** de propósito (ADR-028): na dúvida, tenta
+atualizar, porque errar para "não atualiza" desligaria o updater de quem depende dele.
+
+O guard novo é o contrário, e tem de ser: `dpkg` ausente num install que se diz `deb`
+**não é dúvida**. Não existe sistema onde essa instalação se atualize — o download
+terminaria em erro de qualquer jeito. Avisar antes é a única resposta útil, e é mais
+barato que ~7 MB e um diálogo de erro enganoso.
+
+A busca do comando olha o `PATH` **e** `/usr/sbin:/usr/bin:/sbin:/bin`, porque o plugin
+roda o instalador através de `pkexec`/`sudo`, que montam PATH próprio e sanitizado.
+Procurar nos dois lados erra para o lado de "achei", que preserva o comportamento atual.
+
+### Por que não `pacman -Qo` (de novo)
+
+Mesma razão do ADR-028 — um processo por checagem, e falha quando o pacman não está no
+PATH. O guard novo é ainda mais barato: alguns `stat` a cada 6 h, e responde num sistema
+onde o pacman nem existe (um `.deb` copiado à mão para um Void, por exemplo).
+
+### Consequências
+
+- **O aviso do build sobre "pacote sem marcador" desapareceu** porque a condição
+  desapareceu. As duas rotas agora produzem pacote equivalente — mesmo `pkgname`,
+  mesmas deps, marcador dentro. A diferença que sobra é cosmética: o `fpm` grava
+  `group = default` no `.PKGINFO`, e o `makepkg` não grava grupo nenhum.
+- **A máquina que já instalou o `shv-ia` 1.1.17 precisa de UM passo à mão** — o app
+  daquela versão não tem o guard novo, e nenhum código publicado depois conserta um
+  binário já instalado. Com o repo `[shvia]` no `pacman.conf`, `sudo pacman -Syu`
+  resolve e migra o nome; sem o repo, `sudo pacman -U <url do .pkg.tar.zst>`.
+- **`bash -n` no script não bastava.** O bloco de empacotamento foi executado de
+  verdade num sandbox (bundle dir de mentira, com um `shv-ia-1.1.17` plantado): saiu
+  `shvia-desktop-1.1.17-1-x86_64.pkg.tar.zst` com o marcador dentro, `%REPLACES%`/
+  `%CONFLICTS%` no `shvia.db` e o pacote legado removido. O que **continua não
+  validado** é o caminho `makepkg` — esta máquina é Debian 13 (pendência §1 do
+  `.continue/estado-atual.md`, aberta desde a 1.1.16).
+- **O pacote velho é apagado do bundle dir** antes de empacotar. Não é limpeza
+  cosmética: `shv-ia-1.1.17-…` tem a versão CORRENTE no nome, então o
+  `release-manifest.mjs` o aceitaria e o `find … | head -1` do `repo-add` poderia
+  escolher ele em vez do pacote novo.
+- **Vale para os repos irmãos** (SSHVTERM-DESKTOP e GITHUB-DESKTOP, ainda na rota `fpm`
+  pura — ver `.continue/arch.md`): o molde a copiar é o guard de duas camadas, não só o
+  marcador. Quem copiar apenas o marcador herda esta mesma falha.
+- **Validado:** `cargo test` 48/48 (6 testes novos, incluindo o caso real desta ADR e o
+  contra-teste de que Debian/Fedora seguem atualizando), `cargo clippy --all-targets`
+  limpo, `bash -n`, e o bloco de empacotamento rodado num sandbox. O teste novo foi
+  conferido **por reversão**: removendo o braço do `deb` sem `dpkg`, ele falha.

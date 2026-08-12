@@ -8,8 +8,8 @@
 #   macOS  -> .dmg + .app.tar.gz
 #   Linux  -> .deb + .AppImage (+ .rpm)   (targets="all" do tauri.conf.json)
 #             + .pkg.tar.zst (Arch)       — nativo por makepkg quando o build roda
-#                                           NUM Arch; conversão do .deb por fpm
-#                                           quando roda num Debian (best-effort)
+#                                           NUM Arch; o mesmo conteúdo remontado por
+#                                           fpm quando roda num Debian
 #
 # PRÉ-REQUISITOS (instalar uma vez):
 #   Comum:   Node 20, Rust (rustup default stable)
@@ -1080,10 +1080,14 @@ fi
 #   Arch   → `makepkg` com o packaging/arch/PKGBUILD. Pacote nativo de verdade:
 #            .PKGINFO correto, hook de pós-instalação, deps declaradas uma vez só
 #            no PKGBUILD. É o caminho bom.
-#   Debian → `fpm` convertendo o .deb (o que existia antes desta versão). Continua
-#            porque a máquina de build do Linux pode não ser um Arch, e um pacote
-#            convertido é melhor que nenhum. As deps aqui são MAPEADAS À MÃO e
-#            precisam casar com as do PKGBUILD — dois lugares, mesma lista.
+#   Debian → `fpm -s dir` sobre o payload extraído do .deb, porque a máquina de build
+#            do Linux pode não ser um Arch. As deps e o marcador aqui são ESCRITOS À
+#            MÃO e precisam casar com o PKGBUILD — dois lugares, mesma lista.
+#
+# ⚠️ As duas rotas têm de produzir pacote EQUIVALENTE: mesmo pkgname, mesmas deps e o
+# marcador dentro. Até a 1.1.17 não produziam — a rota fpm saía sem o marcador e com
+# outro nome — e o app instalado por ela tentava o auto-update que falha no fim do
+# download. É o que o ADR-029 conta, e é a razão de tanto comentário aqui.
 #
 # Idempotente nos dois: se o .pkg desta versão já está no disco (reuso), pula.
 #
@@ -1097,8 +1101,21 @@ if [ "$_BUILD_OS" = Linux ]; then
   _versao_pkg="$(tr -d ' \t\n\r' < version.md)"
   _bundle_pkg=src-tauri/target/release/bundle
   _deb_pkg="$(find "$_bundle_pkg/deb" -maxdepth 1 -name "*_${_versao_pkg}_*.deb" 2>/dev/null | head -1)"
+
+  # Nome do pacote pacman — o MESMO nas duas rotas (o makepkg lê do PKGBUILD, o fpm
+  # recebe por `-n`). Até a 1.1.17 a rota fpm publicava `shv-ia`, o nome do pacote
+  # Debian de onde ela convertia: dois nomes para o mesmo app, e um `pacman -Syu`
+  # cego para a relação entre eles (ADR-029).
+  _PKG_ARCH_NOME=shvia-desktop
+
+  # O `shv-ia-*.pkg.tar.*` de build anterior sai do bundle dir. Ele não se desqualifica
+  # por ser velho: tem a versão CORRENTE no nome, então o release-manifest o aceitaria e
+  # o `find … | head -1` do repo-add poderia escolher ele — publicando o pacote de nome
+  # errado e sem o marcador, que é exatamente a falha que a 1.1.18 fecha.
+  rm -f "$_bundle_pkg/pacman"/shv-ia-*.pkg.tar.*
+
   if [ -n "$_deb_pkg" ] && \
-     ! find "$_bundle_pkg/pacman" -name "*${_versao_pkg}*.pkg.tar.*" 2>/dev/null | grep -q .; then
+     ! find "$_bundle_pkg/pacman" -name "${_PKG_ARCH_NOME}-${_versao_pkg}*.pkg.tar.*" 2>/dev/null | grep -q .; then
     mkdir -p "$_bundle_pkg/pacman"
     _deb_abs="$(cd "$(dirname "$_deb_pkg")" && pwd)/$(basename "$_deb_pkg")"
     _pkgdest_abs="$(cd "$_bundle_pkg/pacman" && pwd)"
@@ -1127,22 +1144,59 @@ if [ "$_BUILD_OS" = Linux ]; then
       rm -rf "$_mk_tmp"
 
     elif command -v fpm >/dev/null 2>&1; then
-      echo "==> Linux ($_LINUX_FAMILIA): convertendo o .deb em .pkg.tar.zst via fpm..."
-      # -a explícito: amd64 no mundo deb, x86_64 no pacman — o fpm não traduz sozinho.
-      # --no-auto-depends: os nomes Debian (libwebkit2gtk-4.1-0, libgtk-3-0) não
-      # existem no pacman e o pacote sairia ininstalável.
-      if (cd "$_bundle_pkg/pacman" && fpm -s deb -t pacman --no-auto-depends \
-            -d webkit2gtk-4.1 -d gtk3 -d libayatana-appindicator \
-            --pacman-compression zstd -a "$(uname -m)" "$_deb_abs" >/dev/null); then
-        echo "    ✓ $(find "$_bundle_pkg/pacman" -name '*.pkg.tar.*' 2>/dev/null | head -1)"
-        # O fpm converte o payload do .deb e NÃO conhece o PKGBUILD, então o
-        # marcador de origem não vem junto. Sem ele o app não sabe que foi
-        # instalado por pacman e tentaria o auto-update que falha (ADR-028).
-        echo "    ⚠️ pacote convertido: SEM o marcador /usr/share/shvia-desktop/instalado-por."
-        echo "       O app instalado por ele vai tentar o auto-update e falhar."
-        echo "       Para o pacote bom, rode este build numa máquina Arch."
+      echo "==> Linux ($_LINUX_FAMILIA): empacotando o .pkg.tar.zst com fpm..."
+      # Até a 1.1.17 esta rota era `fpm -s deb -t pacman <deb>`, conversão direta — e
+      # ela produzia um pacote que INSTALA mas não ATUALIZA: o payload do .deb não tem
+      # o marcador `/usr/share/shvia-desktop/instalado-por`, então o app não sabia que
+      # tinha vindo do pacman, pedia `?bundle=deb`, baixava o .deb e morria no `dpkg`
+      # que não existe no Arch (ADR-029 — aconteceu de verdade com o pacote da 1.1.17).
+      #
+      # Por isso agora o payload é EXTRAÍDO, recebe o marcador e só então é empacotado.
+      # O preço de `-s dir` é declarar à mão o que o .deb já dizia (nome, versão,
+      # licença, deps) — e as deps são as MESMAS do PKGBUILD, dois lugares e uma lista.
+      _stage="$(mktemp -d)"
+      # `dpkg-deb` primeiro: numa máquina Debian — a única onde esta rota roda — ele é
+      # garantido. `bsdtar` (libarchive-tools) é a alternativa, e lê os dois níveis do
+      # .deb (o `ar` de fora e o `data.tar.*` de dentro) numa passada.
+      if command -v dpkg-deb >/dev/null 2>&1; then
+        dpkg-deb -x "$_deb_abs" "$_stage"
+      elif command -v bsdtar >/dev/null 2>&1; then
+        bsdtar -xOf "$_deb_abs" 'data.tar.*' | bsdtar -xf - -C "$_stage"
       else
-        echo "AVISO: fpm falhou ao gerar o pacote Arch — o build segue sem ele." >&2
+        echo "AVISO: sem dpkg-deb nem bsdtar para abrir o .deb — sem pacote Arch." >&2
+        echo "       instale: sudo apt install dpkg-dev libarchive-tools" >&2
+        rm -rf "$_stage"
+        _stage=""
+      fi
+
+      if [ -n "$_stage" ]; then
+        # O contrato com src-tauri/src/updater.rs (ADR-028). O PKGBUILD escreve o mesmo
+        # arquivo com o mesmo conteúdo: as duas rotas têm de entregar pacote
+        # equivalente, senão o comportamento do app passa a depender da distro da
+        # máquina que fez o build — que é o bug da 1.1.17.
+        install -Dm644 /dev/stdin "$_stage/usr/share/shvia-desktop/instalado-por" <<<'pacman'
+
+        # -a explícito: amd64 no mundo deb, x86_64 no pacman — o fpm não traduz sozinho.
+        # --no-auto-depends: com `-s dir` não há de onde deduzir, e os nomes Debian
+        # (libwebkit2gtk-4.1-0, libgtk-3-0) não existem no pacman de todo modo.
+        # --conflicts/--replaces: é o que migra quem instalou o `shv-ia` de antes —
+        # sem eles, `pacman -Syu` não vê relação entre os dois nomes e a máquina fica
+        # parada na 1.1.17 para sempre.
+        if (cd "$_stage" && fpm -s dir -t pacman \
+              -n "$_PKG_ARCH_NOME" -v "$_versao_pkg" --iteration 1 \
+              -a "$(uname -m)" --no-auto-depends \
+              -d webkit2gtk-4.1 -d gtk3 -d libayatana-appindicator -d hicolor-icon-theme \
+              --conflicts shv-ia --replaces shv-ia \
+              --license 'custom:proprietary' --url 'https://ai.shvia.org' \
+              --maintainer 'Samir Hanna Verza <samirhv@me.com>' \
+              --description 'ShvIA Desktop — cliente da plataforma de IA da Blue3 (ai.shvia.org)' \
+              --pacman-compression zstd -p "$_pkgdest_abs" usr >/dev/null); then
+          echo "    ✓ $(find "$_bundle_pkg/pacman" -name '*.pkg.tar.*' 2>/dev/null | head -1)"
+          echo "    com o marcador instalado-por: o app manda rodar 'pacman -Syu'."
+        else
+          echo "AVISO: fpm falhou ao gerar o pacote Arch — o build segue sem ele." >&2
+        fi
+        rm -rf "$_stage"
       fi
 
     else
@@ -1174,7 +1228,7 @@ if [ "$_BUILD_OS" = Linux ]; then
   # `repo-add` vem do pacote `pacman`: nativo no Arch, e no Debian está em
   # `pacman-package-manager`. Sem ele o .pkg ainda é publicado e instalável por
   # `pacman -U`; só não há `-Syu`.
-  _pkg_arch_file="$(find "$_bundle_pkg/pacman" -name "*${_versao_pkg}*.pkg.tar.*" ! -name '*.sig' ! -name '*.sha256' 2>/dev/null | head -1)"
+  _pkg_arch_file="$(find "$_bundle_pkg/pacman" -name "${_PKG_ARCH_NOME}-${_versao_pkg}*.pkg.tar.*" ! -name '*.sig' ! -name '*.sha256' 2>/dev/null | head -1)"
   if [ -n "$_pkg_arch_file" ]; then
     if command -v repo-add >/dev/null 2>&1; then
       echo "==> Linux: gerando o banco do repositório pacman (shvia.db)..."

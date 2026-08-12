@@ -3,6 +3,49 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.18 - Conserta o update no Arch: o pacote convertido sai com o marcador, e o app deixa de depender só dele
+
+O pacote pacman publicado na 1.1.17 (`shv-ia-1.1.17-1-x86_64.pkg.tar.zst`) foi
+gerado por `fpm` numa máquina Debian, e portanto **sem** o marcador
+`/usr/share/shvia-desktop/instalado-por`. No Arch, o app não sabia que tinha vindo
+do pacman: pediu `?bundle=deb`, recebeu o `.deb`, chamou `pkexec dpkg -i` — que não
+existe lá — e falhou no fim do download, exibindo um conselho sobre senha de
+administrador que não tinha nada a ver com a causa. O ADR-028 previa esse cenário
+por escrito e o build avisava no terminal; nada disso impediu o pacote de subir.
+
+- **Guard novo no `updater.rs`, independente do empacotamento:** bundle se dizendo
+  `deb` sem `dpkg` no sistema (ou `rpm` sem `rpm`) já é motivo para não oferecer o
+  download. Ao contrário da leitura do marcador, aqui **não** há fail-open a
+  preservar — não existe sistema onde essa instalação se atualize, então o download
+  terminaria em erro de qualquer jeito. O marcador continua e tem precedência,
+  porque ele permite a instrução exata (`sudo pacman -Syu`) em vez de um palpite.
+  A busca do comando cobre o `PATH` e `/usr/sbin:/usr/bin:/sbin:/bin`, já que o
+  plugin chama o instalador por `pkexec`/`sudo`, que montam PATH próprio.
+- **A rota `fpm` do `build-local.sh` deixou de converter o `.deb` direto:** agora
+  extrai o payload (`dpkg-deb -x`, ou `bsdtar` onde não houver), injeta o marcador e
+  empacota com `-s dir`. Converter não deixava injetar arquivo nenhum — era a raiz
+  do problema, não um detalhe de implementação.
+- **Um nome só para o pacote: `shvia-desktop`.** O `fpm` vinha publicando `shv-ia`
+  (nome herdado do pacote Debian) e o PKGBUILD, `shvia-desktop` — dois nomes para o
+  mesmo app deixariam o `pacman -Syu` de quem instalou um cego para o outro, parado
+  e sem erro na tela. `replaces`/`conflicts` nas duas rotas migram quem já instalou
+  o `shv-ia`.
+- **O `.pkg` de nome legado é removido do bundle dir antes de empacotar.** Ele tem a
+  versão corrente no nome, então o `release-manifest.mjs` o aceitaria e o
+  `find … | head -1` do `repo-add` poderia publicá-lo em vez do pacote novo.
+- **ADR-029** conta o caso e revoga a consequência do ADR-028 que aceitava pacote sem
+  marcador. `docs/build.md` perde o "conversão best-effort", e o `.continue/arch.md`
+  — o molde para SSHVTERM-DESKTOP e GITHUB-DESKTOP — passa a exigir as duas camadas:
+  quem copiar só o marcador herda esta falha.
+- **Validado:** `cargo test` 48/48 (6 testes novos, incluindo o caso real desta versão
+  e o contra-teste de que Debian/Fedora seguem atualizando), o novo conferido por
+  reversão; `cargo clippy --all-targets` limpo; `bash -n`; e o bloco de empacotamento
+  **executado** num sandbox com um `shv-ia-1.1.17` plantado (o `.deb` no disco ainda
+  é o da 1.1.17) — saiu `shvia-desktop-1.1.17-1-x86_64.pkg.tar.zst` com o marcador dentro,
+  `%REPLACES%`/`%CONFLICTS%` no `shvia.db` e o pacote legado apagado. Segue **não
+  validado** o caminho `makepkg` (esta máquina é Debian 13) — pendência §1 do
+  `.continue/estado-atual.md`, aberta desde a 1.1.16.
+
 ## 1.1.17 - Saneia o .continue: estado-atual descrevia a 0.8.0 com o repo na 1.1.16
 
 - `estado-atual.md` reconstruído a partir do `git log` real. Ele listava como

@@ -3,7 +3,7 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Última atualização: **07/08/2026** (versão 1.1.16).
+> Última atualização: **12/08/2026** (versão 1.1.18).
 
 > ⚠️ **Saneado em 07/08/2026.** Este arquivo estava descrevendo a **0.8.0** —
 > catorze versões atrás — e listava como pendência coisa entregue há semanas
@@ -14,7 +14,7 @@
 
 ## Onde estamos
 
-**1.1.16** — o app se auto-atualiza (ADR-022), tem bandeja nos 3 SOs (ADR-024),
+**1.1.18** — o app se auto-atualiza (ADR-022), tem bandeja nos 3 SOs (ADR-024),
 diagnóstico próprio (ADR-025), diálogo de arquivo nativo (ADR-027) e empacota
 para Linux (deb/rpm/AppImage/**pacman**), macOS (dmg) e Windows (msi/nsis). O
 `anna` viaja dentro do instalador desde a 0.18.0 — o Modo Code não tem mais
@@ -30,19 +30,30 @@ As fases F1 e F2 estão entregues. O detalhe do que funciona está em
 
 A 1.1.16 trocou a geração do pacote Arch de `fpm` (conversão do `.deb`) para
 `makepkg` nativo com [`../packaging/arch/PKGBUILD`](../packaging/arch/PKGBUILD),
-e ligou o repositório pacman no `--publish`. **Nada disso foi executado:** foi
-escrito numa máquina Debian, que não tem `makepkg`, `bsdtar` nem `repo-add`.
+e ligou o repositório pacman no `--publish`. **O `makepkg` nunca foi executado:**
+foi escrito numa máquina Debian.
+
+> **Atualizado em 12/08/2026 (1.1.18).** Duas correções ao texto original: esta
+> máquina **tem** `bsdtar` e `repo-add` (o segundo vem em
+> `pacman-package-manager`), e os dois já rodaram — o `shvia.db` do repo sai
+> daqui. O que continua sem rodar é só o `makepkg` + PKGBUILD.
+>
+> E a parte "sem o marcador, o app tenta o update e falha" **saiu do papel**: o
+> pacote publicado na 1.1.17 foi o convertido por `fpm`, e no Arch do Samir o
+> update falhou no fim do download. Consertado na 1.1.18 — a rota `fpm` passou a
+> injetar o marcador, e o app ganhou um guard que não depende dele
+> ([ADR-029](../docs/decisoes.md#adr-029--o-guard-do-auto-update-não-pode-depender-do-empacotamento)).
 
 O que precisa de uma passada **numa máquina Arch**:
 
 - `./build-local.sh` até o fim — o `.pkg.tar.zst` sai em `bundle/pacman/`?
-- `repo-add` gera `shvia.db`/`shvia.files` e os links viram arquivo de verdade?
 - `sudo pacman -U` instala, e o marcador
   `/usr/share/shvia-desktop/instalado-por` aparece com o conteúdo `pacman`?
 - Com o marcador presente, o app **avisa para rodar `pacman -Syu`** em vez de
   tentar baixar o update (é o ponto do ADR-028).
+- `replaces=('shv-ia')` migra mesmo quem tem o pacote antigo instalado?
 
-Contexto e o porquê: [ADR-028](../docs/decisoes.md) e
+Contexto e o porquê: [ADR-028](../docs/decisoes.md), ADR-029 e
 [`../docs/build.md`](../docs/build.md#arch-linux-pkgtarzst--repo-pacman).
 
 ### 2. `release-manifest.mjs` derruba o `.pkg` do manifesto

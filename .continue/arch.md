@@ -38,6 +38,8 @@ Caminhos: `/home/samir/x/SSHVTERM/SSHVTERM-DESKTOP/build-local.sh` e
 3. **`repo-add`** gerando o banco do repositório, para o usuário atualizar com
    `pacman -Syu` em vez de baixar arquivo à mão.
 4. **O guard do auto-update** — ver abaixo, é o item que não é óbvio.
+5. **(1.1.18)** O guard em **duas camadas** e o **nome único** do pacote — ver
+   abaixo. Foi o que faltou na 1.1.16 e chegou quebrado ao usuário na 1.1.17.
 
 ## ⚠️ O que descobrimos e vale para os três: pacman não se auto-atualiza
 
@@ -56,6 +58,29 @@ dpkg. A solução em SHVIA-DESKTOP foi um marcador
 
 **Qualquer um dos outros dois que ganhe pacote pacman herda esse problema**, e um
 pacote sem o guard entrega ao usuário um update que falha no fim do download.
+
+### ⚠️ E o marcador sozinho não resolve — aprendido na pele (1.1.17 → 1.1.18)
+
+O marcador é instalado pelo PKGBUILD, então ele existe **só quando o build roda num
+Arch**. A rota `fpm` num Debian não sabe do PKGBUILD e não injetava nada — e foi
+justamente o pacote convertido que subiu na 1.1.17. No Arch, ele fez o que o ADR-028
+previa e o build avisava por escrito: baixou o `.deb` e morreu no `dpkg`, com uma
+mensagem de erro falando de senha de administrador.
+
+Quem copiar isto para SSHVTERM-DESKTOP ou GITHUB-DESKTOP precisa das **duas** peças,
+não só da primeira ([ADR-029](../docs/decisoes.md#adr-029--o-guard-do-auto-update-não-pode-depender-do-empacotamento)):
+
+1. **A rota `fpm` extrai o payload, injeta o marcador e empacota com `-s dir`** —
+   converter o `.deb` direto não deixa injetar arquivo nenhum.
+2. **Um guard no app que não dependa de arquivo:** bundle se dizendo `deb` sem `dpkg`
+   no sistema (ou `rpm` sem `rpm`) já é impedimento — avisa e não baixa. É o que
+   segura pacote empacotado errado, hoje e no futuro.
+
+E um detalhe barato de esquecer: **o `pkgname` tem de ser o mesmo nas duas rotas.** O
+`fpm` herda o nome do pacote Debian (aqui, `shv-ia`) e o PKGBUILD usa o seu
+(`shvia-desktop`) — dois nomes para o mesmo app deixam o `pacman -Syu` de quem
+instalou um sem ver o outro, parado e sem erro na tela. Trocar o nome depois exige
+`replaces`/`conflicts` nas duas rotas para migrar quem já instalou.
 
 ## Bloqueio conhecido no SSHVTERM
 
