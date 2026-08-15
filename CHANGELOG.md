@@ -3,6 +3,36 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.19 - O manifesto passa a mesclar por artefato, e o pacote do Arch para de sumir quando a Debian publica
+
+O merge do `release.json` era **por plataforma**: `platforms[PLATAFORMA]` trocava
+inteiro a cada build. Isso assumia "uma máquina por plataforma", e o Linux deixou de
+caber nessa suposição na 1.1.16 — a máquina Arch gera o `.pkg.tar.zst` por `makepkg`
+(ADR-028) e a Debian não gera nenhum. Publicar da Debian **apagava do manifesto** o
+pacote pacman que a Arch tinha publicado.
+
+É a mesma classe do bug que o download-antes-de-gerar do `--publish` já resolve entre
+macOS/Windows/Linux, um nível abaixo — e pior de enxergar, porque as duas máquinas
+escrevem na mesma chave `linux` e o manifesto resultante parece íntegro. O repositório
+pacman em si sobrevivia (o `shvia.db` é arquivo separado); o que se perdia era a
+entrada no manifesto, e com ela o `sha256` de quem baixa o pacote direto.
+
+- **Mescla dentro da plataforma, chaveada pelo nome do arquivo.** O build atual sempre
+  vence — artefato regerado substitui o hash antigo em vez de conviver com ele. Versão
+  nova continua descartando o manifesto inteiro, então nada de outra release se acumula.
+- **O log diz o que foi PRESERVADO de outra máquina.** Sem isso o operador veria "3
+  artefatos" e um `release.json` com quatro, sem saber de onde veio o quarto — silêncio
+  é o que fez este bug durar.
+- **O aviso de "nenhum artefato assinado" ficou honesto.** Ele afirmava que o
+  auto-update não ofereceria a versão; com a mescla isso pode ser falso, porque outra
+  máquina já publicou artefato assinado da mesma release. A frase forte agora só sai
+  quando o manifesto inteiro está sem assinatura.
+
+Conferido com fixture das duas máquinas (Arch publica os 4 → Debian publica 3 → o
+`.pkg` continua lá), com rehash e com troca de versão; e o comportamento antigo foi
+reproduzido no script anterior para provar que o teste tem régua. Fecha a §2 das
+pendências ativas do `.continue/estado-atual.md`.
+
 ## 1.1.18 - Conserta o update no Arch: o pacote convertido sai com o marcador, e o app deixa de depender só dele
 
 O pacote pacman publicado na 1.1.17 (`shv-ia-1.1.17-1-x86_64.pkg.tar.zst`) foi

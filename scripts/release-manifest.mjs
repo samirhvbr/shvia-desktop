@@ -206,7 +206,28 @@ manifesto.version = version;
 // A data é regravada a cada build porque o manifesto é o de "a release 0.15.0
 // como ela está agora", e a última plataforma empacotada é a informação útil.
 manifesto.generated_at = new Date().toISOString();
-manifesto.platforms[PLATAFORMA] = { artifacts: entradas };
+
+// ── mescla DENTRO da plataforma, por nome de arquivo ─────────────────────────
+// Trocar `platforms[PLATAFORMA]` inteiro assume "uma máquina por plataforma", e
+// isso deixou de ser verdade no Linux: a máquina Arch gera o `.pkg.tar.zst`
+// (makepkg, ADR-028) e a Debian não. Publicar da Debian APAGAVA do manifesto o
+// pacote que a Arch tinha publicado.
+//
+// É a mesma classe do bug que a mesclagem por plataforma já resolve entre SOs, um
+// nível abaixo — e aqui é pior, porque as duas máquinas dizem "linux" e o manifesto
+// resultante parece íntegro: some um artefato e nada denuncia.
+//
+// A chave é o `file`, e o build ATUAL vence: artefato regerado tem de substituir o
+// hash antigo, nunca conviver com ele. Entrada de outra versão não sobrevive até
+// aqui — o manifesto inteiro é descartado quando a versão muda (acima) —, então o
+// que se acumula é sempre da MESMA release.
+const anteriores = manifesto.platforms[PLATAFORMA]?.artifacts ?? [];
+const porArquivo = new Map(anteriores.map((a) => [a.file, a]));
+for (const e of entradas) porArquivo.set(e.file, e);
+const mescladas = [...porArquivo.values()].sort((a, b) => a.file.localeCompare(b.file));
+const preservadas = mescladas.filter((a) => !entradas.some((e) => e.file === a.file));
+
+manifesto.platforms[PLATAFORMA] = { artifacts: mescladas };
 
 if (flag("--print")) {
   console.log(JSON.stringify(manifesto, null, 2));
@@ -217,9 +238,15 @@ writeFileSync(MANIFEST, `${JSON.stringify(manifesto, null, 2)}\n`);
 
 const faltando = ["macos", "windows", "linux"].filter((p) => !manifesto.platforms[p]);
 
-console.log(`[release-manifest] ${version} · ${PLATAFORMA}: ${entradas.length} artefato(s)`);
+console.log(`[release-manifest] ${version} · ${PLATAFORMA}: ${entradas.length} artefato(s) deste build`);
 for (const e of entradas) {
   console.log(`  ${e.sha256.slice(0, 16)}…  ${(e.size / 1048576).toFixed(1)} MB  ${e.file}`);
+}
+// Dizer o que foi PRESERVADO é metade da correção: sem esta linha, o operador vê
+// "1 artefato" e um release.json com quatro, e não sabe de onde vieram os outros.
+if (preservadas.length > 0) {
+  console.log(`  preservado(s) de outra máquina ${PLATAFORMA}, mesma versão:`);
+  for (const p of preservadas) console.log(`    ${p.file}`);
 }
 if (destino) console.log(`  copiados para ${destino}`);
 
@@ -228,8 +255,14 @@ if (destino) console.log(`  copiados para ${destino}`);
 // auto-update nunca oferece nada" — silencioso e difícil de rastrear até aqui.
 const semAssinatura = entradas.filter((e) => !e.signature).map((e) => e.file);
 if (semAssinatura.length === entradas.length) {
-  console.log("  ⚠️ NENHUM artefato assinado (sem TAURI_SIGNING_PRIVATE_KEY no ambiente).");
-  console.log("     O auto-update (D1) NÃO vai oferecer esta versão — o plugin exige assinatura.");
+  console.log("  ⚠️ NENHUM artefato DESTE build está assinado (sem TAURI_SIGNING_PRIVATE_KEY no ambiente).");
+  // A frase forte só vale se o manifesto inteiro estiver sem assinatura: com a
+  // mescla, outra máquina pode já ter publicado artefato assinado desta versão, e
+  // aí o auto-update funciona — dizer o contrário mandaria caçar um problema
+  // inexistente.
+  if (!mescladas.some((a) => a.signature)) {
+    console.log("     O auto-update (D1) NÃO vai oferecer esta versão — o plugin exige assinatura.");
+  }
   console.log("     Gere o par uma vez: npx tauri signer generate -w ~/.shvia/updater.key");
 } else if (semAssinatura.length > 0) {
   // Só alguns: normal, porque o `.dmg` não é o artefato do updater (é o `.app.tar.gz`).

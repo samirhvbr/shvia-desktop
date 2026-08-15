@@ -3,7 +3,7 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Última atualização: **12/08/2026** (versão 1.1.18).
+> Última atualização: **15/08/2026** (versão 1.1.19).
 
 > ⚠️ **Saneado em 07/08/2026.** Este arquivo estava descrevendo a **0.8.0** —
 > catorze versões atrás — e listava como pendência coisa entregue há semanas
@@ -14,7 +14,7 @@
 
 ## Onde estamos
 
-**1.1.18** — o app se auto-atualiza (ADR-022), tem bandeja nos 3 SOs (ADR-024),
+**1.1.19** — o app se auto-atualiza (ADR-022), tem bandeja nos 3 SOs (ADR-024),
 diagnóstico próprio (ADR-025), diálogo de arquivo nativo (ADR-027) e empacota
 para Linux (deb/rpm/AppImage/**pacman**), macOS (dmg) e Windows (msi/nsis). O
 `anna` viaja dentro do instalador desde a 0.18.0 — o Modo Code não tem mais
@@ -56,17 +56,14 @@ O que precisa de uma passada **numa máquina Arch**:
 Contexto e o porquê: [ADR-028](../docs/decisoes.md), ADR-029 e
 [`../docs/build.md`](../docs/build.md#arch-linux-pkgtarzst--repo-pacman).
 
-### 2. `release-manifest.mjs` derruba o `.pkg` do manifesto
+### ~~2. `release-manifest.mjs` derruba o `.pkg` do manifesto~~ — ENTREGUE na 1.1.19
 
-O merge do `release.json` é **por plataforma** — `manifesto.platforms[PLATAFORMA]`
-é substituído inteiro. Com duas máquinas Linux (uma Arch que gera `.pkg`, uma
-Debian que não gera), publicar da Debian **apaga do manifesto** a entrada que a
-Arch publicou.
-
-É a mesma classe do bug que o `fetch_remote_manifest` já resolve entre
-macOS/Windows/Linux, só que agora **dentro** do linux. O repositório pacman em si
-sobrevive (o `shvia.db` é arquivo separado); o que se perde é a entrada no
-manifesto. Correção estimada em ~10 linhas, ainda não feita.
+O merge passou a ser **por artefato** dentro da plataforma, chaveado pelo nome do
+arquivo: o `.pkg` da Arch sobrevive a um publish da Debian, o build atual vence no
+rehash, e o log diz o que foi preservado de outra máquina. Versão nova continua
+descartando o manifesto inteiro. O porquê e o comportamento estão em
+[`../docs/build.md`](../docs/build.md) (§`--publish`, item 2); o detalhe de
+implementação, no `CHANGELOG.md` da 1.1.19.
 
 ### 3. WebKitGTK no Linux — **não reavaliado desde julho/2026**
 

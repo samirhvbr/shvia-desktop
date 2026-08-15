@@ -216,6 +216,16 @@ Três coisas que o passo manual não fazia, e cada uma corresponde a um erro rea
    Windows que estava no servidor, e o sintoma é nenhum: build passa, endpoint
    responde, e só os usuários de Windows param de receber update. Isso substitui o
    passo manual de "copiar o `release.json` de uma máquina para a outra".
+
+   **E o merge é por ARTEFATO, não por plataforma (1.1.19).** "Uma máquina por
+   plataforma" deixou de valer no Linux: a Arch gera o `.pkg.tar.zst` (`makepkg`,
+   ADR-028) e a Debian não. Enquanto a plataforma inteira era substituída, publicar
+   da Debian apagava do manifesto o pacote pacman que a Arch tinha publicado — com
+   o mesmo sintoma nenhum do caso acima, só que um nível abaixo e mais difícil de
+   ver, porque as duas máquinas escrevem em `linux`. Agora as entradas se acumulam
+   por nome de arquivo dentro da versão, o build atual sempre vence no rehash, e o
+   log diz quais artefatos foram **preservados** de outra máquina. Versão nova
+   continua descartando o manifesto inteiro — nada de outra release sobrevive.
 3. **Verificação pela URL pública, não pelo diretório.** Confere o `sha256` do
    artefato assinado baixando-o de verdade — é o que pega upload truncado, cujo
    sintoma seria falha de assinatura sem explicação.
