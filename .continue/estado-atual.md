@@ -52,14 +52,25 @@ foi escrito numa máquina Debian.
 > um pacote carimbado **1.1.18**, e o teste do auto-update mediria a coisa errada
 > justamente na versão que conserta o manifesto. Completado em `964b6e9`.
 
-O que precisa de uma passada **numa máquina Arch**:
+> **RODOU em 16/08/2026 — num Arch de verdade, e a mecânica passou.** Não era
+> preciso máquina Arch: um container `archlinux` descartável (pacman 7.1.0, makepkg
+> 7.1.0) serve, com o repo montado **read-only** e tudo acontecendo fora dele.
+> O payload usado foi o `.deb` **1.1.18** que está no disco, com o `version.md` da
+> cópia ajustado junto — pacote internamente honesto, e o caminho padrão do PKGBUILD
+> exercitado inteiro, inclusive a derivação do nome do `.deb` a partir do `pkgver`.
+> **O que a mecânica NÃO cobre é a versão:** validar o artefato 1.1.19 exige um
+> `tauri build` 1.1.19 de verdade.
 
-- `./build-local.sh` até o fim — o `.pkg.tar.zst` sai em `bundle/pacman/`?
-- `sudo pacman -U` instala, e o marcador
-  `/usr/share/shvia-desktop/instalado-por` aparece com o conteúdo `pacman`?
-- Com o marcador presente, o app **avisa para rodar `pacman -Syu`** em vez de
-  tentar baixar o update (é o ponto do ADR-028).
-- `replaces=('shv-ia')` migra mesmo quem tem o pacote antigo instalado?
+| # | Ponto do checklist | Resultado |
+|---|---|---|
+| 1 | `makepkg` produz o `.pkg.tar.zst`? | ✅ `shvia-desktop-1.1.18-1-x86_64.pkg.tar.zst`, 6,48 MB. ⚠️ o `makepkg` confere as **deps de runtime** antes de empacotar e aborta sem elas — num Arch de verdade estão instaladas (o `build-local.sh` as lista nos pré-requisitos); no container foi preciso `--nodeps` |
+| 2 | `pacman -U` instala e o marcador aparece? | ✅ instala; `/usr/share/shvia-desktop/instalado-por` = `pacman`; binário de 7,99 MB e o sidecar `usr/bin/anna` vieram no payload |
+| 3 | O app avisa para rodar `pacman -Syu`? | 🟡 **metade provada**: o contrato bate — [`updater.rs:76`](../src-tauri/src/updater.rs) lê exatamente `/usr/share/shvia-desktop/instalado-por` e compara com `"pacman"`, que é o que o PKGBUILD escreve. A outra metade (o aviso na tela) é comportamento de app rodando e continua sem medição |
+| 4 | `replaces=('shv-ia')` migra? | ✅ **pelo `-Syu`**, que é o caminho real: *"Replace shv-ia with shvia/shvia-desktop? [Y/n]"*, default Y, o antigo sai, o marcador sobrevive. ⚠️ **pelo `-U` não migra** — `replaces` só vale em transação de sync; ali o pacman vê só o `conflicts` e aborta com `unresolvable package conflicts detected`. Semântica do pacman, não defeito nosso, mas é beco sem saída para quem instala pelo arquivo → registrado em [`build.md`](../docs/build.md#arch-linux-pkgtarzst--repo-pacman) |
+
+**O que sobrou de verdade:** um build 1.1.19 (para carimbar o artefato publicável) e
+o aviso na tela do ponto 3. A pergunta *"o `makepkg` funciona?"*, que era a razão de
+este item existir, está respondida.
 
 Contexto e o porquê: [ADR-028](../docs/decisoes.md), ADR-029 e
 [`../docs/build.md`](../docs/build.md#arch-linux-pkgtarzst--repo-pacman).

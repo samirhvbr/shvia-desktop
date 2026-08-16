@@ -74,6 +74,19 @@ mas nenhuma das duas é "best-effort".
 Quem instalou o `shv-ia` antigo migra sozinho: o PKGBUILD e o `fpm` declaram
 `replaces`/`conflicts` para aquele nome, e o `pacman -Syu` troca o pacote.
 
+> ⚠️ **`-Syu` migra; `-U` NÃO.** Medido em 16/08/2026 num Arch de verdade (pacman
+> 7.1.0): `replaces` só é consultado em transação de **sync**. Instalando o arquivo
+> à mão com `pacman -U`, o pacman vê apenas o `conflicts`, pergunta *"Remove
+> shv-ia?"* e, sem resposta, aborta com **`unresolvable package conflicts
+> detected`**. Não é defeito do PKGBUILD — é semântica do pacman —, mas é um beco
+> sem saída para quem instala pelo arquivo, que é justamente o caminho de quem não
+> tem o repo configurado (ver o fim desta seção). Saída: `pacman -Rdd shv-ia` antes,
+> ou responder `y` ao prompt.
+>
+> Pelo `-Syu`, o mesmo cenário sai limpo: *"Replace shv-ia with
+> shvia/shvia-desktop? [Y/n]"* com default **Y**, remove o antigo, instala o novo e
+> o marcador `instalado-por` sobrevive à troca.
+
 Avulso, a partir de um `.deb` que já está no disco:
 
 ```bash
