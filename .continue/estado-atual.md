@@ -44,6 +44,14 @@ foi escrito numa máquina Debian.
 > injetar o marcador, e o app ganhou um guard que não depende dele
 > ([ADR-029](../docs/decisoes.md#adr-029--o-guard-do-auto-update-não-pode-depender-do-empacotamento)).
 
+> **Atualizado em 15/08/2026, 22:20 — a árvore agora está pronta para essa passada.**
+> O commit da 1.1.19 (`437357e`) subiu `version.md` e `CHANGELOG.md` mas **deixou os
+> cinco portadores de versão em 1.1.18** (`package.json`, `package-lock.json`,
+> `Cargo.toml`, `Cargo.lock`, `tauri.conf.json`) — o bump da 1.1.18 (`dace855`) tinha
+> tocado os cinco, é o padrão do repo. Quem rodasse o `makepkg` antes disso ia validar
+> um pacote carimbado **1.1.18**, e o teste do auto-update mediria a coisa errada
+> justamente na versão que conserta o manifesto. Completado em `964b6e9`.
+
 O que precisa de uma passada **numa máquina Arch**:
 
 - `./build-local.sh` até o fim — o `.pkg.tar.zst` sai em `bundle/pacman/`?
