@@ -3,6 +3,26 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.24 - O agente dentro do app volta a encontrar node, cargo e php: sidecar recebe o PATH do shell de login
+
+- **App de GUI não herda PATH de shell.** No macOS o launchd entrega
+  `/usr/bin:/bin:/usr/sbin:/sbin`, e o `anna` roda as ferramentas com `sh -c`
+  herdando isso — então `npx`, `node`, `cargo`, `php` e `composer` (Homebrew,
+  `~/.cargo/bin`, `~/.local/bin`) simplesmente não existiam dentro do app,
+  embora funcionem no terminal.
+- **O sintoma era o agente insistir, não avisar.** 19/08, projeto KIDS: 100
+  voltas, 19 min, 125 ferramentas, US$ 1,24 repetindo `npx @gltf-transform/cli`
+  impossível — com o `command not found` escondido atrás de `>/dev/null`. Subir
+  o teto de voltas (anna 0.11.0) só deu mais corda; a causa era o ambiente.
+- `src-tauri/src/user_env.rs`: PATH do `$SHELL -ilc` com marcadores contra
+  banner de dotfile, watchdog de 3s, validação e união com o PATH atual (nunca
+  substitui, preserva a ordem do usuário). Aplicado no `spawn` do
+  `anna`/`claude-runner` e na sonda `command -v` do `resolve_bin` — que também
+  não achava um `anna` instalado em `~/.local/bin`. Windows fica de fora
+  (já recebe o PATH do usuário). Racional completo em ADR-030.
+- Reempacota o **anna 0.11.1** (aviso do teto deixa de mostrar JSON de protocolo
+  ao usuário — a string aparecia crua na timeline).
+
 ## 1.1.23 - Reempacota o anna 0.11.0: o teto de voltas do Modo Code deixa de matar turno legítimo na volta 25
 
 - Rebuild sem mudança de código próprio: o estágio D5 empacota o `anna` do

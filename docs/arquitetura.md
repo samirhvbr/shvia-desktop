@@ -162,6 +162,12 @@ persistência), [`src/main.ts`](../src/main.ts) (estados da casca),
   empacotado **vence o do PATH** (é o testado com esta versão do app), e o
   `engineStatus` da ponte responde `found`/`bundled`/`version`/`path`. Ver
   [ADR-021](decisoes.md#adr-021--o-anna-viaja-no-instalador-externalbin-e-o-empacotado-vence-o-do-path).
+- **PATH do sidecar** (`src/user_env.rs`, 1.1.24): app de GUI não herda PATH de
+  shell — no macOS o launchd entrega o mínimo do sistema, e as ferramentas que o
+  agente roda com `sh -c` não encontram `npx`/`node`/`cargo`/`php`. O PATH vem do
+  `$SHELL -ilc` (uma vez por processo, com watchdog e validação) e é aplicado no
+  `spawn` e na sonda `command -v`. Ver
+  [ADR-030](decisoes.md#adr-030--o-sidecar-recebe-o-path-do-shell-de-login-não-o-do-launchd).
 - **Assinatura:**
   - **macOS** — Developer ID + `notarytool` + `stapler`, com a senha de app no
     **keychain** (serviço `shvia-notarize`), nunca no repo.

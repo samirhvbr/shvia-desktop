@@ -286,7 +286,12 @@ fn resolve_bin(base: &str) -> Option<PathBuf> {
 
     #[cfg(not(windows))]
     {
-        if let Ok(out) = Command::new("sh").arg("-c").arg(format!("command -v {base}")).output() {
+        let mut probe = Command::new("sh");
+        probe.arg("-c").arg(format!("command -v {base}"));
+        if let Some(p) = crate::user_env::sidecar_path() {
+            probe.env("PATH", p);
+        }
+        if let Ok(out) = probe.output() {
             if out.status.success() {
                 let p = String::from_utf8_lossy(&out.stdout).trim().to_string();
                 if !p.is_empty() {
@@ -457,6 +462,11 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
 
     let mut cmd = Command::new(bin);
     cmd.current_dir(&dir);
+    // App de GUI não herda o PATH do shell (ADR-029): sem isto o agente não
+    // encontra npx/node/cargo/php e fica insistindo em comando que não existe.
+    if let Some(p) = crate::user_env::sidecar_path() {
+        cmd.env("PATH", p);
+    }
     let (model, effort, url, key) = (s("model"), s("effort"), s("url"), s("apiKey"));
 
     // `url` vem da PÁGINA e viaja junto com SHVIA_API_KEY (a chave do usuário) —

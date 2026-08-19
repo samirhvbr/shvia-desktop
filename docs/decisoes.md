@@ -1611,3 +1611,70 @@ onde o pacman nem existe (um `.deb` copiado à mão para um Void, por exemplo).
   contra-teste de que Debian/Fedora seguem atualizando), `cargo clippy --all-targets`
   limpo, `bash -n`, e o bloco de empacotamento rodado num sandbox. O teste novo foi
   conferido **por reversão**: removendo o braço do `deb` sem `dpkg`, ele falha.
+
+---
+
+## ADR-030 — O sidecar recebe o PATH do shell de login, não o do launchd
+
+- **Data:** 19/08/2026 · **Status:** Aceito
+
+### Contexto
+
+Um app de GUI não herda o PATH do shell. No macOS quem inicia o `.app` é o
+launchd, e o `PATH` que chega ao processo é o mínimo do sistema
+(`/usr/bin:/bin:/usr/sbin:/sbin`) — `launchctl getenv PATH` normalmente não
+existe. O `anna` roda cada ferramenta com `sh -c` herdando esse env, então
+dentro do app **não existem** `npx`, `node`, `cargo`, `php`, `composer`, `rbenv`
+— tudo que mora em `/opt/homebrew/bin`, `~/.cargo/bin` ou `~/.local/bin`.
+
+O sintoma não é uma mensagem de erro clara: é o agente **insistir**. Caso real
+de 19/08/2026 (projeto KIDS, conversão de `.glb` com `@gltf-transform/cli`): 100
+voltas, 19 minutos, 125 ferramentas e US$ 1,24 repetindo variações de um comando
+que jamais poderia rodar. O `npx: command not found` ficou escondido porque os
+comandos redirecionavam a saída para `/dev/null` — e o teto de voltas recém
+elevado (anna 0.11.0, de 25 para 100) apenas deu mais corda ao loop.
+
+Duas leituras erradas que este ADR fecha: "falta instalar o node" (está
+instalado, funciona no terminal) e "o teto de voltas está alto" (o teto não é a
+causa — ele só mediu o desperdício).
+
+### Decisão
+
+**O PATH dos sidecars vem do shell de login do usuário, resolvido uma vez por
+processo** (`src/user_env.rs`), e é aplicado no `spawn` do `anna`/`claude-runner`
+e na sonda `command -v` do `resolve_bin`. Mesmo desenho do `fix-path` do
+Electron, pelo mesmo motivo.
+
+- `$SHELL -ilc` (login **interativo**): é em `~/.zshrc` que moram as linhas de
+  rbenv/nvm/composer. Um `-lc` puro perderia justamente essas.
+- **Marcadores** em volta do valor (`__SHVIA_PATH_INICIO__…__FIM__`): dotfile
+  interativo imprime banner, fastfetch, aviso de update. Sem delimitador esse
+  lixo entraria no PATH.
+- **Watchdog de 3s**: um dotfile que pendura o shell não pode pendurar o app.
+  Estourando, cai nos extras conhecidos (`/opt/homebrew/bin`, `/usr/local/bin`,
+  `~/.local/bin`, `~/.cargo/bin`, `~/.bun/bin`, `~/.volta/bin`) — só os que
+  existem no disco.
+- **Validação** antes de virar env do filho: tamanho ≤ 16 KiB, sem caracteres de
+  controle, pelo menos um diretório absoluto.
+- **União, nunca substituição**: o PATH que já estava no processo sobrevive
+  inteiro (há teste de propriedade para isso), e a ordem do usuário é preservada
+  — quem coloca rbenv antes do sistema faz isso de propósito.
+- **Windows fica de fora**: o processo de GUI já recebe o PATH do usuário pelo
+  registro/sessão, e não há shell de login para consultar.
+
+### Confiança
+
+O PATH sai dos dotfiles do **próprio usuário** — a mesma fronteira de confiança
+de abrir um terminal, que é exatamente o que o Modo Code faz. Ele **não** vem da
+página: o que a página manda (`url`, `model`, `effort`, `apiKey`) continua
+passando pela allowlist de `SERVER_HOSTS`. Um `~/.zshrc` comprometido já
+executaria código no login do usuário, muito antes deste app.
+
+### Consequências
+
+- O agente passa a encontrar as ferramentas de verdade, e comando inexistente
+  volta a ser um erro honesto em vez de um loop caro.
+- Custo: um `$SHELL -ilc` por processo (~100–300 ms, uma vez, em cache).
+- **O aviso do teto de voltas fica mais útil ao usuário** do que subir o teto: se
+  o agente estoura 100 voltas, a pergunta certa é "o que está falhando em
+  silêncio?", não "quantas voltas mais?".

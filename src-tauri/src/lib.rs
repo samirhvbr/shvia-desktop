@@ -17,6 +17,7 @@
 //! - **persistir** tamanho/posição entre reinícios (`tauri-plugin-window-state`).
 
 mod cli_config;
+mod user_env;
 mod code_bridge;
 /// Endereço do servidor: config persistida, validação e probe (item D4; ADR-019).
 mod server;
