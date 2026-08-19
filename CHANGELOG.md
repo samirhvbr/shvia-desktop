@@ -3,6 +3,24 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.20 - Ícone do app entra na marca atual do ShvIA (o "S" azure) — o update parava de "trocar o ícone" porque o repo nunca trocou
+
+- O usuário via o ícone antigo ("AI" + seta Blue3 sobre navy, design 0.3.1 de
+  08/07) voltar a cada atualização e parecia bug do updater. NÃO era: o updater
+  entrega exatamente o que o repo builda, e `src-tauri/icons/` + `brand/` nunca
+  receberam a marca nova — o "S" azure existia só no site (favicon.svg do
+  SHVIA-WEB, marca oficial de 25/07, quando o ShvIA ganhou identidade própria).
+- Fonte nova `brand/shvia-desktop-icon-1024.png`: o favicon.svg oficial (bloco
+  azure #34B3EC, rx≈23%, S em #0B0F17) embrulhado na grade de ícone do macOS
+  (conteúdo 824×824 centrado em canvas 1024 transparente, margens 100px) e
+  renderizado via qlmanage. Conjunto inteiro regenerado com `tauri icon`
+  (icns/ico/png/Square*); os android/ e ios/ gerados foram descartados (mobile
+  é outro repo). O tray de menu bar segue o template "AI" da 1.1.14 — decisão
+  deliberada, não foi tocado.
+- O ícone novo chega ao usuário na PRÓXIMA release publicada (o build embute o
+  .icns). No Dock/Finder o macOS pode segurar cache de ícone da versão antiga;
+  o app aberto e o alternador ⌘Tab mostram o novo imediatamente.
+
 ## 1.1.19 - O manifesto passa a mesclar por artefato, e o pacote do Arch para de sumir quando a Debian publica
 
 O merge do `release.json` era **por plataforma**: `platforms[PLATAFORMA]` trocava
