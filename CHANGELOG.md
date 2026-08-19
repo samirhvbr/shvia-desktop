@@ -3,6 +3,29 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.22 - O bump ganha prova: os seis portadores concordam, ou o build cai
+
+- **A terceira ocorrência do bump pela metade.** `scripts/sync-version.mjs`
+  sincronizava os portadores de versão a partir do `version.md` e **nunca
+  falhava**: arquivo ausente e padrão de versão não encontrado eram `console.warn`
+  \+ `continue`. Um portador que parasse de casar com o regex sairia da sincronia
+  **para sempre**, com o build verde e ninguém sabendo.
+- **O histórico que justifica:** 1.1.18→1.1.19 deixou os manifestos atrás; a
+  1.1.19 existia justamente para consertar isso; e na 1.1.20 o `version.md` e o
+  CHANGELOG foram na frente dos manifestos e **travaram a validação do `makepkg`**.
+  Três vezes é padrão, não descuido.
+- **O que muda:** o script agora **prova** o que fez — ao fim reconfere os cinco
+  portadores contra o `version.md` e sai `exit 1` se algum discordar, nomeando
+  quais. `npm run prova:bump` faz a mesma conferência **sem escrever**, para rodar
+  antes de commitar: o build já sincronizava, e o que passava era a árvore
+  **commitada**.
+- **Reusa o mesmo par (regex, substituição) da sincronia** em vez de um segundo
+  padrão para ler versão — segunda implementação é a que diverge calada.
+- **Por que falhar e não avisar:** é a mesma regra do piso de versão do `anna`
+  (1.1.21) e do `STANDING_ATIVO` nascer em `0`. Aviso em log de build é o que
+  ninguém lê. Conferido por reversão nas duas classes de falha — portador em
+  versão diferente e padrão que deixou de casar —, as duas saem `exit 1`.
+
 ## 1.1.21 - O empacotamento do `anna` ganha piso de versão: motor velho derruba o build em vez de virar release
 
 - **O caso (19/08):** sessão longa do Modo Code travava no 422 do gateway
