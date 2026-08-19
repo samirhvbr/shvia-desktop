@@ -3,6 +3,19 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.23 - Reempacota o anna 0.11.0: o teto de voltas do Modo Code deixa de matar turno legítimo na volta 25
+
+- Rebuild sem mudança de código próprio: o estágio D5 empacota o `anna` do
+  PATH na hora do build, e o `resolve_bin` do app prefere o binário bundlado —
+  então a única forma de o Modo Code do desktop ganhar o teto novo é uma
+  versão nova do app. A 1.1.22 (nunca publicada) carregava o anna 0.10.1, cujo
+  teto fixo de 25 voltas matou um turno real de 26 ferramentas no projeto KIDS
+  em 19/08 ("teto de voltas atingido — refine a pergunta").
+- O anna 0.11.0 (SHVIA-CODE 1db563b) traz `max_voltas` configurável (env
+  `SHVIA_MAX_VOLTAS` > config.toml > default 100) e, no host NDJSON, encerra o
+  turno com a sessão viva — responder "continua" retoma de onde parou. No
+  macOS o config.toml do anna fica em `~/Library/Application Support/shvia-code/`.
+
 ## 1.1.22 - O bump ganha prova: os seis portadores concordam, ou o build cai
 
 - **A terceira ocorrência do bump pela metade.** `scripts/sync-version.mjs`
