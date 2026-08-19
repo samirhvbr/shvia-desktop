@@ -3,6 +3,25 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.21 - O empacotamento do `anna` ganha piso de versão: motor velho derruba o build em vez de virar release
+
+- **O caso (19/08):** sessão longa do Modo Code travava no 422 do gateway
+  (`messages` tem `max:200`). O `anna` 0.10.0 (18/08) compacta o histórico antes
+  de enviar e resolve — mas o app saía com o `anna` que estivesse no PATH da
+  máquina de build, e ali havia um **0.8.4 de julho**. Resultado: app na última
+  versão, mensagem de erro mandando "atualize o app", e o app já atualizado. O
+  que estava velho era o sidecar **dentro** dele.
+- **O que muda:** `scripts/stage-anna.mjs` passa a exigir `ANNA_MINIMO` (0.10.0)
+  e **derruba o build** abaixo disso, nomeando a versão achada e o comando de
+  conserto. Ausência do `anna` continua não sendo erro — lá o Modo Code fica
+  declaradamente indisponível; aqui ficaria disponível e quebrado, que é pior.
+  É a mesma regra que o script já aplicava a binário que não responde
+  `--version`, estendida a um caso a mais.
+- **Por que não bastava o aviso:** o risco estava previsto no cabeçalho do
+  próprio script desde o começo, com a mitigação *"imprime a versão para alguém
+  conferir depois"*. O número estava no log do build; o log é que não tem leitor.
+  Aviso perde para gesto — o mesmo argumento do `STANDING_ATIVO` nascer em `0`.
+
 ## 1.1.20 - Ícone do app entra na marca atual do ShvIA (o "S" azure) — o update parava de "trocar o ícone" porque o repo nunca trocou
 
 - O usuário via o ícone antigo ("AI" + seta Blue3 sobre navy, design 0.3.1 de

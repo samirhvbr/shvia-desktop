@@ -24,9 +24,15 @@
 // Em ordem: `--from <caminho>`, `$SHVIA_ANNA_BIN`, ou o `anna` do PATH.
 //
 // O PATH é o último e é conveniente, não confiável: empacotar "o que estiver
-// instalado" é como uma versão velha vai parar dentro de um release. Por isso o
-// script SEMPRE imprime a versão que está empacotando — o número tem de aparecer
-// no log do build, para alguém poder conferir depois.
+// instalado" é como uma versão velha vai parar dentro de um release.
+//
+// ⚠️ Esse risco estava previsto AQUI desde o começo, e a mitigação escolhida foi
+// "o script SEMPRE imprime a versão que está empacotando, para alguém conferir
+// depois". Em 19/08 ele aconteceu assim mesmo: saiu um release com `anna 0.8.4`
+// (julho) e o Modo Code travava no 422 do gateway. O número estava no log; o log
+// é que não tem leitor. **Aviso perde para gesto** — por isso agora existe um
+// PISO DE VERSÃO que derruba o build (ver `ANNA_MINIMO`, mais abaixo), e a
+// impressão da versão virou conferência, não proteção.
 import { chmodSync, copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
@@ -102,6 +108,50 @@ if (!versao) {
   // está corrompido. Empacotar assim entregaria um Modo Code quebrado por dentro
   // de um app que parece completo — pior que não empacotar.
   console.error(`[stage-anna] ${origem} não respondeu a --version. NÃO vou empacotar um binário que não roda.`);
+  process.exit(1);
+}
+
+/*
+ * ─── Piso de versão do `anna` ──────────────────────────────────────────────────
+ *
+ * A versão era LIDA e jogada fora, e o custo disso apareceu em 19/08: o app saía
+ * com o `anna` que estivesse no PATH da máquina de build — aqui, um **0.8.4 de
+ * julho** —, e o Modo Code batia no 422 do gateway (`messages` tem `max:200`) em
+ * toda sessão longa. O 0.10.0 (18/08) compacta o histórico antes de enviar, mas
+ * quem tinha o binário velho continuava travando, com o app na última versão e a
+ * mensagem de erro mandando "atualize o app" — que já estava atualizado.
+ *
+ * Este piso é a mesma regra do `--version` acima, aplicada a um caso a mais:
+ * **empacotar um motor velho entrega um Modo Code quebrado por dentro de um app
+ * que parece completo.** Por isso derruba o build em vez de avisar — aviso em log
+ * de build é o que ninguém lê, e a falha some dentro de um app que instala bem.
+ *
+ * Ausência do `anna` continua NÃO sendo erro (acima): lá o Modo Code fica
+ * declaradamente indisponível. Aqui ele ficaria disponível e quebrado, que é pior.
+ *
+ * Ao subir este piso, escreva o PORQUÊ — qual defeito a versão nova conserta.
+ */
+const ANNA_MINIMO = [0, 10, 0]; // 0.10.0: compacta o histórico sob o teto de 200 do gateway.
+
+function partesDaVersao(texto) {
+  const m = /(\d+)\.(\d+)\.(\d+)/.exec(texto ?? "");
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+const partes = partesDaVersao(versao);
+if (!partes) {
+  console.error(`[stage-anna] não consegui ler a versão de "${versao}". NÃO vou empacotar sem saber o que é.`);
+  process.exit(1);
+}
+
+// Compara pelo PRIMEIRO componente que difere — `0.9.9` é menor que `0.10.0`, o
+// que uma comparação de string erraria (e erraria justamente neste caso).
+const menor = partes.findIndex((n, i) => n !== ANNA_MINIMO[i]);
+if (menor !== -1 && partes[menor] < ANNA_MINIMO[menor]) {
+  console.error(`[stage-anna] ${origem} é "${versao}", abaixo do piso ${ANNA_MINIMO.join(".")}.`);
+  console.error("            Empacotar isto entrega um Modo Code que trava no 422 do gateway em sessão longa.");
+  console.error("            Conserte instalando o anna atual e rodando de novo:");
+  console.error("              cd ../SHVIA-CODE && ./install.sh   # ou: --from /caminho/para/anna");
   process.exit(1);
 }
 
