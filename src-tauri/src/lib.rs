@@ -436,6 +436,7 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
     '<dl class="shvia-about-rows">' +
     '<dt>Build desktop</dt><dd id="shvia-about-build"></dd>' +
     '<dt>ShvIA servidor</dt><dd id="shvia-about-server" aria-live="polite">…</dd>' +
+    '<dt>Motor do Code</dt><dd id="shvia-about-anna"></dd>' +
     '<dt>Servidor</dt><dd id="shvia-about-host"></dd>' +
     '</dl>' +
     '<p class="shvia-about-env" id="shvia-about-env"></p>' +
@@ -451,6 +452,9 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
   // servidor vem do DOM/JSON remoto e não deve virar markup. Build com o mesmo
   // prefixo "v" do rodapé do ShvIA, p/ as duas linhas lerem igual.
   card.querySelector('#shvia-about-build').textContent = 'v__SHVIA_BUILD__';
+  // Motor do Code (`anna`): versão E origem. O Rust já resolveu — a página não
+  // tem como perguntar isso, e é justamente o dado que faltava em 19/08.
+  card.querySelector('#shvia-about-anna').textContent = '__SHVIA_ANNA__';
   card.querySelector('#shvia-about-host').textContent = host;
   card.querySelector('#shvia-about-env').textContent = env;
 
@@ -513,8 +517,11 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
   overlay.addEventListener('mousedown', function (e) { if (e.target === overlay) { close(); } });
   closeBtn.addEventListener('click', close);
   copyBtn.addEventListener('click', function () {
+    // O "Copiar" existe para colar num relato de suporte — então ele carrega as
+    // MESMAS linhas do modal. Motor do Code incluído: foi a linha ausente que fez
+    // o diagnóstico de 19/08 custar uma manhã.
     var text = 'ShvIA Desktop\nBuild (desktop): v__SHVIA_BUILD__\nShvIA (servidor): ' + serverVersion +
-      '\nServidor: ' + host + '\n' + env;
+      '\nMotor do Code: __SHVIA_ANNA__\nServidor: ' + host + '\n' + env;
     function done(ok) {
       copyBtn.textContent = ok ? 'Copiado ✓' : 'Falhou';
       setTimeout(function () { copyBtn.textContent = 'Copiar'; }, 1600);
@@ -1113,6 +1120,7 @@ pub fn run() {
                 let js = ABOUT_MODAL_JS
                     .replace("__SHVIA_BUILD__", &app.package_info().version.to_string())
                     .replace("__SHVIA_TAURI__", tauri::VERSION)
+                    .replace("__SHVIA_ANNA__", &code_bridge::versao_do_anna())
                     .replace("__SHVIA_SERVER_HOST__", SERVER_HOST);
                 let windows = app.webview_windows();
                 let alvo = windows

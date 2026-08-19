@@ -3,6 +3,26 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.25 - O "Sobre" passa a mostrar o motor do Code, com a versão E a origem
+
+- **O caso (19/08):** o Modo Code travava no 422 do gateway com o app na última
+  versão e um `anna 0.8.4` de julho assado dentro dele. A versão do sidecar não
+  aparecia em lugar nenhum — nem no app, nem na tela de erro, que mandava
+  "atualize o app" enquanto o app já estava atualizado. Diagnóstico que depende
+  de alguém rodar `--version` num binário escondido dentro de um bundle é
+  diagnóstico que ninguém faz.
+- **A linha "Motor do Code"** mostra o `anna` que ESTE app usaria, resolvido pelo
+  mesmo `resolve_bin` que o Modo Code usa — então o que aparece é o que roda, não
+  o que está no PATH de quem lê.
+- **A origem vai junto** (`empacotado` / `externo`), e é ela que fecha o caso: o
+  empacotado vence o do PATH por desenho, então instalar um `anna` novo no PATH
+  não muda nada. Sem essa palavra na tela, a conclusão natural é a errada.
+- **O "Copiar" carrega a mesma linha** — ele existe para colar em relato de
+  suporte, e era exatamente essa a informação que faltava no relato.
+- A saída do binário é **filtrada** antes de entrar na string JS do modal
+  (alfanumérico, `.`, `-`, `+`, `_`, teto de 32): valor vindo de subprocesso não
+  pode fechar aspa e virar código numa via de `eval`.
+
 ## 1.1.24 - O agente dentro do app volta a encontrar node, cargo e php: sidecar recebe o PATH do shell de login
 
 - **App de GUI não herda PATH de shell.** No macOS o launchd entrega

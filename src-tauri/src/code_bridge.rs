@@ -234,6 +234,57 @@ impl Sidecars {
     }
 }
 
+/// Versão do `anna` que ESTE app usaria, com a **origem** junto.
+///
+/// Existe por causa de 19/08. O Modo Code travava no 422 do gateway com o app na
+/// última versão e um `anna 0.8.4` de julho assado dentro dele — e a versão do
+/// sidecar não aparecia em lugar nenhum: nem no app, nem na tela de erro, que
+/// mandava "atualize o app" enquanto o app já estava atualizado. Diagnóstico que
+/// depende de alguém rodar `--version` num binário escondido dentro de um bundle
+/// é diagnóstico que ninguém faz.
+///
+/// A **origem** vai junto porque foi ela que escondeu o caso: o empacotado vence
+/// o do PATH (ver `resolve_bin`), então instalar um `anna` novo no PATH não muda
+/// nada — e sem essa palavra na tela, a conclusão natural é a errada.
+///
+/// Roda `--version` na hora do clique. É subprocesso no thread da UI, e o risco
+/// aceito é um binário que trave em `--version` travar o modal; na prática ele
+/// responde imediato, e é o mesmo caminho que o `stage-anna.mjs` já usa no build.
+pub(crate) fn versao_do_anna() -> String {
+    let Some(bin) = resolve_bin("anna") else {
+        return "não encontrado".into();
+    };
+    let empacotado = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| bin.starts_with(dir)))
+        .unwrap_or(false);
+    let origem = if empacotado { "empacotado" } else { "externo" };
+
+    let bruto = std::process::Command::new(&bin)
+        .arg("--version")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+
+    // O valor é interpolado numa string JS antes do `eval` (ver ABOUT_MODAL_JS):
+    // qualquer coisa fora deste conjunto sai, para a saída de um binário nunca
+    // conseguir fechar a aspa e virar código.
+    let limpo: String = bruto
+        .trim_start_matches("anna ")
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+' | '_'))
+        .take(32)
+        .collect();
+
+    if limpo.is_empty() {
+        format!("? ({origem})")
+    } else {
+        format!("v{limpo} ({origem})")
+    }
+}
+
 /// Localiza um binário de motor (`anna` ou `claude-runner`), cross-platform.
 ///
 /// Ordem: (1) **ao lado do executável do ShvIA Desktop**; (2) no PATH; (3) locais
