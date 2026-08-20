@@ -3,6 +3,27 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.27 - Reempacota o anna 0.11.3, e o número do sidecar passa a ser lido do artefato
+
+- **O que muda no bundle:** o `anna` empacotado sai de **0.11.1** para **0.11.3**.
+  Correção de premissa registrada: a defasagem **não** era o 0.8.4 de julho — os
+  rebuilds de 19/08 (1.1.23–1.1.25) já haviam consertado aquilo. Medido em 20/08, o
+  app instalado carregava 0.11.1 (`/usr/bin/anna`, mesma data do executável), então a
+  distância real era **uma patch**.
+- **O bloqueio que apareceu antes do build, e valeu mais que o build:** o `SHVIA-CODE`
+  estava com o bump da 0.11.2 **pela metade** — `version.md` em 0.11.2 e `Cargo.toml`
+  em 0.11.1 —, então `cargo build` produzia um binário respondendo **`anna 0.11.1` com
+  o código da 0.11.2**. Stagear assim faria o *"Sobre → Motor do Code"* desta 1.1.25
+  mostrar o número **errado**, que é pior que não mostrar. Consertado em SHVIA-CODE
+  **0.11.3**, que também ganhou o `build.rs` que aquele repo não tinha.
+- **O piso de versão NÃO dispararia, e está certo.** `ANNA_MINIMO = [0,10,0]`, e tanto
+  0.11.1 como 0.11.3 estão acima — ele guarda contra binário **antigo**, não contra
+  binário **mal etiquetado**. O caso de 20/08 não era do piso; era do bump.
+- **A versão do sidecar foi conferida no BINÁRIO staged, não no log do
+  `stage-anna`** — `sha256` igual ao compilado, `--version` lido do arquivo em
+  `src-tauri/binaries/`. Log sem leitor foi exatamente o mecanismo que deixou o 0.8.4
+  passar quatro semanas; o número tem de vir de onde ele vai rodar.
+
 ## 1.1.26 - O X pergunta antes de encerrar sessão do Code, e o app passa a ser uma instância só
 
 - **O caso (20/08):** o X foi apertado sem querer com o Modo Code aberto, e o app
