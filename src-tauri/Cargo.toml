@@ -1,6 +1,6 @@
 [package]
 name = "shvia-desktop"
-version = "1.1.25"
+version = "1.1.26"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
@@ -34,6 +34,7 @@ tauri-plugin-opener = "2"
 # File picker nativo (F2 — "Vincular pasta do projeto"). Usamos só a API RUST
 # (app.dialog().file().pick_folder) — nada de comando/IPC exposto à página.
 tauri-plugin-dialog = "2"
+
 # Notificações nativas do SO (alertas de preço — ADR-011). Usamos só a API RUST
 # (app.notification().builder().show()) chamada pelo code_bridge; NENHUM comando/
 # capability é exposto à página remota (mantém o ADR-001). Cross-platform.
@@ -60,6 +61,12 @@ tauri-plugin-autostart = "2"
 # restringimos pelo alvo real: qualquer coisa que não seja Android/iOS.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-window-state = "2"
+# Uma instância só. Medido em 20/08/2026: DOIS `shvia-desktop` vivos (um de 19/08 14:08,
+# outro de hoje 08:16) e um zumbi desde 06/08 — sem guarda, cada `shvia-desktop` sobe um
+# app novo, com bandeja própria e contagem de janelas própria. É o que faz o `<= 1` do
+# `CloseRequested` decidir certo sobre a instância ERRADA: cada uma acha que é a única.
+# Aqui a segunda invocação FOCA a janela da primeira em vez de virar um segundo app.
+tauri-plugin-single-instance = "2"
 # Auto-update (item D1 — ADR-022). Dirigido SÓ pela API Rust (`src/updater.rs`):
 # a capability não declara `updater:default`, senão a página remota poderia
 # escolher o binário que roda na máquina (ADR-001). É **desktop-only** — no mobile

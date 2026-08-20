@@ -151,6 +151,20 @@ impl Sidecars {
         self.kill_label(label);
     }
 
+    /// Há sessão do Code viva nesta janela?
+    ///
+    /// Existe para o guard de fechamento (`decidir_fechar`): fechar com `anna` no ar
+    /// perde a sessão **e** deixa o processo órfão. Medido em 20/08/2026 nesta máquina:
+    /// **dois** `anna` vivos e um `shvia-desktop` zumbi desde 06/08 — órfão não é
+    /// hipótese, é o estado atual.
+    ///
+    /// `Some(None)` no mapa é sessão em criação (o slot é reservado antes do spawn), e
+    /// conta como viva de propósito: perguntar de graça é barato, fechar por cima de um
+    /// spawn em curso deixa exatamente o órfão que este guard existe para evitar.
+    pub fn tem_sessao(&self, label: &str) -> bool {
+        self.map.lock().map(|m| m.contains_key(label)).unwrap_or(false)
+    }
+
     /// Mata todos (saída do app — anti-órfão).
     pub fn kill_all(&self) {
         let drained: Vec<Sidecar> = self

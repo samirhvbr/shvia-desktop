@@ -3,6 +3,48 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.26 - O X pergunta antes de encerrar sessão do Code, e o app passa a ser uma instância só
+
+- **O caso (20/08):** o X foi apertado sem querer com o Modo Code aberto, e o app
+  fechou. Medido antes de mexer, e a medição **contradisse o sintoma**:
+  `tray.json` diz `{"avisou":true,"close_to_tray":true}` — e não é reescrito desde
+  30/jul —, então o `CloseRequested` deveria ter **recolhido** para a bandeja, não
+  fechado. Ou seja: havia um defeito **antes** da confirmação.
+- **A causa provável, e ela não era o diálogo que faltava:** havia **dois**
+  `shvia-desktop` vivos ao mesmo tempo (um de 19/08 14:08, outro de 20/08 08:16,
+  com pais diferentes) mais um zumbi desde 06/08 — e **não existia guarda de
+  instância única**. Sem ela, cada invocação é um app novo, com bandeja própria e
+  contagem de janelas própria, e aí o `webview_windows().len() <= 1` do
+  `CloseRequested` decide **certo sobre a instância errada**: cada uma acha que é a
+  única do mundo.
+- **`tauri-plugin-single-instance`** entra, e **como primeiro plugin** do builder —
+  é requisito dele, não estilo: ele decide se este processo continua vivo antes de
+  qualquer outra inicialização. A segunda invocação agora **foca a janela da
+  primeira**. `show()` antes de `unminimize()`, porque a janela pode estar recolhida
+  na bandeja, e `unminimize` numa janela oculta não a torna visível.
+- **A confirmação é condicional, e a condição é a decisão.** A ordem das cláusulas
+  de `decidir_fechar` é o desenho: **recolher ganha de perguntar** (se nada se
+  perde, confirmar é pedir aval para uma ação sem consequência — o caminho mais
+  curto para ensinar alguém a clicar sem ler); **perguntar só com `anna` no ar**,
+  porque aí fechar encerra a sessão **e** deixa processo órfão; **fechar calado no
+  resto**, que é o que qualquer app faz.
+- **Órfão não é hipótese:** havia dois `anna` vivos e um `shvia-desktop` zumbi de 14
+  dias nesta máquina. Por isso, ao confirmar, o sidecar é morto **antes** de a
+  janela ser destruída — depois do `destroy` o label sai do mapa e ninguém mais sabe
+  qual `anna` era daquela janela.
+- **`destroy()`, nunca `close()`:** `close` reemite `CloseRequested` e o guard
+  perguntaria para sempre. E o diálogo roda em `std::thread::spawn` com
+  `api.prevent_close()` chamado **antes** — `blocking_show` na main thread trava o
+  app, que é a regra que o `updater::perguntar` já documenta nesta casa.
+- **A decisão foi extraída para função pura** (`decidir_fechar`) para ser provável
+  sem janela, sem bandeja e sem sidecar: **4 testes**, e a reversão foi conferida —
+  invertendo a ordem das cláusulas, o primeiro reprova com
+  `left: Perguntar, right: Recolher`.
+- ⚠️ **Achado que fica aberto:** `desligar_recolher` é chamado quando a criação da
+  bandeja **falha** e **persiste** `close_to_tray: false`. Mitigação de falha
+  transitória que fica permanente — no Linux, onde bandeja falha por ambiente, isso
+  desliga o item D2 para sempre sem ninguém saber. Não consertado aqui.
+
 ## 1.1.25 - O "Sobre" passa a mostrar o motor do Code, com a versão E a origem
 
 - **O caso (19/08):** o Modo Code travava no 422 do gateway com o app na última

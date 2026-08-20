@@ -661,6 +661,39 @@ fn is_internal(url: &tauri::Url) -> bool {
 /// Existe para a bandeja (item D2) e para o `Reopen` do macOS: os dois querem "traga o
 /// app de volta" e nenhum dos dois tem o que fazer com um `Result` — falhar ali só
 /// deixaria o app sem janela, que é o estado que se está tentando sair.
+/// O que o X faz — decisão isolada de propósito, para ser provável sem janela, sem
+/// bandeja e sem sidecar.
+///
+/// A ordem das cláusulas É a decisão, e cada uma tem um motivo diferente:
+///
+/// 1. **Recolher ganha de tudo.** Se a janela vai para a bandeja, nada se perde — nem
+///    sessão, nem rolagem, nem processo. Perguntar aqui seria pedir confirmação para uma
+///    ação sem consequência, que é o jeito mais rápido de ensinar alguém a clicar sem ler.
+/// 2. **Perguntar só quando há o que perder.** Com `anna` no ar, fechar encerra a sessão
+///    **e** deixa processo órfão — medido em 20/08/2026: dois `anna` vivos e um
+///    `shvia-desktop` zumbi desde 06/08 nesta máquina. Aí a pergunta paga por si.
+/// 3. **Fechar calado é o certo no resto.** Janela sem Code, ou uma de várias: fechar é o
+///    que qualquer app faz, e confirmar viraria atrito sem defesa.
+#[cfg(desktop)]
+#[derive(Debug, PartialEq, Eq)]
+enum AcaoDeFechar {
+    Recolher,
+    Perguntar,
+    Fechar,
+}
+
+#[cfg(desktop)]
+fn decidir_fechar(ultima: bool, close_to_tray: bool, code_em_voo: bool) -> AcaoDeFechar {
+    if ultima && close_to_tray {
+        return AcaoDeFechar::Recolher;
+    }
+    if code_em_voo {
+        return AcaoDeFechar::Perguntar;
+    }
+    AcaoDeFechar::Fechar
+}
+
+
 #[cfg(desktop)]
 pub(crate) fn rebuild_main_window(app: &tauri::AppHandle) {
     if let Err(e) = build_shvia_window(app, "main") {
@@ -775,10 +808,51 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
                 // incluir esta janela, dependendo do SO. Errar para o lado de recolher
                 // é melhor que errar para o lado de sair com o app devendo um alerta.
                 let ultima = app.webview_windows().len() <= 1;
-                if ultima && tray::ler(app).close_to_tray {
-                    api.prevent_close();
-                    let _ = alvo.hide();
-                    tray::avisar_uma_vez(app);
+                let code_em_voo = app
+                    .state::<code_bridge::Sidecars>()
+                    .tem_sessao(alvo.label());
+                match decidir_fechar(ultima, tray::ler(app).close_to_tray, code_em_voo) {
+                    AcaoDeFechar::Recolher => {
+                        api.prevent_close();
+                        let _ = alvo.hide();
+                        tray::avisar_uma_vez(app);
+                    }
+                    AcaoDeFechar::Perguntar => {
+                        // Impede AGORA e pergunta depois, em outra thread. `blocking_show`
+                        // na main thread trava o app — é o próprio loop de eventos que
+                        // precisa girar para o diálogo responder (a mesma regra que o
+                        // `updater::perguntar` já documenta).
+                        api.prevent_close();
+                        let janela = alvo.clone();
+                        std::thread::spawn(move || {
+                            use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+                            let app = janela.app_handle().clone();
+                            let sim = app
+                                .dialog()
+                                .message(
+                                    "O Modo Code está com uma sessão aberta. Fechar encerra a \
+                                     sessão e o processo do agente.",
+                                )
+                                .title("Fechar o ShvIA?")
+                                .buttons(MessageDialogButtons::OkCancelCustom(
+                                    "Fechar e encerrar".into(),
+                                    "Continuar aberto".into(),
+                                ))
+                                .blocking_show();
+                            if sim {
+                                // Mata o sidecar ANTES de destruir a janela: depois de
+                                // `destroy` o label sai do mapa de janelas e ninguém mais
+                                // sabe qual `anna` era desta — é assim que nasce órfão, e
+                                // já há um zumbi de 06/08 nesta máquina para provar.
+                                app.state::<code_bridge::Sidecars>().kill_one(janela.label());
+                                // `destroy`, NUNCA `close`: `close` reemite
+                                // `CloseRequested` e cairíamos aqui de novo, perguntando
+                                // para sempre.
+                                let _ = janela.destroy();
+                            }
+                        });
+                    }
+                    AcaoDeFechar::Fechar => {}
                 }
             }
         });
@@ -977,7 +1051,27 @@ pub fn run() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
 
-    let builder = tauri::Builder::default()
+    // `single_instance` tem de ser o PRIMEIRO plugin registrado — é requisito dele, não
+    // preferência: ele decide se este processo continua vivo antes de qualquer outra
+    // inicialização, e um plugin que já tenha subido estado precisaria desfazê-lo.
+    //
+    // Medido em 20/08/2026: dois `shvia-desktop` vivos ao mesmo tempo (19/08 14:08 e
+    // 20/08 08:16) mais um zumbi de 06/08. Sem guarda, cada invocação é um app novo — com
+    // bandeja própria e contagem de janelas própria —, e aí o `<= 1` do `CloseRequested`
+    // decide certo sobre a instância ERRADA: cada uma acha que é a única do mundo.
+    let builder = tauri::Builder::default();
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        // Segunda invocação: trazer de volta o que já existe. `show` antes de
+        // `unminimize` porque a janela pode estar recolhida na bandeja (hidden), e
+        // `unminimize` numa janela oculta não a torna visível.
+        if let Some(w) = app.webview_windows().values().next() {
+            let _ = w.show();
+            let _ = w.unminimize();
+            let _ = w.set_focus();
+        }
+    }));
+    let builder = builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         // Notificações nativas dos alertas de preço (ADR-011). Só a API Rust é
@@ -1205,6 +1299,46 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(desktop)]
+    use super::{decidir_fechar, AcaoDeFechar};
+
+    /// Recolher **ganha** de perguntar, e isto é a asserção que importa: com a bandeja
+    /// ligada nada se perde, então perguntar seria confirmar uma ação sem consequência —
+    /// o caminho mais curto para treinar alguém a clicar sem ler.
+    #[test]
+    #[cfg(desktop)]
+    fn com_bandeja_ligada_recolhe_mesmo_com_code_em_voo() {
+        assert_eq!(decidir_fechar(true, true, true), AcaoDeFechar::Recolher);
+        assert_eq!(decidir_fechar(true, true, false), AcaoDeFechar::Recolher);
+    }
+
+    /// O caso que motivou o item: bandeja desligada (é o que o `desligar_recolher` faz
+    /// quando a criação da bandeja falha, e fica PERSISTIDO) + sessão do Code no ar. Sem
+    /// este ramo, o X encerra `anna` sem avisar.
+    #[test]
+    #[cfg(desktop)]
+    fn sem_bandeja_e_com_code_em_voo_pergunta() {
+        assert_eq!(decidir_fechar(true, false, true), AcaoDeFechar::Perguntar);
+    }
+
+    /// Uma de VÁRIAS janelas fecha aquela ali, como em qualquer app multi-janela — mas se
+    /// ela tem Code no ar, ainda pergunta: o que se perde é a sessão daquela janela, e
+    /// isso não fica menos verdade por haver outra janela aberta.
+    #[test]
+    #[cfg(desktop)]
+    fn janela_do_meio_pergunta_se_tem_code_e_fecha_se_nao_tem() {
+        assert_eq!(decidir_fechar(false, true, true), AcaoDeFechar::Perguntar);
+        assert_eq!(decidir_fechar(false, true, false), AcaoDeFechar::Fechar);
+    }
+
+    /// Sem nada a perder, fecha calado. Confirmação aqui seria atrito sem defesa.
+    #[test]
+    #[cfg(desktop)]
+    fn sem_bandeja_e_sem_code_fecha_calado() {
+        assert_eq!(decidir_fechar(true, false, false), AcaoDeFechar::Fechar);
+        assert_eq!(decidir_fechar(false, false, false), AcaoDeFechar::Fechar);
+    }
+
     use super::is_internal;
 
     fn internal(url: &str) -> bool {
