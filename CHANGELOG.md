@@ -3,6 +3,36 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.29 - O seletor do Modo Code passa a oferecer o Opus 5: o catálogo vinha do SDK, mas o SDK estava congelado pelo lock da instalação
+
+- **O sintoma:** escolher **Opus** no dropdown dava Opus 4.8 (`/model` na sessão
+  respondia `Current model: Opus 4.8 (1M context)`), e o Opus 5 não aparecia em
+  lugar nenhum da lista — não havia como selecioná-lo sem digitar o ID inteiro.
+- **O seletor não estava mentindo** (isso foi consertado na 1.1.28): ele mostra
+  fielmente o `supportedModels()` do Agent SDK. Com o SDK **0.3.218** instalado,
+  o catálogo tinha 5 linhas e o alias `opus[1m]` resolvia para
+  `claude-opus-4-8[1m]`. Não havia Opus 5 para oferecer.
+- **Onde o catálogo envelheceu: no `package-lock.json` do destino.** O
+  `install.sh` copia o `package.json` (`^0.3.218`) e roda `npm install`, mas o
+  lock de uma instalação anterior sobrevive em `~/.local/share/shvia-claude-runner`
+  e ganha do `^` — reinstalar não atualizava nada. A 1.1.28 tirou o catálogo da
+  casa para ele não envelhecer calado; a cópia que sobrou envelhecendo era o
+  próprio SDK.
+- **Correção:** piso em `^0.3.239` e `rm -f "$DEST/package-lock.json"` antes do
+  `npm install`, para o `^` resolver de verdade a cada reinstalação. Não há build
+  reproduzível a proteger aqui — o runner **não viaja no instalador** (só o `anna`
+  viaja), é instalação local do dono da máquina.
+- **O `install.sh` passa a imprimir a versão do Agent SDK** no fim. Ela **é** o
+  catálogo: quando o seletor não oferece um modelo que já existe, é esse número
+  que responde por quê. Mesmo motivo do `versao_do_anna` na 1.1.25 — diagnóstico
+  escondido dentro de um `node_modules` é diagnóstico que ninguém faz.
+- Catálogo depois de atualizar (medido em 21/08): `Default (recommended)` e
+  `Opus (1M context)` → `claude-opus-5[1m]`; `Fable` → `claude-fable-5`;
+  `Sonnet` → `claude-sonnet-5`; `Haiku` → `claude-haiku-4-5`. **Nenhuma linha de
+  UI mudou** — o dropdown já lia o catálogo do motor.
+- ⚠️ **Quem já tem o runner instalado precisa rodar `claude-runner/install.sh`
+  de novo.** Sem isso o app segue com o SDK velho e o Opus 5 não aparece.
+
 ## 1.1.28 - Os seletores do Modo Code param de mentir no motor Claude: catálogo vem do SDK, e model/effort/aprovação chegam ao runner
 
 - **O defeito:** com o motor **Claude Code** ativo, INFRA/MODELO/ESFORÇO seguiam

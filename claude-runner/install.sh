@@ -21,6 +21,16 @@ command -v node >/dev/null 2>&1 || { echo "erro: Node 18+ não encontrado no PAT
 
 mkdir -p "$DEST" "$BIN"
 cp "$DIR/claude-runner.mjs" "$DIR/package.json" "$DEST/"
+
+# O lock do DEST é apagado DE PROPÓSITO — é a correção de 21/08. O catálogo de
+# modelos do Modo Code vem do Agent SDK (`--modelos` → `supportedModels()`), então
+# a VERSÃO DO SDK É O CATÁLOGO. Com o lock de uma instalação velha no destino, o
+# `npm install` respeitava o pin em vez do `^`, e o seletor seguia oferecendo
+# "Opus" = Opus 4.8 semanas depois do Opus 5 existir. Perguntar ao SDK para não
+# manter cópia que envelhece calada (ver code_bridge.rs) não adianta se a cópia
+# que envelhece é o próprio SDK. Não há build reproduzível a proteger: o runner
+# não viaja no instalador (só o `anna` viaja), é instalação local do dono da máquina.
+rm -f "$DEST/package-lock.json"
 ( cd "$DEST" && npm install --omit=dev --no-audit --no-fund )
 
 cat > "$BIN/claude-runner" <<EOF
@@ -29,7 +39,10 @@ exec node "$DEST/claude-runner.mjs" "\$@"
 EOF
 chmod +x "$BIN/claude-runner"
 
-echo "✓ claude-runner instalado em $BIN/claude-runner"
+# A versão do SDK vai na tela porque ELA é o catálogo de modelos: quando o
+# seletor não oferece um modelo que já existe, é este número que responde por quê.
+SDK="$(node -p "require('$DEST/node_modules/@anthropic-ai/claude-agent-sdk/package.json').version" 2>/dev/null || echo '?')"
+echo "✓ claude-runner instalado em $BIN/claude-runner (Agent SDK $SDK)"
 case ":$PATH:" in
   *":$BIN:"*) ;;
   *) echo "⚠️  adicione $BIN ao PATH para o app encontrar o runner." ;;
