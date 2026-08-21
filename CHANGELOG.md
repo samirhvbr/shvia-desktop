@@ -3,6 +3,35 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.31 - A ponte passa a declarar o que esta casca sabe fazer, e o piso do anna sobe para 0.11.4
+
+- **`window.__shviaCode.recursos = { imagem: true }`** — constante local da ponte,
+  sem ida ao Rust. A pergunta é "esta versão do app sabe fazer X?", e a resposta
+  está na própria casca.
+- ⚠️ **Por que isto existe, e por que era um furo da 1.1.30.** A página do Modo
+  Code vem do **servidor** e atualiza a cada deploy; o `anna` e o `claude-runner`
+  vêm **embutidos no app instalado**. Os dois andam em ritmos diferentes, então
+  página nova conversando com casca velha é o estado NORMAL, não a exceção. Sem
+  este flag, a página mandaria `images` no payload e uma casca anterior — que só
+  lê `text` — descartaria a figura em **silêncio**: o chip na tela dizendo que
+  foi, o modelo respondendo sem ter visto nada. A 1.1.30 entregou imagem no
+  runner sem nada que dissesse à página se a casca a tinha; o furo estava aberto
+  entre o deploy da página e a atualização do app.
+- **O teste é de PRESENÇA, não de número de versão.** Ausência do flag é a
+  resposta "não" — que é exatamente o que se quer de uma casca que não sabe
+  responder. Comparar versão pediria à página que mantivesse a tabela de quem
+  trouxe o quê.
+- **`ANNA_MINIMO` sobe de `0.10.0` para `0.11.4`.** O flag é uma PROMESSA sobre os
+  sidecars empacotados; empacotar um `anna` anterior faria a casca prometer o que
+  o motor não cumpre. Piso baixo aqui não entrega Modo Code quebrado — entrega
+  Modo Code **mentindo**, que é pior, e por isso derruba o build.
+- 📌 **Medido de passagem, não consertado:** o Rust trata a ação de ponte
+  `engineStatus` (`code_bridge.rs:528`) e o comentário ao lado diz que "a página
+  pergunta antes de oferecer o Modo Code" — mas o **wrapper JS não a expõe** e
+  nenhuma página a chama. Braço implementado e inalcançável, com um comentário
+  descrevendo um consumidor que não existe.
+- **Do outro lado:** `SHVIA-CODE` 0.11.4 e `SHVIA-WEB` 2.102.39.
+
 ## 1.1.30 - O runner passa a aceitar imagem no turno, em blocos do SDK, e ganha a primeira prova de 367 linhas sem nenhuma
 
 - **O que entra:** `{"type":"user","text":"...","images":[{mime,dataBase64}]}`. O

@@ -109,6 +109,21 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // UI listar o que existe e DESABILITAR o que não se aplica.
     // → {modelos:[{value,resolvedModel,displayName,description,supportsEffort,supportedEffortLevels}]} | {erro}
     claudeModels: function () { return post('claudeModels'); },
+    // CAPACIDADES desta casca. Constante local, sem ida ao Rust — a pergunta é
+    // "esta versão do app sabe fazer X?", e a resposta está na própria casca.
+    //
+    // ⚠️ Por que existe. A página do Modo Code vem do SERVIDOR e atualiza a cada
+    // deploy; o `anna` e o `claude-runner` vêm EMBUTIDOS no app instalado. Os dois
+    // andam em ritmos diferentes, então uma página nova conversando com uma casca
+    // velha é o estado normal, não a exceção. Sem este flag, a página mandaria
+    // `images` no payload e a casca velha — que só lê `text` — descartaria a
+    // figura em SILÊNCIO: o chip na tela dizendo que foi, o modelo respondendo
+    // sem ter visto nada. Ausência do flag é a resposta "não", e é por isso que
+    // ele testa presença em vez de comparar número de versão.
+    //
+    //   imagem: os DOIS motores carregam imagem no turno (anna >= 0.11.4 pelo
+    //           campo `images`; claude-runner por blocos do Agent SDK).
+    recursos: { imagem: true },
     // chamados pelo Rust (eval):
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
     _emit: function (evt) { for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }

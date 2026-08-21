@@ -131,7 +131,14 @@ if (!versao) {
  *
  * Ao subir este piso, escreva o PORQUÊ — qual defeito a versão nova conserta.
  */
-const ANNA_MINIMO = [0, 10, 0]; // 0.10.0: compacta o histórico sob o teto de 200 do gateway.
+// 0.11.4: lê `images` do turno do usuário. O piso subiu por causa de uma PROMESSA:
+// desde a 1.1.31 a ponte expõe `recursos: { imagem: true }`, e a página do Modo
+// Code — que vem do servidor e atualiza sozinha — usa esse flag para decidir se
+// oferece colar figura. Empacotar um `anna` anterior faria a casca prometer o que
+// o motor não cumpre: a página mandaria `images`, o sidecar leria só `text` e a
+// figura sumiria em SILÊNCIO, com o chip na tela dizendo que foi. Piso baixo aqui
+// não entrega Modo Code quebrado — entrega Modo Code MENTINDO, que é pior.
+const ANNA_MINIMO = [0, 11, 4];
 
 function partesDaVersao(texto) {
   const m = /(\d+)\.(\d+)\.(\d+)/.exec(texto ?? "");
