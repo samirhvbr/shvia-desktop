@@ -3,6 +3,40 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.30 - O runner passa a aceitar imagem no turno, em blocos do SDK, e ganha a primeira prova de 367 linhas sem nenhuma
+
+- **O que entra:** `{"type":"user","text":"...","images":[{mime,dataBase64}]}`. O
+  campo é **opcional** — sem ele o turno continua exatamente como estava. É a
+  metade desktop do anexo do Modo Code (`SHVIA-WEB` 2.102.38); o cliente está
+  documentado em `docs/FRONTEND/ANEXO-NO-MODO-CODE.md` daquele repo.
+- **A ponte Tauri não mudou uma linha.** `fn send()` (`code_bridge.rs:704`)
+  serializa o payload inteiro para o stdin, então campo novo atravessa sozinho. O
+  dimensionamento inicial apontava para `code_bridge.rs:82` — que é o *comentário*
+  do wrapper JS, não Rust. Medir encolheu a fatia.
+- **`montarPrompt(text, images)`:** sem imagem devolve a **string** de sempre;
+  com imagem, um `AsyncIterable<SDKUserMessage>` de um item. Cabe porque o runner
+  já cria um `query()` **por turno** com `resume: sessionId` — não é sessão de
+  streaming, é um turno que por acaso aceita iterável. Trocar todo turno de texto
+  por iterável "para uniformizar" mudaria o caminho de 100% dos pedidos por causa
+  de um caso que pode não acontecer.
+- **Ordem dos blocos: imagem ANTES do texto.** A última coisa que o modelo lê é o
+  que se está pedindo — mesma escolha do anexo de arquivo no cliente.
+- **A fila deixou de guardar string.** `queue.push(String(msg.text))` perderia a
+  imagem: o turno enfileirado sairia depois sem os blocos, **bem-formado e sem a
+  figura** — silêncio com cara de sucesso. Guarda `{text, images}`, e a imagem
+  viaja presa ao pedido que a trouxe. O mesmo defeito existia no `codeQueue` do
+  cliente e foi consertado lá na mesma fatia.
+- **Texto em branco não vira bloco vazio:** o SDK recusa `text: ""`, e imagem
+  colada sem pedido ("olha isto") é um pedido legítimo.
+- ⚠️ **A lacuna que esta versão fecha em parte:** o `claude-runner.mjs` tem 367
+  linhas e **nenhuma prova** — é a metade do Modo Code que roda fora do gateway,
+  com a assinatura do dono, e a única verificação era abrir o app e olhar. Nasce
+  `npm run prova:runner` (`scripts/prova-montar-prompt.mjs`), no molde do
+  `prova:bump`: 8 réguas sobre a função **real**, extraída do arquivo em produção.
+  Conferidas por reversão — os três defeitos citados no cabeçalho dela foram
+  reintroduzidos um a um, e cada um acendeu só a sua régua. O resto do arquivo
+  segue sem prova; está registrado, não resolvido.
+
 ## 1.1.29 - O seletor do Modo Code passa a oferecer o Opus 5: o catálogo vinha do SDK, mas o SDK estava congelado pelo lock da instalação
 
 - **O sintoma:** escolher **Opus** no dropdown dava Opus 4.8 (`/model` na sessão

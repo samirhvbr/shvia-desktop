@@ -20,7 +20,10 @@
 //
 // Contrato (embedding.md):
 //   Host → runner (stdin, 1 linha JSON/msg):
-//     {"type":"user","text":"..."}                       inicia um turno
+//     {"type":"user","text":"...","images":[{mime,dataBase64}]}  inicia um turno
+//        `images` é OPCIONAL e só o motor claude a consome hoje: o SDK aceita
+//        `MessageParam` com blocos (text|image|document), então a imagem vai
+//        estruturada, nunca em base64 no meio do texto.
 //     {"type":"exit"}                                     encerra
 //     {"id":"...","decision":"approve"|"always"|"reject"} resposta a um gate_request
 //   runner → Host (stdout):
@@ -214,7 +217,42 @@ let busy = false;
 let stdinClosed = false; // no modo pipe (one-shot), sair após esvaziar a fila
 const queue = [];
 
-async function runTurn(text) {
+/**
+ * Monta o `prompt` do `query()`.
+ *
+ * Sem imagem, continua sendo **string** — o caminho que rodou até aqui, e trocá-lo
+ * por iterável "para uniformizar" mudaria o comportamento de todo turno de texto
+ * por causa de um caso que ainda não aconteceu.
+ *
+ * Com imagem, vira um `AsyncIterable<SDKUserMessage>` de **um item só**. Cabe
+ * porque o runner já cria um `query()` POR TURNO com `resume: sessionId` — não é
+ * uma sessão de streaming, é um turno que por acaso aceita iterável.
+ *
+ * Ordem dos blocos: imagens ANTES do texto. É a mesma escolha do anexo de arquivo
+ * no Modo Code — a última coisa que o modelo lê é o que se está pedindo.
+ */
+function montarPrompt(text, images) {
+  if (!images || !images.length) return text;
+
+  const blocos = images.map((im) => ({
+    type: "image",
+    source: { type: "base64", media_type: String(im.mime || "image/png"), data: String(im.dataBase64 || "") },
+  }));
+  // Texto vazio não vira bloco vazio: o SDK rejeita `text: ""`, e uma imagem colada
+  // sem pedido é um pedido legítimo ("olha isto").
+  if (text && text.trim()) blocos.push({ type: "text", text });
+
+  return (async function* () {
+    yield {
+      type: "user",
+      message: { role: "user", content: blocos },
+      parent_tool_use_id: null,
+      session_id: sessionId ?? "",
+    };
+  })();
+}
+
+async function runTurn(text, images) {
   const options = {
     cwd: PROJECT_DIR,
     includePartialMessages: true, // deltas de texto via stream_event
@@ -234,7 +272,7 @@ async function runTurn(text) {
 
   let sawTextDelta = false;
 
-  for await (const message of query({ prompt: text, options })) {
+  for await (const message of query({ prompt: montarPrompt(text, images), options })) {
     switch (message.type) {
       case "system":
         if (message.subtype === "init") {
@@ -308,11 +346,11 @@ async function runTurn(text) {
 
 async function pump() {
   if (busy) return;
-  const text = queue.shift();
-  if (text === undefined) return;
+  const item = queue.shift();
+  if (item === undefined) return;
   busy = true;
   try {
-    await runTurn(text);
+    await runTurn(item.text, item.images);
   } catch (e) {
     emit({ type: "error", message: String(e?.message ?? e) });
     emit({ type: "turn_done" });
@@ -341,7 +379,10 @@ rl.on("line", (raw) => {
     process.exit(0);
   }
   if (msg.type === "user") {
-    queue.push(String(msg.text ?? ""));
+    // A fila guardava STRING. Com imagem isso a perderia: o turno enfileirado
+    // sairia depois sem os blocos, bem-formado e sem a figura — silêncio com cara
+    // de sucesso. Guarda o PAR, e a imagem viaja presa ao pedido que a trouxe.
+    queue.push({ text: String(msg.text ?? ""), images: Array.isArray(msg.images) ? msg.images : [] });
     pump();
     return;
   }
