@@ -3,6 +3,36 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.28 - Os seletores do Modo Code param de mentir no motor Claude: catálogo vem do SDK, e model/effort/aprovação chegam ao runner
+
+- **O defeito:** com o motor **Claude Code** ativo, INFRA/MODELO/ESFORÇO seguiam
+  mostrando o catálogo do **gateway** (`Kilo Gateway`, `openai/gpt-5.6-sol`) —
+  nomes que não significam nada para o Claude Code. Aceitavam clique e não
+  faziam efeito: a ponte lia `model`/`effort` e **descartava**. Seletor que
+  parece funcionar é pior que seletor ausente, porque ninguém procura o defeito.
+- **`claude-runner --modelos`** pergunta o catálogo ao próprio Agent SDK
+  (`supportedModels()`) e imprime JSON. Cada linha traz `supportsEffort` e
+  `supportedEffortLevels`, então a UI oferece só os níveis que aquele modelo
+  aceita — e desabilita quando não aceita. Medido em 21/08: a chamada é de canal
+  de controle e **não consome turno**. Perguntar ao SDK em vez de manter cópia é
+  deliberado: os aliases (`opus[1m]`, `opusplan`, `best`…) mudam com o cliente.
+- **`--effort` e `--aprovacao`** entraram no runner; a ponte repassa os dois.
+- 🔒 **A trava que impede a correção de virar regressão:** a ponte só repassa
+  `model`/`effort` quando a página manda `modelDoClaude: true`. Até agora o
+  modelo era descartado, então a UI mandando um id do gateway era inofensivo;
+  repassar sem conferir trocaria "seletor inerte" por "sessão que não abre".
+  A garantia é declarativa — nada de adivinhar pela forma do id, que erraria no
+  primeiro alias novo. Quem sabe de qual catálogo o valor saiu é quem montou o
+  seletor.
+- **Aprovação: os níveis continuam Manual/Edit/Auto nos dois motores**, e isso é
+  decisão, não preguiça. O `permissionMode` do SDK **não estava em jogo** — quem
+  decide é o hook `PreToolUse` do runner, que é o que faz o cartão de aprovação
+  aparecer na tela do ShvIA. Passar o modo da Anthropic moveria a decisão para
+  dentro do Claude Code, que a casca não renderiza: o usuário **perderia** a tela
+  de aprovação em vez de ganhar controle. O hook agora honra os três níveis.
+  `bypassPermissions` e `dontAsk` ficam de fora — não são "auto", são *sem gate*,
+  e um motor não pode ser a porta dos fundos do outro ("não existe modo yolo").
+
 ## 1.1.27 - Reempacota o anna 0.11.3, e o número do sidecar passa a ser lido do artefato
 
 - **O que muda no bundle:** o `anna` empacotado sai de **0.11.1** para **0.11.3**.

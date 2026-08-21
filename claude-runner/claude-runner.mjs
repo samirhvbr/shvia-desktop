@@ -47,7 +47,40 @@ function argOf(flag) {
   return i >= 0 && i + 1 < process.argv.length ? process.argv[i + 1] : undefined;
 }
 const MODEL = argOf("--model"); // 'opus'|'sonnet'|'haiku'|'fable'|id completo
+const EFFORT = argOf("--effort"); // 'low'|'medium'|'high'|'xhigh'|'max'
 const PROJECT_DIR = argOf("--cwd") || process.cwd();
+
+/**
+ * `--modelos`: imprime o catálogo do Claude Code em JSON e sai.
+ *
+ * Existe porque o seletor de MODELO/ESFORÇO da UI mostrava o catálogo do
+ * GATEWAY mesmo com o motor Claude ativo — dois espaços de nomes no mesmo
+ * dropdown. `openai/gpt-5.6-sol` não significa nada para o Claude Code, e o
+ * seletor de esforço não chegava a lugar nenhum.
+ *
+ * A lista vem do PRÓPRIO SDK (`supportedModels()`), não de uma cópia nossa:
+ * cada linha traz `supportsEffort` e `supportedEffortLevels`, então a UI sabe
+ * quais níveis oferecer por modelo e quando desabilitar o seletor — sem a casa
+ * manter um catálogo paralelo que envelhece em silêncio.
+ *
+ * Medido em 21/08: a chamada é de canal de controle e **não consome turno** —
+ * a sessão inicializa, responde o controle e encerra sem sampling.
+ */
+if (process.argv.includes("--modelos")) {
+  const q = query({ prompt: "", options: { cwd: PROJECT_DIR, settingSources: [] } });
+  try {
+    emit({ type: "modelos", modelos: await q.supportedModels() });
+  } catch (e) {
+    // Falha aqui não é veredito sobre o catálogo — é a listagem sem resposta.
+    // A UI cai no fallback dela em vez de mostrar uma lista vazia como se
+    // fosse "nenhum modelo disponível".
+    emit({ type: "erro", message: `não consegui listar os modelos: ${e?.message ?? e}` });
+    process.exitCode = 2;
+  } finally {
+    await q.interrupt?.().catch(() => {});
+  }
+  process.exit();
+}
 
 // ------------------------------------------------------- forçar auth de assinatura
 if (process.env.ANTHROPIC_API_KEY) {
@@ -66,6 +99,31 @@ const pendingGates = new Map();
 const READ_ONLY_TOOLS = new Set([
   "Read", "Glob", "Grep", "LS", "NotebookRead", "WebFetch", "WebSearch", "TodoWrite",
 ]);
+
+/** Ferramentas que ESCREVEM arquivo — o degrau que o nível `edit` libera. */
+const EDIT_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+
+/**
+ * Nível de aprovação, espelhando os três do `anna` — **de propósito**.
+ *
+ * O SDK tem `permissionMode` ('default'|'acceptEdits'|'bypassPermissions'|'plan'|
+ * 'dontAsk'|'auto'), e ele **não é usado aqui**: quem decide é o hook
+ * `PreToolUse` abaixo, porque é ele que emite `gate_request` e faz o cartão de
+ * aprovação aparecer na tela do ShvIA. Trocar pelo `permissionMode` moveria a
+ * decisão para dentro do Claude Code — que a casca não renderiza — e o usuário
+ * perderia a tela de aprovação em vez de ganhar controle.
+ *
+ * Por isso os níveis são os mesmos dos dois motores: quem implementa aprovação
+ * nos dois é código nosso, então não há dois vocabulários a conciliar.
+ *
+ * `bypassPermissions` e `dontAsk` ficam FORA por regra da casa — não são "auto",
+ * são *sem gate*, e o `anna` recusa isso com todas as letras ("não existe modo
+ * yolo"). Um motor não pode ser a porta dos fundos do outro.
+ */
+const APROVACAO = (() => {
+  const v = argOf("--aprovacao");
+  return v === "edit" || v === "auto" ? v : "manual";
+})();
 
 // (toolName, input) → preview do gate_request (diff | command | commit)
 function toPreview(toolName, input) {
@@ -121,6 +179,21 @@ async function preToolUse(input /* PreToolUseHookInput */) {
     return allowDecision("leitura (auto)");
   }
 
+  // Níveis acima de `manual` liberam sem perguntar — e a fronteira é a MESMA do
+  // `anna`: `edit` libera escrita de arquivo; `auto` libera também comando.
+  //
+  // ⚠️ O que NENHUM nível libera é o que sai da pasta do projeto. O `cwd` do
+  // SDK confina as ferramentas de arquivo; para `Bash` o comando é livre, então
+  // `auto` aqui é "não pergunta por comando", não "pode qualquer coisa". Se um
+  // dia isso precisar de cerca própria, o lugar é aqui — e a cerca vem antes do
+  // atalho, nunca depois.
+  if (APROVACAO !== "manual" && EDIT_TOOLS.has(toolName)) {
+    return allowDecision(`edição liberada pelo nível "${APROVACAO}"`);
+  }
+  if (APROVACAO === "auto") {
+    return allowDecision('liberado pelo nível "auto"');
+  }
+
   emit({
     type: "gate_request",
     id,
@@ -151,6 +224,11 @@ async function runTurn(text) {
       PreToolUse: [{ hooks: [preToolUse] }], // política única de permissão
     },
     ...(MODEL ? { model: MODEL } : {}),
+    // `effort` guia a profundidade do raciocínio ('low'…'max'). Só entra quando
+    // pedido: sem a flag, vale o default do modelo (`high`) — mandar um valor
+    // inventado seria escolher por quem não pediu. Quais níveis cada modelo
+    // aceita vem de `supportedModels()` (ver `--modelos`), não de uma lista nossa.
+    ...(EFFORT ? { effort: EFFORT } : {}),
     ...(sessionId ? { resume: sessionId } : {}),
   };
 

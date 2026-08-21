@@ -78,7 +78,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
   }
   window.__shviaCode = {
     // sessão do agente
-    spawn: function (o) { return post('spawn', o || {}); },   // {projectDir, apiKey, model?, effort?, url?, engine?}  engine:'claude' = motor assinatura (Claude Code)
+    spawn: function (o) { return post('spawn', o || {}); },   // {projectDir, apiKey, model?, effort?, url?, engine?, modelDoClaude?}  engine:'claude' = assinatura; modelDoClaude:true = model/effort vieram de claudeModels(), nao do gateway
     send:  function (o) { return post('send', { payload: o }); }, // {type:'user',text} | {id,decision}
     kill:  function () { return post('kill'); },
     onEvent: function (cb) { if (typeof cb === 'function') listeners.push(cb); },
@@ -104,6 +104,11 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // painel da pasta (read-only, pelo app)
     gitStatus: function (path) { return post('gitStatus', { path: path }); },
     listTree: function (path) { return post('listTree', { path: path }); },
+    // Catálogo do motor Claude Code, perguntado ao Agent SDK (não é o catálogo
+    // do gateway). Cada item traz supportsEffort + supportedEffortLevels, para a
+    // UI listar o que existe e DESABILITAR o que não se aplica.
+    // → {modelos:[{value,resolvedModel,displayName,description,supportsEffort,supportedEffortLevels}]} | {erro}
+    claudeModels: function () { return post('claudeModels'); },
     // chamados pelo Rust (eval):
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
     _emit: function (evt) { for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }
@@ -245,6 +250,41 @@ impl Sidecars {
             // de volta (a sessão está morta). Sem leak: o Child morre no drop.
         }
         ok
+    }
+}
+
+/// Catálogo de modelos do motor Claude Code, perguntado ao próprio SDK.
+///
+/// Roda `claude-runner --modelos`, que chama `supportedModels()` do Agent SDK e
+/// devolve, por modelo, `value`/`displayName`/`description` **e** `supportsEffort`
+/// + `supportedEffortLevels`. É o que permite à UI listar o que existe e
+/// desabilitar o que não se aplica, em vez de mostrar o catálogo do gateway
+/// (`openai/gpt-5.6-sol`), que não significa nada aqui.
+///
+/// **Por que perguntar em vez de manter uma lista nossa:** o Claude Code tem
+/// aliases próprios (`opus`, `sonnet`, `fable`, `opus[1m]`, `opusplan`, `best`…)
+/// que mudam com o cliente. Uma cópia na casa envelheceria em silêncio, e o
+/// sintoma seria alguém escolher um modelo que o motor recusa.
+///
+/// Medido em 21/08: a chamada é de canal de controle e **não consome turno**.
+/// Falha nunca é fatal — devolve `erro` e a UI cai no fallback dela; catálogo
+/// vazio apresentado como "nenhum modelo" seria pior que dizer que não deu.
+fn claude_models() -> serde_json::Value {
+    let Some(bin) = resolve_bin("claude-runner") else {
+        return serde_json::json!({ "erro": "claude-runner não encontrado" });
+    };
+    let mut cmd = Command::new(bin);
+    cmd.arg("--modelos");
+    if let Some(p) = crate::user_env::sidecar_path() {
+        cmd.env("PATH", p);
+    }
+    match cmd.output() {
+        Ok(o) => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .find_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .filter(|v| v.get("modelos").is_some())
+            .unwrap_or_else(|| serde_json::json!({ "erro": "resposta do claude-runner ilegível" })),
+        Err(e) => serde_json::json!({ "erro": format!("falha ao listar modelos: {e}") }),
     }
 }
 
@@ -466,6 +506,11 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             let path = v.get("path").and_then(|x| x.as_str()).unwrap_or_default();
             reply(window, &req, true, list_tree(path));
         }
+        "claudeModels" => {
+            let out = claude_models();
+            let ok = out.get("modelos").is_some();
+            reply(window, &req, ok, out);
+        }
         // Notificação nativa do SO (alertas de preço, ADR-011). Fire-and-forget:
         // sem reqId/reply — a página só dispara, não espera resposta.
         "notify" => notify(window, &v),
@@ -556,10 +601,39 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
         );
     }
     if is_claude {
-        // Assinatura via cliente oficial: passa só a pasta do projeto. NADA de
-        // SHVIA_API_KEY / --url / --effort (não passa pelo gateway). O modelo é o
-        // do login/assinatura; o perfil do gateway não se aplica aqui.
+        // Assinatura via cliente oficial: NADA de SHVIA_API_KEY nem `--url` — este
+        // motor não passa pelo gateway, então chave e endpoint do ShvIA não se
+        // aplicam e mandá-los seria vazar credencial para fora do perímetro dele.
+        //
+        // `--model` e `--effort` SIM (21/08) — mas **só quando a página garante
+        // que vieram do catálogo do Claude**, via `modelDoClaude: true`.
+        //
+        // Sem essa trava a correção viraria regressão: até agora o modelo era
+        // lido e descartado aqui, então a UI mandando `openai/gpt-5.6-sol` (o
+        // catálogo do GATEWAY, que é o que ela ainda mostra com o motor Claude
+        // ativo) não fazia mal nenhum. Repassar sem conferir trocaria "seletor que
+        // não faz nada" por "sessão que não abre" — pior, porque quebra o que
+        // funcionava.
+        //
+        // A trava é declarativa de propósito: nada de adivinhar pela forma do id
+        // (`contém '/'`?), que erraria no primeiro alias novo. Quem sabe de qual
+        // catálogo o valor saiu é quem montou o seletor, e ela diz.
         cmd.args(["--cwd", &dir]);
+        let do_claude = v.get("modelDoClaude").and_then(|x| x.as_bool()).unwrap_or(false);
+        if do_claude && !model.is_empty() {
+            cmd.args(["--model", &model]);
+        }
+        if do_claude && !effort.is_empty() {
+            cmd.args(["--effort", &effort]);
+        }
+        // Aprovação NÃO depende de `modelDoClaude`: os níveis são os mesmos dos
+        // dois motores (manual/edit/auto), implementados por código nosso — o
+        // hook `PreToolUse` do runner, que é quem faz o cartão de aprovação
+        // aparecer. Não há catálogo a conciliar aqui, então o valor passa direto.
+        let aprovacao = s("approval");
+        if !aprovacao.is_empty() {
+            cmd.args(["--aprovacao", &aprovacao]);
+        }
     } else {
         cmd.arg("--json").args(["--tools", "local"]);
         if !model.is_empty() {
