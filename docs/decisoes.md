@@ -356,7 +356,13 @@ how-to; linkar o ADR.
   `engine` = `anna`, comportamento idêntico; `cargo check`/`clippy` verdes). O
   runner é instalado no **padrão anna** (`claude-runner/install.sh` →
   `~/.local/bin/claude-runner`, resolvido por PATH/local). Pré-req: **Node 18+** e
-  Claude Code **autenticado**. O seletor de **modelo** do Claude (opus/sonnet/…)
+  Claude Code **autenticado**. **Atualização 20/08/2026 (1.1.34):** o wrapper
+  gerado pelo `install.sh` grava o **caminho absoluto do node** (fallback para o
+  PATH). Ele fazia `exec node …` contando com o PATH, e app de GUI não herda PATH
+  de shell (ADR-030) — dentro do app morria com `node: not found` e a página
+  traduzia para "claude-runner não encontrado", mandando reinstalar o que já
+  estava lá. O `user_env.rs` conserta o PATH do processo do sidecar, mas o
+  wrapper é um `sh` à parte e não passa por lá. O seletor de **modelo** do Claude (opus/sonnet/…)
   e o **toggle na UI** (SHVIA-WEB) com aviso "fora do gateway" ficam para o passo
   seguinte. Validado ao vivo (spike): auth por assinatura, streaming, e gates nos
   dois sentidos (leitura=auto; `Bash`/`Write`/`Edit`=card; approve executa,

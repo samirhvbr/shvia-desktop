@@ -3,6 +3,23 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.34 - O wrapper do claude-runner grava o caminho do node: "claude-runner não encontrado" era o node faltando
+
+- **O sintoma culpava o binário errado.** O motor Claude Code não subia com
+  "claude-runner não encontrado — rode claude-runner/install.sh", mas o runner
+  estava instalado: o wrapper `~/.local/bin/claude-runner` fazia `exec node …`
+  contando com o PATH, e app de GUI não herda PATH de shell (ADR-030). Dentro do
+  app o wrapper morria com `node: not found`, e a página traduzia para "não
+  encontrado" — mandando o usuário reinstalar o que já estava lá (caso real de
+  20/08, com o runner recém-instalado e funcionando pelo terminal).
+- `claude-runner/install.sh` grava o **caminho absoluto do node** no wrapper, com
+  fallback para o PATH se o node mudar de lugar depois (upgrade do Homebrew,
+  troca de gerenciador de versão). Provado nos dois sentidos: com o PATH mínimo
+  do launchd (`/usr/bin:/bin:/usr/sbin:/sbin`) o wrapper antigo falha e o novo
+  roda; e um turno real pela assinatura respondeu (`claude-opus-5[1m]`).
+- O `user_env.rs` (1.1.24) já resolvia o PATH do processo do sidecar; este
+  conserto cobre o wrapper, que é um processo `sh` à parte e não passava por lá.
+
 ## 1.1.33 - O runner passa a responder --version, e o package.json dele deixa de ser um número parado
 
 - ⚠️ **A 1.1.32 expôs uma sonda que devolveria lixo.** O `engine_status()` roda o

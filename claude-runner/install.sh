@@ -33,9 +33,19 @@ cp "$DIR/claude-runner.mjs" "$DIR/package.json" "$DEST/"
 rm -f "$DEST/package-lock.json"
 ( cd "$DEST" && npm install --omit=dev --no-audit --no-fund )
 
+# O caminho do node é GRAVADO na instalação, com fallback para o PATH.
+# Motivo: quem chama este wrapper é o app de GUI, e app de GUI não herda o PATH
+# do shell (ADR-030) — no macOS o launchd entrega /usr/bin:/bin:/usr/sbin:/sbin e
+# o `exec node` morria com "node: not found", que na tela virava o enganoso
+# "claude-runner não encontrado" (caso real de 20/08). Se o node mudar de lugar
+# depois (upgrade do Homebrew, troca de gerenciador de versão), cai no PATH.
+NODE_ABS="$(command -v node)"
+
 cat > "$BIN/claude-runner" <<EOF
 #!/bin/sh
-exec node "$DEST/claude-runner.mjs" "\$@"
+NODE="$NODE_ABS"
+[ -x "\$NODE" ] || NODE=node
+exec "\$NODE" "$DEST/claude-runner.mjs" "\$@"
 EOF
 chmod +x "$BIN/claude-runner"
 
