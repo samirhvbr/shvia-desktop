@@ -3,6 +3,21 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.35 - Registra o buraco de atualização do macOS: manifesto publicado está na 1.1.29 e só com linux
+
+- **Retrato, não conserto.** O manifesto em `ai.shvia.org/storage/desktop/release.json`
+  está na **1.1.29 com `linux` apenas**, enquanto o repo está na 1.1.34 — quem usa macOS
+  não recebe nem o aviso de versão nova.
+- **A causa é desenho, e precisa estar escrita:** o `release-manifest.mjs` recomeça o
+  manifesto quando a VERSÃO muda e só mescla plataformas da mesma versão. Um build
+  publicado do Arch sozinho apaga os artefatos de macOS da versão anterior. Para o
+  manifesto ter as duas, **as duas máquinas têm de buildar a mesma versão**, sem bumpar
+  entre uma e outra.
+- Entrou como **pendência 0** (a primeira da lista) em `.continue/estado-atual.md`, com a
+  ordem dos dois comandos e o que a 1.1.34 carrega e ainda não chegou a ninguém no
+  macOS: o PATH do shell de login para os sidecars (ADR-030), o wrapper do
+  `claude-runner` com caminho absoluto do node, e o `anna` 0.11.x.
+
 ## 1.1.34 - O wrapper do claude-runner grava o caminho do node: "claude-runner não encontrado" era o node faltando
 
 - **O sintoma culpava o binário errado.** O motor Claude Code não subia com
