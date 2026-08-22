@@ -48,6 +48,17 @@ const targets = [
     /(^\s*version\s*=\s*")\d+\.\d+\.\d+(")/m,
     `$1${version}$2`,
   ],
+  // O runner do motor Claude. Entrou como portador na 1.1.33: ele responde
+  // `--version` a partir daqui, e a página mostra esse número na chip do MOTOR.
+  // Antes disto o arquivo dizia `0.1.0` desde que nasceu — número parado que não
+  // respondia à única pergunta que se faz dele ("qual app trouxe este runner?").
+  // Portador que não é sincronizado é pior que portador nenhum: ele PARECE
+  // resposta.
+  [
+    "claude-runner/package.json",
+    /("version"\s*:\s*")\d+\.\d+\.\d+(")/,
+    `$1${version}$2`,
+  ],
   // Lock files (existem após install/build): ancorar no nome do nosso pacote
   // para não tocar nas versões das dependências.
   [

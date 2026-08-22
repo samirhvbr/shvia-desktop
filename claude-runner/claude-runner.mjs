@@ -35,7 +35,6 @@
 //     {"type":"usage","tokens","cost","estimated"}
 //     {"type":"turn_done"} | {"type":"error"|"warn","message"}
 
-import { query } from "@anthropic-ai/claude-agent-sdk";
 import * as readline from "node:readline";
 
 // ---------------------------------------------------------------- saída NDJSON
@@ -49,6 +48,33 @@ function argOf(flag) {
   const i = process.argv.indexOf(flag);
   return i >= 0 && i + 1 < process.argv.length ? process.argv[i + 1] : undefined;
 }
+// `--version` responde e SAI. Sem isto o `engine_status()` do desktop rodava o
+// runner com essa flag, ele ignorava, subia em modo host, recebia EOF no stdin e
+// saía — devolvendo NDJSON de arranque que a ponte leria como se fosse o número
+// da versão. Uma sonda que responde qualquer coisa é pior que uma que não
+// responde: a de cima o desktop já sabe classificar ("encontrado, mas não
+// respondeu"); a outra vira lixo exibido como fato.
+if (process.argv.includes("--version")) {
+  const { readFileSync } = await import("node:fs");
+  const { dirname, resolve } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  let v = "desconhecida";
+  try {
+    const raiz = dirname(fileURLToPath(import.meta.url));
+    v = JSON.parse(readFileSync(resolve(raiz, "package.json"), "utf8")).version ?? v;
+  } catch { /* instalação sem o package.json ao lado: o desktop mostra o estado, não adivinha */ }
+  process.stdout.write(`claude-runner ${v}\n`);
+  process.exit(0);
+}
+
+// O SDK entra por import DINÂMICO, e só depois do `--version` acima. Com o
+// `import` estático de antes, a resolução do pacote acontecia ANTES de qualquer
+// linha nossa rodar — então numa instalação sem `npm install` o runner morria com
+// ERR_MODULE_NOT_FOUND e o desktop lia isso como "binário corrompido", quando o
+// diagnóstico certo é "está lá, faltam as dependências". Agora `--version`
+// responde mesmo sem o SDK, que é exatamente quando o diagnóstico é mais útil.
+const { query } = await import("@anthropic-ai/claude-agent-sdk");
+
 const MODEL = argOf("--model"); // 'opus'|'sonnet'|'haiku'|'fable'|id completo
 const EFFORT = argOf("--effort"); // 'low'|'medium'|'high'|'xhigh'|'max'
 const PROJECT_DIR = argOf("--cwd") || process.cwd();

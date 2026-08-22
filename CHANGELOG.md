@@ -3,6 +3,36 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.33 - O runner passa a responder --version, e o package.json dele deixa de ser um número parado
+
+- ⚠️ **A 1.1.32 expôs uma sonda que devolveria lixo.** O `engine_status()` roda o
+  binário com `--version` e trata a saída como o NÚMERO. O `anna` responde; o
+  `claude-runner` **ignorava a flag** — subia em modo host, recebia EOF no stdin e
+  saía, devolvendo NDJSON de arranque que a ponte mostraria como se fosse a
+  versão. Sonda que responde qualquer coisa é pior que sonda que não responde:
+  "encontrado, mas não respondeu" o desktop sabe classificar; lixo exibido como
+  fato, não.
+- **`claude-runner/package.json` vira PORTADOR de versão** (`sync-version.mjs`,
+  6 portadores agora). Ele dizia `0.1.0` desde que nasceu — número parado que não
+  respondia à única pergunta que se faz dele: *qual app trouxe este runner?*
+  Portador que não é sincronizado é pior que portador nenhum, porque **parece**
+  resposta.
+- **O import do SDK virou dinâmico**, depois do `--version`. Com o `import`
+  estático, a resolução do pacote acontecia antes de qualquer linha nossa rodar:
+  numa instalação sem `npm install` o runner morria com `ERR_MODULE_NOT_FOUND` e
+  o desktop lia isso como "binário corrompido", quando o diagnóstico certo é
+  "está lá, faltam as dependências". Agora `--version` responde **mesmo sem o
+  SDK** — que é exatamente quando o diagnóstico é mais útil.
+- **3 réguas novas** (8+19+3 = 30 no `prova:runner`), com o subprocesso rodando
+  neste repo **sem `npm install`**, de propósito: é assim que se prova que o
+  `--version` não depende do SDK.
+- 🐛 **Uma reversão voltou VERDE e virou comentário.** A régua "reporta a versão"
+  lê o `package.json` do runner e compara — então dessincronizar os dois **juntos**
+  passa. Ela prova que o runner reporta o próprio portador, não que o portador
+  está em dia; quem prova a sincronia é o `npm run prova:bump`, onde a mesma
+  reversão derruba o build nomeando o arquivo. Está escrito lá: duas provas, cada
+  uma com a sua metade.
+
 ## 1.1.32 - A tradução de evento do runner ganha 19 réguas, e o engineStatus deixa de ser braço inalcançável
 
 - ⚠️ **A parte que mais importa:** `traduzirMensagem` foi extraída como função

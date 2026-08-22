@@ -156,9 +156,43 @@ conferir("result de erro emite error E turn_done",
 conferir("tipo desconhecido é ignorado sem estourar", traduzir({ type: "coisa_nova" }).eventos.length === 0, null);
 conferir("mensagem nula é ignorada sem estourar", traduzir(null).eventos.length === 0, null);
 
+// ── `--version`: a sonda de que o desktop depende ────────────────────────────
+//
+// ⚠️ Não é detalhe de conveniência. O `engine_status()` do desktop roda o binário
+// com `--version` e trata a saída como o NÚMERO. Até a 1.1.32 o runner ignorava a
+// flag, subia em modo host, recebia EOF no stdin e saía — devolvendo NDJSON de
+// arranque, que a ponte mostraria como se fosse a versão. Sonda que responde
+// qualquer coisa é pior que sonda que não responde: "encontrado, mas não
+// respondeu" o desktop sabe classificar; lixo exibido como fato, não.
+//
+// E o subprocesso roda SEM `npm install` neste repo, de propósito: é assim que se
+// prova que o `--version` não depende do SDK.
+{
+  const { execFileSync } = await import("node:child_process");
+  const pkg = JSON.parse(readFileSync(resolve(ROOT, "claude-runner/package.json"), "utf8"));
+  let saida = "";
+  try {
+    saida = execFileSync(process.execPath, [resolve(ROOT, "claude-runner/claude-runner.mjs"), "--version"],
+      { encoding: "utf8", timeout: 15000 }).trim();
+  } catch (e) {
+    saida = `ERRO: ${e?.message ?? e}`;
+  }
+  conferir("--version responde e sai com 0", saida.startsWith("claude-runner "), saida);
+  // ⚠️ O que esta régua prova E o que ela NÃO prova. Ela lê o `package.json` do
+  // runner e compara — então prova que o runner REPORTA o próprio portador, não
+  // que o portador está em dia. Dessincronizar os dois juntos passa aqui (medido:
+  // a reversão voltou verde). Quem prova a sincronia é o `npm run prova:bump`,
+  // onde `claude-runner/package.json` entrou como portador na 1.1.33 — e lá a
+  // mesma reversão derruba o build nomeando o arquivo. Duas provas, cada uma com
+  // a sua metade; escrever aqui que esta cobre as duas seria o verde mentindo.
+  conferir("--version reporta o portador do próprio runner",
+    saida === `claude-runner ${pkg.version}`, saida);
+  conferir("--version não vaza NDJSON de arranque", !saida.includes('{"type"'), saida);
+}
+
 if (falhas.length) {
   console.error(`[prova-runner] FALHOU: ${falhas.length} régua(s)`);
   for (const f of falhas) console.error(`  ✗ ${f}`);
   process.exit(1);
 }
-console.log("[prova-runner] OK: 8 réguas do montarPrompt + 19 da traduzirMensagem (forma de cada evento, o fallback de texto e o turn_done que destrava a tela).");
+console.log("[prova-runner] OK: 8 réguas do montarPrompt + 19 da traduzirMensagem + 3 do `--version` (forma de cada evento, o fallback de texto e o turn_done que destrava a tela).");
