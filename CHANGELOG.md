@@ -3,6 +3,20 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.36 - Corrige o retrato da 1.1.35: as duas plataformas JÁ estão publicadas na 1.1.34
+
+- A 1.1.35 registrou como pendência aberta ("o macOS está sem caminho de
+  atualização") algo que **foi resolvido no mesmo dia, poucas horas depois**: o
+  manifesto está em **1.1.34 com `linux` e `macos`**, e o app instalado é o
+  1.1.34. Escrevi o retrato com a medição de 19h30 e não remedi antes de commitar.
+- **Documentação errada é pior que documentação nenhuma** — alguém leria a
+  pendência 0 e ia publicar de novo, ou pior, ia achar que a entrega da 1.1.34
+  não chegou a ninguém.
+- **O que ficou** (e é o que importava): a regra de que o `release-manifest.mjs`
+  recomeça o manifesto quando a VERSÃO muda e só mescla plataformas da mesma
+  versão. Publicar de uma máquina só, depois de bumpar, apaga a outra plataforma.
+  A ordem certa é: publica numa, publica na outra, **sem bumpar no meio**.
+
 ## 1.1.35 - Registra o buraco de atualização do macOS: manifesto publicado está na 1.1.29 e só com linux
 
 - **Retrato, não conserto.** O manifesto em `ai.shvia.org/storage/desktop/release.json`

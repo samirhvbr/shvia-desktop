@@ -26,32 +26,23 @@ As fases F1 e F2 estão entregues. O detalhe do que funciona está em
 
 ## Pendências ativas
 
-### 0. 🔴 O macOS está SEM caminho de atualização — publicar a 1.1.34
+### 0. ✅ Atualização das duas plataformas — RESOLVIDO em 22/08/2026
 
-**Retrato de 22/08/2026.** O manifesto publicado em
-`https://ai.shvia.org/storage/desktop/release.json` está na **1.1.29 com `linux`
-apenas**, e o repositório está na **1.1.34**. Ou seja: quem usa macOS não recebe
-nem o aviso de versão nova — o updater consulta, não acha a plataforma dele e
-segue quieto.
+**O que estava aberto às 19h30:** o manifesto publicado estava na **1.1.29 com
+`linux` apenas** enquanto o repo estava na 1.1.34 — quem usa macOS não recebia
+nem o aviso de versão nova. **Foi publicado no mesmo dia**: o manifesto agora
+está em **1.1.34 com `linux` e `macos`**, e o app instalado aqui é o 1.1.34.
 
-**Como isso aconteceu, e é desenho, não bug:** o `release-manifest.mjs`
-**recomeça o manifesto quando a versão muda** e só mescla plataformas *da mesma
-versão*. Um build publicado a partir do Arch, sozinho, apaga os artefatos de
-macOS da versão anterior. Para o manifesto ter as duas, **as duas máquinas
-precisam buildar a MESMA versão** — Mac primeiro, Arch depois (ou vice-versa),
-sem bumpar entre um e outro.
+**A regra que isso ensinou, e que continua valendo** (é o motivo desta seção
+ficar aqui em vez de sumir): o `release-manifest.mjs` **recomeça o manifesto
+quando a VERSÃO muda** e só mescla plataformas *da mesma versão*. Publicar de uma
+máquina só, depois de bumpar, **apaga os artefatos da outra plataforma**. Para o
+manifesto ter as duas:
 
-**O que falta, em ordem:**
+1. buildar e publicar numa máquina;
+2. buildar e publicar na outra **sem bumpar a versão entre uma e outra**.
 
-1. no Mac: `./build-local.sh --publish` (a senha de `root@100.64.100.242` é
-   digitada na hora — eu não consigo, o `scp` pede TTY);
-2. no Arch: `./build-local.sh --publish` **sem bumpar a versão**, para o
-   `linux` entrar no manifesto da 1.1.34 em vez de recomeçar outro.
-
-**O que a 1.1.34 carrega e ainda não chegou a ninguém no macOS:** o PATH do
-shell de login para os sidecars (ADR-030 — sem ele o agente não acha
-`npx`/`node`/`cargo`/`php` dentro do app), o wrapper do `claude-runner` com o
-caminho absoluto do node, e o `anna` 0.11.x com o teto de voltas configurável.
+Bumpou no meio? A segunda publicação recomeça o manifesto e derruba a primeira.
 
 ### 1. O caminho `makepkg` (Arch) nunca rodou de verdade — 1.1.16
 
