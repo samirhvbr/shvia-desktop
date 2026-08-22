@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Prova do `montarPrompt` do claude-runner — a montagem do pedido COM IMAGEM.
+// Provas do claude-runner: a montagem do pedido (`montarPrompt`) e a TRADUÇÃO DE
+// EVENTO (`traduzirMensagem`), que é o trecho que falha calado.
 //
 // ⚠️ POR QUE ESTA PROVA EXISTE. O `claude-runner.mjs` tem 367 linhas e não tinha
 // prova nenhuma: ele é a metade do Modo Code que roda fora do gateway, com a
@@ -17,6 +18,14 @@
 //
 // Nenhuma das três aparece no `node --check`. Esta prova roda a função REAL,
 // extraída do arquivo em produção — testar uma cópia provaria a cópia.
+//
+// ⚠️ A SEGUNDA METADE, e por que ela importa mais. `traduzirMensagem` transforma
+// mensagem do Agent SDK nos eventos que a página consome. Quando a forma de um
+// evento do SDK muda, nenhum `case` casa — **nada é emitido e nada falha**. A tela
+// do Modo Code emudece e o turno "termina" sem uma linha. Não há exceção, não há
+// log, não há vermelho em lugar nenhum: é o defeito perfeito. Cada régua abaixo
+// fixa a forma EXATA de um evento; quebrar o contrato passa a doer aqui, em vez
+// de doer numa sessão do dono.
 //
 // Uso: `npm run prova:runner` (sai != 0 se qualquer régua cair).
 import { readFileSync } from "node:fs";
@@ -38,6 +47,15 @@ let sessionId = "sess-1"; // o módulo real tem esta variável no escopo de cima
 // escopo de cima (linha 215) — recortar a função a deixaria livre e o ReferenceError
 // só apareceria no caso com imagem, que é justamente o que se quer medir.
 const montarPrompt = new Function("text", "images", "sessionId", m[1]);
+
+const t = fonte.match(/^function traduzirMensagem\(message, estado, modelo\) \{\n([\s\S]*?)\n\}$/m);
+if (!t) {
+  console.error("[prova-runner] não achei traduzirMensagem() em claude-runner.mjs");
+  process.exit(1);
+}
+const traduzirMensagem = new Function("message", "estado", "modelo", t[1]);
+const traduzir = (msg, est = { sessionId: undefined, sawTextDelta: false }) =>
+  traduzirMensagem(msg, est, "opus");
 
 const falhas = [];
 const conferir = (regua, ok, obtido) => {
@@ -70,9 +88,77 @@ conferir("o texto é o último que o modelo lê", blocos?.[1]?.text === "olha is
 const soImg = await blocosDe(montarPrompt("   ", IMG, sessionId));
 conferir("texto em branco não vira bloco vazio", soImg?.length === 1 && soImg[0].type === "image", soImg);
 
+// ── traduzirMensagem: a forma EXATA de cada evento ───────────────────────────
+
+// `init` é onde o sessionId nasce. Perdê-lo faz o turno seguinte reiniciar a
+// conversa em silêncio — o modelo responde do zero e nada acusa.
+const ini = traduzir({ type: "system", subtype: "init", session_id: "s-9", model: "claude-opus-5" });
+conferir("init guarda o sessionId", ini.estado.sessionId === "s-9", ini.estado);
+conferir("init emite `model`", ini.eventos[0]?.type === "model", ini.eventos[0]);
+conferir("init leva o modelo do SDK", ini.eventos[0]?.model === "claude-opus-5", ini.eventos[0]);
+
+// Sem `model` no evento, cai no --model da linha de comando — nunca em branco:
+// chip vazio no topo do Modo Code parece motor não iniciado.
+const semModelo = traduzir({ type: "system", subtype: "init", session_id: "s" });
+conferir("sem modelo no evento, usa o --model", semModelo.eventos[0]?.model === "opus", semModelo.eventos[0]);
+
+// `system` que NÃO é init não pode emitir nada — senão o chip do modelo pisca a
+// cada mensagem de serviço do SDK.
+conferir("system não-init é silencioso", traduzir({ type: "system", subtype: "outro" }).eventos.length === 0, null);
+
+// O delta de texto é o que faz a resposta aparecer letra a letra.
+const d = traduzir({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "oi" } } });
+conferir("text_delta vira {type:text,delta}", JSON.stringify(d.eventos) === '[{"type":"text","delta":"oi"}]', d.eventos);
+conferir("text_delta marca sawTextDelta", d.estado.sawTextDelta === true, d.estado);
+
+// Delta de OUTRO tipo (thinking, input_json) não pode virar texto na tela.
+const outroDelta = traduzir({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "hmm" } } });
+conferir("delta que não é de texto não vira texto", outroDelta.eventos.length === 0, outroDelta.eventos);
+
+// O bloco assistant traz o texto COMPLETO. Depois dos deltas ele duplicaria a
+// resposta na tela; é fallback, não caminho normal.
+const dep = traduzir({ type: "assistant", message: { content: [{ type: "text", text: "tudo" }] } }, { sessionId: "s", sawTextDelta: true });
+conferir("assistant NÃO repete o texto se já houve deltas", dep.eventos.length === 0, dep.eventos);
+const sem = traduzir({ type: "assistant", message: { content: [{ type: "text", text: "tudo" }] } });
+conferir("sem deltas, o assistant emite o texto", sem.eventos[0]?.delta === "tudo", sem.eventos);
+
+// tool_call: os três campos que a página usa para desenhar a chamada.
+const tc = traduzir({ type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "read_file", input: { path: "a.php" } }] } });
+conferir("tool_use vira tool_call com id/name/arguments",
+  JSON.stringify(tc.eventos) === '[{"type":"tool_call","id":"t1","name":"read_file","arguments":{"path":"a.php"}}]', tc.eventos);
+
+// tool_result com content em ARRAY (o SDK manda os dois formatos) não pode virar
+// "[object Object]" na tela.
+const tr = traduzir({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", content: [{ type: "text", text: "conteúdo" }] }] } });
+conferir("tool_result de array vira JSON, não [object Object]",
+  tr.eventos[0]?.content?.includes("conteúdo") && !tr.eventos[0]?.content?.includes("[object"), tr.eventos[0]);
+conferir("tool_result conta bytes do que foi enviado",
+  tr.eventos[0]?.bytes === Buffer.byteLength(tr.eventos[0]?.content ?? ""), tr.eventos[0]);
+
+// `result` fecha o turno. Sem `turn_done` a interface fica presa em "pensando"
+// para sempre, sem erro nenhum — o pior desfecho possível deste arquivo.
+const fim = traduzir({ type: "result", usage: { input_tokens: 10, output_tokens: 5 }, total_cost_usd: 0.02 });
+conferir("result soma os tokens", fim.eventos[0]?.tokens === 15, fim.eventos[0]);
+conferir("custo vai marcado como ESTIMADO (assinatura não fatura por token)",
+  fim.eventos[0]?.estimated === true, fim.eventos[0]);
+conferir("result SEMPRE fecha com turn_done",
+  fim.eventos[fim.eventos.length - 1]?.type === "turn_done", fim.eventos);
+
+// E o erro não pode engolir o fechamento: sem `turn_done`, a tela trava mesmo
+// tendo mostrado o erro.
+const err = traduzir({ type: "result", subtype: "error", result: "estourou" });
+conferir("result de erro emite error E turn_done",
+  err.eventos.map((e) => e.type).join(",") === "usage,error,turn_done", err.eventos.map((e) => e.type));
+
+// Mensagem de tipo desconhecido não pode explodir nem inventar evento: SDK novo
+// manda tipos que este runner não conhece, e derrubar o turno por isso seria
+// trocar uma funcionalidade que falta por uma sessão perdida.
+conferir("tipo desconhecido é ignorado sem estourar", traduzir({ type: "coisa_nova" }).eventos.length === 0, null);
+conferir("mensagem nula é ignorada sem estourar", traduzir(null).eventos.length === 0, null);
+
 if (falhas.length) {
   console.error(`[prova-runner] FALHOU: ${falhas.length} régua(s)`);
   for (const f of falhas) console.error(`  ✗ ${f}`);
   process.exit(1);
 }
-console.log("[prova-runner] OK: 8 réguas do montarPrompt — string sem imagem, ordem dos blocos, mime/base64 e imagem sem texto.");
+console.log("[prova-runner] OK: 8 réguas do montarPrompt + 19 da traduzirMensagem (forma de cada evento, o fallback de texto e o turn_done que destrava a tela).");

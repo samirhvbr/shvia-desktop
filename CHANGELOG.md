@@ -3,6 +3,40 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.1.32 - A tradução de evento do runner ganha 19 réguas, e o engineStatus deixa de ser braço inalcançável
+
+- ⚠️ **A parte que mais importa:** `traduzirMensagem` foi extraída como função
+  PURA e provada. Era o trecho mais perigoso do runner e o único sem régua
+  nenhuma — quando a forma de um evento do SDK muda, **nenhum `case` casa, nada é
+  emitido e nada falha**. A tela do Modo Code emudece e o turno "termina" sem uma
+  linha: sem exceção, sem log, sem vermelho em lugar nenhum. O defeito perfeito.
+- **19 réguas novas** (`npm run prova:runner`, 8+19 = 27), sobre a função **real**
+  extraída do arquivo em produção. Cada uma fixa a forma exata de um evento:
+  - `init` guarda o `sessionId` — perdê-lo reinicia a conversa em silêncio, com o
+    modelo respondendo do zero;
+  - `system` que não é `init` é silencioso — senão a chip do modelo pisca a cada
+    mensagem de serviço;
+  - só `text_delta` vira texto: `thinking_delta` na tela seria raciocínio
+    vazando como resposta;
+  - o bloco `assistant` **não repete** o texto quando já houve deltas — repetir
+    duplicaria a resposta;
+  - `tool_result` com content em ARRAY vira JSON, não `[object Object]`;
+  - `result` **sempre** fecha com `turn_done`, **inclusive no erro** — sem ele a
+    interface fica presa em "pensando" para sempre;
+  - tipo desconhecido e mensagem nula são ignorados sem estourar: SDK novo manda
+    tipos que este runner não conhece, e derrubar o turno por isso trocaria uma
+    funcionalidade que falta por uma sessão perdida.
+- **Sete reversões com controle**, cada uma acendendo só a sua régua.
+- 📌 **`engineStatus` deixa de ser inalcançável.** O Rust tratava a ação desde a
+  1.0.0 e o wrapper JS **nunca a expôs** — e o comentário ao lado dizia que "a
+  página pergunta antes de oferecer o Modo Code". Não perguntava, e não tinha
+  como. Pior: o comentário estava colado no `writeCliConfig`, então lia como se
+  fosse dele. Exposto agora, com o consumidor real sendo a versão do motor à
+  vista de quem for pedir suporte.
+- ⚠️ **E ela NÃO é gate de capacidade** — para isso continua valendo `recursos`.
+  A ação só existe em cascas que já a expõem, então usá-la como gate responderia
+  sempre "sim", que é o contrário do que um gate precisa fazer.
+
 ## 1.1.31 - A ponte passa a declarar o que esta casca sabe fazer, e o piso do anna sobe para 0.11.4
 
 - **`window.__shviaCode.recursos = { imagem: true }`** — constante local da ponte,

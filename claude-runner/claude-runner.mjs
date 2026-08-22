@@ -252,6 +252,106 @@ function montarPrompt(text, images) {
   })();
 }
 
+/**
+ * Traduz UMA mensagem do Agent SDK nos eventos do protocolo desta casa
+ * (docs/embedding.md). Pura: não emite nada, não lê nem escreve o mundo —
+ * devolve `{eventos, estado}` e quem chama despacha.
+ *
+ * ⚠️ POR QUE ELA FOI EXTRAÍDA. Este era o trecho mais perigoso do runner e o
+ * único sem prova: quando a forma de um evento do SDK muda, nenhum `case` casa,
+ * **nada é emitido e nada falha** — a tela do Modo Code simplesmente emudece, e
+ * o turno "termina" sem uma linha. Erro que não erra é a família de defeito que
+ * esta casa passou a semana consertando, e aqui ela estava sem nenhuma régua.
+ *
+ * O estado que atravessa as mensagens é explícito de propósito:
+ *  - `sessionId`  → vai no `resume` do turno seguinte; perdê-lo reinicia a
+ *                   conversa em silêncio, com o modelo respondendo do zero;
+ *  - `sawTextDelta` → o bloco `assistant` traz o texto COMPLETO. Emiti-lo depois
+ *                   dos deltas duplicaria a resposta na tela; é fallback, não
+ *                   caminho normal.
+ *
+ * @param {object} message   mensagem do SDK
+ * @param {{sessionId: string|undefined, sawTextDelta: boolean}} estado
+ * @param {string|undefined} modelo  o `--model` da linha de comando (fallback do rótulo)
+ * @returns {{eventos: object[], estado: {sessionId: string|undefined, sawTextDelta: boolean}}}
+ */
+function traduzirMensagem(message, estado, modelo) {
+  const eventos = [];
+  let sessionId = estado.sessionId;
+  let sawTextDelta = estado.sawTextDelta;
+
+  switch (message?.type) {
+    case "system":
+      if (message.subtype === "init") {
+        sessionId = message.session_id ?? sessionId;
+        eventos.push({
+          type: "model",
+          model: message.model ?? message.data?.model ?? modelo ?? "claude",
+          server: "anthropic (assinatura)",
+        });
+      }
+      break;
+
+    case "stream_event": {
+      const ev = message.event;
+      if (ev?.type === "content_block_delta" && ev.delta?.type === "text_delta") {
+        sawTextDelta = true;
+        eventos.push({ type: "text", delta: ev.delta.text });
+      }
+      break;
+    }
+
+    case "assistant": {
+      for (const block of message.message?.content ?? []) {
+        // fallback: se os deltas não vierem, emite o texto completo do bloco
+        if (block.type === "text" && !sawTextDelta) {
+          eventos.push({ type: "text", delta: block.text });
+        }
+        if (block.type === "tool_use") {
+          eventos.push({ type: "tool_call", id: block.id, name: block.name, arguments: block.input });
+        }
+      }
+      break;
+    }
+
+    case "user": {
+      // resultados de ferramenta voltam como content do papel user
+      for (const block of message.message?.content ?? []) {
+        if (block.type === "tool_result") {
+          const content =
+            typeof block.content === "string" ? block.content : JSON.stringify(block.content);
+          eventos.push({
+            type: "tool_result",
+            id: block.tool_use_id,
+            name: "",
+            bytes: Buffer.byteLength(content),
+            content,
+          });
+        }
+      }
+      break;
+    }
+
+    case "result": {
+      const tin = message.usage?.input_tokens ?? 0;
+      const tout = message.usage?.output_tokens ?? 0;
+      eventos.push({
+        type: "usage",
+        tokens: tin + tout,
+        cost: message.total_cost_usd ?? 0,
+        estimated: true, // sob assinatura o custo USD é indicativo, não faturado por token
+      });
+      if (message.subtype === "error") {
+        eventos.push({ type: "error", message: String(message.result ?? "erro no turno") });
+      }
+      eventos.push({ type: "turn_done" });
+      break;
+    }
+  }
+
+  return { eventos, estado: { sessionId, sawTextDelta } };
+}
+
 async function runTurn(text, images) {
   const options = {
     cwd: PROJECT_DIR,
@@ -270,77 +370,15 @@ async function runTurn(text, images) {
     ...(sessionId ? { resume: sessionId } : {}),
   };
 
-  let sawTextDelta = false;
+  // O estado atravessa as mensagens do turno: `sessionId` para o `resume` do
+  // turno seguinte, `sawTextDelta` para o fallback de texto do bloco assistant.
+  let estado = { sessionId, sawTextDelta: false };
 
   for await (const message of query({ prompt: montarPrompt(text, images), options })) {
-    switch (message.type) {
-      case "system":
-        if (message.subtype === "init") {
-          sessionId = message.session_id ?? sessionId;
-          emit({
-            type: "model",
-            model: message.model ?? message.data?.model ?? MODEL ?? "claude",
-            server: "anthropic (assinatura)",
-          });
-        }
-        break;
-
-      case "stream_event": {
-        const ev = message.event;
-        if (ev?.type === "content_block_delta" && ev.delta?.type === "text_delta") {
-          sawTextDelta = true;
-          emit({ type: "text", delta: ev.delta.text });
-        }
-        break;
-      }
-
-      case "assistant": {
-        for (const block of message.message?.content ?? []) {
-          // fallback: se os deltas não vierem, emite o texto completo do bloco
-          if (block.type === "text" && !sawTextDelta) {
-            emit({ type: "text", delta: block.text });
-          }
-          if (block.type === "tool_use") {
-            emit({ type: "tool_call", id: block.id, name: block.name, arguments: block.input });
-          }
-        }
-        break;
-      }
-
-      case "user": {
-        // resultados de ferramenta voltam como content do papel user
-        for (const block of message.message?.content ?? []) {
-          if (block.type === "tool_result") {
-            const content =
-              typeof block.content === "string" ? block.content : JSON.stringify(block.content);
-            emit({
-              type: "tool_result",
-              id: block.tool_use_id,
-              name: "",
-              bytes: Buffer.byteLength(content),
-              content,
-            });
-          }
-        }
-        break;
-      }
-
-      case "result": {
-        const tin = message.usage?.input_tokens ?? 0;
-        const tout = message.usage?.output_tokens ?? 0;
-        emit({
-          type: "usage",
-          tokens: tin + tout,
-          cost: message.total_cost_usd ?? 0,
-          estimated: true, // sob assinatura o custo USD é indicativo, não faturado por token
-        });
-        if (message.subtype === "error") {
-          emit({ type: "error", message: String(message.result ?? "erro no turno") });
-        }
-        emit({ type: "turn_done" });
-        break;
-      }
-    }
+    const r = traduzirMensagem(message, estado, MODEL);
+    estado = r.estado;
+    sessionId = estado.sessionId;
+    for (const ev of r.eventos) emit(ev);
   }
 }
 

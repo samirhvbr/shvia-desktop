@@ -109,6 +109,21 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // UI listar o que existe e DESABILITAR o que não se aplica.
     // → {modelos:[{value,resolvedModel,displayName,description,supportsEffort,supportedEffortLevels}]} | {erro}
     claudeModels: function () { return post('claudeModels'); },
+    // Estado do motor no disco: {found, bundled, version, path}. `found` é o
+    // binário EXISTIR e `version` é ele RESPONDER `--version` — separados de
+    // propósito, porque "está lá e não roda" é diagnóstico diferente de "não está
+    // lá". `engine`: 'gateway' (anna) | 'claude' (claude-runner).
+    //
+    // ⚠️ O Rust tratava esta ação desde a 1.0.0 e o wrapper NUNCA a expôs — braço
+    // implementado e inalcançável, com um comentário ao lado dizendo que "a página
+    // pergunta antes de oferecer o Modo Code". Nenhuma página perguntava.
+    //
+    // Ela NÃO serve para decidir se a imagem é oferecida: para isso existe
+    // `recursos` abaixo, e a diferença importa. Este `post` só existe em cascas
+    // que já o expõem — as mesmas que já trazem os motores novos —, então usá-lo
+    // como gate responderia sempre "sim". Aqui ele serve para MOSTRAR a versão do
+    // motor a quem for pedir suporte.
+    engineStatus: function (engine) { return post('engineStatus', { engine: engine || 'gateway' }); },
     // CAPACIDADES desta casca. Constante local, sem ida ao Rust — a pergunta é
     // "esta versão do app sabe fazer X?", e a resposta está na própria casca.
     //
@@ -532,14 +547,24 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
         // Contagem no ícone do dock/taskbar (ADR-011, revisado na 0.13.0).
         // Fire-and-forget pela mesma razão do notify.
         "badge" => badge(window, &v),
-        // Handshake de prontidão do motor (item D5). A página pergunta ANTES de
-        // oferecer o Modo Code, para a tela poder dizer "anna 0.8.5 pronto" ou
-        // "instale o anna" em vez de deixar a pessoa descobrir no primeiro turno.
         // Item D3 (ADR-026): escreve a config de um cliente de CLI no host. A página manda
         // VALORES (cliente, base, chave, modelo) — nunca caminho nem conteúdo de arquivo.
         // Quem monta o JSON e escolhe o destino de uma lista fechada é o Rust, e o usuário
         // confirma num diálogo nativo com o caminho à vista.
         "writeCliConfig" => crate::cli_config::escrever(window, req, &v),
+        // Estado do motor no disco (item D5).
+        //
+        // ⚠️ O comentário que estava aqui dizia que "a página pergunta ANTES de
+        // oferecer o Modo Code". **Não perguntava, e não tinha como**: o wrapper JS
+        // nunca expôs esta ação, então o braço era inalcançável desde que nasceu —
+        // e o comentário descrevia um consumidor que não existia. Pior, ele estava
+        // colado no `writeCliConfig`, então lia como se fosse dele. Exposto no
+        // wrapper na 1.1.32; o consumidor real é a chip do MOTOR, que passa a
+        // mostrar a versão para quem for pedir suporte.
+        //
+        // NÃO é gate de capacidade: para isso existe `recursos` no wrapper. Esta
+        // ação só existe em cascas que já a expõem, então usá-la como gate
+        // responderia sempre "sim" — o contrário do que um gate precisa fazer.
         "engineStatus" => {
             let base = v.get("engine").and_then(|x| x.as_str()).unwrap_or("gateway");
             let exe = if base == "claude" { "claude-runner" } else { "anna" };
