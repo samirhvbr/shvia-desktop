@@ -104,6 +104,12 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // painel da pasta (read-only, pelo app)
     gitStatus: function (path) { return post('gitStatus', { path: path }); },
     listTree: function (path) { return post('listTree', { path: path }); },
+    // Diff de UM arquivo, para a aba "Alterações" do painel abrir ao clique.
+    // → {ok:true, diff, truncated, staged} | {ok:false, erro}
+    // `staged`: o arquivo pode estar no índice (git add) e aí o diff da árvore de
+    // trabalho vem VAZIO — a página precisa saber que "vazio" ali significa
+    // "já preparado", não "sem mudança".
+    gitDiff: function (path, file) { return post('gitDiff', { path: path, file: file }); },
     // Catálogo do motor Claude Code, perguntado ao Agent SDK (não é o catálogo
     // do gateway). Cada item traz supportsEffort + supportedEffortLevels, para a
     // UI listar o que existe e DESABILITAR o que não se aplica.
@@ -536,6 +542,11 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             let path = v.get("path").and_then(|x| x.as_str()).unwrap_or_default();
             reply(window, &req, true, list_tree(path));
         }
+        "gitDiff" => {
+            let path = v.get("path").and_then(|x| x.as_str()).unwrap_or_default();
+            let file = v.get("file").and_then(|x| x.as_str()).unwrap_or_default();
+            reply(window, &req, true, git_diff(path, file));
+        }
         "claudeModels" => {
             let out = claude_models();
             let ok = out.get("modelos").is_some();
@@ -894,6 +905,139 @@ fn sanitize_filename(nome: &str) -> String {
 }
 
 #[cfg(test)]
+mod tests_git_diff {
+    use super::{git_diff, GIT_DIFF_MAX};
+    use std::process::Command;
+
+    /// Repo de verdade num diretório temporário — e não um mock do `Command`.
+    /// O que esta função faz é FALAR COM O GIT: um mock provaria que sabemos
+    /// montar argumentos, não que o git entende os argumentos que montamos.
+    fn repo_temporario(nome: &str) -> Option<std::path::PathBuf> {
+        let dir = std::env::temp_dir().join(format!("shvia-gitdiff-{}-{}", nome, std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).ok()?;
+        let p = dir.to_string_lossy().into_owned();
+        let git = |args: &[&str]| Command::new("git").args(["-C", &p]).args(args).output().ok();
+        git(&["init", "-q"])?;
+        git(&["config", "user.email", "t@t.tld"])?;
+        git(&["config", "user.name", "t"])?;
+        std::fs::write(dir.join("a.txt"), "linha 1\nlinha 2\n").ok()?;
+        git(&["add", "-A"])?;
+        git(&["commit", "-qm", "base"])?;
+
+        Some(dir)
+    }
+
+    #[test]
+    fn diff_de_arquivo_alterado_traz_as_linhas() {
+        let Some(dir) = repo_temporario("alterado") else { return };
+        std::fs::write(dir.join("a.txt"), "linha 1\nlinha DOIS\n").unwrap();
+
+        let r = git_diff(&dir.to_string_lossy(), "a.txt");
+
+        assert_eq!(r["ok"], true);
+        let d = r["diff"].as_str().unwrap();
+        assert!(d.contains("-linha 2"), "faltou a linha removida: {d}");
+        assert!(d.contains("+linha DOIS"), "faltou a linha adicionada: {d}");
+        assert_eq!(r["truncated"], false);
+        assert_eq!(r["staged"], false);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 🔴 A guarda que separa "vazio" de "sem mudança".
+    ///
+    /// `git diff` compara a árvore contra o ÍNDICE: um arquivo já preparado
+    /// (`git add`) devolve VAZIO. Sem o segundo comando, o painel diria "sem
+    /// alterações" para quem acabou de ver o arquivo listado como alterado.
+    #[test]
+    fn arquivo_ja_preparado_nao_vira_sem_alteracao() {
+        let Some(dir) = repo_temporario("staged") else { return };
+        std::fs::write(dir.join("a.txt"), "linha 1\nlinha TRES\n").unwrap();
+        let p = dir.to_string_lossy().into_owned();
+        Command::new("git").args(["-C", &p, "add", "a.txt"]).output().unwrap();
+
+        let r = git_diff(&p, "a.txt");
+
+        assert_eq!(r["ok"], true);
+        assert_eq!(r["staged"], true, "não caiu no --staged");
+        assert!(r["diff"].as_str().unwrap().contains("+linha TRES"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Truncar em fronteira de CARACTERE. `texto[..N]` em UTF-8 entra em pânico no
+    /// meio de um multibyte — e diff de arquivo em português tem acento em toda
+    /// linha, então isso não é caso exótico, é o caso comum.
+    /// Truncar em fronteira de CARACTERE.
+    ///
+    /// ⚠️ **Este teste varia o comprimento da linha de propósito, e a primeira
+    /// versão dele não variava.** Com um único tamanho, o corte em `GIT_DIFF_MAX`
+    /// caía numa fronteira de caractere por acaso — e a reversão (voltar ao
+    /// `texto[..N]` cru) **passava**. Um teste que só falha com sorte não prova
+    /// guarda nenhuma. Deslocando o conteúdo byte a byte, algum dos casos põe o
+    /// corte no meio de um multibyte, e aí o slice cru entra em pânico.
+    ///
+    /// Não é caso exótico: diff de arquivo em português tem acento em toda linha.
+    #[test]
+    fn corte_nao_parte_caractere_acentuado() {
+        for deslocamento in 0..4usize {
+            let Some(dir) = repo_temporario(&format!("acento{deslocamento}")) else { return };
+            // "é"/"ç"/"ã" têm 2 bytes cada. O prefixo de N espaços desloca todo o
+            // resto, movendo onde o corte cai dentro da linha.
+            let linha = format!("{}éçãéçãéçã\n", " ".repeat(deslocamento));
+            let gigante: String = std::iter::repeat(linha.as_str()).take(40_000).collect();
+            std::fs::write(dir.join("a.txt"), &gigante).unwrap();
+
+            let r = git_diff(&dir.to_string_lossy(), "a.txt");
+
+            assert_eq!(r["ok"], true);
+            assert_eq!(r["truncated"], true, "o diff gigante devia ter sido cortado");
+            let d = r["diff"].as_str().unwrap();
+            assert!(d.len() <= GIT_DIFF_MAX);
+            assert!(d.contains("éçã"), "o conteúdo sumiu no corte");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    #[test]
+    fn fora_de_repo_git_responde_erro_e_nao_panica() {
+        let dir = std::env::temp_dir().join(format!("shvia-nao-repo-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.txt"), "x").unwrap();
+
+        let r = git_diff(&dir.to_string_lossy(), "a.txt");
+
+        assert_eq!(r["ok"], false);
+        assert!(r["erro"].is_string());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Entrada vazia não vira `git diff -- ""`, que listaria o repo inteiro.
+    #[test]
+    fn caminho_ou_arquivo_vazio_e_recusado() {
+        assert_eq!(git_diff("", "a.txt")["ok"], false);
+        assert_eq!(git_diff("/tmp", "")["ok"], false);
+    }
+
+    /// O `--` é o que impede um arquivo chamado `-p` (ou homônimo de branch) de
+    /// ser lido como opção ou revisão pelo git.
+    #[test]
+    fn nome_que_parece_opcao_continua_sendo_caminho() {
+        let Some(dir) = repo_temporario("dash") else { return };
+        let p = dir.to_string_lossy().into_owned();
+        std::fs::write(dir.join("-p"), "antes\n").unwrap();
+        Command::new("git").args(["-C", &p, "add", "-A"]).output().unwrap();
+        Command::new("git").args(["-C", &p, "commit", "-qm", "add -p"]).output().unwrap();
+        std::fs::write(dir.join("-p"), "depois\n").unwrap();
+
+        let r = git_diff(&p, "-p");
+
+        assert_eq!(r["ok"], true);
+        assert!(r["diff"].as_str().unwrap().contains("+depois"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
 mod tests_url_servidor {
     use super::url_do_servidor;
 
@@ -1145,6 +1289,86 @@ fn parse_git_status(text: &str) -> serde_json::Value {
         }
     }
     serde_json::json!({ "repo": true, "branch": branch, "files": files })
+}
+
+/// Teto do diff devolvido à página, em bytes.
+///
+/// Um diff de arquivo gerado (lockfile, bundle, migration de dados) chega a
+/// megabytes, e o painel o pinta LINHA A LINHA no DOM — o custo não é a
+/// transferência, é o navegador. 256 KB já são ~4 mil linhas: quem precisa de mais
+/// que isso para revisar não está revisando, está procurando.
+const GIT_DIFF_MAX: usize = 262_144;
+
+/// Diff de UM arquivo, para a aba "Alterações" abrir ao clique (item F6.B1).
+///
+/// ## Por que aqui, e não pedindo ao agente
+///
+/// O `anna` tem a ferramenta `git_diff`, e usá-la seria "de graça" em linhas de
+/// código. Não é: seria uma **inferência paga para preencher um painel** — e o
+/// painel se atualiza sozinho ao voltar o foco da janela, então cada alt-tab
+/// viraria uma chamada de modelo. Painel é leitura de estado; o precedente certo é
+/// o `git_status` logo acima, não o agente.
+///
+/// ## O `--` não é enfeite
+///
+/// Sem ele, um arquivo chamado `-p` ou que colida com um nome de branch faria o git
+/// interpretá-lo como opção ou revisão. O separador diz "daqui em diante é caminho",
+/// e é a única guarda necessária: o nome vem do `git status` do MESMO repositório,
+/// não de digitação livre.
+///
+/// ## Vazio ≠ sem mudança
+///
+/// `git diff` mostra a árvore de trabalho contra o ÍNDICE. Um arquivo já preparado
+/// (`git add`) devolve vazio, e mostrar "sem alterações" ali seria mentir para quem
+/// acabou de ver o arquivo listado como alterado. Por isso o segundo comando com
+/// `--staged` e o campo `staged` na resposta — a página decide o que dizer, mas
+/// recebe a verdade.
+fn git_diff(path: &str, file: &str) -> serde_json::Value {
+    if path.is_empty() || file.is_empty() {
+        return serde_json::json!({ "ok": false, "erro": "caminho ou arquivo vazio" });
+    }
+
+    let rodar = |staged: bool| -> Option<String> {
+        let mut args: Vec<&str> = vec!["-C", path, "diff"];
+        if staged {
+            args.push("--staged");
+        }
+        args.extend_from_slice(&["--no-color", "--", file]);
+        match Command::new("git").args(&args).output() {
+            Ok(o) if o.status.success() => Some(String::from_utf8_lossy(&o.stdout).into_owned()),
+            _ => None,
+        }
+    };
+
+    let bruto = match rodar(false) {
+        Some(t) => t,
+        None => return serde_json::json!({ "ok": false, "erro": "git diff falhou nesta pasta" }),
+    };
+
+    // Árvore de trabalho limpa: tenta o índice antes de concluir "sem mudança".
+    let (texto, staged) = if bruto.trim().is_empty() {
+        match rodar(true) {
+            Some(t) if !t.trim().is_empty() => (t, true),
+            _ => (bruto, false),
+        }
+    } else {
+        (bruto, false)
+    };
+
+    // Corta em fronteira de CARACTERE: `texto[..N]` em UTF-8 entra em pânico no meio
+    // de um multibyte, e diff de arquivo em português tem acento em toda linha.
+    let truncated = texto.len() > GIT_DIFF_MAX;
+    let texto = if truncated {
+        let mut fim = GIT_DIFF_MAX;
+        while fim > 0 && !texto.is_char_boundary(fim) {
+            fim -= 1;
+        }
+        texto[..fim].to_string()
+    } else {
+        texto
+    };
+
+    serde_json::json!({ "ok": true, "diff": texto, "truncated": truncated, "staged": staged })
 }
 
 /// Um nível da árvore (lazy-load ao expandir). Ignora pastas de build/deps.

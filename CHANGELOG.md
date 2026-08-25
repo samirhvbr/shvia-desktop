@@ -3,6 +3,34 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.2.0 - A ponte ganha `gitDiff`: a aba "Alterações" do painel passa a ter o que abrir
+
+- **Nova capacidade de runtime** (bump Y): `window.__shviaCode.gitDiff(path, file)`, no molde
+  do `gitStatus` ao lado. 6 testes contra um repositório git **de verdade** num diretório
+  temporário — um mock do `Command` provaria que sabemos montar argumentos, não que o git
+  entende os que montamos.
+- **Por que existe:** o SHVIA-WEB `2.110.39` transformou o painel do Modo Code em abas, e a
+  aba **Alterações** lista os arquivos alterados mas não tinha como mostrar o diff de um.
+  Era o único item cross-repo da frente. Ver `docs/FRONTEND/PAINEL-CODE-EM-ABAS.md` lá.
+- ⚠️ **Não foi pedir ao `anna`**, que tem a ferramenta `git_diff`. Seria uma **inferência paga
+  para preencher um painel** — e o painel se atualiza sozinho ao voltar o foco da janela,
+  então cada alt-tab viraria uma chamada de modelo.
+- **`vazio ≠ sem mudança`:** `git diff` compara a árvore contra o ÍNDICE, então um arquivo já
+  preparado (`git add`) devolve vazio. A função cai no `--staged` e devolve `staged: true` —
+  sem isso o painel diria "sem alterações" para quem acabou de ver o arquivo listado como
+  alterado.
+- **Teto de 256 KB cortado em fronteira de CARACTERE.** O painel pinta o diff linha a linha no
+  DOM, e um lockfile ou bundle chega a megabytes. `texto[..N]` em UTF-8 entra em pânico no
+  meio de um multibyte, e diff em português tem acento em toda linha.
+- **O `--` antes do caminho** impede que um arquivo chamado `-p` (ou homônimo de branch) seja
+  lido pelo git como opção ou revisão. Há teste com um arquivo `-p` de verdade.
+- 🟡 **Um teste que passava por SORTE foi consertado antes de contar como prova.** A primeira
+  versão do teste de truncamento usava um único comprimento de linha, e o corte em 256 KB caía
+  numa fronteira de caractere por acaso — a reversão (voltar ao slice cru) **passava**. Um
+  teste que só falha com sorte não prova guarda nenhuma. Passou a variar o deslocamento byte a
+  byte, e aí a reversão estoura com `end byte index 262144 is not a char boundary; it is
+  inside 'ã'`.
+
 ## 1.1.36 - Corrige o retrato da 1.1.35: as duas plataformas JÁ estão publicadas na 1.1.34
 
 - A 1.1.35 registrou como pendência aberta ("o macOS está sem caminho de

@@ -158,7 +158,20 @@ Como o desktop é só a casca, o trabalho de app se divide:
   Chat; aparece só quando `window.__shviaDesktop` existe.
 - **SHVIA-DESKTOP (ponte):** os plugins + comandos Tauri de §4.2, expostos à
   página via bridge `window.__shviaCode.*` (spawn/send/kill do `anna`, `onEvent`,
-  `pickFolder`, `pickFiles`, `listTree`, `gitStatus`, `get/setBinding`) + o flag `__shviaDesktop`.
+  `pickFolder`, `pickFiles`, `listTree`, `gitStatus`, `gitDiff`, `get/setBinding`) + o flag
+  `__shviaDesktop`.
+  - **`gitDiff(path, file)`** (1.2.0, item F6.B1 do SHVIA-WEB) — o diff de **um** arquivo,
+    para a aba "Alterações" abrir ao clique. Três decisões que valem saber:
+    - ⚠️ **Não pede ao `anna`**, que tem a ferramenta `git_diff`. Seria uma **inferência paga
+      para preencher um painel** — e o painel se atualiza sozinho ao voltar o foco da janela,
+      então cada alt-tab viraria uma chamada de modelo. Painel é leitura de estado; o
+      precedente certo é o `gitStatus` ao lado, não o agente.
+    - **`vazio ≠ sem mudança`:** `git diff` compara a árvore contra o ÍNDICE, e um arquivo já
+      preparado (`git add`) devolve vazio. Cai no `--staged` e devolve `staged: true`, para a
+      página não dizer "sem alterações" a quem acabou de ver o arquivo listado como alterado.
+    - **Teto de 256 KB**, cortado em fronteira de **caractere**: o painel pinta o diff linha a
+      linha no DOM, e `texto[..N]` em UTF-8 entra em pânico no meio de um multibyte — que num
+      diff em português é o caso comum, não o exótico. A resposta traz `truncated`.
 - **SHVIA-CODE (`anna`):** as 2 lacunas de §4.1 (F1).
 
 A coexistência Chat↔Code **não** é problema do desktop: é um webview só e a troca
