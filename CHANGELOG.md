@@ -3,6 +3,31 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.3.0 - A ponte ganha `readFile`: a árvore da aba "Arquivos" passa a poder abrir a prévia de um arquivo
+
+- **Nova capacidade de runtime** (bump Y): `window.__shviaCode.readFile(path, file)`, no molde do
+  `gitDiff` ao lado. → `{ok, content, truncated, binary, bytes}`. 5 testes contra o FILESYSTEM de
+  verdade num diretório temporário — como o do `gitDiff`, um mock provaria que sabemos montar
+  argumentos, não que o SO devolve o que esperamos.
+- **Por que existe:** no SHVIA-WEB a aba "Arquivos" do painel do Modo Code lista a árvore, mas não
+  tinha como mostrar o conteúdo de um arquivo ao clique. Era o próximo passo cross-repo para
+  tornar as abas produtivas (pedido do Samir, 26/08). A aba "Alterações" já abre o diff ao clique
+  (1.2.0); esta é a irmã para os arquivos que ainda não mudaram.
+- ⚠️ **Não foi pedir ao `anna`**, que sabe ler arquivo — seria uma inferência PAGA para preencher
+  um painel que se atualiza sozinho ao voltar o foco. Prévia é leitura de estado; o precedente é
+  o `git_diff`, não o agente.
+- 🔴 **A cerca é EXPLÍCITA:** canonicaliza a pasta e o alvo e exige que o alvo esteja DENTRO da
+  pasta do projeto. O nome vem do `list_tree` do mesmo host (confiável), mas ler arquivo é mais
+  perigoso que listar — um `..` ou symlink que escapasse é recusado antes da leitura. Reversão
+  provada: sem o `starts_with`, o teste que lê um arquivo fora da pasta passa a vazar.
+- **Binário não vira texto vazio:** NUL nos primeiros 8 KB (heurístico do git) → `binary:true`
+  com content vazio e o `bytes` real, para a página dizer o tamanho sem despejar bytes de um PNG.
+  **Arquivo grande é cortado e o diz** (`truncated`) — é prévia, não editor; `from_utf8_lossy`
+  resolve o multibyte partido na fronteira sem pânico.
+- Consumo no web: SHVIA-WEB (a árvore da aba Arquivos abre a gaveta de prévia). Enquanto o app
+  instalado não tiver esta versão, a página degrada como "casca velha" — a linha não fica
+  clicável e a aba avisa para atualizar o app, no mesmo padrão do `gitDiff`.
+
 ## 1.2.0 - A ponte ganha `gitDiff`: a aba "Alterações" do painel passa a ter o que abrir
 
 - **Nova capacidade de runtime** (bump Y): `window.__shviaCode.gitDiff(path, file)`, no molde

@@ -110,6 +110,11 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // trabalho vem VAZIO — a página precisa saber que "vazio" ali significa
     // "já preparado", não "sem mudança".
     gitDiff: function (path, file) { return post('gitDiff', { path: path, file: file }); },
+    // Prévia de UM arquivo, para a árvore da aba "Arquivos" abrir ao clique.
+    // → {ok:true, content, truncated, binary, bytes} | {ok:false, erro}
+    // `binary`: arquivo com NUL vem com content vazio — a página mostra o tamanho,
+    // não os bytes. `truncated`: arquivo grande é cortado (é prévia, não editor).
+    readFile: function (path, file) { return post('readFile', { path: path, file: file }); },
     // Catálogo do motor Claude Code, perguntado ao Agent SDK (não é o catálogo
     // do gateway). Cada item traz supportsEffort + supportedEffortLevels, para a
     // UI listar o que existe e DESABILITAR o que não se aplica.
@@ -546,6 +551,11 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             let path = v.get("path").and_then(|x| x.as_str()).unwrap_or_default();
             let file = v.get("file").and_then(|x| x.as_str()).unwrap_or_default();
             reply(window, &req, true, git_diff(path, file));
+        }
+        "readFile" => {
+            let path = v.get("path").and_then(|x| x.as_str()).unwrap_or_default();
+            let file = v.get("file").and_then(|x| x.as_str()).unwrap_or_default();
+            reply(window, &req, true, read_file(path, file));
         }
         "claudeModels" => {
             let out = claude_models();
@@ -1038,6 +1048,96 @@ mod tests_git_diff {
 }
 
 #[cfg(test)]
+mod tests_read_file {
+    use super::{read_file, READ_FILE_MAX};
+
+    /// Pasta temporária de verdade — como o teste do git_diff, é o FILESYSTEM que
+    /// se está exercendo, não um mock.
+    fn pasta(nome: &str) -> Option<std::path::PathBuf> {
+        let dir = std::env::temp_dir().join(format!("shvia-readfile-{}-{}", nome, std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).ok()?;
+        Some(dir)
+    }
+
+    #[test]
+    fn arquivo_de_texto_volta_o_conteudo() {
+        let Some(dir) = pasta("texto") else { return };
+        std::fs::write(dir.join("a.txt"), "linha 1\nlinha 2\n").unwrap();
+
+        let r = read_file(&dir.to_string_lossy(), &dir.join("a.txt").to_string_lossy());
+
+        assert_eq!(r["ok"], true);
+        assert_eq!(r["binary"], false);
+        assert_eq!(r["truncated"], false);
+        assert_eq!(r["content"], "linha 1\nlinha 2\n");
+        assert_eq!(r["bytes"], 16);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 🔴 NUL nos primeiros bytes = binário: content vazio, mas o TAMANHO real vai
+    /// junto. Mostrar bytes de um binário como texto é pior que dizer "é binário".
+    #[test]
+    fn arquivo_binario_e_dito_e_nao_vira_texto() {
+        let Some(dir) = pasta("bin") else { return };
+        std::fs::write(dir.join("x.bin"), [0x89u8, 0x50, 0x00, 0x01, 0x02]).unwrap();
+
+        let r = read_file(&dir.to_string_lossy(), &dir.join("x.bin").to_string_lossy());
+
+        assert_eq!(r["ok"], true);
+        assert_eq!(r["binary"], true);
+        assert_eq!(r["content"], "");
+        assert_eq!(r["bytes"], 5);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 🔴 Arquivo maior que o teto é CORTADO e o diz — é prévia, não editor. E o
+    /// corte não pode entrar em pânico num multibyte partido (from_utf8_lossy).
+    #[test]
+    fn arquivo_grande_e_cortado_e_declarado() {
+        let Some(dir) = pasta("grande") else { return };
+        // Conteúdo acentuado (2 bytes por caractere) para o corte cair no meio de
+        // um multibyte — o from_utf8_lossy tem de resolver sem pânico.
+        let gigante: String = std::iter::repeat("áéíóúç").take(READ_FILE_MAX).collect();
+        std::fs::write(dir.join("g.txt"), &gigante).unwrap();
+
+        let r = read_file(&dir.to_string_lossy(), &dir.join("g.txt").to_string_lossy());
+
+        assert_eq!(r["ok"], true);
+        assert_eq!(r["truncated"], true, "o arquivo gigante devia ter sido cortado");
+        assert!(r["content"].as_str().unwrap().len() <= READ_FILE_MAX + 3); // +3: 1 U+FFFD possível
+        assert!(r["bytes"].as_u64().unwrap() > READ_FILE_MAX as u64);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 🔴 A cerca: um arquivo FORA da pasta do projeto é recusado, mesmo passando o
+    /// caminho absoluto dele. É a guarda que separa "ler o projeto" de "ler o disco".
+    #[test]
+    fn arquivo_fora_da_pasta_e_recusado() {
+        let Some(dir) = pasta("cerca") else { return };
+        let fora = std::env::temp_dir().join(format!("shvia-fora-{}.txt", std::process::id()));
+        std::fs::write(&fora, "segredo").unwrap();
+
+        let r = read_file(&dir.to_string_lossy(), &fora.to_string_lossy());
+
+        assert_eq!(r["ok"], false, "leu um arquivo fora da pasta do projeto");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_file(&fora);
+    }
+
+    #[test]
+    fn pasta_nao_e_arquivo() {
+        let Some(dir) = pasta("dir") else { return };
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+
+        let r = read_file(&dir.to_string_lossy(), &dir.join("sub").to_string_lossy());
+
+        assert_eq!(r["ok"], false);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
 mod tests_url_servidor {
     use super::url_do_servidor;
 
@@ -1298,6 +1398,11 @@ fn parse_git_status(text: &str) -> serde_json::Value {
 /// transferência, é o navegador. 256 KB já são ~4 mil linhas: quem precisa de mais
 /// que isso para revisar não está revisando, está procurando.
 const GIT_DIFF_MAX: usize = 262_144;
+/// Teto de leitura de UM arquivo para a prévia da aba "Arquivos". É prévia, não
+/// editor: arquivo maior é cortado e a página diz que cortou. Fica na mesma ordem
+/// de grandeza do diff (256 KB), um pouco maior porque um arquivo inteiro tem mais
+/// contexto que um diff.
+const READ_FILE_MAX: usize = 512 * 1024;
 
 /// Diff de UM arquivo, para a aba "Alterações" abrir ao clique (item F6.B1).
 ///
@@ -1392,6 +1497,78 @@ fn list_tree(path: &str) -> serde_json::Value {
         .map(|(d, name, p)| serde_json::json!({ "name": name, "path": p, "isDir": d }))
         .collect();
     serde_json::json!({ "entries": arr })
+}
+
+/// Lê UM arquivo para a prévia da aba "Arquivos" abrir ao clique.
+///
+/// ## Por que aqui, e não pedindo ao agente
+///
+/// Mesma razão do `git_diff`: o `anna` sabe ler arquivo, mas isso seria uma
+/// **inferência paga para preencher um painel**. Prévia é leitura de estado — o
+/// caminho certo é este, ao lado do `list_tree` que já listou o arquivo.
+///
+/// ## A cerca é EXPLÍCITA, ao contrário do list_tree
+///
+/// O nome vem do `list_tree` do mesmo host, então é confiável — mas **ler arquivo
+/// é mais perigoso que listar**, então a guarda não fica implícita: canonicaliza a
+/// pasta e o alvo e exige que o alvo esteja DENTRO da pasta. Um `..` que escapasse
+/// (ou um symlink que apontasse para fora) é recusado antes da leitura. É a mesma
+/// postura do `--` do `git_diff`: o dado é confiável, a cerca existe mesmo assim.
+///
+/// ## Binário não vira texto vazio
+///
+/// NUL nos primeiros 8 KB é o heurístico clássico do próprio git. Um binário volta
+/// `binary:true` com o conteúdo vazio — mostrar bytes de um PNG como texto seria
+/// pior que dizer "é binário". `bytes` é o tamanho REAL, para a página dizer o
+/// tamanho mesmo quando não mostra o conteúdo.
+fn read_file(path: &str, file: &str) -> serde_json::Value {
+    if path.is_empty() || file.is_empty() {
+        return serde_json::json!({ "ok": false, "erro": "caminho ou arquivo vazio" });
+    }
+
+    let base = match std::fs::canonicalize(path) {
+        Ok(p) => p,
+        Err(_) => return serde_json::json!({ "ok": false, "erro": "pasta não encontrada" }),
+    };
+    let alvo = match std::fs::canonicalize(file) {
+        Ok(p) => p,
+        Err(_) => return serde_json::json!({ "ok": false, "erro": "arquivo não encontrado" }),
+    };
+    if !alvo.starts_with(&base) {
+        return serde_json::json!({ "ok": false, "erro": "arquivo fora da pasta do projeto" });
+    }
+
+    let meta = match std::fs::metadata(&alvo) {
+        Ok(m) => m,
+        Err(_) => return serde_json::json!({ "ok": false, "erro": "não consegui ler o arquivo" }),
+    };
+    if meta.is_dir() {
+        return serde_json::json!({ "ok": false, "erro": "isto é uma pasta, não um arquivo" });
+    }
+    let bytes_total = meta.len() as usize;
+
+    let dados = match std::fs::read(&alvo) {
+        Ok(d) => d,
+        Err(_) => return serde_json::json!({ "ok": false, "erro": "não consegui ler o arquivo" }),
+    };
+
+    // Binário: NUL nos primeiros 8 KB. Conteúdo vazio, mas o tamanho real vai junto.
+    let amostra = &dados[..dados.len().min(8192)];
+    if amostra.contains(&0) {
+        return serde_json::json!({
+            "ok": true, "content": "", "truncated": false, "binary": true, "bytes": bytes_total,
+        });
+    }
+
+    // Corte por bytes; `from_utf8_lossy` resolve um multibyte partido na fronteira
+    // (vira U+FFFD), sem pânico e sem a aritmética de char_boundary do diff.
+    let truncated = dados.len() > READ_FILE_MAX;
+    let fatia = &dados[..dados.len().min(READ_FILE_MAX)];
+    let texto = String::from_utf8_lossy(fatia).into_owned();
+
+    serde_json::json!({
+        "ok": true, "content": texto, "truncated": truncated, "binary": false, "bytes": bytes_total,
+    })
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
