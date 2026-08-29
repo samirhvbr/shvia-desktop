@@ -3,6 +3,14 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.3.2 - Nota do desligamento do COMMITTER passa a citar o T5
+
+- Correção de revisão do dono: a nota do `.committer.yml` aponta o defeito medido (scan de
+  segredo des-stageando por assunto, 5/6 falso-positivo na 2.92.0) e deixa claro que desligar
+  tira o gatilho, não conserta o ADR-005.
+- Bump Z: os 6 portadores ressincronizados via `npm run version:sync` (mantê-los em dia evita
+  reabrir a divergência que a 1.3.0 corrigiu).
+
 ## 1.3.1 - Desliga o COMMITTER (kill-switch, a pedido do dono)
 
 - `enabled: false` no `.committer.yml` — o kill-switch da SPEC §1.2, sem apagar o marcador.

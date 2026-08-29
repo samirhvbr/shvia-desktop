@@ -3,9 +3,23 @@
 # Varredura: ~/x/GIT/run.sh (cron de 30 min) descobre quem tem este marcador.
 #
 # 🔴 DESLIGADO em 29/08/2026 a pedido do dono — kill-switch (SPEC §1.2), não
-# remoção: o marcador fica para o histórico e para religar sem recriar. Motivo:
-# passou a haver agente humano-assistido mandando PR, e commit automático
-# concorrendo com PR embaralha a história. Religar = `enabled: true`.
+# remoção: o marcador fica para religar sem recriar. E é POR preservar a config
+# que isto tem de apontar para o T5 — quem religar sem ler reabre o defeito.
+#
+#   T5 — ABERTO, não resolvido. Desligar tira o GATILHO, não conserta o defeito
+#   (ADR-005 §1.6): o scan de segredo do COMMITTER des-stagea arquivo POR ASSUNTO
+#   e "commita o resto". Medido em 27/08 (2.110.83) sobre o diff da 2.92.0: 6
+#   arquivos acusados, 5 falso-positivo PURO — a entrega era SOBRE credencial,
+#   então casou comentário, chave `password` e fixture; o 6º é `.env.example`
+#   pela regra de caminho, que também não é segredo. Meia entrega entra, e nada
+#   acusa.
+#
+#   Se religar, as DUAS correções de fundo continuam valendo — e moram no
+#   ~/x/SKILLS/skill-COMMITTER, não aqui: (a) ABORTAR a árvore inteira em vez de
+#   "commitar o resto"; (b) tirar `.env.example` da regra de caminho.
+#
+# Gatilho imediato do desligamento: passou a haver agente mandando PR, e commit
+# automático em `master` concorrendo com PR embaralha a história.
 enabled: false
 push: true
 branch_only: master
