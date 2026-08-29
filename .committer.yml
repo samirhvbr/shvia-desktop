@@ -1,7 +1,12 @@
 # Opt-in do COMMITTER neste repositório (ADR-004 do skill-COMMITTER).
 # A presença deste arquivo é o opt-in; as chaves só RESTRINGEM (SPEC.md §2).
 # Varredura: ~/x/GIT/run.sh (cron de 30 min) descobre quem tem este marcador.
-enabled: true
+#
+# 🔴 DESLIGADO em 29/08/2026 a pedido do dono — kill-switch (SPEC §1.2), não
+# remoção: o marcador fica para o histórico e para religar sem recriar. Motivo:
+# passou a haver agente humano-assistido mandando PR, e commit automático
+# concorrendo com PR embaralha a história. Religar = `enabled: true`.
+enabled: false
 push: true
 branch_only: master
 fallback: sonnet

@@ -3,6 +3,15 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.3.1 - Desliga o COMMITTER (kill-switch, a pedido do dono)
+
+- `enabled: false` no `.committer.yml` — o kill-switch da SPEC §1.2, sem apagar o marcador.
+- Desligado em toda a casa `x/SHVIA/*` em 29/08/2026: passou a haver agente mandando PR, e
+  commit automático concorrendo com PR embaralha a história. Commit e push voltam a ser do
+  agente da sessão.
+- Bump Z: os 6 portadores de versão foram ressincronizados via `npm run version:sync` (a
+  1.3.0 já havia corrigido a divergência deles; manter em dia evita reabri-la).
+
 ## 1.3.0 - A ponte ganha `readFile`: a árvore da aba "Arquivos" passa a poder abrir a prévia de um arquivo
 
 - **Nova capacidade de runtime** (bump Y): `window.__shviaCode.readFile(path, file)`, no molde do
