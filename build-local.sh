@@ -32,7 +32,7 @@
 #   ./build-local.sh --no-anna       # NÃO empacota o motor (app sai sem Modo Code
 #                                    # pronto — o usuário terá de instalar à mão)
 #   ./build-local.sh --publish       # publica no servidor por scp (item D1)
-#   ./build-local.sh --publish --dest root@HOST:/caminho/   # outro destino
+#   ./build-local.sh --publish --dest usuario@HOST:/caminho/   # outro destino
 #   ./build-local.sh --force         # reconstrói mesmo já havendo build da versão
 #
 # REUSO DE BUILD: se já existe build DESTA versão no disco e nenhuma fonte mudou,
@@ -63,7 +63,7 @@
 # release.json, então o que sobe é exatamente o que o manifesto declara.
 #
 #   - Uma senha só: é UM `scp` com todos os arquivos (uma conexão). Para não
-#     digitar nada, `ssh-copy-id root@HOST` uma vez e o scp passa a usar a chave.
+#     digitar nada, `ssh-copy-id b3sys@HOST` uma vez e o scp passa a usar a chave.
 #   - O `.sig` NÃO sobe, e é de propósito: o conteúdo dele já está embutido no
 #     release.json (campo `signature`), que é de onde o servidor lê.
 #   - ANTES de gerar o manifesto, o script BAIXA o release.json publicado para a
@@ -726,7 +726,7 @@ can_reuse_build() {
 # flag. Não há segredo aqui: o destino é um host da tailnet e a base é a URL que o
 # app já usa. A senha do scp NUNCA entra em variável nem em arquivo — o scp
 # pergunta, ou você instala a chave com ssh-copy-id.
-PUBLISH_DEST="${SHVIA_PUBLISH_DEST:-root@100.64.100.242:/srv/shvia/storage/app/public/desktop/}"
+PUBLISH_DEST="${SHVIA_PUBLISH_DEST:-b3sys@100.64.100.242:/srv/shvia/storage/app/public/desktop/}"
 PUBLIC_BASE="${SHVIA_PUBLIC_BASE:-https://ai.shvia.org}"
 
 # Baixa o release.json JÁ PUBLICADO para a raiz, para o release-manifest.mjs

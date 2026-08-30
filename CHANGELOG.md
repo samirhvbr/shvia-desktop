@@ -3,6 +3,29 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.3.3 - Publish do desktop passa a sair pelo usuário b3sys (o root não faz mais SSH nos servidores)
+
+- `PUBLISH_DEST` default muda de `root@100.64.100.242` para `b3sys@100.64.100.242`. Por
+  segurança o root deixou de ter SSH nos servidores; publicar como root não era mais
+  possível. Comentários de uso acompanharam (`--dest usuario@HOST:/caminho/`,
+  `ssh-copy-id b3sys@HOST`).
+- **Diferença em relação ao servidor do SShvTerm:** lá o app é `b3sys:www-data` e o b3sys é
+  o dono; aqui `/srv/shvia` é `www-data:www-data` e o **b3sys entra pelo grupo**
+  (`www-data:x:33:b3sys`). Por isso o ajuste no `.242` foi `chown -R www-data:www-data` +
+  `chmod -R g+w` em `storage`, e **não** um chown para b3sys — que tiraria o app do dono
+  que o servidor web usa.
+- `chmod g+s` em `storage/app/public/desktop`: sem ele, arquivo criado pelo b3sys nasce no
+  grupo `b3sys`, e a colisão de dono volta assim que outro membro do www-data publicar.
+- Motivo do cuidado: o publish daqui faz `scp` **direto para o diretório público**, com
+  `release.json`, `ShvIA.app.tar.gz`, `shvia.db` e `shvia.files` em **nome fixo**. Arquivo
+  já existente com outro dono não abre para escrita (o `scp` faz `O_TRUNC`, não apaga e
+  recria) — foi exatamente o que travou a publicação da 1.2.77 do SShvTerm hoje, em três
+  variações seguidas.
+- Sem risco de "release fantasma" aqui: o script roda com `set -euo pipefail` e verifica a
+  publicação pela URL pública comparando sha256 depois do `scp`. O defeito equivalente do
+  outro produto (disco de distribuição com `throw => false`, escrita falhando em silêncio)
+  está registrado no repo do site do SShvTerm.
+
 ## 1.3.2 - Nota do desligamento do COMMITTER passa a citar o T5
 
 - Correção de revisão do dono: a nota do `.committer.yml` aponta o defeito medido (scan de
