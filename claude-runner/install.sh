@@ -20,18 +20,37 @@ BIN="$HOME/.local/bin"
 command -v node >/dev/null 2>&1 || { echo "erro: Node 18+ não encontrado no PATH."; exit 1; }
 
 mkdir -p "$DEST" "$BIN"
-cp "$DIR/claude-runner.mjs" "$DIR/package.json" "$DEST/"
+cp "$DIR/claude-runner.mjs" "$DIR/package.json" "$DIR/package-lock.json" "$DEST/"
 
-# O lock do DEST é apagado DE PROPÓSITO — é a correção de 21/08. O catálogo de
-# modelos do Modo Code vem do Agent SDK (`--modelos` → `supportedModels()`), então
-# a VERSÃO DO SDK É O CATÁLOGO. Com o lock de uma instalação velha no destino, o
-# `npm install` respeitava o pin em vez do `^`, e o seletor seguia oferecendo
-# "Opus" = Opus 4.8 semanas depois do Opus 5 existir. Perguntar ao SDK para não
-# manter cópia que envelhece calada (ver code_bridge.rs) não adianta se a cópia
-# que envelhece é o próprio SDK. Não há build reproduzível a proteger: o runner
-# não viaja no instalador (só o `anna` viaja), é instalação local do dono da máquina.
-rm -f "$DEST/package-lock.json"
-( cd "$DEST" && npm install --omit=dev --no-audit --no-fund )
+# ── The lock is VERSIONED and installed with `npm ci` (finding F-18) ─────────
+#
+# ## What the previous decision was, and why it was right at the time
+#
+# From 21/08 this script did `rm -f package-lock.json` before `npm install`. The reasoning
+# was sound: the Modo Code catalogue comes from the Agent SDK (`--modelos` →
+# `supportedModels()`), so THE SDK VERSION IS THE CATALOGUE. A stale lock in the destination
+# made `npm install` honour the pin instead of the `^`, and the selector kept offering
+# "Opus" = Opus 4.8 weeks after Opus 5 existed.
+#
+# ## Why it is being reversed, with the measurement
+#
+# Deleting the lock did not deliver freshness — it moved the staleness. Measured on 02/09:
+# this machine had the SDK at **0.3.239** while a fresh resolve of the same `^0.3.239` gives
+# **0.3.258**. Nineteen patch releases apart. The installed copy froze at whatever was latest
+# the last time somebody happened to reinstall, which is the very failure the deletion was
+# meant to prevent.
+#
+# So the tradeoff was real but the sides were mislabelled. What ages is not "having a lock",
+# it is a lock **nobody updates** — and a floating range is just a lock nobody can see.
+#
+# With `npm ci` the install is reproducible and reviewable, in a component that executes
+# tools on the developer's machine. Refreshing the catalogue becomes a deliberate act:
+#
+#     npm run runner:sdk-bump     # updates the SDK + lock and prints the new catalogue
+#
+# That is one command, in the repository, visible in a diff — instead of an invisible
+# resolution that differs per machine and per day.
+( cd "$DEST" && npm ci --omit=dev --no-audit --no-fund )
 
 # O caminho do node é GRAVADO na instalação, com fallback para o PATH.
 # Motivo: quem chama este wrapper é o app de GUI, e app de GUI não herda o PATH

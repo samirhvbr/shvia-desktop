@@ -8,7 +8,8 @@
 // que versão existe e onde baixá-la — o `release.json` É esse manifesto.
 //
 // ── A restrição que define o desenho: um build por MÁQUINA ────────────────────
-// A CI foi removida na 0.4.6 (custo) e o build é 100% local. Então cada SO é
+// A matriz de CI de release foi removida na 0.4.6 (custo) e segue local por decisão
+// (mesmo com Enterprise, runners macOS custam 10x). Então cada SO é
 // empacotado numa máquina diferente, e nenhuma delas vê os artefatos das outras.
 //
 // Consequência: este script **MESCLA**. Ele lê o release.json que já existe,

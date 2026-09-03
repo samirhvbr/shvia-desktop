@@ -1,0 +1,75 @@
+# CI do SHVIA-DESKTOP — achado G-24 da revisão de 01/09/2026.
+#
+# ## O que ele cobre, e por que não é o build
+#
+# Já existe `build-*.yml` para empacotar. Isto aqui é o que faltava: rodar as **provas** em
+# todo push, sem esperar um release. São três, e cada uma nasceu de um achado desta revisão:
+#
+#  · `cargo test` — inclui `tests_cerca` (F-12): a cerca de pastas autorizadas da ponte
+#    `code_bridge`, que antes deixava `gitStatus`/`readFile`/`spawn` alcançarem qualquer
+#    caminho do disco;
+#  · `prova:politica` — a política do motor "Claude Code (assinatura)" (F-13). Ela virou
+#    módulo testável justamente porque a versão anterior passou no `node --check` e estava
+#    quebrada: `path` nunca importado, `log()` inexistente. **Verificação de sintaxe não é
+#    teste de fumaça**, e este job existe para essa lição não depender de memória;
+#  · `prova:bump` — os portadores de versão alinhados (o SHVIA-CODE já ficou com o `master`
+#    sem compilar por um bump pela metade).
+#
+# `clippy -D warnings` entra porque o achado F-20 registra dois warnings de doc parados: sem
+# porta fechada, warning acumula até ninguém mais ler a saída.
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  provas:
+    name: Provas (Rust + política do runner)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # branch stable em 05/08/2026
+        with:
+          components: clippy
+      # Dependências de sistema do Tauri no Linux. Sem elas o `cargo test` do
+      # `src-tauri` nem compila, e o job falharia por ambiente e não por código.
+      - name: Dependências do Tauri (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+      - run: npm ci --no-audit --no-fund
+      - name: Política do claude-runner (F-13)
+        run: npm run prova:politica
+      - name: Portadores de versão alinhados
+        run: npm run prova:bump
+      # A doc de "o que está implementado" acompanha a versão? (achado F-22 — este
+      # arquivo já tinha sido saneado à mão DUAS vezes pelo mesmo motivo.)
+      - name: Frescor da doc de estado (F-22)
+        run: npm run prova:doc
+      - name: cargo test (inclui a cerca da ponte — F-12)
+        working-directory: src-tauri
+        run: cargo test --locked
+      - name: clippy
+        working-directory: src-tauri
+        run: cargo clippy --locked --all-targets -- -D warnings
+      # RustSec advisories (findings DEP-3 / F-31). The `ignore` list in
+      # `src-tauri/deny.toml` carries a written reason per entry — the same doctrine as
+      # `scripts/prova-auditoria.mjs` in SHVIA-WORKSPACE. It found a real one on day zero:
+      # the `time = "=0.3.41"` pin had RUSTSEC-2026-0009, exactly where F-31 predicted.
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: src-tauri/Cargo.toml
+          command: check advisories

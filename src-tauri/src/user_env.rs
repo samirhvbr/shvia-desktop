@@ -65,9 +65,23 @@ fn computar() -> Option<String> {
     let atual = std::env::var("PATH").unwrap_or_default();
     let base = do_shell_de_login().unwrap_or_else(|| atual.clone());
 
-    // União: base + extras que existem e ainda não estão lá. Preserva a ORDEM
-    // do usuário (quem põe rbenv/nvm antes do sistema faz isso de propósito).
+    // União: base + o PATH ATUAL + extras que existem e ainda não estão lá. Preserva a
+    // ORDEM do usuário (quem põe rbenv/nvm antes do sistema faz isso de propósito).
+    //
+    // 🔴 O PATH atual entrou na união em 02/09/2026 (achado F-14 da revisão de 01/09). O
+    // comentário aqui já dizia "união", e não era: quando o shell de login respondia, a
+    // resposta dele **substituía** o PATH do processo em vez de somar. Quem abre o app pelo
+    // terminal — com nvm, venv, ou o `bin` de um plugin na sessão — perdia esses diretórios
+    // no sidecar, e o agente ficava insistindo num comando que "existe" no terminal do lado.
+    //
+    // O teste `computar_nunca_perde_o_que_ja_havia` afirmava exatamente este invariante e
+    // estava **vermelho**; era o código que discordava do próprio comentário, não o teste.
     let mut saida: Vec<&str> = base.split(':').filter(|s| !s.is_empty()).collect();
+    for dir in atual.split(':').filter(|s| !s.is_empty()) {
+        if !saida.contains(&dir) {
+            saida.push(dir);
+        }
+    }
     let extras = extras();
     for e in &extras {
         if !saida.contains(&e.as_str()) && std::path::Path::new(e).is_dir() {

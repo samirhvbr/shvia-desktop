@@ -1,9 +1,13 @@
 # Build & Empacotamento — ShvIA Desktop
 
-Como gerar os instaladores do app. **O build é LOCAL** (na sua máquina) — sem
-GitHub Actions (Actions é caro em repo privado; build local incremental, com o
-cache do cargo, é mais rápido). O ShvIA Desktop é **shell fino** (Tauri 2, sem
-sidecar), então é direto: `tauri build`.
+Como gerar os instaladores do app. **O build de release é LOCAL** (na sua máquina) **por
+decisão de arquitetura** — não por falta de cota: a conta é GitHub Enterprise (50.000
+min/mês), mas continua valendo a ressalva de custo por trás da decisão original: runners
+**macOS consomem minutos a 10x** em Actions, então empacotar as 3 plataformas via matriz
+`tauri-action` ainda pesa desproporcionalmente no orçamento, mesmo com Enterprise. Build
+local incremental, com o cache do cargo, também é mais rápido para iteração. O ShvIA
+Desktop é **shell fino** (Tauri 2, sem sidecar), então é direto: `tauri build`. (Testes,
+diferente do build de release, já rodam via CI — ver seção abaixo.)
 
 ## TL;DR
 
@@ -356,9 +360,14 @@ Para forçar: `--force`, ou apague `src-tauri/target/release/bundle`.
 
 - **Windows** — Authenticode **EV** (Azure Trusted Signing preferível).
 
-## CI (GitHub Actions) — omitida de propósito
+## CI (GitHub Actions) — testes sim, matriz de release ainda não
 
-Foi **removida por custo** (Actions caro em repo privado; macOS conta 10x). O
-SHVTERM tem a referência pronta (`.github/workflows/main.yml`: matriz mac/win/linux
-via `tauri-action` + Release + updater). Se na **F4** fizer sentido (releases
-assinados/auto-update centralizados), dá pra trazer aquele workflow e adaptar.
+**Testes/lint rodam via CI** desde 01–02/09/2026 (`.github/workflows/ci.yml`, achado G-24).
+A **matriz de build/release** (mac/win/linux via `tauri-action` + Release + updater) foi
+**removida na 0.4.6 por custo** e segue de fora por decisão, mesmo com a conta em GitHub
+Enterprise (50.000 min/mês) — o motivo que resta é o multiplicador: runners **macOS contam
+10x** os minutos, o que pesa numa matriz de release rodando a cada tag. O SHVTERM tem a
+referência pronta (`.github/workflows/main.yml`: matriz mac/win/linux via `tauri-action` +
+Release + updater). Se compensar trazer essa matriz de volta (releases assinados/auto-update
+centralizados via CI), é decisão de arquitetura a tomar separadamente — não consequência
+automática do upgrade de plano.

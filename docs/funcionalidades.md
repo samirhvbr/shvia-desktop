@@ -56,6 +56,45 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
   visual pelos design tokens do ShvIA (`var(--token, fallback)`), Esc/backdrop
   fecham, `prefers-reduced-motion` respeitado.
 
+## Phase 3 — Modo Code and the bridge (1.0 → 1.4)
+
+> Written in English per `~/.claude/CLAUDE.md` (02/09/2026). The sections above predate that
+> rule and stay in Portuguese until they are next edited.
+>
+> This section closes finding **F-22**: the document stopped at **0.18.1** while the
+> repository was at **1.4.3** — an entire major line missing. The same file had already been
+> sanitised once, on 07/08, for the same reason, which is why `scripts/prova-frescor-da-doc.mjs`
+> now fails when the gap reopens rather than trusting anyone to notice.
+
+- **Modo Code inside the app** (`1.0.x`): the desktop hosts `anna` as a sidecar and speaks its
+  NDJSON protocol, so the agent runs on the developer's machine while the UI stays the ShvIA
+  Blade. Two engines are selectable — the gateway, and **"Claude Code (assinatura)"** through
+  the Agent SDK.
+- **The model catalogue comes from the SDK, not from a list of ours** (`1.1.28`, `1.1.29`):
+  keeping a copy meant the selector offered "Opus" = Opus 4.8 weeks after Opus 5 shipped.
+  `--modelos` asks `supportedModels()` instead.
+- **`gitDiff` on the bridge** (`1.2.0`) and **`readFile`** (`1.3.0`): the "Changes" tab and the
+  "Files" tree have something to open. Both are read-only and confined — see the fence below.
+- 🔒 **Authorised-folder fence** (`1.4.0`, finding F-12): `gitStatus`, `listTree`, `gitDiff`,
+  `readFile` and `spawn` only reach paths the user picked through the **native dialog**. Before
+  this, the bridge reached any path the process could.
+- 🔒 **The runner stops being the back door** (`1.4.0`, F-13, **ADR-032**): the
+  `claude-runner` policy became a testable module (`politica.mjs`), `WebFetch`/`WebSearch` left
+  the read-only set, and `preToolUse` delegates to one decision function.
+- **Sidecar PATH** (`1.1.24`, `1.4.0`): a GUI app does not inherit the shell PATH
+  (**ADR-030**); the sidecar's PATH is the union of a base, the current one and the extras, so
+  `node`, `cargo` and `php` are found.
+- **Version carriers proven at build time** (`1.1.22`): six carriers agree or the build fails.
+- **Native packaging on Arch, and update that works there** (`1.1.16` → `1.1.19`).
+- **Publishing runs as `b3sys`** (`1.3.3`): root no longer opens SSH to the servers.
+- **CI on every push** (`1.4.1`, finding G-24): `cargo test`, the runner policy proof, the
+  version-carrier proof and `clippy -D warnings`.
+- 🔒 **`target=_blank` windows go through the same builder** (`1.4.2`, F-15): they were born
+  without `on_navigation`, so an external link navigated **inside** the app — a third-party
+  site in a window titled "ShvIA".
+- **RustSec advisories measured** (`1.4.3`, DEP-3/F-31): `cargo deny` in CI, and the first run
+  found a real vulnerability in the pinned `time`.
+
 ## Limitações conhecidas
 
 - ⚠️ **Mic e Ctrl+V de imagem no Linux** (`0.4.4`, **ADR-008**): o shell habilita

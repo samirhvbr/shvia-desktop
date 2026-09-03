@@ -138,7 +138,17 @@ if (!versao) {
 // o motor não cumpre: a página mandaria `images`, o sidecar leria só `text` e a
 // figura sumiria em SILÊNCIO, com o chip na tela dizendo que foi. Piso baixo aqui
 // não entrega Modo Code quebrado — entrega Modo Code MENTINDO, que é pior.
-const ANNA_MINIMO = [0, 11, 4];
+// 0.11.9: dois defeitos que só doem AQUI, na casca. (a) Sem o teto de tempo do
+// `bash` com morte do GRUPO de processos (achado F-04), uma tool que trava segura o
+// sidecar para sempre — e no desktop o `anna` é filho do app: o Modo Code fica
+// pendurado sem que o usuário tenha um Ctrl-C para dar, só matando o app inteiro.
+// No terminal isso é um incômodo; embutido, é um travamento sem saída. (b) Até a
+// 0.11.8 o gate do `bash` casava só o PREFIXO do comando, então `cat .env` saía em
+// **auto** (F-02) — e é justamente a casca que aponta o `anna` para a pasta real do
+// projeto do usuário, com a página do Modo Code vindo do servidor e atualizando
+// sozinha. Piso em 0.11.4 empacotaria um motor que executa leitura de segredo sem
+// mostrar cartão, dentro do app que deu a ele a pasta.
+const ANNA_MINIMO = [0, 11, 9];
 
 function partesDaVersao(texto) {
   const m = /(\d+)\.(\d+)\.(\d+)/.exec(texto ?? "");

@@ -1,11 +1,11 @@
 # ShvIA Desktop — Notas de Desenvolvimento
-
 <!--
-  Este arquivo segue o padrão agents.md (lido por ferramentas de IA além do
-  Claude Code). O conteúdo abaixo do título H1 é duplicado em CLAUDE.md —
-  mantenha os dois byte-idênticos abaixo do H1. Se editar um, edite o outro.
+  `AGENTS.md` (padrão agents.md, lido por ferramentas de IA em geral) e `CLAUDE.md`
+  (lido pelo Claude Code) são o MESMO texto abaixo do H1 — só o título difere.
+  Editou um, edite o outro: o teste `agents_e_claude_sao_espelho` reprova a
+  divergência. Este bloco é escrito na 3ª pessoa de propósito, sem "este arquivo",
+  para poder ser byte-idêntico nos dois (achado F-21).
 -->
-
 > **Leia também:** [README.md](README.md) (visão geral + decisão de arquitetura) ·
 > [.continue/estado-atual.md](.continue/estado-atual.md) (onde paramos) ·
 > [.continue/escopo-projeto.md](.continue/escopo-projeto.md) (escopo e fases) ·
@@ -64,9 +64,14 @@ Formato: `versão - comentário em português`
 
 - **Nenhum banco roda aqui.** Sem MySQL, sem SQLite, sem Postgres no cliente — a
   regra do ShvIA ("MariaDB/MySQL, nunca SQLite") é satisfeita por construção.
-- **Nenhum segredo do servidor mora neste repo.** E **não há "secrets de CI"** onde
-  guardá-los: a CI foi removida na 0.4.6 e o build é 100% local. Onde as
-  credenciais de assinatura vivem: no macOS, a senha de notarização no **keychain**
+- **Nenhum segredo do servidor mora neste repo.** A pipeline de build/empacotamento/assinatura
+  (matriz macOS/Windows/Linux) foi removida na 0.4.6 por custo e o build de release segue
+  **100% local por decisão** — não por falta de cota: a conta migrou para GitHub Enterprise
+  (50.000 min/mês), mas runners macOS consomem minutos a **10x** (ver `docs/build.md`), então
+  trazer a matriz de volta é uma escolha de arquitetura à parte, não consequência automática do
+  upgrade. Testes (Rust/lint) já rodam via `.github/workflows/ci.yml` desde 01–02/09/2026.
+  Enquanto o build de release for local, **não há "secrets de CI"** onde guardar credencial de
+  assinatura. Onde elas vivem hoje: no macOS, a senha de notarização no **keychain**
   (serviço `shvia-notarize`); no Windows, o certificado no **repositório de
   certificados do SO** (ou um `.pfx` fora da árvore do repo), apontado por
   `SHVIA_WIN_CERT_THUMBPRINT` / `SHVIA_WIN_PFX` em variável de ambiente da sessão.

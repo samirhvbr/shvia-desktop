@@ -1,0 +1,89 @@
+# cargo-deny — RustSec advisories for this crate's dependency tree.
+#
+# Findings DEP-3 / F-31 of the September 2026 technical review: none of the three Rust
+# repositories measured advisories, while the third-party sibling `ai-memory` in the same
+# folder already had a `deny.toml`.
+#
+# F-31 predicted the exact hole this file found: the `time = "=0.3.41"` pin, documented as
+# debt because of `wry`'s `cookie`, "is the typical case where an advisory would go
+# unnoticed". It had one — RUSTSEC-2026-0009 — and the pin turned out to be movable to
+# 0.3.47 with no code change at all.
+#
+# ## The doctrine here is the same as scripts/prova-auditoria.mjs in SHVIA-WORKSPACE
+#
+# An entry in `ignore` is a debt with a WRITTEN reason and a way to re-check it. "We'll look
+# later" is not a reason. An exception whose reason has gone stale is worse than no
+# exception, because it reads as a decision.
+#
+# Run: cargo deny check advisories
+
+[graph]
+all-features = false
+
+[output]
+feature-depth = 1
+
+[advisories]
+version = 2
+ignore = [
+    # ── Tauri's GTK3 tree on Linux: unmaintained, no safe upgrade ───────────
+    #
+    # All ten come from `tauri` → `tray-icon`/`libappindicator` → `gtk 0.18`, and every
+    # advisory says "No safe upgrade is available!". They leave when Tauri moves to gtk4,
+    # which is not a decision this repository can take on its own.
+    #
+    # They are `unmaintained`, not `vulnerability`: nobody has reported a flaw, the crates
+    # simply stopped being updated.
+    { id = "RUSTSEC-2024-0411", reason = "gdkwayland-sys — Tauri's GTK3 tree; no safe upgrade" },
+    { id = "RUSTSEC-2024-0412", reason = "gdk — Tauri's GTK3 tree; no safe upgrade" },
+    { id = "RUSTSEC-2024-0413", reason = "atk — Tauri's GTK3 tree; no safe upgrade" },
+    { id = "RUSTSEC-2024-0414", reason = "gdkx11-sys — Tauri's GTK3 tree; no safe upgrade" },
+    { id = "RUSTSEC-2024-0415", reason = "gtk — Tauri's GTK3 tree; no safe upgrade" },
+    { id = "RUSTSEC-2024-0416", reason = "atk-sys — Tauri's GTK3 tree; no safe upgrade" },
+    { id = "RUSTSEC-2024-0417", reason = "gdkx11 — Tauri's GTK3 tree; no safe upgrade" },
+    { id = "RUSTSEC-2024-0418", reason = "gdk-sys — Tauri's GTK3 tree; no safe upgrade" },
+    { id = "RUSTSEC-2024-0419", reason = "gtk3-macros — Tauri's GTK3 tree; no safe upgrade" },
+    { id = "RUSTSEC-2024-0420", reason = "gtk-sys — Tauri's GTK3 tree; no safe upgrade" },
+
+    # ── Compile-time only ──────────────────────────────────────────────────
+    # `proc-macro-error` runs during compilation and ships no runtime code.
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error — unmaintained, compile-time only, pulled by Tauri's macro crates" },
+
+    # `unic-*` are Unicode tables reached through Tauri's identifier handling. Unmaintained,
+    # no reported flaw, and no upgrade path that does not go through Tauri.
+    { id = "RUSTSEC-2025-0075", reason = "unic-char-range — unmaintained, via Tauri" },
+    { id = "RUSTSEC-2025-0080", reason = "unic-common — unmaintained, via Tauri" },
+    { id = "RUSTSEC-2025-0081", reason = "unic-char-property — unmaintained, via Tauri" },
+    { id = "RUSTSEC-2025-0098", reason = "unic-ucd-version — unmaintained, via Tauri" },
+    { id = "RUSTSEC-2025-0100", reason = "unic-ucd-ident — unmaintained, via Tauri" },
+
+    # ── A real vulnerability we cannot close alone, with the measurement ────
+    #
+    # 🔴 quick-xml 0.38.4 — two DoS advisories in the XML parser. It DOES ship in the binary
+    # (tauri → plist → quick-xml, a normal dependency, not build-only — checked with
+    # `cargo tree -i quick-xml -e normal`).
+    #
+    # It cannot be fixed here: the fix is >= 0.41, and `plist 1.8.0` requires `^0.38`, so
+    # `cargo update -p quick-xml` locks zero packages. It leaves when Tauri bumps plist.
+    #
+    # What bounds it: `plist` parses Apple property lists, and in Tauri that is the app's own
+    # bundle metadata. No code in this repository feeds it XML from a user, a document or the
+    # network. Re-check with `cargo tree -i quick-xml` if that ever changes.
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml — DoS; fix needs plist>=? via Tauri; only parses our own bundle plist" },
+    { id = "RUSTSEC-2026-0195", reason = "quick-xml — DoS; same tree, same bound" },
+]
+
+[licenses]
+version = 2
+# Copyleft in a shipped desktop binary is a licensing trap, not a style preference.
+allow = [
+    "MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause",
+    "ISC", "Zlib", "Unicode-3.0", "Unicode-DFS-2016", "CC0-1.0", "MPL-2.0", "BSL-1.0",
+    "OpenSSL", "Unlicense", "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.9
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "allow"          # Tauri plugins are sometimes pulled from git
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

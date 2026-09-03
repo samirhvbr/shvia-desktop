@@ -3,8 +3,10 @@
   build-local.ps1 — Build LOCAL do ShvIA Desktop no Windows.
   Gera os instaladores (.msi + -setup.exe). O ShvIA é shell fino: SEM sidecar.
 
-  NÃO HÁ CI: ela foi removida na 0.4.6 por custo, e o build é 100% local por
-  decisão. Este script É o pipeline do Windows — inclusive checksums, manifesto
+  O BUILD DE RELEASE É LOCAL POR DECISÃO: a matriz de CI (tauri-action) foi removida na
+  0.4.6 por custo e não foi restaurada — mesmo com a conta em GitHub Enterprise (50.000
+  min/mês), runners macOS custam 10x. Testes/lint rodam via ci.yml; empacotamento não.
+  Este script É o pipeline do Windows — inclusive checksums, manifesto
   (release.json) e assinatura (item D9).
 
   PRE-REQUISITOS (instalar uma vez):

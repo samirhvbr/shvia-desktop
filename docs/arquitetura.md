@@ -71,11 +71,11 @@ nativas** que falem com a API (F2+, via sidecar + keychain).
   agora que existe um `invoke_handler`: o ACL do Tauri recusa `invoke` vindo de
   página remota, então um servidor comprometido **não** consegue chamar
   `shvia_server_set` e se tornar o destino permanente do app.
-- **Segredos** (chaves de assinatura/updater) **nunca** no repo. E não há "secrets de
-  CI" onde guardá-los, porque não há CI: no macOS a senha de notarização vive no
-  **keychain** da máquina; no Windows o certificado vive no **repositório de
-  certificados do SO** (ou um `.pfx` fora da árvore do repo), apontado por variável
-  de ambiente da sessão.
+- **Segredos** (chaves de assinatura/updater) **nunca** no repo. Enquanto o build de
+  release for local por decisão (ver `docs/build.md`), não há "secrets de CI" onde
+  guardá-los para esse fluxo: no macOS a senha de notarização vive no **keychain** da
+  máquina; no Windows o certificado vive no **repositório de certificados do SO** (ou
+  um `.pfx` fora da árvore do repo), apontado por variável de ambiente da sessão.
 
 ---
 
@@ -145,10 +145,14 @@ persistência), [`src/main.ts`](../src/main.ts) (estados da casca),
 
 ## Build & empacotamento
 
-> ⚠️ **Não há CI.** Ela foi removida na **0.4.6** por custo, e o build é **100% local
-> por decisão**. Esta seção descrevia uma pipeline de GitHub Actions que não existe
-> mais (matriz de runners, `tauri-action`, Azure Trusted Signing, `latest.json` em
-> Releases) — corrigido na 0.16.0, junto do item D9.
+> ⚠️ **Testes rodam via CI** (`.github/workflows/ci.yml`, desde 01–02/09/2026), mas o
+> **build de release não.** A matriz de empacotamento/assinatura foi removida na **0.4.6**
+> por custo, e segue **local por decisão** mesmo com a conta em GitHub Enterprise (50.000
+> min/mês) — runners macOS contam minutos a 10x, o que ainda pesa numa matriz de release.
+> Esta seção descrevia uma pipeline de GitHub Actions de release que não existe mais (matriz
+> de runners, `tauri-action`, Azure Trusted Signing, `latest.json` em Releases) — corrigido
+> na 0.16.0, junto do item D9. Trazer essa matriz de volta é decisão em aberto, não
+> automática.
 
 - **Onde roda:** `build-local.sh` (macOS/Linux) e `build-local.ps1` (Windows). **Cada
   SO é empacotado numa máquina diferente**, e essa é a restrição que molda o resto.

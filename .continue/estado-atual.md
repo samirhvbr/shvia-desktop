@@ -3,9 +3,19 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Última atualização: **22/08/2026** (versão 1.1.34).
+> Última atualização: **02/09/2026** (versão 1.4.3).
 
-> ⚠️ **Saneado em 07/08/2026.** Este arquivo estava descrevendo a **0.8.0** —
+> ⚠️ **Saneado em 02/09/2026** (achado F-22): descrevia a **1.1.34** com o repo em 1.4.3.
+> Foi o **terceiro** saneamento manual deste arquivo pelo mesmo motivo — daí a régua
+> `scripts/prova-frescor-da-doc.mjs`, que falha quando a distância reabre em vez de esperar
+> alguém reparar. Instrução não conserta o que já falhou três vezes.
+>
+> O que entrou desde a 1.1.34 está em [`../docs/funcionalidades.md`](../docs/funcionalidades.md)
+> §"Phase 3": cerca de pastas autorizadas (F-12), política do runner (F-13/ADR-032),
+> `gitDiff`/`readFile` na ponte, publish por `b3sys`, CI em todo push, janela de
+> `target=_blank` pela função canônica (F-15) e advisories do Rust medidos (F-31).
+>
+> ⚠️ **Saneado antes em 07/08/2026.** Este arquivo estava descrevendo a **0.8.0** —
 > catorze versões atrás — e listava como pendência coisa entregue há semanas
 > (offline v2, updater, tray, anna no instalador). Quem lesse ia refazer trabalho
 > pronto. As seções abaixo foram reconstruídas a partir do `git log` real, e o

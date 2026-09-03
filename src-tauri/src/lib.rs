@@ -696,17 +696,39 @@ fn decidir_fechar(ultima: bool, close_to_tray: bool, code_em_voo: bool) -> AcaoD
 
 #[cfg(desktop)]
 pub(crate) fn rebuild_main_window(app: &tauri::AppHandle) {
-    if let Err(e) = build_shvia_window(app, "main") {
+    if let Err(e) = build_shvia_window(app, "main", WebviewUrl::App("index.html".into())) {
         eprintln!("ShvIA: não foi possível recriar a janela principal: {e}");
     }
 }
 
 /// Cria uma janela do ShvIA com o comportamento padrão do shell: links externos
 /// no navegador do SO e estado (tamanho/posição) restaurado e persistido.
-fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<WebviewWindow> {
+/// A ÚNICA forma de criar janela do ShvIA — inclusive as de `target=_blank`.
+///
+/// ## Por que a URL virou parâmetro (achado F-15 da revisão de 01/09/2026)
+///
+/// As janelas de `target=_blank` nasciam de um `WebviewWindowBuilder` próprio, com `title` e
+/// `window_features` e **mais nada**: sem `on_navigation`, sem `on_page_load`, sem ícone, sem
+/// `min_inner_size`, sem o handler de fechamento.
+///
+/// A consequência que importa é a primeira: sem `on_navigation`, um link externo clicado
+/// dentro dessa janela **navega dentro do app** em vez de ir para o navegador do SO. Um site
+/// de terceiro passa a ocupar uma janela intitulada "ShvIA", com a moldura do aplicativo —
+/// que é o formato clássico de phishing. Não havia exposição nativa (as pontes também não
+/// eram instaladas), então o perímetro rompido era de UX, não de sistema de arquivos.
+///
+/// Duas janelas com regras diferentes é a mesma forma de defeito que esta revisão encontrou
+/// no `containerDo` (E-5) e nos dois caminhos de atualização (G-21): a segunda cópia não
+/// nasce errada, ela envelhece sozinha. Agora existe **uma** função, e quem abre janela passa
+/// a URL.
+fn build_shvia_window(
+    app: &tauri::AppHandle,
+    label: &str,
+    url: WebviewUrl,
+) -> tauri::Result<WebviewWindow> {
     let nav_handle = app.clone();
     let win_handle = app.clone();
-    let builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()))
+    let builder = WebviewWindowBuilder::new(app, label, url)
         .title("ShvIA")
         .on_navigation(move |url| {
             if is_internal(url) {
@@ -719,19 +741,19 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
         // `target=_blank` (e window.open): sem handler, no Windows/WebKit morre
         // silencioso; no Linux vira `target=_blank` morto. Link externo → abre
         // no navegador do SO; link interno → cria nova janela ShvIA.
-        .on_new_window(move |url, features| {
+        .on_new_window(move |url, _features| {
             if is_internal(&url) {
                 let label = format!("win-open-{}", open_window_counter());
-                let title = "ShvIA";
-                match WebviewWindowBuilder::new(
-                    &win_handle,
-                    &label,
-                    WebviewUrl::External(url.clone()),
-                )
-                .title(title)
-                .window_features(features)
-                .build()
-                {
+                // Reusa a MESMA construção da janela principal (F-15): a janela de
+                // `target=_blank` passa a ter `on_navigation` — e portanto link externo
+                // dentro dela volta a sair para o navegador do SO —, `on_page_load`, ícone,
+                // tamanho mínimo e o handler de fechamento.
+                //
+                // ⚠️ `window_features` fica de fora de propósito: ela vem da PÁGINA
+                // (`window.open(..., "width=300")`), e uma janela de 300px sem barra é o
+                // outro formato clássico de phishing. O tamanho da janela do app é decisão
+                // do app.
+                match build_shvia_window(&win_handle, &label, WebviewUrl::External(url.clone())) {
                     Ok(window) => NewWindowResponse::Create { window },
                     Err(_) => NewWindowResponse::Deny,
                 }
@@ -769,6 +791,10 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
                         &webview.package_info().version.to_string(),
                     ));
                     let _ = webview.eval(CLIPBOARD_IMAGE_PASTE_JS);
+                    // Ponte de voz (window.__shviaTts). Linux-only: é lá que o
+                    // handler nativo `shviaTts` existe. Ver TTS_BRIDGE_JS / F-16.
+                    #[cfg(target_os = "linux")]
+                    let _ = webview.eval(code_bridge::inject_token(TTS_BRIDGE_JS));
                     // Ponte do Modo Code (window.__shviaCode/__shviaDesktop). Ver code_bridge.rs.
                     let _ = webview.eval(code_bridge::inject_token(code_bridge::BRIDGE_JS));
                 }
@@ -890,7 +916,8 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
 ///   (microfone/câmera); sem isso o navegador nem expõe a API e o app reporta
 ///   "permissão negada";
 /// - `javascript-can-access-clipboard` → permite colar/copiar (ex.: Ctrl+V de print);
-/// - trata o signal `permission-request` concedendo os pedidos de **mídia**;
+/// - trata o signal `permission-request` concedendo **só microfone**, e só quando o
+///   frame principal é o servidor do ShvIA (ver `permite_midia`);
 /// - registra a **ponte de leitura em voz (TTS)** `shviaTts` (ver ADR-009): o
 ///   WebKitGTK só traz vozes en-US (Flite) e não enxerga o pt-BR do SO, então a
 ///   página posta o texto e o Rust fala pelo `spd-say`/espeak-ng.
@@ -901,7 +928,8 @@ fn build_shvia_window(app: &tauri::AppHandle, label: &str) -> tauri::Result<Webv
 fn configure_linux_webview(window: &WebviewWindow) {
     use javascriptcore::ValueExt;
     use webkit2gtk::{
-        glib::prelude::*, PermissionRequestExt, SettingsExt, UserContentManagerExt, WebViewExt,
+        glib::prelude::*, PermissionRequestExt, SettingsExt, UserContentManagerExt,
+        UserMediaPermissionRequestExt, WebViewExt,
     };
 
     // Clone da janela p/ o handler nativo devolver o "terminou" à página (eval).
@@ -915,16 +943,21 @@ fn configure_linux_webview(window: &WebviewWindow) {
             settings.set_enable_webrtc(true);
             settings.set_javascript_can_access_clipboard(true);
         }
-        webview.connect_permission_request(|_, req| {
-            if req
-                .downcast_ref::<webkit2gtk::UserMediaPermissionRequest>()
-                .is_some()
-            {
+        webview.connect_permission_request(|wv, req| {
+            let Some(midia) = req.downcast_ref::<webkit2gtk::UserMediaPermissionRequest>() else {
+                return false;
+            };
+            let uri = WebViewExt::uri(wv).unwrap_or_default();
+            if permite_midia(
+                &uri,
+                midia.is_for_audio_device(),
+                midia.is_for_video_device(),
+            ) {
                 req.allow();
-                true
             } else {
-                false
+                req.deny();
             }
+            true
         });
 
         // ── Ponte de leitura em voz (TTS) — ver ADR-009 ──────────────────────
@@ -943,19 +976,12 @@ fn configure_linux_webview(window: &WebviewWindow) {
                     Some(v) => v.to_str().to_string(),
                     None => return,
                 };
-                let parsed: serde_json::Value = match serde_json::from_str(&payload) {
-                    Ok(v) => v,
-                    Err(_) => return,
-                };
-                match parsed.get("action").and_then(|a| a.as_str()) {
-                    Some("speak") => {
-                        let generation =
-                            parsed.get("gen").and_then(|g| g.as_u64()).unwrap_or(0);
-                        let text = parsed.get("text").and_then(|t| t.as_str()).unwrap_or("");
-                        tts_speak(&win, generation, text);
+                match pedido_de_voz(&payload, crate::code_bridge::bridge_token()) {
+                    Some(PedidoDeVoz::Falar { geracao, texto }) => {
+                        tts_speak(&win, geracao, &texto)
                     }
-                    Some("stop") => tts_cancel(),
-                    _ => {}
+                    Some(PedidoDeVoz::Parar) => tts_cancel(),
+                    None => {}
                 }
             });
 
@@ -971,6 +997,99 @@ fn configure_linux_webview(window: &WebviewWindow) {
             });
         }
     });
+}
+
+/// Shim injected into ShvIA server pages (Linux only) so the page can reach the
+/// native voice bridge **with the session's capability token** — finding F-16.
+///
+/// Mirrors `code_bridge::BRIDGE_JS`: self-contained, ES5, self-guarded (without the
+/// native handler it defines nothing, and the web falls back to `speechSynthesis` or
+/// the server-side TTS, which is what macOS/Windows already do). The page must go
+/// through `window.__shviaTts` — posting to `messageHandlers.shviaTts` by hand no
+/// longer works, which is precisely what shuts the embedded iframe out.
+#[cfg(target_os = "linux")]
+const TTS_BRIDGE_JS: &str = r#"(function () {
+  if (window.__shviaTts) return;
+  var mh = window.webkit && window.webkit.messageHandlers;
+  var wk = mh && mh.shviaTts;
+  if (!wk) return;
+  function post(msg) {
+    msg.__t = '__SHVIA_BRIDGE_TOKEN__'; // capability token (see bridge_token)
+    try { wk.postMessage(JSON.stringify(msg)); } catch (e) { /* noop */ }
+  }
+  window.__shviaTts = {
+    speak: function (gen, text) { post({ action: 'speak', gen: gen, text: text }); },
+    stop: function () { post({ action: 'stop' }); }
+  };
+})();"#;
+
+/// Whether a media permission request may be granted without asking (finding F-16).
+///
+/// Two narrowings over the previous unconditional `allow()`:
+/// - the page in the **main frame** must be a ShvIA server host over https — the
+///   local shell (`tauri://localhost`) has no capture UI and never needs a device;
+/// - only **audio** is granted. SHVIA-WEB never calls `getUserMedia({video})` (its
+///   three call sites in `public/js/app.js` all ask for `{audio}`), so granting the
+///   camera was a permission with no product behind it.
+///
+/// **Known limitation, measured 02/09/2026:** WebKitGTK carries no origin and no
+/// frame on the request — `webkit2gtk 2.0.2` exposes exactly two getters on
+/// `UserMediaPermissionRequest`, `is-for-audio-device` and `is-for-video-device`.
+/// So a cross-origin `<iframe>` inside a ShvIA page still asks with the main
+/// frame's URI and gets the microphone. To re-check after a crate bump, look for an
+/// origin/frame getter in
+/// `~/.cargo/registry/src/*/webkit2gtk-*/src/auto/user_media_permission_request.rs`;
+/// while there is none, this is as narrow as the API allows.
+#[cfg(target_os = "linux")]
+fn permite_midia(uri_do_frame_principal: &str, para_audio: bool, para_video: bool) -> bool {
+    if para_video || !para_audio {
+        return false;
+    }
+    match tauri::Url::parse(uri_do_frame_principal) {
+        Ok(u) => u.scheme() == "https" && u.host_str().is_some_and(is_server_host),
+        Err(_) => false,
+    }
+}
+
+/// What a `shviaTts` payload asks for, once the capability token checks out.
+#[cfg(target_os = "linux")]
+#[derive(Debug, PartialEq)]
+enum PedidoDeVoz {
+    Falar { geracao: u64, texto: String },
+    Parar,
+}
+
+/// Reads a `shviaTts` payload, **dropping anything that does not carry the session's
+/// capability token** (finding F-16).
+///
+/// The native message handler exists for *every* frame of the webview, so before this
+/// gate a cross-origin `<iframe>` embedded in a ShvIA page could speak arbitrary text
+/// through the host's `spd-say` and cancel speech — and `spd-say -C` cancels globally
+/// in the speech-dispatcher daemon, so it reached beyond the app. The token is injected
+/// only into pages served by a `SERVER_HOSTS` host (`TTS_BRIDGE_JS` via `on_page_load`),
+/// which an iframe cannot read: same gate `code_bridge::handle_message` already applies
+/// to `shviaCode`, now covering the second native handler as well.
+///
+/// Dropping is silent on purpose — a reply would turn the handler into an oracle for
+/// guessing the token.
+#[cfg(target_os = "linux")]
+fn pedido_de_voz(payload: &str, token: &str) -> Option<PedidoDeVoz> {
+    let v: serde_json::Value = serde_json::from_str(payload).ok()?;
+    if v.get("__t").and_then(|t| t.as_str()) != Some(token) {
+        return None;
+    }
+    match v.get("action").and_then(|a| a.as_str())? {
+        "speak" => Some(PedidoDeVoz::Falar {
+            geracao: v.get("gen").and_then(|g| g.as_u64()).unwrap_or(0),
+            texto: v
+                .get("text")
+                .and_then(|t| t.as_str())
+                .unwrap_or_default()
+                .to_string(),
+        }),
+        "stop" => Some(PedidoDeVoz::Parar),
+        _ => None,
+    }
 }
 
 /// Fala um texto pela ponte nativa (Linux): `spd-say` → speech-dispatcher →
@@ -1031,7 +1150,7 @@ fn open_new_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     while open.contains_key(&format!("win-{n}")) {
         n += 1;
     }
-    build_shvia_window(app, &format!("win-{n}"))?;
+    build_shvia_window(app, &format!("win-{n}"), WebviewUrl::App("index.html".into()))?;
     Ok(())
 }
 
@@ -1249,7 +1368,7 @@ pub fn run() {
             // navegação, e sem isto o servidor configurado seria tratado como link
             // externo e abriria no navegador do SO.
             server::load(app.handle());
-            build_shvia_window(app.handle(), "main")?;
+            build_shvia_window(app.handle(), "main", WebviewUrl::App("index.html".into()))?;
             // Depois da janela: o updater espera 20 s antes da primeira checagem,
             // mas agendar antes de haver janela deixaria um diálogo nativo sem
             // janela-mãe se a rede fosse instantânea.
@@ -1287,7 +1406,7 @@ pub fn run() {
         #[cfg(target_os = "macos")]
         tauri::RunEvent::Reopen { .. } => {
             if app_handle.webview_windows().is_empty() {
-                let _ = build_shvia_window(app_handle, "main");
+                let _ = build_shvia_window(app_handle, "main", WebviewUrl::App("index.html".into()));
             }
         }
         tauri::RunEvent::Exit => {
@@ -1427,4 +1546,332 @@ mod tests {
         assert!(!internal("tauri://evil/"));
         assert!(!internal("file:///etc/passwd"));
     }
+
+    /// F-16: o microfone deixa de ser concedido a qualquer página da webview.
+    ///
+    /// O que muda de fato: antes, TODO `UserMediaPermissionRequest` recebia `allow()`.
+    /// Agora a câmera nunca é concedida (o produto nunca a pede — `getUserMedia({audio})`
+    /// nos três pontos do `app.js`) e o áudio só quando o frame principal é o servidor.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn midia_so_com_microfone_e_so_no_servidor() {
+        use super::permite_midia;
+        // (uri, áudio, vídeo, esperado)
+        let casos = [
+            ("https://ai.shvia.org/chat", true, false, true),
+            ("https://ia.blue3.com.br/", true, false, true),
+            // Câmera: negada mesmo no servidor — não há produto atrás dela.
+            ("https://ai.shvia.org/chat", false, true, false),
+            ("https://ai.shvia.org/chat", true, true, false),
+            // Casca local: não tem captura, então não precisa de dispositivo.
+            ("tauri://localhost/index.html", true, false, false),
+            ("http://localhost:1420/", true, false, false),
+            // Terceiros — inclusive o vizinho de sufixo, que o `is_server_host` recusa.
+            ("https://evil.com/", true, false, false),
+            ("https://ai.shvia.org.evil.com/", true, false, false),
+            // http no host do servidor não vale: o servidor é https.
+            ("http://ai.shvia.org/", true, false, false),
+            ("", true, false, false),
+        ];
+        for (uri, audio, video, esperado) in casos {
+            assert_eq!(
+                permite_midia(uri, audio, video),
+                esperado,
+                "permite_midia({uri:?}, audio={audio}, video={video})"
+            );
+        }
+    }
+
+    /// F-16: a ponte de voz passa a exigir o token de capacidade da sessão.
+    ///
+    /// O `<iframe>` cross-origin alcança o `messageHandler` nativo (a webview o expõe a
+    /// TODO frame) mas não lê o token — que só é injetado nas páginas de `SERVER_HOSTS`.
+    /// Sem esta porta ele falava pelo `spd-say` do host e cancelava fala globalmente.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_voz_exige_o_token_da_sessao() {
+        use super::{pedido_de_voz, PedidoDeVoz};
+        let t = "abc123";
+        // Sem token, com token errado, ou com o campo de outro tipo: nada acontece.
+        assert_eq!(pedido_de_voz(r#"{"action":"stop"}"#, t), None);
+        assert_eq!(pedido_de_voz(r#"{"action":"stop","__t":"outro"}"#, t), None);
+        assert_eq!(pedido_de_voz(r#"{"action":"stop","__t":123}"#, t), None);
+        assert_eq!(pedido_de_voz(r#"{"action":"speak","text":"oi"}"#, t), None);
+        assert_eq!(pedido_de_voz("nao e json", t), None);
+        // Com o token certo, o pedido passa — inclusive o `gen` ausente (default 0).
+        assert_eq!(
+            pedido_de_voz(r#"{"action":"stop","__t":"abc123"}"#, t),
+            Some(PedidoDeVoz::Parar)
+        );
+        assert_eq!(
+            pedido_de_voz(r#"{"action":"speak","gen":7,"text":"oi","__t":"abc123"}"#, t),
+            Some(PedidoDeVoz::Falar { geracao: 7, texto: "oi".into() })
+        );
+        assert_eq!(
+            pedido_de_voz(r#"{"action":"speak","text":"oi","__t":"abc123"}"#, t),
+            Some(PedidoDeVoz::Falar { geracao: 0, texto: "oi".into() })
+        );
+        // Ação desconhecida com token válido também não vira nada.
+        assert_eq!(pedido_de_voz(r#"{"action":"exec","__t":"abc123"}"#, t), None);
+    }
+
+    /// O arquivo sem o módulo de teste — ver o comentário dentro da régua abaixo.
+    fn so_o_codigo(fonte: &str) -> &str {
+        fonte.split("#[cfg(test)]").next().unwrap_or(fonte)
+    }
+
+    /// Só existe UM jeito de criar janela do ShvIA — achado F-15 da revisão de 01/09/2026.
+    ///
+    /// As janelas de `target=_blank` nasciam de um builder próprio, sem `on_navigation`: um
+    /// link externo clicado ali **navegava dentro do app**, e um site de terceiro passava a
+    /// ocupar uma janela intitulada "ShvIA". Perímetro de phishing, não de FS — as pontes
+    /// nativas também não eram instaladas.
+    ///
+    /// A régua persegue a causa, não o sintoma: duas janelas com regras diferentes é a mesma
+    /// forma de defeito do `containerDo` (E-5) e dos dois caminhos de atualização (G-21) — a
+    /// segunda cópia não nasce errada, ela envelhece sozinha. Se alguém acrescentar um
+    /// `WebviewWindowBuilder::new` fora do `build_shvia_window`, isto falha.
+    #[test]
+    fn so_ha_uma_construcao_de_janela() {
+        // 🐛 Corta o módulo de teste ANTES de contar: a primeira versão desta régua
+        // contava os próprios literais dela (o `matches(...)` e a mensagem de erro) e
+        // acusava 3. Régua que se conta acusa o arquivo certo pelo motivo errado — o
+        // mesmo tropeço da prova de imagens no WORKSPACE, que acusou `node:fs`.
+        let fonte = so_o_codigo(include_str!("lib.rs"));
+        // Comentário cita o nome para explicar o achado; declaração é o que conta.
+        let codigo: String = fonte
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//") && !l.trim_start().starts_with("///"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let n = codigo.matches("WebviewWindowBuilder::new").count();
+        assert_eq!(
+            n, 1,
+            "esperava 1 `WebviewWindowBuilder::new` (dentro de `build_shvia_window`), achei {n}. \
+             Toda janela tem de sair da mesma função, senão ela nasce sem `on_navigation`."
+        );
+    }
+
+    /// O handler de `target=_blank` chama a função canônica, e não constrói sozinho.
+    #[test]
+    fn o_target_blank_passa_pela_funcao_canonica() {
+        let fonte = so_o_codigo(include_str!("lib.rs"));
+        let i = fonte.find(".on_new_window(").expect("o handler de target=_blank sumiu");
+        let trecho = &fonte[i..(i + 1400).min(fonte.len())];
+        assert!(
+            trecho.contains("build_shvia_window(&win_handle"),
+            "o `on_new_window` voltou a construir a janela por fora",
+        );
+    }
+
+
+    /// Todo handler nativo registrado passa por uma porta de token — achado F-16.
+    ///
+    /// A régua persegue a causa, não o sintoma. O `shviaCode` já checava o token desde a
+    /// F-12; o `shviaTts` foi registrado depois, no mesmo `user_content_manager`, e ficou
+    /// de fora — não porque alguém decidiu que voz é inofensiva, mas porque **a segunda
+    /// ponte não herda a porta da primeira**. É a mesma forma de defeito do `containerDo`
+    /// (E-5) e das duas construções de janela (F-15): a cópia não nasce errada, ela nasce
+    /// sem a regra.
+    ///
+    /// Então a asserção não é "o shviaTts checa o token" — é **quantos handlers existem
+    /// contra quantas portas existem**. Registrar um terceiro `messageHandler` sem gate
+    /// deixa isto vermelho no `cargo test`, antes de virar superfície.
+    #[test]
+    fn todo_handler_nativo_tem_porta_de_token() {
+        let fonte = so_o_codigo(include_str!("lib.rs"));
+        let handlers = fonte.matches("register_script_message_handler(").count();
+        // As duas portas: `pedido_de_voz` (voz) e `code_bridge::handle_message` (Modo
+        // Code) — as duas comparam contra `bridge_token()` antes de agir.
+        // Contamos CHAMADAS, não definições: `fn pedido_de_voz(` também casa com
+        // `pedido_de_voz(` e faria a régua acusar uma porta a mais do que existe —
+        // foi o que ela fez na primeira execução.
+        let chamadas = |agulha: &str| fonte.matches(agulha).count()
+            - fonte.matches(&format!("fn {agulha}")).count();
+        let portas = chamadas("pedido_de_voz(") + chamadas("code_bridge::handle_message(");
+        assert_eq!(
+            handlers, portas,
+            "{handlers} handler(s) nativo(s) registrado(s) para {portas} porta(s) de token — \
+             o handler novo precisa checar o token antes de agir (ver pedido_de_voz)"
+        );
+    }
+
+    /// `AGENTS.md` e `CLAUDE.md` são o mesmo texto abaixo do H1 — achado F-21.
+    ///
+    /// Os dois arquivos JÁ exigiam isso, por escrito, de si mesmos. E os dois violavam:
+    /// no DESKTOP o comentário HTML do topo, no MOBILE o blockquote "Leia também". Não por
+    /// desleixo — o bloco que divergia era exatamente o que dizia *"este arquivo é espelho
+    /// do outro"*, e escrito em 1ª pessoa ele **não pode** ser idêntico nos dois. A regra
+    /// era impossível de cumprir, o que é a razão pela qual instrução sem guarda apodrece:
+    /// ninguém percebe que está pedindo o impossível.
+    ///
+    /// O ponteiro foi reescrito na 3ª pessoa (nomeia os dois arquivos, não "este"), e agora
+    /// a régua vale de verdade. Um `diff` de uma linha, que roda a cada `cargo test`.
+    #[test]
+    fn agents_e_claude_sao_espelho() {
+        let raiz = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        // Nos dois repos Tauri o Cargo.toml vive em `src-tauri/`; no CODE, na raiz.
+        let base = if raiz.join("../AGENTS.md").exists() { raiz.join("..") } else { raiz.to_path_buf() };
+        let ler = |n: &str| {
+            let p = base.join(n);
+            let t = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{} ilegível: {e}", p.display()));
+            // Fora o H1 (a única linha que PODE diferir: cada arquivo tem seu título).
+            t.lines().skip(1).collect::<Vec<_>>().join("\n")
+        };
+        let agents = ler("AGENTS.md");
+        let claude = ler("CLAUDE.md");
+        assert!(agents.len() > 500, "AGENTS.md tem {} bytes abaixo do H1 — a régua estaria medindo o vazio", agents.len());
+        if agents != claude {
+            let a: Vec<&str> = agents.lines().collect();
+            let c: Vec<&str> = claude.lines().collect();
+            let primeira = (0..a.len().max(c.len()))
+                .find(|&i| a.get(i) != c.get(i))
+                .map(|i| format!("linha {} abaixo do H1:\n    AGENTS.md: {:?}\n    CLAUDE.md: {:?}",
+                    i + 2, a.get(i).unwrap_or(&"<fim>"), c.get(i).unwrap_or(&"<fim>")))
+                .unwrap_or_default();
+            panic!("AGENTS.md e CLAUDE.md divergem abaixo do H1 — {primeira}");
+        }
+    }
+
+    /// Toda `uses:` do CI está pinada por SHA de commit — achado F-09.
+    ///
+    /// Tag de GitHub Action é **ponteiro móvel**: `actions/checkout@v4` roda o que o dono
+    /// do repositório publicar amanhã sob aquela tag, com as permissões deste workflow e
+    /// acesso ao token do job. Não é hipótese remota — é o vetor de `tj-actions/changed-files`
+    /// (03/2025), em que uma tag movida passou a vazar segredos de milhares de repositórios.
+    ///
+    /// A régua persegue a causa, não o sintoma: o defeito não é "esta action está solta", é
+    /// **uma action nova entrar sem pin**. Por isso ela varre o diretório inteiro e não uma
+    /// lista — um workflow novo já nasce medido.
+    ///
+    /// O comentário `# vX.Y.Z` ao lado do SHA não é enfeite: sem ele, subir o pin vira
+    /// arqueologia. A régua exige os dois.
+    #[test]
+    fn toda_action_do_ci_esta_pinada_por_sha() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.github/workflows");
+        let mut vistos = 0usize;
+        let mut soltas: Vec<String> = Vec::new();
+
+        let entradas = std::fs::read_dir(&dir).expect("o repositório tem .github/workflows");
+        for e in entradas.flatten() {
+            let caminho = e.path();
+            let ext = caminho.extension().and_then(|x| x.to_str()).unwrap_or("");
+            if ext != "yml" && ext != "yaml" {
+                continue;
+            }
+            let arquivo = caminho.file_name().unwrap().to_string_lossy().to_string();
+            let texto = std::fs::read_to_string(&caminho).expect("workflow legível");
+            for (n, linha) in texto.lines().enumerate() {
+                let corte = linha.trim_start();
+                // Só `uses:` de action; `uses:` dentro de comentário não conta.
+                if corte.starts_with('#') {
+                    continue;
+                }
+                let Some(resto) = corte.strip_prefix("- uses:").or_else(|| corte.strip_prefix("uses:")) else {
+                    continue;
+                };
+                let referencia = resto.trim().split('#').next().unwrap_or("").trim();
+                // `uses:` local (`./algo`) e de container (`docker://`) não têm SHA a pinar.
+                if referencia.starts_with('.') || referencia.starts_with("docker://") {
+                    continue;
+                }
+                vistos += 1;
+                let sha = referencia.rsplit('@').next().unwrap_or("");
+                let pinada = sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit());
+                // O comentário que diz QUAL versão o SHA é.
+                let tem_nota = linha.contains('#');
+                if !pinada || !tem_nota {
+                    let porque = if pinada { "sem o comentário dizendo a versão" } else { "não é SHA de 40 hex" };
+                    soltas.push(format!("{arquivo}:{}  {referencia}  ({porque})", n + 1));
+                }
+            }
+        }
+
+        assert!(vistos > 0, "nenhuma `uses:` encontrada — a régua estaria medindo o vazio");
+        assert!(
+            soltas.is_empty(),
+            "action(s) do CI sem pin por SHA (+ comentário da versão):\n  {}\n\
+             Resolva a tag com:\n  \
+             gh api repos/<dono>/<repo>/git/ref/tags/<tag> --jq '.object.sha'",
+            soltas.join("\n  ")
+        );
+    }
+
+    /// Todo `.md` de `docs/` é alcançável por link a partir do índice — achado D-DOC-10.
+    ///
+    /// Documento órfão não é doc velha: é doc que **ninguém sabe que existe**. O
+    /// `docs/loja-ficha.md` do MOBILE é a ficha do App Store Connect pronta para colar, com
+    /// os limites de caracteres da Apple anotados — escrita em 04/08 e nunca linkada, num
+    /// repo cuja submissão está pendente. O custo de um órfão não é o arquivo; é alguém
+    /// reescrever o que já estava pronto.
+    ///
+    /// A régua não julga se a doc está atualizada — julga se dá para CHEGAR nela. Um `.md`
+    /// novo em `docs/` deixa o `cargo test` vermelho até alguém decidir onde ele entra no
+    /// índice, que é a decisão que ninguém toma quando o arquivo simplesmente aparece.
+    #[test]
+    fn todo_doc_e_alcancavel() {
+        let raiz = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let base = if raiz.join("../docs").is_dir() { raiz.join("..") } else { raiz.to_path_buf() };
+        let docs = base.join("docs");
+        if !docs.is_dir() {
+            return; // repo sem `docs/` não tem o que medir
+        }
+
+        // Os arquivos que podem CONTER links para os docs: tudo que é índice aqui.
+        let mut indice = String::new();
+        for n in ["README.md", "README_br.md", "docs/README.md", "CLAUDE.md", "AGENTS.md"] {
+            if let Ok(t) = std::fs::read_to_string(base.join(n)) {
+                indice.push_str(&t);
+            }
+        }
+        // E os próprios docs linkam entre si — um doc alcançado por outro doc conta.
+        let mut arquivos: Vec<std::path::PathBuf> = Vec::new();
+        fn anda(d: &std::path::Path, saida: &mut Vec<std::path::PathBuf>) {
+            if let Ok(e) = std::fs::read_dir(d) {
+                for x in e.flatten() {
+                    let p = x.path();
+                    if p.is_dir() {
+                        anda(&p, saida);
+                    } else if p.extension().and_then(|s| s.to_str()) == Some("md") {
+                        saida.push(p);
+                    }
+                }
+            }
+        }
+        anda(&docs, &mut arquivos);
+        for f in &arquivos {
+            if let Ok(t) = std::fs::read_to_string(f) {
+                indice.push_str(&t);
+            }
+        }
+
+        let orfaos: Vec<String> = arquivos
+            .iter()
+            .filter_map(|f| {
+                let rel = f.strip_prefix(&base).ok()?.to_string_lossy().to_string();
+                let nome = f.file_name()?.to_string_lossy().to_string();
+                // `docs/README.md` é o índice: ele não precisa ser linkado por ninguém.
+                if rel == "docs/README.md" {
+                    return None;
+                }
+                // Alcançável se alguém escreve um LINK markdown que termine no caminho ou
+                // no nome do arquivo — `](docs/x.md)`, `](x.md)`, `](../docs/x.md)`.
+                let alvo_a = format!("]({rel})");
+                let alvo_b = format!("]({nome})");
+                let alvo_c = format!("/{nome})");
+                let visto = indice.contains(&alvo_a) || indice.contains(&alvo_b) || indice.contains(&alvo_c);
+                (!visto).then_some(rel)
+            })
+            .collect();
+
+        assert!(!arquivos.is_empty(), "docs/ vazio — a régua estaria medindo o vazio");
+        assert!(
+            orfaos.is_empty(),
+            "documento(s) em docs/ sem NENHUM link apontando para eles:\n  {}\n\
+             Um .md que ninguém alcança é trabalho que alguém vai refazer. Linke no índice \
+             (README.md ou docs/README.md) ou apague.",
+            orfaos.join("\n  ")
+        );
+    }
+
 }

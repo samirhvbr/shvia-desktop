@@ -2,8 +2,10 @@
 # build-local.sh — Build LOCAL do ShvIA Desktop no macOS e Linux.
 # Gera os instaladores do app. O ShvIA é shell fino: SEM sidecar.
 #
-# NÃO HÁ CI: ela foi removida na 0.4.6 por custo, e o build é 100% local por
-# decisão. Este script É o pipeline — inclusive checksums e manifesto
+# O BUILD DE RELEASE É LOCAL POR DECISÃO: a matriz de CI (tauri-action) foi removida na
+# 0.4.6 por custo e não foi restaurada — mesmo com a conta em GitHub Enterprise (50.000
+# min/mês), runners macOS custam 10x. Testes/lint rodam via ci.yml; empacotamento não.
+# Este script É o pipeline — inclusive checksums e manifesto
 # (release.json), que o item D9 acrescentou e o D1 (auto-update) vai consumir.
 #   macOS  -> .dmg + .app.tar.gz
 #   Linux  -> .deb + .AppImage (+ .rpm)   (targets="all" do tauri.conf.json)

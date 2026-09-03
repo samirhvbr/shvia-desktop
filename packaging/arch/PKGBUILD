@@ -3,7 +3,9 @@
 # ShvIA Desktop — pacote BINÁRIO para Arch Linux.
 #
 # ── Por que binário (e não build do zero no makepkg) ─────────────────────────
-# O build é 100% local por decisão (a CI foi removida na 0.4.6) e o
+# O build de release é 100% local por decisão (a matriz de CI foi removida na 0.4.6
+# por custo e segue local mesmo com Enterprise, por conta do multiplicador 10x em
+# runners macOS) e o
 # `build-local.sh` já É o pipeline: ele compila, assina o artefato do updater e
 # publica. Um PKGBUILD que rodasse `npm ci` + `tauri build` de novo recompilaria
 # o Rust inteiro para produzir o MESMO binário — e, pior, teria de receber a

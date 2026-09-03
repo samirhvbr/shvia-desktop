@@ -121,7 +121,7 @@ Electron da Anthropic.
 > | **F1** esqueleto andante | ✅ — o smoke-test do WebKitGTK passou, e o risco #1 abaixo não se materializou |
 > | **F2** polish nativo | ✅ menu, About, tray/menubar + autostart (ADR-024), config de URL (ADR-019), notificações (ADR-011). **Falta a offline v2** (ping no Rust) e o deep-link `shvia://` |
 > | **F3** compat. de versão de servidor | ✅ ADR-018 — avisa, nunca bloqueia |
-> | **F4** assinatura + auto-update | ✅ macOS (Developer ID + notarização), Windows (Authenticode), updater minisign validado em campo 1.0.0 → 1.0.1 (ADR-022/023). ⚠️ **A "matriz GitHub Actions" desta fase NÃO existe:** a CI foi removida na 0.4.6 e o build é 100% local, por decisão. O texto abaixo está desatualizado nesse ponto |
+> | **F4** assinatura + auto-update | ✅ macOS (Developer ID + notarização), Windows (Authenticode), updater minisign validado em campo 1.0.0 → 1.0.1 (ADR-022/023). ⚠️ **A "matriz GitHub Actions" de release desta fase segue sem existir:** foi removida na 0.4.6 por custo e o build de release é local por decisão — mesmo com a conta em GitHub Enterprise (50.000 min/mês) desde 02/09/2026, porque macOS conta 10x nos minutos. Testes (não release) já rodam via CI (`ci.yml`, achado G-24). O texto abaixo está desatualizado nesse ponto |
 > | **F5** beta + docs | 🟡 docs sim; **beta interno nos 3 SOs não foi feito** — bandeja, diagnóstico e gravação de config de CLI só têm validação de compilação/teste |
 
 

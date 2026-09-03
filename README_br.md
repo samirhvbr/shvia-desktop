@@ -91,7 +91,10 @@ Operação genuinamente offline é um *killer* desta arquitetura — ver
   `single-instance`.
 - **Três runtimes** (como o SHVTERM): `npm` (casca) · `cargo` (Rust) · `pip`
   (sidecar).
-- **CI**: GitHub Actions, matriz `macos` / `windows` / `ubuntu` (`tauri-action`).
+- **CI**: GitHub Actions roda testes/lint (`ci.yml`, desde 09/2026). Empacotamento/
+  assinatura de release seguem locais por decisão (`build-local.*`) — a matriz
+  `macos`/`windows`/`ubuntu` via `tauri-action` foi removida na 0.4.6 por custo e não
+  voltou, porque runners macOS custam 10x mesmo no plano Enterprise atual.
 
 ---
 
@@ -135,7 +138,7 @@ shvia-desktop/
 │   └── icons/
 ├── sidecar/                    # (F2) serviços nativos/seguros em Python
 ├── scripts/packaging/          # appimage/deb/rpm adaptados do SHVTERM
-├── .github/workflows/          # matriz de build + release assinado
+├── .github/workflows/          # ci.yml (testes/lint); matriz de release ainda local
 ├── .claude/                    # perfil de modelo + permissões
 ├── .continue/                  # WIP: estado-atual + escopo do projeto
 └── docs/                       # documentação técnica estável
