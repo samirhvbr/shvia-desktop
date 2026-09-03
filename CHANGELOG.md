@@ -3,6 +3,15 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.3.5 - Regra de Releases no doc de agente: bump e Release sao um ato so
+
+Eco marcado da norma unica em samirhvbr/repodocs (docs/versioning.md). O
+`version.md` da branch padrao NO GITHUB e o que as Releases no GitHub mostram, e
+um commit que bumpa o `version.md` nao esta terminado ate aquela versao ter tag,
+Release e o badge `Latest`.
+
+Bloco delimitado por marcador: rodar de novo substitui, nao duplica.
+
 ## 1.3.4 - Releases automaticas: o version.md da master vira tag e Release
 
 O GitHub nao deduz versao de mensagem de commit: sem tag, o numero e string no
