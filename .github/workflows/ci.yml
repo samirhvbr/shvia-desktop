@@ -67,6 +67,25 @@ jobs:
       # arquivo já tinha sido saneado à mão DUAS vezes pelo mesmo motivo.)
       - name: Frescor da doc de estado (F-22)
         run: npm run prova:doc
+      # `src-tauri/binaries/` is gitignored on purpose: the `anna` sidecar depends on the
+      # build machine (ADR-021), so it is staged by `scripts/stage-anna.mjs` and never
+      # committed. But `externalBin` in `tauri.conf.json` makes the Tauri build script
+      # REQUIRE the file, so on a clean checkout the crate does not compile at all —
+      # `resource path binaries/anna-<triple> doesn't exist`.
+      #
+      # 🔴 That is why `cargo test` in this workflow had never once run. CI has been red
+      # since it landed in 1.4.1, and the steps before this one were failing first, so the
+      # output always blamed something else. The run is red either way, and nothing in it
+      # says a later step is also broken.
+      #
+      # A stand-in is enough and cannot leak: nothing here executes the sidecar, and CI
+      # does not package — the release build is local by decision (docs/build.md).
+      - name: Sidecar stand-in so the Tauri build script can run
+        run: |
+          mkdir -p src-tauri/binaries
+          triple="$(rustc -vV | awk '/^host:/{print $2}')"
+          : > "src-tauri/binaries/anna-$triple"
+          chmod +x "src-tauri/binaries/anna-$triple"
       - name: cargo test (inclui a cerca da ponte — F-12)
         working-directory: src-tauri
         run: cargo test --locked

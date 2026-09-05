@@ -3,6 +3,35 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.18 - Give CI the sidecar stand-in its Rust build has always needed
+
+🔴 **`cargo test` in `ci.yml` had never once run.** Not "was failing recently" — never, in
+any of the 13 runs since CI landed in 1.4.1. `src-tauri/binaries/` is gitignored on purpose
+(the `anna` sidecar depends on the build machine, ADR-021, and is staged by
+`stage-anna.mjs`), but `externalBin` in `tauri.conf.json` makes the Tauri build script
+*require* the file. On a clean checkout the crate does not compile:
+
+```
+resource path `binaries/anna-x86_64-unknown-linux-gnu` doesn't exist
+```
+
+Reproduced here with a fresh `git clone` of this repository — same message, and the suite
+runs 89/89 the moment an empty file with the right name exists.
+
+⚠️ **This is the third guard found stacked behind another in one day**, and the shape is
+the same every time: the carriers step failed first (since 1.4.9), so CI never reached
+`cargo test`; fixing that in 1.4.13 exposed an unpinned action; fixing that in 1.4.15
+exposed this. **A red run says one thing and hides the rest** — the first failing step is
+the only one anyone reads, and nothing in the output distinguishes "the later steps are
+fine" from "nobody has looked at them since they were written."
+
+The claim in `CLAUDE.md` that "testes (Rust/lint) já rodam via `.github/workflows/ci.yml`
+desde 01–02/09/2026" was therefore never true of the Rust half. `npm run prova:politica`
+and the version-carrier proof did run; `cargo test`, `clippy` and `cargo deny` did not.
+
+The stand-in cannot leak into anything: nothing in CI executes the sidecar, and CI does not
+package — the release build is local by decision (`docs/build.md`).
+
 ## 1.4.17 - Name the engine that actually failed to start
 
 `spawn` answered `falha ao iniciar anna` whichever engine it had just tried, so a failure
