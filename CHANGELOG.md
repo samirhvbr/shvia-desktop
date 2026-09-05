@@ -3,6 +3,14 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.11 - Plan selectable Claude Code account profiles
+
+Add an implementation proposal and a composer-layout mockup for company and
+personal Claude Code profiles. The plan maps the existing local aliases to
+child-process configuration, covers account-scoped discovery and session
+isolation, and defines cross-repository delivery and acceptance tests.
+Documentation only; account switching is not implemented in this release.
+
 ## 1.4.8 - COMMIT-RULE replaces the COMMITTER delegation: the agent commits again
 
 The `PS — Commits: a skill COMMITTER cuida disso` block in this repository's
