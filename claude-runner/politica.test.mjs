@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { caminhoProibido, comandoDestrutivo, decidir, dentroDoProjeto } from "./politica.mjs";
+import {
+  EDICAO,
+  LEITURA,
+  caminhoProibido,
+  comandoDestrutivo,
+  decidir,
+  dentroDoProjeto,
+} from "./politica.mjs";
 
 /**
  * A política de permissão do motor "Claude Code (assinatura)" — achado F-13 da revisão de
@@ -12,8 +19,10 @@ import { caminhoProibido, comandoDestrutivo, decidir, dentroDoProjeto } from "./
  * perguntar por comando comum; ele não pode virar a porta que libera exfiltração — que é
  * exatamente o que ele era.
  */
-const LEITURA = new Set(["Read", "Glob", "Grep", "LS", "NotebookRead", "TodoWrite"]);
-const EDICAO = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+// ⚠️ The sets are IMPORTED, and that is the 2026-09-05 fix — not a convenience. While
+// this file declared its own copies, it proved `decidir()` against a list that existed
+// only here: `claude-runner.mjs` referenced an `EDIT_TOOLS` that had vanished in 1.4.7,
+// and the proof stayed green because it never looked over there.
 const RAIZ = "/home/dev/projeto";
 
 const decide = (toolName, toolInput, nivel = "manual") =>
@@ -77,4 +86,20 @@ test("as funções de apoio, isoladas", () => {
   assert.equal(dentroDoProjeto("/home/dev/proj", "/home/dev/proj2/x"), false);
   assert.equal(comandoDestrutivo("rm -rf /"), true);
   assert.equal(comandoDestrutivo("npm run build"), false);
+});
+
+test("the sets the runner imports are the ones the policy expects", () => {
+  // 🔴 Regression from 1.4.7: `EDIT_TOOLS` vanished from `claude-runner.mjs` and the
+  // reference stayed, so `preToolUse` threw `ReferenceError` on EVERY tool call — the
+  // ADR-032 boundary off the air, with no symptom anyone would see. This locks the
+  // CONTENT of the sets; what locks the LOADING is `npm run prova:runner-version`,
+  // because a missing named import in ESM fails at link time, never at parse time.
+  assert.deepEqual([...EDICAO].sort(), ["Edit", "MultiEdit", "NotebookEdit", "Write"]);
+  assert.deepEqual(
+    [...LEITURA].sort(),
+    ["Glob", "Grep", "LS", "NotebookRead", "Read", "TodoWrite"],
+  );
+  // ADR-032: network egress is not a read, at any level.
+  assert.equal(LEITURA.has("WebFetch"), false);
+  assert.equal(LEITURA.has("WebSearch"), false);
 });

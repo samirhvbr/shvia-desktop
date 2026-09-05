@@ -1,7 +1,7 @@
 {
   "name": "shvia-desktop",
   "private": true,
-  "version": "1.4.8",
+  "version": "1.4.13",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,6 +16,7 @@
     "release:manifest": "node scripts/release-manifest.mjs",
     "anna:stage": "node scripts/stage-anna.mjs",
     "prova:politica": "node --test claude-runner/politica.test.mjs",
+    "prova:runner-version": "node claude-runner/claude-runner.mjs --version",
     "runner:sdk-bump": "node scripts/bump-sdk-do-runner.mjs",
     "prova:doc": "node scripts/prova-frescor-da-doc.mjs"
   },

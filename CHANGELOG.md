@@ -3,6 +3,38 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.13 - Restore the edit-tool set the permission hook lost
+
+`claude-runner.mjs` passed `edicao: EDIT_TOOLS` to the permission decision, and
+`EDIT_TOOLS` was neither declared nor imported anywhere. The definition
+(`new Set(["Write","Edit","MultiEdit","NotebookEdit"])`) left in 1.4.7, when the policy
+was extracted into `politica.mjs`; the reference stayed behind.
+
+🔴 **The consequence was not cosmetic.** `preToolUse` builds that object literal *before*
+calling `decidir()`, and an undeclared name in ESM is a `ReferenceError` — so the hook
+threw on **every tool call, at every approval level**. The `PreToolUse` hook is the whole
+permission policy of Code mode (ADR-032): it is what emits `gate_request` and makes the
+approval card appear. It was off the air for two days and nothing said so.
+
+**Why no proof caught it.** `politica.test.mjs` declared its own local copies of the read
+and edit sets and exercised `decidir()` with those, so it never touched the file where the
+name was missing. `node --check` only parses. `prova:runner` cuts two functions out of the
+source with a regex and never reaches the hook.
+
+- Both sets move to `politica.mjs` as `LEITURA` and `EDICAO` and are exported; the runner
+  and the test import the same ones. Two copies of one fact were what hid the defect.
+- `politica.test.mjs` asserts the content of both sets, including that `WebFetch` and
+  `WebSearch` stay out of the read set (ADR-032).
+- Content is not loading, so the trigger is separate: `npm run prova:runner-version` runs
+  `claude-runner --version`, which links `politica.mjs` statically and answers before the
+  SDK's dynamic import. A missing named import fails there. It is a CI step now.
+  Proved by reversion: dropping the `export` keyword turns both the script and the test
+  red, and restoring it turns them green.
+
+The version carriers had drifted to 1.4.8 since 1.4.9 (four doc-only commits bumped
+`version.md` without `npm run version:sync`), which is why CI was failing at "Portadores de
+versão alinhados" on master. The bump in this commit realigns all six.
+
 ## 1.4.12 - Move the unimplemented account-profile proposal out of docs
 
 Move the proposal and its SVG mockup to the owner's shared `.continue/code/`

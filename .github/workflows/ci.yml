@@ -53,6 +53,14 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Política do claude-runner (F-13)
         run: npm run prova:politica
+      # Does the runner LOAD? `node --check` only parses, and `politica.test.mjs` never
+      # imports the runner (it runs on import). A missing named import in ESM fails when
+      # the module is LINKED — and `--version` answers after the static import of the
+      # policy and before the dynamic import of the SDK, so this is the cheapest probe
+      # there is. Without it, 1.4.7 could drop `EDIT_TOOLS` and leave the reference for
+      # two days.
+      - name: The claude-runner links (1.4.7 regression)
+        run: npm run prova:runner-version
       - name: Portadores de versão alinhados
         run: npm run prova:bump
       # A doc de "o que está implementado" acompanha a versão? (achado F-22 — este
