@@ -3,6 +3,16 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.17 - Name the engine that actually failed to start
+
+`spawn` answered `falha ao iniciar anna` whichever engine it had just tried, so a failure
+in the Claude Code engine sent whoever was diagnosing it to look at the other binary.
+
+It matters more now than it did yesterday: this is the message that shows up when an
+account profile fails to launch (ADR-033), and account profiles are the newest reason for
+a spawn to fail. The string uses `exe_base`, which is already the variable that chose the
+binary two lines above.
+
 ## 1.4.16 - Model discovery and spawn run under the selected Claude account
 
 Code mode could only ever reach whichever account the CLI's default directory held. The

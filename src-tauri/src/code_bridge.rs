@@ -836,7 +836,18 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
-        Err(e) => return reply(window, req, false, serde_json::json!({ "error": format!("falha ao iniciar anna: {e}") })),
+        // `exe_base`, não "anna" cravado: com o motor Claude ativo a frase nomeava o outro
+        // binário, e esta é exatamente a mensagem que aparece quando um perfil de conta não
+        // sobe (ADR-033). Mandar quem procura o defeito olhar o motor errado custa a sessão
+        // inteira de diagnóstico.
+        Err(e) => {
+            return reply(
+                window,
+                req,
+                false,
+                serde_json::json!({ "error": format!("falha ao iniciar {exe_base}: {e}") }),
+            )
+        }
     };
     let stdout = child.stdout.take().expect("stdout piped");
     let stderr = child.stderr.take().expect("stderr piped");
