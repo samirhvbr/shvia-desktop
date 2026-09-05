@@ -7,8 +7,8 @@
     "CLAUDE_CODE_SUBAGENT_MODEL": "opus",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5"
   },
+  "_comment_hooks": "Impeccable: checagem imediata pós-Edit/Write/MultiEdit. Guardado por -f para não quebrar clones sem a skill.",
   "hooks": {
-    "_comment": "Impeccable: checagem imediata pós-Edit/Write/MultiEdit. Guardado por -f para não quebrar clones sem a skill.",
     "PostToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit",
