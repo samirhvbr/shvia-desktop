@@ -3,6 +3,12 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.12 - Move the unimplemented account-profile proposal out of docs
+
+Move the proposal and its SVG mockup to the owner's shared `.continue/code/`
+workspace directory. Keep `docs/` for implemented functionality. The destination
+is outside this repository, so the working proposal is no longer versioned here.
+
 ## 1.4.11 - Plan selectable Claude Code account profiles
 
 Add an implementation proposal and a composer-layout mockup for company and
