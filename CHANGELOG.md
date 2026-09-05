@@ -3,6 +3,40 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.16 - Model discovery and spawn run under the selected Claude account
+
+Code mode could only ever reach whichever account the CLI's default directory held. The
+owner's two subscriptions live behind two shell aliases (`claude-b3` → `~/.claude-blue3`,
+`claude-me` → `~/.claude-pessoal`), and the Desktop never goes through a shell — it spawns
+`claude-runner` directly, with no `CLAUDE_CONFIG_DIR` at all.
+
+- `src-tauri/src/contas_claude.rs` is the registry: `contas-claude.json` in the app config
+  directory, next to `pastas-autorizadas.json`. The two known profiles are seeded **only
+  when their directory already exists**; nothing is created, and no shell alias is parsed.
+  A second machine registers its own path by hand, and every entry is revalidated on each
+  read (id shape, absolute path inside `$HOME`).
+- The bridge gains `claudeAccounts` and `claudeAccountSelect`; `claudeModels` takes an
+  `accountId`; `spawn` takes one and echoes the resolved id and label back. **No path
+  crosses the bridge** — not in, not out, not in an error.
+- `claude_models` now *requires* the resolved directory as an argument. While it asked for
+  nothing, it and `spawn` were two independent routes to the same binary and nothing made
+  them agree on the account — and the catalogue is per subscription, so disagreeing means
+  offering a model on screen that the turn will refuse.
+- `CLAUDE_CONFIG_DIR` is set with `Command::env`, never `std::env::set_var`: two windows
+  can hold two accounts at once.
+- An unknown id, or a profile whose directory is gone, **fails loudly**. There is no
+  fallback arm to the default account.
+
+🔬 **Why the missing-directory case is a refusal and not a pass-through.** Measured with
+`--modelos` under three directories: both real profiles answer with the subscription
+catalogue, and an **empty** directory answers with `$5/$25 per Mtok` — the SDK created
+`.claude.json`, `projects/`, `sessions/` and `backups/` inside it and carried on without a
+subscription rather than complaining. A profile whose folder had moved would have run the
+turn outside the subscription, silently, with the right account name on screen.
+
+The web half (the CONTA selector) ships separately and is gated on `recursos.conta`, so an
+older shell keeps today's control row instead of a selector it would ignore.
+
 ## 1.4.15 - Pin the release workflow's checkout by SHA, like every other action
 
 `toda_action_do_ci_esta_pinada_por_sha` has been red since it was written in 1.4.7:

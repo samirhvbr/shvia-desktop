@@ -1790,3 +1790,87 @@ segurança desta casca não tinha teste nenhum (achado F-29). A decisão foi ext
 `claude-runner/politica.mjs`, com `node --test claude-runner/politica.test.mjs` (8 testes).
 
 ---
+
+## ADR-033 — A conta do Claude Code é um id de lista fechada, e o diretório vai no FILHO
+
+- **Data:** 05/09/2026 · **Status:** Aceito
+
+### Contexto
+
+O dono tem duas contas de assinatura, atrás de dois aliases de shell: `claude-b3` aponta
+`CLAUDE_CONFIG_DIR` para `~/.claude-blue3`, `claude-me` para `~/.claude-pessoal`. O Modo
+Code **não passa por shell** — o `code_bridge.rs` spawna o `claude-runner` direto, sem
+`CLAUDE_CONFIG_DIR` nenhum. Então o Modo Code só alcançava a conta que estivesse no
+diretório default do CLI, e não havia como escolher.
+
+Duas coisas precisavam da conta, não uma: o `spawn` do turno **e** o `claudeModels`, que
+roda um segundo processo para perguntar o catálogo ao SDK. Elas eram caminhos
+independentes até o mesmo binário.
+
+### Decisão
+
+**A página manda um `accountId` de uma lista fechada; o Rust traduz.** Nunca um caminho.
+
+É a mesma linha do [ADR-026](#adr-026) (a página propõe valores, o nativo monta o arquivo)
+e do [ADR-031](#adr-031) (a cerca vem do gesto, não do caminho que a página manda). O ator
+é o mesmo dos dois: um XSS no SHVIA-WEB — cuja CSP nasce desligada — roda na origem que
+tem o token da ponte. Se ele pudesse nomear o diretório, apontaria as credenciais do
+agente para onde quisesse.
+
+**Alias de shell não é lido.** Interpretar o `.bashrc` de alguém para descobrir o que
+rodar é o oposto de lista fechada — é executar configuração de terceiro como se fosse
+nossa. Os dois perfis conhecidos são **semeados** quando o diretório correspondente já
+existe, e o registro (`contas-claude.json`, ao lado do `pastas-autorizadas.json`) é
+editável à mão para quem tiver outro caminho em outra máquina. Nada é criado: um
+`~/.claude-pessoal` vazio inventado por nós listaria como conta e falharia no primeiro
+turno, que é pior que não oferecer.
+
+#### O diretório vai no `Command`, nunca no processo
+
+`Command::env`, jamais `std::env::set_var`. Duas janelas podem estar em duas contas ao
+mesmo tempo; uma variável de processo faria a janela que spawnou por último decidir pela
+outra — e a outra continuaria mostrando na tela o nome da conta que ela escolheu.
+
+#### Um resolvedor só, e ele não tem braço de fallback
+
+`contas_claude::resolver` é a única tradução id→diretório, e `claude_models` e `spawn`
+chamam a mesma. Enquanto o `claude_models` não pedia conta nenhuma, nada obrigava
+descoberta e turno a concordarem — e o catálogo **é** por assinatura, então discordar
+significa oferecer na tela um modelo que o turno recusa.
+
+**Id desconhecido e pasta que sumiu falham alto.** Cair na conta padrão seria rodar o
+turno numa assinatura que o usuário não escolheu, com a tela mostrando o nome da que ele
+escolheu — e sob assinatura isso gasta a cota da conta errada. O `padrao` é a única conta
+sem diretório (o filho não recebe a variável e o CLI usa o default dele), e ele **nunca é
+destino de fallback**: é destino só de quem o escolheu.
+
+#### `disponivel` é o diretório existir — e só
+
+Não é promessa de login válido, não expirado, nem de que a conta pertence à organização do
+rótulo. Os rótulos são palavra do usuário. Afirmar "conectado" a partir da existência de
+uma pasta seria dizer na tela uma coisa que este código não verificou, e a hora de
+descobrir que era mentira seria no meio de um turno.
+
+Nem o conteúdo do diretório nem material de autenticação saem pela ponte, inclusive em
+mensagem de erro. A renovação da credencial continua sendo do cliente oficial: não há
+`claude logout/login` aqui, não se copia credencial, e não se troca de conta por shell.
+
+### Consequências
+
+- **A metade web entra junto** (SHVIA-WEB): o seletor CONTA na régua do compositor, no
+  lugar do INFRA, que com o motor Claude é uma opção só e travada. O gate é
+  `recursos.conta` no shim — presença, não número de versão (o mesmo desenho do
+  `recursos.imagem`), então **casca velha + web nova** continua com a régua de antes em
+  vez de um seletor que não faz nada.
+- **Troca de conta encerra a sessão.** O `sessionId` do `resume` é do processo; matar o
+  runner e subir outro é o que impede a conta nova de retomar a conversa da anterior.
+- **Validado aqui:** `cargo test` (11 casos novos em `contas_claude`, incluindo a semeadura
+  sem pasta, o id desconhecido que não vira padrão, o diretório fora do `$HOME` e o
+  `Command` que só recebe a variável quando há diretório), `cargo clippy --all-targets`
+  sem aviso, e o `--modelos` rodado à mão sob os dois diretórios.
+- **NÃO validado:** macOS e Windows. O `resolve_bin` e o lugar onde o SDK guarda
+  credencial mudam por SO, e só o Linux foi exercitado. O `USERPROFILE` do Windows está no
+  código, mas não foi rodado.
+- **Fica de fora:** o `cli_config.rs`, que grava `~/.claude/settings.json` com o caminho
+  fixo. É uma segunda noção de "diretório do Claude" nesta casca, e reconciliá-la é item
+  próprio — está escrito em `docs/code/CONTAS-CLAUDE.md`.

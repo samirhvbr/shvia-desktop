@@ -19,6 +19,7 @@
 mod cli_config;
 mod user_env;
 mod code_bridge;
+mod contas_claude;
 /// Endereço do servidor: config persistida, validação e probe (item D4; ADR-019).
 mod server;
 #[cfg(desktop)]

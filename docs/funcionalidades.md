@@ -94,6 +94,19 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
   site in a window titled "ShvIA".
 - **RustSec advisories measured** (`1.4.3`, DEP-3/F-31): `cargo deny` in CI, and the first run
   found a real vulnerability in the pinned `time`.
+- 🔴 **The permission hook comes back from the dead** (`1.4.13`): `preToolUse` referenced an
+  `EDIT_TOOLS` that had vanished when the policy was extracted in `1.4.7`, so it threw on every
+  tool call — the ADR-032 approval boundary was off the air and nothing said so. The proof
+  missed it because it declared its own copy of the set; both sets now come from `politica.mjs`,
+  and `prova:runner-version` is the trigger for the half that content tests cannot cover.
+- **Subscription auth normalised before every SDK door** (`1.4.14`): the `ANTHROPIC_API_KEY`
+  strip sat below the `--modelos` branch, so discovery answered under an API key while turns ran
+  on the subscription — measured, the catalogue came back describing "$5/$25 per Mtok".
+- **Claude Code account profiles** (`1.4.16`, **ADR-033**): a CONTA selector picks between the
+  company and personal subscriptions. The page sends an ID from a closed list; Rust resolves it
+  and sets `CLAUDE_CONFIG_DIR` **on the child**, so two windows can hold two accounts at once.
+  Discovery and spawn share one resolver, and an ID that does not resolve fails instead of
+  quietly landing on the default account. See [code/CONTAS-CLAUDE.md](code/CONTAS-CLAUDE.md).
 
 ## Limitações conhecidas
 

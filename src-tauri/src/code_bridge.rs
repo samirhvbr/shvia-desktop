@@ -78,7 +78,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
   }
   window.__shviaCode = {
     // sessão do agente
-    spawn: function (o) { return post('spawn', o || {}); },   // {projectDir, apiKey, model?, effort?, url?, engine?, modelDoClaude?}  engine:'claude' = assinatura; modelDoClaude:true = model/effort vieram de claudeModels(), nao do gateway
+    spawn: function (o) { return post('spawn', o || {}); },   // {projectDir, apiKey, model?, effort?, url?, engine?, modelDoClaude?, accountId?}  engine:'claude' = assinatura; modelDoClaude:true = model/effort vieram de claudeModels(), nao do gateway; accountId = perfil de conta (ver claudeAccounts)
     send:  function (o) { return post('send', { payload: o }); }, // {type:'user',text} | {id,decision}
     kill:  function () { return post('kill'); },
     onEvent: function (cb) { if (typeof cb === 'function') listeners.push(cb); },
@@ -119,7 +119,22 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // do gateway). Cada item traz supportsEffort + supportedEffortLevels, para a
     // UI listar o que existe e DESABILITAR o que não se aplica.
     // → {modelos:[{value,resolvedModel,displayName,description,supportsEffort,supportedEffortLevels}]} | {erro}
-    claudeModels: function () { return post('claudeModels'); },
+    //
+    // `{accountId}` escolhe SOB QUAL CONTA o catálogo é perguntado (ADR-033). Sem ele, a
+    // conta padrão do CLI. O catálogo é por conta: assinaturas diferentes oferecem modelos
+    // diferentes, e uma lista carregada sob outra conta é um alvo que o turno vai recusar.
+    claudeModels: function (o) { return post('claudeModels', o || {}); },
+    // Perfis de conta do Claude Code desta máquina (ADR-033).
+    // → {contas:[{id,rotulo,disponivel,motivo}], selecionada}
+    //
+    // `disponivel` é o diretório de configuração EXISTIR — não é promessa de login válido,
+    // e o rótulo é palavra do usuário, não identidade verificada de organização. A página
+    // manda um `id` da lista, NUNCA um caminho: quem traduz id→diretório é o Rust, e é essa
+    // a mesma linha do ADR-026 (a página propõe valores) e do ADR-031 (a cerca vem do gesto).
+    claudeAccounts: function () { return post('claudeAccounts'); },
+    // Persiste a conta escolhida no dispositivo. → {selecionada} | {erro, codigo}
+    // Recusa id fora da lista: escolher não pode ser o jeito de inventar um perfil.
+    claudeAccountSelect: function (id) { return post('claudeAccountSelect', { accountId: id }); },
     // Estado do motor no disco: {found, bundled, version, path}. `found` é o
     // binário EXISTIR e `version` é ele RESPONDER `--version` — separados de
     // propósito, porque "está lá e não roda" é diagnóstico diferente de "não está
@@ -149,7 +164,11 @@ pub const BRIDGE_JS: &str = r#"(function () {
     //
     //   imagem: os DOIS motores carregam imagem no turno (anna >= 0.11.4 pelo
     //           campo `images`; claude-runner por blocos do Agent SDK).
-    recursos: { imagem: true },
+    //   conta:  esta casca sabe escolher perfil de conta do Claude Code (ADR-033). Sem o
+    //           flag, o web não desenha o seletor CONTA e a régua fica a de antes — que é
+    //           o certo, porque um seletor que a casca ignorasse mostraria a conta errada
+    //           na tela enquanto o turno rodasse na outra.
+    recursos: { imagem: true, conta: true },
     // chamados pelo Rust (eval):
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
     _emit: function (evt) { for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }
@@ -310,7 +329,14 @@ impl Sidecars {
 /// Medido em 21/08: a chamada é de canal de controle e **não consome turno**.
 /// Falha nunca é fatal — devolve `erro` e a UI cai no fallback dela; catálogo
 /// vazio apresentado como "nenhum modelo" seria pior que dizer que não deu.
-fn claude_models() -> serde_json::Value {
+///
+/// `conta_dir` é o `CLAUDE_CONFIG_DIR` do perfil escolhido (ADR-033), já resolvido por
+/// `contas_claude::resolver` — o **mesmo** resolvedor que o `spawn` usa. O argumento é
+/// obrigatório de propósito: enquanto esta função não pedia nada, ela e o `spawn` eram
+/// dois caminhos independentes até o mesmo binário, e nada obrigava os dois a concordarem
+/// sobre qual conta estava valendo. O catálogo é por assinatura, então discordar aqui
+/// significa oferecer na tela um modelo que o turno vai recusar.
+fn claude_models(conta_dir: Option<&std::path::Path>) -> serde_json::Value {
     let Some(bin) = resolve_bin("claude-runner") else {
         return serde_json::json!({ "erro": "claude-runner não encontrado" });
     };
@@ -319,6 +345,7 @@ fn claude_models() -> serde_json::Value {
     if let Some(p) = crate::user_env::sidecar_path() {
         cmd.env("PATH", p);
     }
+    crate::contas_claude::aplicar(&mut cmd, conta_dir);
     match cmd.output() {
         Ok(o) => String::from_utf8_lossy(&o.stdout)
             .lines()
@@ -580,9 +607,42 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             reply(window, &req, true, read_file(path, file));
         }
         "claudeModels" => {
-            let out = claude_models();
-            let ok = out.get("modelos").is_some();
-            reply(window, &req, ok, out);
+            // A conta é resolvida ANTES de rodar o binário: id desconhecido ou pasta que
+            // sumiu não spawnam nada. Falhar aqui é mais barato e mais honesto que subir um
+            // processo que vai autenticar na conta errada e devolver um catálogo plausível.
+            let (contas, _) = crate::contas_claude::registro(window.app_handle());
+            let id = v.get("accountId").and_then(|x| x.as_str()).unwrap_or_default();
+            match crate::contas_claude::resolver(&contas, id) {
+                Ok(dir) => {
+                    let out = claude_models(dir.as_deref());
+                    let ok = out.get("modelos").is_some();
+                    reply(window, &req, ok, out);
+                }
+                Err(e) => reply(
+                    window,
+                    &req,
+                    false,
+                    serde_json::json!({ "erro": e.mensagem(), "codigo": e.codigo() }),
+                ),
+            }
+        }
+        // Perfis de conta do Claude Code (ADR-033). Só ids e rótulos saem daqui — nunca o
+        // caminho do diretório de configuração, que a página não usa e não pode devolver.
+        "claudeAccounts" => {
+            let out = crate::contas_claude::como_json(window.app_handle());
+            reply(window, &req, true, out);
+        }
+        "claudeAccountSelect" => {
+            let id = v.get("accountId").and_then(|x| x.as_str()).unwrap_or_default();
+            match crate::contas_claude::selecionar(window.app_handle(), id) {
+                Ok(sel) => reply(window, &req, true, serde_json::json!({ "selecionada": sel })),
+                Err(e) => reply(
+                    window,
+                    &req,
+                    false,
+                    serde_json::json!({ "erro": e.mensagem(), "codigo": e.codigo() }),
+                ),
+            }
         }
         // Notificação nativa do SO (alertas de preço, ADR-011). Fire-and-forget:
         // sem reqId/reply — a página só dispara, não espera resposta.
@@ -694,6 +754,9 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
             serde_json::json!({ "error": "url de servidor não autorizada" }),
         );
     }
+    // Conta resolvida, para a resposta ecoar o que de fato valeu. Só o motor Claude tem
+    // conta; no `anna` fica `None` e o campo não sai.
+    let mut resolvida: Option<(String, String)> = None;
     if is_claude {
         // Assinatura via cliente oficial: NADA de SHVIA_API_KEY nem `--url` — este
         // motor não passa pelo gateway, então chave e endpoint do ShvIA não se
@@ -713,6 +776,32 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
         // (`contém '/'`?), que erraria no primeiro alias novo. Quem sabe de qual
         // catálogo o valor saiu é quem montou o seletor, e ela diz.
         cmd.args(["--cwd", &dir]);
+        // Conta de assinatura (ADR-033). A página manda um `accountId` da lista; quem o
+        // traduz em `CLAUDE_CONFIG_DIR` é o `contas_claude::resolver` — o MESMO que o
+        // `claudeModels` usa, para descoberta e turno não poderem divergir de conta.
+        //
+        // 🔴 Falha ALTO, sem fallback. Cair na conta padrão quando o id não resolve seria
+        // rodar o turno numa assinatura que o usuário não escolheu, com a tela mostrando o
+        // nome da que ele escolheu — e sob assinatura isso gasta a cota da conta errada.
+        // Um erro na hora é barato; a sessão silenciosa na conta errada não é.
+        let (contas, _) = crate::contas_claude::registro(window.app_handle());
+        let account_id = v.get("accountId").and_then(|x| x.as_str()).unwrap_or_default();
+        let conta_dir = match crate::contas_claude::resolver(&contas, account_id) {
+            Ok(d) => d,
+            Err(e) => {
+                return reply(
+                    window,
+                    req,
+                    false,
+                    serde_json::json!({ "error": e.mensagem(), "codigo": e.codigo() }),
+                )
+            }
+        };
+        crate::contas_claude::aplicar(&mut cmd, conta_dir.as_deref());
+        resolvida = contas
+            .iter()
+            .find(|c| c.id == if account_id.trim().is_empty() { crate::contas_claude::PADRAO } else { account_id.trim() })
+            .map(|c| (c.id.clone(), c.rotulo.clone()));
         let do_claude = v.get("modelDoClaude").and_then(|x| x.as_bool()).unwrap_or(false);
         if do_claude && !model.is_empty() {
             cmd.args(["--model", &model]);
@@ -792,7 +881,17 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
         }
     });
 
-    reply(window, req, true, serde_json::json!({ "ok": true }));
+    // O eco da conta resolvida fecha o laço: a página pediu um id e fica sabendo qual
+    // valeu, em vez de supor que o pedido foi obedecido. Não existe evento `ready` neste
+    // protocolo (os canais são `_reply`, stderr→log e stdout NDJSON→`_emit`), e inventar um
+    // mudaria o `embedding.md`, que é contrato dos DOIS motores — a resposta do `spawn` é
+    // o lugar que já existe para isto.
+    let mut resposta = serde_json::json!({ "ok": true });
+    if let Some((id, rotulo)) = resolvida {
+        resposta["accountId"] = serde_json::json!(id);
+        resposta["accountLabel"] = serde_json::json!(rotulo);
+    }
+    reply(window, req, true, resposta);
 }
 
 fn send(window: &WebviewWindow, v: &serde_json::Value) -> bool {
