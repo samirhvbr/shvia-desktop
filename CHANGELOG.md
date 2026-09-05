@@ -3,6 +3,21 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.15 - Pin the release workflow's checkout by SHA, like every other action
+
+`toda_action_do_ci_esta_pinada_por_sha` has been red since it was written in 1.4.7:
+`release.yml` has carried `actions/checkout@v5` since 1.3.4, and a moving tag is a third
+party who can change what runs with `contents: write` in this repository.
+
+⚠️ **The guard never got to say so.** `cargo test` runs after "Portadores de versão
+alinhados" in `ci.yml`, and that step had been failing since 1.4.9 — so CI stopped before
+reaching the test, eight runs in a row. Fixing the carriers in 1.4.13 is what made this
+visible. A guard behind a failing guard reports nothing, and the run is red either way, so
+nothing in the output says a second one is also broken.
+
+Pinned to `fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09` (`v5.1.0`, resolved through the GitHub
+API), with the version in the comment the guard also requires.
+
 ## 1.4.14 - Normalize subscription auth before every SDK entry point
 
 The block that strips `ANTHROPIC_API_KEY` from the runner process sat *below* the
