@@ -70,6 +70,30 @@ if (process.argv.includes("--version")) {
   process.exit(0);
 }
 
+// ------------------------------------------------------- subscription auth, normalized
+//
+// This block used to sit BELOW the `--modelos` branch, which exits the process — so model
+// discovery ran through a `query()` with `ANTHROPIC_API_KEY` still in the environment
+// while turns ran without it. Two authentications in one runner, and the divergence was
+// invisible: both answer, and the catalog an API key returns is plausible.
+//
+// It now runs before EVERY SDK entry point. `--version` stays above it because it answers
+// without the SDK at all (that is the whole point of the dynamic import below), and
+// stripping an env var to print a version number would be work with no reader.
+//
+// The removal is from THIS process only — the parent's environment is untouched. We never
+// SET the key: the SDK gives it precedence over the subscription, which would silently
+// turn a Pro/Max session into pay-per-token billing. The login belongs to the official
+// client; this runner never embeds it.
+if (process.env.ANTHROPIC_API_KEY) {
+  emit({
+    type: "warn",
+    message:
+      "ANTHROPIC_API_KEY presente no ambiente — removida DESTE processo para forçar auth por assinatura (claude login).",
+  });
+  delete process.env.ANTHROPIC_API_KEY;
+}
+
 // O SDK entra por import DINÂMICO, e só depois do `--version` acima. Com o
 // `import` estático de antes, a resolução do pacote acontecia ANTES de qualquer
 // linha nossa rodar — então numa instalação sem `npm install` o runner morria com
@@ -112,16 +136,6 @@ if (process.argv.includes("--modelos")) {
     await q.interrupt?.().catch(() => {});
   }
   process.exit();
-}
-
-// ------------------------------------------------------- forçar auth de assinatura
-if (process.env.ANTHROPIC_API_KEY) {
-  emit({
-    type: "warn",
-    message:
-      "ANTHROPIC_API_KEY presente no ambiente — removida DESTE processo para forçar auth por assinatura (claude login).",
-  });
-  delete process.env.ANTHROPIC_API_KEY;
 }
 
 // ------------------------------------------------- gates pendentes (tool_use_id → resolve)

@@ -3,6 +3,29 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.14 - Normalize subscription auth before every SDK entry point
+
+The block that strips `ANTHROPIC_API_KEY` from the runner process sat *below* the
+`--modelos` branch, and that branch calls `process.exit()`. So model discovery went
+through `query()` with the key still in the environment while turns went through it
+without — two authentications in one runner, decided by which flag was passed.
+
+🔬 **Measured here, with a deliberately fake key in the environment.** Same command,
+before and after, differing only in this ordering:
+
+```
+before: "description":"Use the default model (currently Opus 5 (1M context)) · $5/$25 per Mtok"
+after:  "description":"Opus 5 with 1M context · Best for everyday, complex tasks"
+```
+
+The catalog the MODEL selector shows was the **pay-per-token** one while the session that
+actually ran was the subscription. Nothing failed; the list was plausible either way, which
+is exactly why nobody would have gone looking.
+
+The block moves above the SDK's dynamic import, so it covers `--modelos` and `runTurn`
+alike. `--version` stays above it: it answers without the SDK at all, and stripping an
+environment variable to print a version number is work with no reader.
+
 ## 1.4.13 - Restore the edit-tool set the permission hook lost
 
 `claude-runner.mjs` passed `edicao: EDIT_TOOLS` to the permission decision, and
