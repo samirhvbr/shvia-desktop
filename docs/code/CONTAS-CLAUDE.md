@@ -176,6 +176,26 @@ reclama de um diretório inexistente: ele **cria** e segue sem assinatura. Um pe
 diretório foi movido rodaria o turno fora da assinatura, em silêncio, com o nome da conta
 certa na tela. `conta_indisponivel` existe para que esse caso pare antes do spawn.
 
+### E o turno de verdade, medido em cada conta
+
+O `--modelos` é canal de controle: ele prova que a variável chega, não que a **autenticação**
+muda. Rodado em 05/09/2026, com o mesmo argv e o mesmo ambiente que o `spawn` monta
+(`--cwd <projeto> --aprovacao manual` + `CLAUDE_CONFIG_DIR`), pedindo uma palavra:
+
+| `CLAUDE_CONFIG_DIR` | resposta | tokens |
+|---|---|---|
+| `~/.claude-blue3` | `ok` (modelo `claude-opus-5[1m] · anthropic (assinatura)`) | 6 |
+| `~/.claude-pessoal` | `ok` (idem) | 6 |
+| diretório sem login | `Not logged in · Please run /login` | **0** |
+
+A terceira linha é o controle negativo, e é ela que fecha o argumento: as duas primeiras
+poderiam ser a mesma conta respondendo duas vezes. **É a variável que decide quem
+autentica.**
+
+⚠️ **E ela mede exatamente o que `disponivel` NÃO promete.** Um diretório que existe e não
+tem login vale `disponivel: true` e mesmo assim não roda turno — o erro vem do cliente
+oficial, na hora do turno, porque é ele que sabe. Nada aqui tenta adivinhar isso antes.
+
 ## O que `disponivel` não diz
 
 `disponivel` é **o diretório existir**. Não é:

@@ -3,6 +3,34 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.20 - Record the per-account turn that proves the config directory decides who authenticates
+
+`--modelos` is a control channel: it proves the variable reaches the child, not that the
+**authentication** changes. So the account feature shipped in 1.4.16 with its central claim
+argued rather than measured.
+
+Measured now, with the same argv and environment the spawn builds
+(`--cwd <project> --aprovacao manual` plus `CLAUDE_CONFIG_DIR`), asking for one word:
+
+| `CLAUDE_CONFIG_DIR` | answer | tokens |
+|---|---|---|
+| `~/.claude-blue3` | `ok` (model `claude-opus-5[1m] · anthropic (assinatura)`) | 6 |
+| `~/.claude-pessoal` | `ok` (same) | 6 |
+| a directory with no login | `Not logged in · Please run /login` | **0** |
+
+**The third row is what closes the argument.** The first two on their own could be one
+account answering twice — same subscription tier, same model, same everything. The negative
+control is the only line that distinguishes "the variable is honoured" from "the variable is
+read and ignored".
+
+⚠️ It also measures exactly what `disponivel` does **not** promise: a directory that exists
+with no login is `disponivel: true` and still runs no turn. The error arrives from the
+official client, at turn time, because that is who knows. Nothing here tries to guess it
+earlier.
+
+Twelve tokens of subscription quota were spent to produce this table, on the owner's
+explicit go-ahead. Documentation only; no behaviour changed.
+
 ## 1.4.19 - "Connect my CLI" writes into the selected account, not a fixed path
 
 `cli_config.rs` writes the three `ANTHROPIC_*` variables into the Claude Code
