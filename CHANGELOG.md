@@ -3,6 +3,34 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.19 - "Connect my CLI" writes into the selected account, not a fixed path
+
+`cli_config.rs` writes the three `ANTHROPIC_*` variables into the Claude Code
+`settings.json` so the CLI talks to the ShvIA gateway (ADR-026). The destination was
+`~/.claude/settings.json`, hardcoded — which was correct until 1.4.16, when Code mode
+started choosing between account profiles.
+
+🔴 **From that release it was wrong, and wrong in the silent way.** Someone on
+`Empresa · Blue3` clicking "Gravar no meu computador" configured the *other* account's
+directory: the `env` block landed in `~/.claude` while Code mode kept reading
+`~/.claude-blue3`. No error, nothing to see, and the discovery would come from someone
+asking why the configuration "did not take".
+
+This is Claude's own configuration, so it follows Claude's account profile. `padrao` still
+means `~/.claude`.
+
+- The directory comes from the **native** registry, never from the page — the page still
+  sends only values and does not know profiles exist, so ADR-026 holds intact.
+- The native confirmation dialog already shows the exact path before writing, so whoever is
+  on the company account sees `~/.claude-blue3/settings.json` and decides.
+- **Continue and `~/.shvia` do not follow it.** They are not Claude's; making its profile
+  move someone else's file would be a side effect.
+- A profile that does not resolve **fails loudly**. Writing to `~/.claude` as a consolation
+  would configure an account the user did not choose — the same reasoning as the spawn.
+
+Two cases in `cli_config` cover it: the destination still lands inside `$HOME` with a
+profile, and two profiles never share a destination.
+
 ## 1.4.18 - Give CI the sidecar stand-in its Rust build has always needed
 
 🔴 **`cargo test` in `ci.yml` had never once run.** Not "was failing recently" — never, in

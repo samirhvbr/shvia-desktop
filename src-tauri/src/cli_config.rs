@@ -94,10 +94,29 @@ impl Cliente {
     }
 
     /// Caminho absoluto, sempre derivado do HOME — nunca de nada que a página mandou.
-    fn caminho(self, home: &Path) -> PathBuf {
+    ///
+    /// `conta_dir` é o diretório de configuração do **perfil de conta do Claude Code**
+    /// selecionado (ADR-033), já resolvido por `contas_claude::resolver`. Só o
+    /// `ClaudeCode` o usa, e `None` significa a conta `padrao` — o `~/.claude` de sempre.
+    ///
+    /// 🔴 **Por que isto deixou de ser fixo.** `~/.claude/settings.json` era o destino
+    /// cravado, e desde a 1.4.16 o Modo Code escolhe entre perfis de conta. Um usuário na
+    /// conta `Empresa · Blue3` que clicasse em "Gravar no meu computador" configuraria o
+    /// diretório da conta **errada** — o `env` iria para `~/.claude` e o Code continuaria
+    /// lendo `~/.claude-blue3`. Sem erro, e sem sintoma até alguém perguntar por que a
+    /// configuração "não pegou". Isto é configuração DO CLAUDE, então ela segue o perfil
+    /// de conta do Claude, e não um caminho que era o único que existia quando este
+    /// arquivo foi escrito.
+    ///
+    /// O `conta_dir` vem do registro NATIVO, nunca da página — a página segue mandando só
+    /// valores, e nem sabe que perfis existem. O invariante do ADR-026 fica intacto.
+    fn caminho(self, home: &Path, conta_dir: Option<&Path>) -> PathBuf {
         match self {
             Self::Continue => home.join(".continue").join("config.json"),
-            Self::ClaudeCode => home.join(".claude").join("settings.json"),
+            Self::ClaudeCode => match conta_dir {
+                Some(d) => d.join("settings.json"),
+                None => home.join(".claude").join("settings.json"),
+            },
             Self::Env => home.join(".shvia").join("env.sh"),
         }
     }
@@ -171,7 +190,31 @@ pub fn escrever(window: &WebviewWindow, req: String, v: &Value) {
         return;
     };
 
-    let destino = cliente.caminho(&home);
+    /* O perfil de conta do Claude Code manda no destino (ADR-033) — só para o cliente
+     * `claude-code`, que é o único cujo arquivo pertence ao Claude.
+     *
+     * Falha ALTO quando o perfil selecionado não resolve, pela mesma razão do `spawn`:
+     * cair no `~/.claude` gravaria a configuração numa conta que o usuário não escolheu, e
+     * o sintoma seria "configurei e não pegou" — longe da causa. */
+    let conta_dir = if cliente == Cliente::ClaudeCode {
+        let (contas, selecionada) = crate::contas_claude::registro(window.app_handle());
+        match crate::contas_claude::resolver(&contas, &selecionada) {
+            Ok(d) => d,
+            Err(e) => {
+                crate::code_bridge::reply(
+                    window,
+                    &req,
+                    false,
+                    json!({ "error": e.mensagem(), "codigo": e.codigo() }),
+                );
+                return;
+            }
+        }
+    } else {
+        None
+    };
+
+    let destino = cliente.caminho(&home, conta_dir.as_deref());
 
     // Cinto e suspensório: o caminho é montado aqui, mas conferir que ele está DENTRO do
     // home é o que garante que uma mudança futura no `caminho()` não abra escrita
@@ -432,7 +475,31 @@ mod tests {
     fn o_destino_fica_dentro_do_home() {
         let home = PathBuf::from("/Users/alguem");
         for c in [Cliente::Continue, Cliente::ClaudeCode, Cliente::Env] {
-            assert!(c.caminho(&home).starts_with(&home));
+            assert!(c.caminho(&home, None).starts_with(&home));
+        }
+        // Com perfil de conta o destino é o diretório DELE — e ele também vive no home,
+        // porque `contas_claude::dir_valido` recusa qualquer coisa fora dali.
+        let conta = home.join(".claude-blue3");
+        let d = Cliente::ClaudeCode.caminho(&home, Some(&conta));
+        assert_eq!(d, conta.join("settings.json"));
+        assert!(d.starts_with(&home));
+    }
+
+    /// 🔴 O defeito que o `conta_dir` fecha: sem ele, quem estivesse na conta da empresa
+    /// gravava a configuração em `~/.claude` e o Modo Code seguia lendo `~/.claude-blue3`.
+    /// Nenhum erro, e a descoberta só viria por alguém perguntar por que não pegou.
+    #[test]
+    fn o_claude_code_segue_o_perfil_de_conta_selecionado() {
+        let home = PathBuf::from("/Users/alguem");
+        let padrao = Cliente::ClaudeCode.caminho(&home, None);
+        let empresa = Cliente::ClaudeCode.caminho(&home, Some(&home.join(".claude-blue3")));
+        assert_eq!(padrao, home.join(".claude").join("settings.json"));
+        assert_ne!(padrao, empresa, "perfis diferentes não podem ter o mesmo destino");
+
+        // Os outros clientes NÃO seguem a conta: `~/.continue` e `~/.shvia` não são do
+        // Claude, e fazer o perfil dele mover o arquivo de outro seria efeito colateral.
+        for c in [Cliente::Continue, Cliente::Env] {
+            assert_eq!(c.caminho(&home, None), c.caminho(&home, Some(&home.join(".claude-blue3"))));
         }
     }
 

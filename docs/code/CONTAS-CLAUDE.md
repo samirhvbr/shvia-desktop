@@ -102,6 +102,31 @@ escolheu — e sob assinatura isso gasta a cota da conta errada.
 
 ---
 
+## O "Conectar meu CLI" segue o perfil também
+
+`cli_config.rs` ([ADR-026](../decisoes.md#adr-026)) grava as três variáveis `ANTHROPIC_*`
+no `settings.json` do Claude Code, para apontar o CLI ao gateway do ShvIA. O destino era
+`~/.claude/settings.json` **fixo**.
+
+🔴 **Isso passou a estar errado na 1.4.16.** Quem estivesse na conta `Empresa · Blue3` e
+clicasse em "Gravar no meu computador" configuraria o diretório da conta **errada**: o `env`
+ia para `~/.claude` e o Modo Code seguia lendo `~/.claude-blue3`. Sem erro nenhum, e a
+descoberta só viria por alguém perguntar por que a configuração "não pegou".
+
+Desde a 1.4.19 o destino é o diretório do **perfil selecionado** — é configuração do Claude,
+então ela segue o perfil de conta do Claude. `padrao` continua em `~/.claude`.
+
+O `conta_dir` vem do registro **nativo**, nunca da página: ela segue mandando só valores e
+nem sabe que perfis existem, então o invariante do ADR-026 fica intacto. E o diálogo nativo
+de confirmação já mostra o caminho exato antes de gravar — quem está na conta da empresa vê
+`~/.claude-blue3/settings.json` na tela e decide.
+
+**Os outros clientes não seguem a conta.** `~/.continue` e `~/.shvia` não são do Claude;
+fazer o perfil dele mover o arquivo de outro seria efeito colateral.
+
+Perfil que não resolve **falha alto**, pela mesma razão do `spawn`: gravar em `~/.claude`
+como consolo seria escrever numa conta que o usuário não escolheu.
+
 ## Onde a conta é aplicada
 
 `contas_claude::resolver` é a **única** tradução id→diretório, e `contas_claude::aplicar`
@@ -183,8 +208,5 @@ risco nenhum.
 
 - **macOS e Windows.** O `resolve_bin` e o lugar onde o SDK guarda credencial mudam por SO,
   e só o Linux foi exercitado. O `USERPROFILE` está no código e não foi rodado.
-- **`cli_config.rs`** ([ADR-026](../decisoes.md#adr-026)) grava `~/.claude/settings.json`
-  com o caminho **fixo**, sem noção de perfil. É uma segunda ideia de "diretório do Claude"
-  dentro desta mesma casca; reconciliar as duas é item próprio, não efeito colateral deste.
-- **Gerenciar organização.** Isto escolhe entre perfis locais que já existem. Não cria
-  conta, não faz login, não sabe de membership.
+- **Gerenciar organização.** Nada aqui cria conta, faz login ou sabe de membership.
+
