@@ -1,6 +1,6 @@
 {
   "name": "shvia-claude-runner",
-  "version": "1.4.28",
+  "version": "1.4.29",
   "private": true,
   "type": "module",
   "description": "Motor 'Claude Code (assinatura)' do Modo Code — orquestra o Claude Agent SDK e fala o NDJSON do anna (SHVIA-CODE/docs/embedding.md).",

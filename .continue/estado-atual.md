@@ -3,7 +3,7 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Última atualização: **02/09/2026** (versão 1.4.3).
+> Última atualização: **09/09/2026** (versão 1.4.29).
 
 > ⚠️ **Saneado em 02/09/2026** (achado F-22): descrevia a **1.1.34** com o repo em 1.4.3.
 > Foi o **terceiro** saneamento manual deste arquivo pelo mesmo motivo — daí a régua
@@ -24,7 +24,27 @@
 
 ## Onde estamos
 
-**1.1.19** — o app se auto-atualiza (ADR-022), tem bandeja nos 3 SOs (ADR-024),
+> ⚠️ **Saneado em 09/09/2026, quarta vez.** O cabeçalho dizia 1.4.3 e este parágrafo dizia
+> **1.1.19** — dezoito versões atrás do cabeçalho que já estava atrasado. Quem passou a
+> acusar foi a régua do F-22, ao cruzar a tolerância de 25 patches no bump da 1.4.29: ela
+> mede o cabeçalho, não o corpo, e o corpo estava pior. Vale como medição da régua também —
+> ela pega a distância, não a mentira.
+
+**1.4.29** — o Modo Code alcança mais de uma conta do Claude Code: um perfil grava **qual
+variável** ele seta (1.4.28), e `npm run contas` cadastra as que a máquina já tem
+perguntando ao shell (1.4.29). O diagnóstico do motor virou runbook em
+[`../docs/code/MOTOR-CLAUDE-DIAGNOSTICO.md`](../docs/code/MOTOR-CLAUDE-DIAGNOSTICO.md), e o
+instalador do runner passou a conferir a própria instalação antes de dizer que deu certo
+(1.4.22). O que mudou em cada versão está no [`../CHANGELOG.md`](../CHANGELOG.md) — não é
+copiado para cá.
+
+**Em aberto, e é a próxima peça:** a tela de Configurações que substitui o
+`npm run contas`. A ponte já tem `claudeAccountsDetect` e `claudeAccountAdd`, testadas e sem
+chamador. A decisão de desenho está em
+[`contas-claude-macos.md`](contas-claude-macos.md).
+
+**Herança, para não ser lida como estado atual:** o app se auto-atualiza (ADR-022), tem
+bandeja nos 3 SOs (ADR-024),
 diagnóstico próprio (ADR-025), diálogo de arquivo nativo (ADR-027) e empacota
 para Linux (deb/rpm/AppImage/**pacman**), macOS (dmg) e Windows (msi/nsis). O
 `anna` viaja dentro do instalador desde a 0.18.0 — o Modo Code não tem mais

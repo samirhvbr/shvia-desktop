@@ -61,6 +61,14 @@ descartada, como qualquer outra que não passa na validação.
 
 ### Descobrir os perfis em vez de digitá-los
 
+**Enquanto a tela não existe**, `npm run contas` faz esse cadastro pela linha de comando: ele
+pergunta ao shell, mostra o que achou e só grava com `--aplicar`. Ele **recusa** num app
+anterior à 1.4.28 — antes dela o campo `var` não existe, e um perfil de credencial seria
+aplicado como `CLAUDE_CONFIG_DIR`, entregando ao cliente uma casa em branco com o nome da
+conta na tela. Recusa também com o app aberto, que reescreve o registro ao trocar de conta.
+Faz merge: uma entrada escrita à mão, e o rótulo que você deu, sobrevivem.
+
+
 `claudeAccountsDetect` pergunta ao **shell** quais funções trocam de conta e devolve
 `{alias, var, dir, disponivel}` para cada uma. Meio segundo, medido. `claudeAccountAdd`
 cadastra uma delas **pelo alias**.

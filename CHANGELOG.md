@@ -3,6 +3,39 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.29 - `npm run contas` registers the accounts this machine already has
+
+The Settings screen is the destination; this is the step before it, and it is meant to be
+thrown away when that lands. 1.4.28 made a credential profile expressible and nothing in the
+product writes one — the alternative was hand-editing JSON.
+
+It asks the **shell** which of its functions switch Claude account, exactly as the native
+side does, and applies the same narrow rule to their bodies: one literal assignment, quoted
+or not, expanding inside `$HOME` with nothing but `$HOME` or `~`. Anything computed is
+dropped, never guessed. It reads no credential and creates no directory.
+
+**Two refusals, and both are the point:**
+
+- 🔴 **An app older than 1.4.28.** Before that the `var` field does not exist, so a
+  credential profile would be applied as `CLAUDE_CONFIG_DIR` — handing the client a blank
+  configuration home while the screen keeps naming the account the person picked. Writing
+  would look like it worked and break the next turn. The version is read from the installed
+  bundle, and the comparison was checked on eight values either side of the boundary.
+- 🔴 **The app open.** It rewrites the registry when the account changes, so a write now
+  would be lost without a trace.
+
+It **merges**: an entry written by hand survives, and so does a label the person edited —
+the default label is the alias, and this code has no business inventing a nicer one.
+
+Nothing is written without `--aplicar`; the bare run prints what it found and the file it
+would produce.
+
+**A régua do F-22 cobrou no caminho, e a medição vale registrar.** O bump para 1.4.29 cruzou
+a tolerância de 25 patches e a `prova:doc` reprovou o `.continue/estado-atual.md`, que dizia
+1.4.3 no cabeçalho — e **1.1.19 no corpo**, dezoito versões atrás do cabeçalho já atrasado.
+Quarto saneamento manual do mesmo arquivo. A régua mede o cabeçalho e o corpo estava pior:
+ela pega a distância, não a mentira, e neste caso a distância bastou.
+
 ## 1.4.28 - a profile says which variable it switches accounts with, and the shell is asked instead of the person
 
 The owner's answer to the account proposal was *"a mais fácil e menos problemática ao
