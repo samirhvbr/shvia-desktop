@@ -3,6 +3,40 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.25 - Record the parallel carrier fix that master's 1.4.22 had already landed
+
+The 1.4.21 commit bumped `version.md` and nothing else: `package.json`,
+`package-lock.json`, `claude-runner/package.json`, `src-tauri/Cargo.toml`,
+`src-tauri/Cargo.lock` and `src-tauri/tauri.conf.json` stayed at 1.4.20, and the CI's
+`prova:bump` went red on 07/09 with *"6 carriers off"*. The `npm run version:sync` that
+fixes it had been run and was sitting in the working tree for a day, uncommitted
+(finding C1 of `REVISAO-20260908.md` in the route repository). The `pre-push` hook refuses
+a repeated version against the remote, so 1.4.21 could not be completed in place — the
+same subject the repository already used in 0.11.18 of `shvia-code` and 0.6.2 of
+`shvia-site`.
+
+**This was written offline as 1.4.22 and has been renumbered twice.** While it sat
+unpushed, the 1.4.22 of `master` — *"the runner installer copies every file the runner
+imports"* — ran the same `version:sync` inside its own bump and closed C1 there; its
+`### Version carriers` section is that record. So the seven files were already in
+agreement when this commit arrived: what it adds is the bump, not the reconciliation,
+which is why its subject no longer claims the carriers catch up here. The first renumber
+aimed at 1.4.23; by the time it was ready `master` had taken 1.4.23 **and** 1.4.24 (the
+latter across four commits), so it landed at 1.4.25.
+
+The entry is kept rather than dropped because the log is where the work is: two sessions
+branched off 1.4.21 and fixed C1 in parallel, neither seeing the other, and the duplicate
+1.4.22 that resulted is worth being able to find later.
+
+**The hook cannot catch this class, by construction.** `pre-push` compares one line of
+`version.md` against the remote default branch, so it sees a repeated version only when
+the *tip* repeats one. A duplicate buried inside unpushed local history never reaches that
+comparison, and the `commit-msg` hook — which does check the subject against
+`version.md` — provably does not run during a rebase, as its own header says. What
+actually refused the first push here was git, on non-fast-forward. Two sessions committing
+against the same parent will keep minting the same number; the guard is a net under it,
+not a lock.
+
 ## 1.4.24 - macOS keys Claude Code credentials by another variable, and the account picker never saw it
 
 On the owner's Mac the account picker offers **one** entry, `Padrão do sistema`. Nothing is
