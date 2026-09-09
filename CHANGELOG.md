@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.4.35 - the Codex runner names the secrets it is about to read without asking
+
+Slice 4, and it closes the only measured gap between the two engines — not by gating,
+which Codex does not allow, but by **saying so before the first turn**.
+
+`claude-runner` refuses to read `.env`, `.git/`, keys and credentials at every approval
+level, through `caminhoProibido` in `politica.mjs`. Codex reads them and hands back the
+value with no card: measured on 09/09/2026, `cat .env` returned the contents and no
+`gate_request` was ever emitted. No configuration changes that — `config/read` exposes
+only `approval_policy`, `approvals_reviewer` and `shell_environment_policy`, and
+`execpolicy` exists solely as an amendment Codex proposes. The runner cannot reach it
+either: it learns of a command from `item/started`, which arrives once the command has
+begun.
+
+So it scans the project root at start-up and names what it finds.
+
+**The list is IMPORTED, never copied** — `import { caminhoProibido } from
+"../claude-runner/politica.mjs"`. It was already exported, so nothing had to change on
+that side. Two copies of a secret list diverge the day somebody adds a pattern to one of
+them, and the copy left behind stays green while protecting nothing; the ruler therefore
+asserts the **import**, not the behaviour, and fails if the function is ever pasted in
+here.
+
+🔴 **`warn`, never `exit`, and the difference is of nature rather than severity.** A
+sandbox that does not hold *breaks the engine's guarantee*, so it refuses to start
+(`SAIDA_SANDBOX_NAO_CONFIRMADO`). A `.env` in the folder is a **normal project
+condition** — nearly every project has one. Refusing to start over it would make the
+engine unusable and teach people to ignore the warning, which is the worse of the two
+outcomes.
+
+The warning is emitted **before `ligarEntradaDoHost()`**, in the same window as the
+sandbox ruler: a warning that arrives after the first `cat .env` is not a warning, it is
+a record. Same lesson as the guard a flow can outrun.
+
+Scope is deliberate and written down: root level only, stopping at 200 entries and 5
+findings. It is a warning, not an audit, and it runs on every spawn — a recursive sweep
+of a monorepo would hold the start-up to find what the first dozen already showed.
+
+`install.sh` now carries `politica.mjs` into the layout the import expects. Forgetting
+that line ships a runner that does not load, which is how `claude-runner` broke once; the
+installer's load proof catches it.
+
+Reversion-proven: a project with `.env` gets the warning naming it, a project without gets
+nothing.
+
 ## 1.4.34 - the bridge learns the codex engine, and a refused start stops being "engine unavailable"
 
 Slice 2. `code_bridge.rs` can spawn `codex-runner`, and the engine decision now lives in
