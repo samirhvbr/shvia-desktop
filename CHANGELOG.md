@@ -3,6 +3,47 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.27 - the Claude Code engine gets a runbook, and the account proposal gets the owner's answer
+
+**Why now.** On 08/09/2026 the engine was diagnosed from scratch on a machine it had never
+run on. Three hypotheses were tried and discarded — a packaging regression, a GUI
+environment problem, an SDK that needed its own token — before the real cause, and every one
+of those steps was reproducible from the first minute. The owner asked for it to be written
+down so the next machine does not pay the same evening.
+
+### `docs/code/MOTOR-CLAUDE-DIAGNOSTICO.md`
+
+Symptom first, and it opens with the one command that splits the problem in two:
+`claude -p "responda apenas: ok"`. If the official client refuses too, the app is not the
+suspect — and that single line would have saved the whole detour.
+
+Then, per symptom: which **slot** each way of logging in writes to (the default one is the
+only one the app reads, and a named account answering in the terminal proves nothing about
+the app); why `claude-runner não encontrado` is an optional install and never a packaging
+regression; why the account picker showing one entry is the seed working as written rather
+than a regression; the end-to-end probe through the runner; and the environment workaround
+with the cost it carries — the screen naming one account while another pays.
+
+It points at [CONTAS-CLAUDE.md](docs/code/CONTAS-CLAUDE.md) for the mechanism instead of
+repeating it.
+
+### The proposal has the owner's answer to Question 2
+
+*"tinha que ficar em configurações"*, with a field per account taking the alias name.
+Recorded in `.continue/contas-claude-macos.md`, with what was measured about it:
+
+- 🔴 **The alias cannot be executed.** `whence -w` says both are shell **functions**, so
+  there is nothing to exec; and the body ends in `exec claude "$@"`, which launches the
+  interactive CLI rather than the runner the app speaks NDJSON to. Typing `claude-me` in a
+  field can never mean "run this".
+- **What it contributes is one line**, and the shell hands it over when asked
+  (`whence -f`). So the field takes the alias and the app resolves it **once**, at
+  registration, into the variable and directory pair that gets stored — never the alias name.
+- The second idea, canonical names (`claude-personal`/`claude-business`) seeded
+  automatically, is recorded with the trap in it: it is today's weakness moved one level,
+  and it leaves empty exactly the machine that produced this document. Both, then — the
+  convention as the free default, the field as what stops it being coercive.
+
 ## 1.4.26 - the Claude Code account proposal is archived beside the document it became
 
 `docs/code/CONTAS-CLAUDE.md` said it *"supersedes the proposal of 05/09/2026 that

@@ -130,6 +130,72 @@ be a second thing to explain for no gain.
 
 ## Question 2 — how does a profile get registered at all?
 
+> ### ✅ The owner decided, 09/09/2026: it lives in Settings, and the field takes the alias
+>
+> *"tinha que ficar em configurações essas definições"* and *"conta pessoal: um input para o
+> usuário digitar — no meu caso eu colocaria `claude-me`, e na business `claude-b3`"*.
+>
+> **The alias cannot be executed, and that is measured, not assumed.** `whence -w` says both
+> are shell **functions**, not commands, so there is nothing for the app to exec. And the
+> body ends in `exec claude "$@"` — it launches the interactive CLI, which is not what the
+> app spawns. The app spawns `claude-runner`, which speaks NDJSON. Running the alias would
+> replace the process with a client the app cannot talk to. Typing `claude-me` in a field can
+> never mean *"run this"*.
+>
+> **What the alias contributes is one line**, and that line is extractable. Asked for its
+> definition, the shell answers:
+>
+> ```
+> $ zsh -ic 'whence -f claude-me'
+> claude-me () { ( … CLAUDE_SECURESTORAGE_CONFIG_DIR="$HOME/.claude-cred-pessoal" exec claude "$@" ) }
+> ```
+>
+> So the field takes the alias, and the app **resolves it once, at registration time**, into
+> the pair option C stores: the variable and the directory. What is persisted is that pair —
+> never the alias name, which would mean resolving it again on every spawn and inheriting its
+> fragility forever.
+>
+> **This does not break "shell aliases are never parsed" — it narrows it.** The rule exists
+> because reading someone's `.bashrc` by hand is guesswork. Asking the shell for a definition
+> is not reading the file, and the result is shown to the person before anything is stored:
+> a resolution that grabbed the wrong line fails in front of them instead of silently running
+> a turn on the wrong subscription.
+>
+> **Two costs, stated:**
+>
+> - 🔴 `zsh -ic` **sources the interactive config**, which is arbitrary code from the user's
+>   own dotfiles. Once, at registration, never per turn — and it is the same code their
+>   terminal runs on every open. It still has to be a deliberate act with a visible result,
+>   not a background scan.
+> - 🔴 **Extracting the variable from the body is a parse**, and it works for the shape
+>   measured here. A function that computes the path, sets it conditionally, or uses another
+>   name defeats it. The answer is not a cleverer regex: it is to show what was found and let
+>   the person correct it, with the manual pair always available as the fallback.
+>
+> ### The refinement, and the trap in it — canonical alias names
+>
+> *"ou tornar um padrão: se existir `claude-personal` e `claude-business`, ele já está na
+> config"*. Zero typing when the names match, which is the same ergonomics the Linux machine
+> already gets from the directory seed.
+>
+> 🔴 **It is the same weakness as today's rule, moved one level.** Today the app hardcodes two
+> DIRECTORY names and a machine that names them differently gets nothing. Hardcoding two
+> ALIAS names does the same to a machine whose aliases are `claude-me` and `claude-b3` —
+> which is the machine that produced this whole document. The convention only pays if the
+> person adopts the names, and asking them to rename their shell is the app dictating the
+> shell layout, which is the objection that sank option B.
+>
+> **So both, and the order matters.** The convention is the default that costs nothing when
+> it fits; the typed field is what keeps it from being coercive when it does not. Neither is
+> sufficient alone: the convention alone leaves this machine empty, and the field alone makes
+> every machine type something it could have guessed.
+>
+> ⚠️ **And the convention cannot be checked the way the directory seed is.** `is_dir()` is
+> free and runs at every boot; asking the shell for a function means starting an interactive
+> shell, which is not something to do on every launch. The alias lookup belongs to a
+> deliberate gesture — first run, or a "detect accounts" button in Settings — never to the
+> boot path.
+
 Today: seeded from two hardcoded names, or hand-edited into
 `~/Library/Application Support/cloud.blue3.shvia/contas-claude.json`. There is no UI. On a
 machine the seed does not recognise, the feature is invisible and the user is not told it

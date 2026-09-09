@@ -12,6 +12,7 @@
 | [decisoes.md](decisoes.md) | **ADRs** — decisões de arquitetura registradas (formato Architecture Decision Record). |
 | [arquitetura.md](arquitetura.md) | Arquitetura técnica detalhada: camadas, fluxo de auth, CSP/IPC, build/empacotamento. |
 | [roteiro-fundacao.md](roteiro-fundacao.md) | Passo-a-passo da fundação (F0/F1) — comandos concretos para iniciar. |
+| [code/MOTOR-CLAUDE-DIAGNOSTICO.md](code/MOTOR-CLAUDE-DIAGNOSTICO.md) | **O motor Claude Code não responde** — runbook por sintoma: o comando que separa "é o app" de "é o login da máquina", em qual cofre cada forma de logar grava, e por que o seletor de contas pode mostrar uma opção só. |
 | [code/CONTAS-CLAUDE.md](code/CONTAS-CLAUDE.md) | Perfis de **conta do Claude Code** no Modo Code (ADR-033): o registro local, o contrato da ponte e onde o `CLAUDE_CONFIG_DIR` é aplicado. |
 | [code/CONTAS-CLAUDE-proposta-20260905.md](code/CONTAS-CLAUDE-proposta-20260905.md) | **Archived:** the proposal that became CONTAS-CLAUDE.md (05/09/2026), with its diagram. Kept for the reasoning behind ADR-033. Moved out of the route repository on 08/09/2026. |
 | [code/MODO-CODE-20260709.md](code/MODO-CODE-20260709.md) | Spec do **Modo Code** (09/07/2026) — o desenho que a ponte nativa implementa. |
