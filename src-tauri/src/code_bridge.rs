@@ -278,18 +278,30 @@ impl Sidecars {
         gen
     }
 
-    /// A sessão viva desta janela ainda é a geração `gen`? (senão houve respawn/kill,
-    /// e a thread de stdout velha NÃO deve sinalizar 'exited' pra não derrubar a nova).
-    fn is_current(&self, label: &str, gen: u64) -> bool {
-        self.map
-            .lock()
-            .map(|m| {
-                m.get(label)
-                    .and_then(|opt| opt.as_ref())
-                    .map(|sc| sc.gen == gen)
-                    .unwrap_or(false)
-            })
-            .unwrap_or(false)
+    /// Colhe o sidecar desta geração e devolve o **código de saída** dele.
+    ///
+    /// `None` = esta geração já não é a sessão viva (respawn ou kill), e nesse caso o
+    /// chamador não deve sinalizar nada — é a mesma guarda que o `is_current` fazia.
+    /// `Some(None)` = era a sessão viva, mas o código não pôde ser lido.
+    ///
+    /// 🔴 Existe porque o `exited` era mudo. A ponte descobria a morte pelo stdout
+    /// fechando e emitia `{type:'exited'}` sem mais nada — o que serve enquanto todo
+    /// motor morre por um motivo só. O `codex-runner` morre por DOIS: acabou, ou
+    /// recusou subir porque o sandbox não segurou. Sem o código, a tela conta os dois
+    /// como a mesma coisa, e o segundo é justamente o que o usuário precisa ler.
+    ///
+    /// Remove sob o lock e espera FORA dele, pela mesma razão do `kill_label`:
+    /// `wait()` pode bloquear e seguraria o Mutex global.
+    fn colher(&self, label: &str, gen: u64) -> Option<Option<i32>> {
+        let sc = {
+            let mut m = self.map.lock().ok()?;
+            match m.get(label).and_then(|opt| opt.as_ref()) {
+                Some(sc) if sc.gen == gen => m.remove(label).and_then(|opt| opt),
+                _ => return None,
+            }
+        };
+        let mut sc = sc?;
+        Some(sc.child.wait().ok().and_then(|st| st.code()))
     }
 
     /// Escreve uma linha no stdin do sidecar da janela (mensagem ou decisão).
@@ -426,6 +438,41 @@ pub(crate) fn versao_do_anna() -> String {
 /// via quem ainda não tinha instalado o runner. Uma constante, e não duas literais, para
 /// que a próxima correção do texto não conserte um caminho e deixe o outro para trás.
 const ERRO_RUNNER_AUSENTE: &str = "claude-runner não encontrado — rode claude-runner/install.sh (deixa em ~/.local/bin) e faça `claude login` (usa a assinatura; sem API key).";
+
+/// Ausência do `codex-runner`, no mesmo molde: diz o que fazer, não só o que falta.
+const ERRO_CODEX_AUSENTE: &str = "codex-runner não encontrado — rode codex-runner/install.sh (deixa em ~/.local/bin) e faça `codex login` (usa a assinatura ChatGPT; sem API key).";
+
+/// Ausência do `anna`, que até aqui era uma string solta dentro do `spawn`.
+const ERRO_ANNA_AUSENTE: &str = "anna não encontrado. Este build saiu SEM o motor empacotado — instale o anna (SHVIA-CODE) e deixe no PATH (Unix: install.sh; Windows: anna.exe no PATH ou %LOCALAPPDATA%\\Programs\\anna)";
+
+/// Nome do motor → binário e a frase de ausência dele. **Um lugar só.**
+///
+/// 🔴 Eram DOIS testes binários independentes — `engineStatus` fazia
+/// `if base == "claude" { "claude-runner" } else { "anna" }` e o `spawn` repetia a
+/// mesma comparação por conta própria. Com dois motores isso funcionava por acidente:
+/// qualquer coisa que não fosse `claude` caía no `anna`, e não havia terceira opção
+/// para discordarem. Com três, dois testes binários descrevem quatro estados, e o
+/// estado "a página pediu `codex` e a ponte spawnou `anna`" é um deles — silencioso,
+/// porque o `anna` sobe normalmente e o usuário só descobre pelo comportamento.
+///
+/// O default continua sendo o `anna`: motor desconhecido não é erro de spawn, é o
+/// gateway. Mudar isso quebraria a página velha que não manda `engine`.
+fn motor_do_engine(engine: &str) -> (&'static str, &'static str) {
+    match engine {
+        "claude" => ("claude-runner", ERRO_RUNNER_AUSENTE),
+        "codex" => ("codex-runner", ERRO_CODEX_AUSENTE),
+        _ => ("anna", ERRO_ANNA_AUSENTE),
+    }
+}
+
+/// Código de saída com que o `codex-runner` recusa subir quando a régua de arranque
+/// não confirma o sandbox (`codex-runner/codex-runner.mjs`).
+///
+/// Ele merece nome e tratamento próprios porque **não é "motor indisponível"**: o
+/// binário existe, respondeu e decidiu não servir. Contar isso como ausência mandaria
+/// o usuário reinstalar algo que está instalado, enquanto o problema real — a garantia
+/// do motor não vale nesta máquina — não apareceria em lugar nenhum.
+const SAIDA_SANDBOX_NAO_CONFIRMADO: i32 = 3;
 
 /// Localiza um binário de motor (`anna` ou `claude-runner`), cross-platform.
 ///
@@ -736,7 +783,7 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
         // responderia sempre "sim" — o contrário do que um gate precisa fazer.
         "engineStatus" => {
             let base = v.get("engine").and_then(|x| x.as_str()).unwrap_or("gateway");
-            let exe = if base == "claude" { "claude-runner" } else { "anna" };
+            let (exe, _) = motor_do_engine(base);
             let st = engine_status(exe);
             reply(window, &req, true, st);
         }
@@ -780,14 +827,9 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     // (embedding.md), então o bridge e a UI de cards não mudam. Sem `engine` = anna.
     let engine = s("engine");
     let is_claude = engine == "claude";
-    let exe_base = if is_claude { "claude-runner" } else { "anna" };
+    let (exe_base, erro_ausente) = motor_do_engine(&engine);
     let Some(bin) = resolve_bin(exe_base) else {
-        let err = if is_claude {
-            ERRO_RUNNER_AUSENTE
-        } else {
-            "anna não encontrado. Este build saiu SEM o motor empacotado — instale o anna (SHVIA-CODE) e deixe no PATH (Unix: install.sh; Windows: anna.exe no PATH ou %LOCALAPPDATA%\\Programs\\anna)"
-        };
-        return reply(window, req, false, serde_json::json!({ "error": err }));
+        return reply(window, req, false, serde_json::json!({ "error": erro_ausente }));
     };
 
     let mut cmd = Command::new(bin);
@@ -950,10 +992,24 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
         // stdout fechou → anna saiu. Só sinaliza 'exited' se ESTA geração ainda é a
         // sessão viva da janela; se foi substituída (respawn) ou morta (kill/troca
         // de projeto), fica quieta pra não derrubar a sessão nova que acabou de subir.
-        if app.state::<Sidecars>().is_current(&exit_label, gen) {
+        if let Some(codigo) = app.state::<Sidecars>().colher(&exit_label, gen) {
+            // O motivo vai junto do evento. `sandbox_nao_confirmado` é estado NOMEADO,
+            // não "motor indisponível": o binário existe, respondeu e se recusou a
+            // servir porque a garantia dele não vale nesta máquina. Tratar isso como
+            // ausência mandaria reinstalar o que já está instalado.
+            let motivo = match codigo {
+                Some(SAIDA_SANDBOX_NAO_CONFIRMADO) => "sandbox_nao_confirmado",
+                Some(0) | None => "fim",
+                Some(_) => "erro",
+            };
+            let js = format!(
+                "window.__shviaCode&&window.__shviaCode._emit({{type:'exited',reason:{},code:{}}})",
+                js_str(motivo),
+                codigo.map_or("null".to_string(), |c| c.to_string()),
+            );
             let w = win.clone();
             let _ = app.run_on_main_thread(move || {
-                let _ = w.eval("window.__shviaCode&&window.__shviaCode._emit({type:'exited'})");
+                let _ = w.eval(&js);
             });
         }
     });
@@ -1977,5 +2033,173 @@ mod tests_cerca {
         let bases = vec![raiz.join("projeto")];
         let escapou = std::fs::canonicalize(raiz.join("projeto/sub/../../outro")).unwrap();
         assert!(!dentro_de_alguma(&escapou, &bases));
+    }
+}
+
+#[cfg(test)]
+mod tests_motor {
+    use super::*;
+
+    /// 🔴 O mapa tem de ser UM. Até 09/09/2026 a decisão morava em dois `if`
+    /// independentes — `engineStatus` e `spawn` — e com dois motores eles não tinham
+    /// como discordar: o que não fosse `claude` era `anna`, e ponto. Com três, dois
+    /// testes binários descrevem quatro estados, e "a página pediu codex, a ponte
+    /// spawnou anna" é um deles. Silencioso, porque o `anna` sobe normalmente.
+    #[test]
+    fn cada_motor_resolve_para_o_binario_dele() {
+        assert_eq!(motor_do_engine("codex").0, "codex-runner");
+        assert_eq!(motor_do_engine("claude").0, "claude-runner");
+        assert_eq!(motor_do_engine("gateway").0, "anna");
+        // Motor desconhecido cai no gateway DE PROPÓSITO: página velha não manda
+        // `engine`, e transformar isso em erro de spawn quebraria quem já funciona.
+        assert_eq!(motor_do_engine("").0, "anna");
+        assert_eq!(motor_do_engine("motor-que-nao-existe").0, "anna");
+    }
+
+    /// Cada motor diz o que fazer, não só o que falta — e cada um fala do SEU
+    /// instalador. Uma frase genérica mandaria rodar o script errado.
+    #[test]
+    fn a_ausencia_de_cada_motor_ensina_o_conserto_certo() {
+        assert!(motor_do_engine("codex").1.contains("codex-runner/install.sh"));
+        assert!(motor_do_engine("codex").1.contains("codex login"));
+        assert!(motor_do_engine("claude").1.contains("claude-runner/install.sh"));
+        assert!(motor_do_engine("gateway").1.contains("anna"));
+        // E nenhuma delas manda o usuário para o instalador do vizinho.
+        assert!(!motor_do_engine("codex").1.contains("claude login"));
+    }
+
+    /// 🔴 O `exit 3` do `codex-runner` NÃO é ausência de motor: o binário existe,
+    /// respondeu e recusou servir porque o sandbox não segurou. Se a ponte contar isso
+    /// como "motor indisponível", a tela manda reinstalar o que já está instalado e o
+    /// motivo real — a garantia não vale nesta máquina — não aparece em lugar nenhum.
+    #[test]
+    fn a_saida_tres_e_estado_nomeado_e_nao_ausencia() {
+        let nomear = |c: Option<i32>| match c {
+            Some(SAIDA_SANDBOX_NAO_CONFIRMADO) => "sandbox_nao_confirmado",
+            Some(0) | None => "fim",
+            Some(_) => "erro",
+        };
+        assert_eq!(nomear(Some(3)), "sandbox_nao_confirmado");
+        assert_eq!(nomear(Some(0)), "fim");
+        assert_eq!(nomear(None), "fim");
+        assert_eq!(nomear(Some(1)), "erro");
+        // O 3 não pode virar "erro" genérico: é essa distinção inteira.
+        assert_ne!(nomear(Some(3)), nomear(Some(1)));
+    }
+
+    /// AO VIVO: o `colher` espera um processo real e devolve o código dele.
+    ///
+    /// Não é teste de aritmética — é a coreografia que os defeitos desta frente
+    /// moraram. Um processo que sai 3 tem de chegar como `Some(Some(3))`, e uma
+    /// geração que já não é a viva tem de devolver `None` (senão o respawn derruba a
+    /// sessão nova que acabou de subir).
+    #[test]
+    fn colher_le_o_codigo_de_um_processo_de_verdade() {
+        use std::process::Stdio;
+        let sc = Sidecars::default();
+
+        let mut filho = Command::new("/bin/sh")
+            .args(["-c", "exit 3"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("spawn do /bin/sh");
+        let stdin = filho.stdin.take().expect("stdin");
+        let gen = sc.insert("janela".into(), filho, stdin);
+
+        assert_eq!(sc.colher("janela", gen), Some(Some(3)), "não leu o código real");
+        // Colhido uma vez, some do mapa: a segunda chamada não é a sessão viva.
+        assert_eq!(sc.colher("janela", gen), None);
+    }
+
+    #[test]
+    fn colher_de_geracao_velha_nao_sinaliza() {
+        use std::process::Stdio;
+        let sc = Sidecars::default();
+        let mut f1 = Command::new("/bin/sh").args(["-c", "exit 0"]).stdin(Stdio::piped()).spawn().unwrap();
+        let s1 = f1.stdin.take().unwrap();
+        let gen_velha = sc.insert("janela".into(), f1, s1);
+
+        let mut f2 = Command::new("/bin/sh").args(["-c", "exit 0"]).stdin(Stdio::piped()).spawn().unwrap();
+        let s2 = f2.stdin.take().unwrap();
+        let gen_nova = sc.insert("janela".into(), f2, s2);
+
+        // A thread de stdout do sidecar VELHO acorda depois do respawn. Se ela
+        // sinalizasse, derrubaria a sessão nova — foi para isso que a geração existe.
+        assert_eq!(sc.colher("janela", gen_velha), None, "geração velha sinalizou");
+        assert!(sc.colher("janela", gen_nova).is_some());
+    }
+}
+
+/// Smoke AO VIVO da ponte: o caminho que o `spawn` usa — `motor_do_engine` →
+/// `resolve_bin` → `Command` — encontra o `codex-runner` instalado e conversa com ele.
+///
+/// 🔴 Compilação verde não conta, e esta frente provou isso seis vezes: cinco defeitos
+/// no runner e um na ponte passaram por suíte verde porque nada exercia o processo. Aqui
+/// o binário é o de verdade, o `--version` é a mesma sonda que o `engine_status` faz, e o
+/// que se prova é o par mapa+resolvedor, não a aritmética de nenhum dos dois.
+///
+/// `#[ignore]` porque depende de máquina com `codex-runner/install.sh` rodado — ausência
+/// dele é ambiente, não regressão, e o CI não teria como distinguir. Roda com
+/// `cargo test --lib -- --ignored smoke_codex`.
+#[cfg(test)]
+mod smoke_codex_ao_vivo {
+    use super::*;
+
+    /// 🔴 Esta roda no CI — sem rede, sem login, sem `codex` instalado.
+    ///
+    /// Ela cobre o modo de falha COMUM, que não é protocolo: o runner não instalado e o
+    /// nome errado. O `install.sh` do `claude-runner` já entregou instalação quebrada
+    /// uma vez por ter esquecido um arquivo no `cp` — o sintoma foi um motor morto no
+    /// primeiro turno do usuário, longe da causa. Aqui isso vira vermelho no push.
+    ///
+    /// O CI instala o runner antes (`codex-runner/install.sh`: só node e `cp`, com o
+    /// schema caindo na cópia do repo quando não há `codex`). Numa máquina de
+    /// desenvolvimento sem o motor opcional instalado ela FALHA — e a mensagem diz o
+    /// comando. Isso é escolha: o `resolve_bin` procura `~/.local/bin`, então "não
+    /// achei" é sempre "não instalei", nunca ambiguidade.
+    #[test]
+    fn o_codex_runner_esta_instalado_e_responde() {
+        let (exe, erro) = motor_do_engine("codex");
+        assert!(resolve_bin(exe).is_some(), "{erro}");
+
+        let st = engine_status(exe);
+        assert_eq!(st["found"], true, "engine_status discordou do resolve_bin: {st}");
+        let versao = st["version"].as_str().unwrap_or("");
+        assert!(
+            !versao.is_empty(),
+            "o binário está lá e não respondeu --version — instalação incompleta: {st}",
+        );
+    }
+
+    #[test]
+    #[ignore = "exige codex-runner instalado (codex-runner/install.sh)"]
+    fn a_ponte_acha_o_codex_runner_e_ele_responde() {
+        let (exe, erro) = motor_do_engine("codex");
+        let bin = resolve_bin(exe).unwrap_or_else(|| panic!("{erro}"));
+
+        let st = engine_status(exe);
+        assert_eq!(st["found"], true, "engine_status não achou o binário que o resolve_bin achou");
+        let versao = st["version"].as_str().unwrap_or("");
+        assert!(!versao.is_empty(), "o runner não respondeu --version: {st}");
+
+        // E ele fala o NDJSON: um turno vazio (`exit` puro) sobe, prova o sandbox e sai
+        // limpo. Se a régua de arranque reprovasse aqui, o código seria 3 — que é
+        // exatamente o estado que a ponte agora sabe nomear.
+        use std::io::Write;
+        use std::process::Stdio;
+        let mut filho = Command::new(&bin)
+            .args(["--cwd", std::env::temp_dir().to_str().unwrap_or("/tmp")])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("spawn do codex-runner");
+        writeln!(filho.stdin.as_mut().unwrap(), "{{\"type\":\"exit\"}}").ok();
+        let saida = filho.wait().expect("wait");
+        assert_ne!(
+            saida.code(),
+            Some(SAIDA_SANDBOX_NAO_CONFIRMADO),
+            "o runner recusou subir: o sandbox do Codex não segurou nesta máquina",
+        );
     }
 }

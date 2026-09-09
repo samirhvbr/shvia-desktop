@@ -1,5 +1,58 @@
 # Changelog
 
+## 1.4.34 - the bridge learns the codex engine, and a refused start stops being "engine unavailable"
+
+Slice 2. `code_bridge.rs` can spawn `codex-runner`, and the engine decision now lives in
+**one** place.
+
+### Two binary tests became one map
+
+`engineStatus` did `if base == "claude" { "claude-runner" } else { "anna" }` and `spawn`
+repeated the same comparison on its own. With two engines that worked by accident:
+anything that was not `claude` could only be `anna`, so they had no way to disagree.
+**With three, two independent binary tests describe four states**, and one of them is
+"the page asked for `codex` and the bridge spawned `anna`" — silent, because `anna` comes
+up normally and only the behaviour gives it away. `motor_do_engine` is now the single
+answer, and each engine carries its own missing-binary sentence pointing at its own
+installer.
+
+### `exited` stopped being mute
+
+The bridge learned of a death from stdout closing and emitted `{type:'exited'}` with
+nothing else — enough while every engine dies for one reason. `codex-runner` dies for
+**two**: the turn ended, or it refused to start because the sandbox did not hold. The
+second is exactly what has to reach the screen.
+
+`Sidecars::colher` now reaps the child and returns its exit code, removing under the lock
+and waiting outside it (the same discipline `kill_label` already had, for the same
+reason: `wait()` blocks and would hold the global mutex). Exit **3** becomes the named
+state `sandbox_nao_confirmado`, and it is deliberately *not* folded into "engine
+unavailable": the binary exists, answered, and declined to serve. Counting that as
+absence would tell the user to reinstall what is already installed while the real
+problem — the engine's guarantee does not hold on this machine — appears nowhere.
+
+`is_current` is gone; `colher` subsumes it, including the generation guard that keeps a
+dead session's thread from knocking down the one that just replaced it.
+
+### Proven by running, not by compiling
+
+Five unit tests plus a live smoke (`--ignored smoke_codex`) that drives the real
+`codex-runner` through the same `motor_do_engine` → `resolve_bin` → `Command` path the
+spawn uses. Two of the unit tests spawn real processes: one exits 3 and must be read as
+3, the other proves an old generation stays silent after a respawn.
+
+Compilation green does not count here, and this front proved it six times.
+
+**And one of those rulers runs in CI**, because `#[ignore]` covers the choreography but
+leaves the *common* failure uncovered: the runner not installed, or installed under the
+wrong name. `claude-runner`'s installer once shipped broken by forgetting a file in its
+`cp`, and the symptom was a dead engine on the user's first turn — far from the cause.
+CI now runs `codex-runner/install.sh` (no network, no npm, no login: it copies files and
+falls back to the repo's schema copy when `codex` is absent) and the ruler checks that
+`resolve_bin` finds it and `--version` answers. Reversion-proven: uninstall the wrapper
+and it goes red with the command to fix it.
+
+## 1.4.32 - the Codex runner validates its own payloads, and the sixth defect was in its first line
 ## 1.4.33 - the Codex runner validates its own payloads, and the sixth defect was in its first line
 
 `esquema.mjs` checks every outgoing request against Codex's generated schema before it
