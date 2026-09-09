@@ -87,3 +87,8 @@ src-tauri/binaries/
 packaging/arch/src/
 packaging/arch/pkg/
 packaging/arch/*.pkg.tar.*
+
+# Cache de ferramenta local (Impeccable). O `design.json` é configuração e pode ser
+# versionado; `hook.cache.json` é estado de sessão desta máquina e entrou num commit
+# por acidente em 08/09/2026 — é o staging por caminho explícito cobrando o preço.
+.impeccable/hook.cache.json
