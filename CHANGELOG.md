@@ -1,5 +1,76 @@
 # Changelog
 
+## 1.4.32 - the Codex engine gets a runner, one honest level and a sandbox ruler that refuses to start
+
+Slice 1 of a third Code-mode engine: `codex-runner/` drives `codex app-server --stdio`
+and emits the same NDJSON as `anna` and `claude-runner`, so it is drop-in behind the
+bridge. **Nothing in the product reaches it yet** — `code_bridge.rs` does not know the
+`codex` engine and the web toggle is still two-state. Slices 2 and 3 wait on Code-mode
+identity and persistence.
+
+### 🔴 The design changed once, because the first one was inferred instead of measured
+
+The engine was first designed on `codex exec --json` and rejected: it has no
+per-action approval at all. The second design chose `app-server` **because the schema
+carries `execCommandApproval` and `applyPatchApproval`** — and that inference was
+wrong. A message existing in a protocol is not the same as it being sent. Measured
+live, under three policies including `askForApproval.granular` with every flag set,
+`echo hello` **ran with no card every time**. Codex's own execpolicy decides what is
+trivially safe and an integrator cannot disable it.
+
+What Codex does guarantee, and what measurement M proved live, is the **boundary**:
+asked to write outside the workspace root it emitted `execCommandApproval` with its
+own reason, the rejection held, and the file was never created.
+
+So the engine ships with one level, **"Sandbox"**, and a promise stated with its hole:
+*inside the project writes do not ask; at the boundary you get a card.* Manual/Edit/Auto
+would be three labels over one behaviour — the approval pill lying three ways. The
+comparison with `claude-runner`'s Auto is in the doc and is not flattering to either
+side: **Auto also allows writes inside the project without a card.** Where they differ
+is network egress, destructive `Bash` and secret reads, which Auto always gates.
+
+`askForApproval.granular` was dropped with it: it needs the `experimentalApi`
+capability on top of an already experimental app-server, and it changed nothing.
+Paying two experimental dependencies for a guarantee neither delivers is the worst
+trade on the table.
+
+### The startup ruler, and why it took two corrections
+
+`provarQueOSandboxSegura()` refuses to start the engine unless the sandbox actually
+stops a write outside the project. It uses `command/exec`, which runs in the server
+sandbox without creating a thread or turn — no inference, no turn latency, once per
+spawn. Reversion-proven: sandbox on → starts; `dangerFullAccess` → exits 3 with the
+reason; restored → starts.
+
+Both corrections came from that reversion proof **failing**, and both are the point:
+
+- The first probe wrote to the workspace's parent under `/tmp`, which
+  `workspace-write` allows by design — so the ruler passed with the sandbox off.
+  Always green is worse than absent, because it looks like a guard. `$HOME`
+  discriminates: the user owns it, so a failure there can only be the sandbox.
+- The runner read host input **before the probe finished** — `{"type":"exit"}` shut it
+  down mid-probe, and a turn would have run before the sandbox was ever proven. Host
+  input is now wired only after the ruler passes. A ruler the engine can outrun is
+  not a ruler.
+
+### Five defects, one signature
+
+Found by running, not by reading: the turn ended on the `turn/start` ack (one line of
+output, exit 0 — success-shaped); `usage` read a field `turn/completed` does not have
+(`tokens: 0` forever); the error text was read from the wrong level and printed
+`unknown error`, discarding the only copy of the diagnosis; any `error` ended the
+turn, **killing a healthy one mid-reconnect** and blaming the model; and
+`msg.id && msg.decision` dropped the decision for `id: 0` — the app-server numbers its
+requests from zero, so the **first card of every session hung forever**, looking like a
+freeze.
+
+> **The arithmetic was right and the shape was invented**, five times. A green unit
+> suite proved nothing about any of them: it asserted the shape the author made up,
+> with data made up in the same shape. Slice 2 validates payloads against the 39
+> generated schema files before sending — that is what these five cost.
+
+Full record with provenance marks (🔬 live / 📋 schema):
+[`docs/code/MOTOR-CODEX-20260909.md`](docs/code/MOTOR-CODEX-20260909.md).
 ## 1.4.31 - the About window reads the server version again, and the compatibility gate wakes up
 
 **Seen by the owner on 09/09/2026**, in this client's About window:
