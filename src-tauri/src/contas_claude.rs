@@ -2,11 +2,29 @@
 //!
 //! ## What it is for
 //!
-//! The owner's shell has two accounts behind two aliases — `claude-b3` pointing
-//! `CLAUDE_CONFIG_DIR` at `~/.claude-blue3`, `claude-me` at `~/.claude-pessoal`. The
-//! Desktop never goes through a shell: it spawns `claude-runner` directly, with no
-//! `CLAUDE_CONFIG_DIR` at all. So Code mode could only ever reach whichever account the
-//! CLI's default directory holds, and there was no way to pick.
+//! Someone with more than one Claude Code subscription — one from the company, one
+//! personal — switches between them with an environment variable. The Desktop never goes
+//! through a shell: it spawns `claude-runner` directly, with no such variable at all. So
+//! Code mode could only ever reach whichever account the CLI's default holds, and there
+//! was no way to pick.
+//!
+//! ## ⚠️ Which variable, and on which machine — this module only knows one of the two
+//!
+//! What is implemented here is `CLAUDE_CONFIG_DIR`, and it was measured on **Linux**
+//! (ADR-033, 05/09/2026), where the two profiles are `~/.claude-blue3` and
+//! `~/.claude-pessoal` — the two names [`semente`] knows.
+//!
+//! On the owner's **Mac** that layout does not exist. Measured 08/09/2026: the accounts
+//! there are separated by `CLAUDE_SECURESTORAGE_CONFIG_DIR`, which keys the credential
+//! store and leaves the configuration home shared. The two variables are **not**
+//! interchangeable, and registering a securestorage directory in the `dir` field below
+//! fails differently on each operating system — `docs/code/CONTAS-CLAUDE.md` has the
+//! measurement and the failure modes.
+//!
+//! The consequence for a reader of this file: [`semente`] offers nothing on macOS, and
+//! [`aplicar`] can only express one of the two separations. That is a known gap, not an
+//! oversight — what to do about it is proposed, undecided, in
+//! `.continue/contas-claude-macos.md`.
 //!
 //! ## The rule that decides the design: the page sends an ID, never a path
 //!
@@ -84,6 +102,12 @@ impl Erro {
 /// The profiles seeded on a machine that has never had this file, given a home directory
 /// and the two well-known directories. **Pure**, so the seeding rule has a proof that does
 /// not need an `AppHandle` or a real `$HOME`.
+///
+/// ⚠️ "Well-known" means **known to the Linux machine of ADR-033**, not universal. The two
+/// names below are one machine's layout, and a machine that arranges its accounts
+/// differently — the owner's Mac does — gets a seed of exactly one entry, the default. The
+/// seed is a guess about someone's home directory; it is right to guess conservatively, and
+/// it is wrong to present the guess as the only way a profile can come to exist.
 ///
 /// A named profile is seeded **only when its directory already exists**. We do not create
 /// directories: an empty `~/.claude-pessoal` invented by us would list as an account and
