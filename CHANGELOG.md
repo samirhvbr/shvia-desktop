@@ -3,6 +3,55 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.24 - macOS keys Claude Code credentials by another variable, and the account picker never saw it
+
+On the owner's Mac the account picker offers **one** entry, `Padrão do sistema`. Nothing is
+broken: `semente()` seeds a named profile only when its directory exists, and the two names
+it knows — `~/.claude-blue3` and `~/.claude-pessoal` — are not on this machine.
+`contas-claude.json` is `{"contas": [], "selecionada": "padrao"}`, which is the honest
+answer to what the seed was asked.
+
+The seed was asked the wrong question. Measured 08/09/2026 (macOS 25.6, `claude` 2.1.265):
+the owner's two accounts are behind shell **functions**, not aliases, and they export
+**`CLAUDE_SECURESTORAGE_CONFIG_DIR`** — `~/.claude-cred-pessoal` and `~/.claude-cred-blue3`
+— never `CLAUDE_CONFIG_DIR`. Both directories are empty, which is exactly right: on macOS
+that variable is a **key string**, not a store, and the credential is in the Keychain.
+
+### What the two variables do, read from the client
+
+The Keychain service name is `Claude Code-credentials`, suffixed with
+`-<sha256(dir)[0:8]>` where `dir` is `CLAUDE_SECURESTORAGE_CONFIG_DIR` if set, otherwise
+`CLAUDE_CONFIG_DIR`, and unsuffixed when neither is set. **The two variables feed the same
+key**; `CLAUDE_CONFIG_DIR` merely also moves the configuration home — settings, history,
+`projects/`, `sessions/`. Checking presence only (never content, no `-w`, no prompt), this
+Mac holds three logins: the unsuffixed default and the two suffixes derived from the
+`-cred-` directories. The suffixes derived from `~/.claude-blue3` and `~/.claude-pessoal`
+are absent.
+
+### Why widening the hardcoded list would not have worked
+
+Registering `~/.claude-cred-blue3` as a `dir` makes `aplicar()` export it as
+`CLAUDE_CONFIG_DIR`, and the result differs by operating system. On Linux the directory has
+no login and the turn dies with `Not logged in` (measured 05/09). On macOS the hash is the
+same whichever variable carries the path, so the client finds the **right credential** and
+pairs it with a **blank configuration home** it populates on the spot — no error, account
+right, settings and history silently forked. One entry, two wrong answers. Which variable a
+profile means has to be recorded, not inferred from a path.
+
+### And the Linux discriminator does not reproduce here
+
+`--modelos` distinguishes nothing on macOS/2.1.265: under a scrubbed environment the
+catalogue is identical with and without the variable. Worse, the first comparison was run
+from inside a Claude Code session and *did* show a difference — the session's own
+`ANTHROPIC_BASE_URL` and `CLAUDE_CODE_*` host-auth variables, not the variable under test.
+Both facts are written down so the next person does not re-propose the method or repeat the
+contaminated measurement.
+
+Documentation only — no behaviour changes in this version. The module docblock, which
+stated the alias layout as fact, is corrected to describe the machine that was actually
+measured. The proposal for what to build (which variable a profile names, how a profile
+gets registered at all, how the screen should report a profile with no login) is WIP in
+`.continue/contas-claude-macos.md` and is **not decided**.
 ## 1.4.23 - claude-runner is a separate optional install, in the comments and on the screen
 
 `code_bridge.rs:157` claimed that "o `anna` e o `claude-runner` vêm EMBUTIDOS no app

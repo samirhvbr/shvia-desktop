@@ -1,6 +1,9 @@
 # Contas do Claude Code no Modo Code
 
-> **Estado:** implementado na 1.4.16 (Linux). Decisão e alternativas em
+> **Estado:** implementado na 1.4.16 (Linux); em macOS o seletor não oferece perfil nenhum
+> — ver "macOS: a variável que separa as contas do dono é outra" e a proposta em
+> [`.continue/contas-claude-macos.md`](../../.continue/contas-claude-macos.md).
+> Decisão e alternativas em
 > [ADR-033](../decisoes.md#adr-033--a-conta-do-claude-code-é-um-id-de-lista-fechada-e-o-diretório-vai-no-filho).
 > Substitui a proposta de 05/09/2026 que circulou fora do repositório.
 
@@ -196,6 +199,104 @@ autentica.**
 tem login vale `disponivel: true` e mesmo assim não roda turno — o erro vem do cliente
 oficial, na hora do turno, porque é ele que sabe. Nada aqui tenta adivinhar isso antes.
 
+---
+
+## 🔬 macOS: the variable that separates the owner's accounts is another one
+
+Measured 08/09/2026 on the owner's Mac (macOS 25.6, `claude` 2.1.265 arm64, Agent SDK
+0.3.258). The section above was measured on **Linux**; this one contradicts part of it, and
+the contradiction is the point.
+
+**The account picker offers one entry here.** `~/.claude-blue3` and `~/.claude-pessoal` do
+not exist on this machine, so `semente()` seeds nothing and
+`~/Library/Application Support/cloud.blue3.shvia/contas-claude.json` is
+`{"contas": [], "selecionada": "padrao"}`. Nothing is broken — the seed is doing exactly
+what it was written to do. It was written against a machine whose layout this one does not
+share.
+
+**The two aliases are not aliases and do not set `CLAUDE_CONFIG_DIR`.** They are shell
+functions (`~/.zshrc`), and each exports **`CLAUDE_SECURESTORAGE_CONFIG_DIR`** —
+`claude-me` at `~/.claude-cred-pessoal`, `claude-b3` at `~/.claude-cred-blue3` — before
+`exec claude`. (They also source `~/.config/ai-memory/env-<account>`; that directory does
+not exist on this machine, so those lines are guarded no-ops today.)
+
+### What each variable actually keys, read from the client
+
+From the credential-store code in the 2.1.265 binary, the Keychain **service name** is
+built like this:
+
+| environment | service name |
+|---|---|
+| neither variable | `Claude Code-credentials` |
+| `CLAUDE_CONFIG_DIR=D` only | `Claude Code-credentials-<sha256(D)[0:8]>` |
+| `CLAUDE_SECURESTORAGE_CONFIG_DIR=D` | `Claude Code-credentials-<sha256(D)[0:8]>` |
+| both set | the **securestorage** one wins; `CLAUDE_CONFIG_DIR` is not consulted for the key |
+
+🔴 **The two variables feed the same key.** The difference is everything *else*
+`CLAUDE_CONFIG_DIR` does: it also moves the configuration home — settings, history,
+`projects/`, `sessions/`. `CLAUDE_SECURESTORAGE_CONFIG_DIR` moves the credential key and
+**nothing else**, which is what "shared configuration, separate logins" means.
+
+### Three logins exist on this Mac
+
+Checked by **presence only** — the item's attributes, never its content, never `-w`, no
+authorization prompt. This is to a credential what `is_dir()` is to a file.
+
+| what would key it | service name | on this Mac |
+|---|---|---|
+| neither variable (what the Desktop does today on `padrao`) | `Claude Code-credentials` | **present** |
+| `~/.claude-cred-blue3` (`claude-b3`) | `Claude Code-credentials-851c8232` | **present** |
+| `~/.claude-cred-pessoal` (`claude-me`) | `Claude Code-credentials-b3996ef2` | **present** |
+| `~/.claude-blue3` as `CLAUDE_CONFIG_DIR` | `Claude Code-credentials-a42ff1ff` | absent |
+| `~/.claude-pessoal` as `CLAUDE_CONFIG_DIR` | `Claude Code-credentials-e6564ce4` | absent |
+
+The two suffixed items could only have been written by a `claude login` run with
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` set to those exact paths. **That is what proves the
+variable is honoured here** — not a catalogue, not a turn.
+
+**On macOS the securestorage directory is a key string, not a store.** Both
+`~/.claude-cred-*` are empty, were empty before these measurements and are empty after: the
+credential is in the Keychain, and the path is only hashed. `disponivel` — "the directory
+exists" — therefore says even less on macOS than the ADR already admits it says. It reports
+that the owner ran `mkdir`.
+
+### The failure of registering a `-cred-` directory as `dir`, corrected
+
+The obvious shortcut is to put `~/.claude-cred-blue3` in `contas-claude.json` as a `dir`,
+since the field already accepts any absolute path inside `$HOME`. `aplicar()` would export
+it as `CLAUDE_CONFIG_DIR`. What happens next is **not** the same on the two operating
+systems, and neither outcome is acceptable:
+
+- **On Linux** (measured 05/09, table above): the directory has no login, so the turn dies
+  with `Not logged in · Please run /login`, or worse runs off-subscription.
+- **On macOS** (derived here from the keying above): the hash is the *same* whichever
+  variable carries the path, and `Claude Code-credentials-851c8232` exists — so the client
+  finds the **right credential** and pairs it with a **blank configuration home**, which it
+  populates on the spot. No error. The account is right; the settings, history and project
+  state silently fork.
+
+One registry entry, two different wrong answers depending on the operating system. That is
+the argument for recording **which variable** a profile means instead of inferring it from
+a path.
+
+### `--modelos` does not discriminate accounts on macOS — do not re-propose it
+
+The Linux section uses the `default` model's description as the observable signal. Re-run
+here under a clean environment (`env -i` with `HOME`/`PATH`/`USER`), the catalogue is
+**identical** with no variable and with `CLAUDE_SECURESTORAGE_CONFIG_DIR` at either
+directory. It is not a discriminator on this platform and this client version; any macOS
+check built on it would be reading noise.
+
+⚠️ **And a warning for whoever measures next:** the first run of this comparison was made
+from inside a Claude Code session and *did* show a difference — because that session's
+environment carries `ANTHROPIC_BASE_URL` and a set of `CLAUDE_CODE_*` host-auth variables.
+The difference was the surrounding session, not the variable under test. Measure from a
+scrubbed environment or do not measure at all.
+
+**Still not measured on macOS:** a real turn under each account. It is the only thing that
+closes the argument the way the Linux table closes it, and it spends quota on two
+subscriptions — the owner decides whether to spend it, not this document.
+
 ## O que `disponivel` não diz
 
 `disponivel` é **o diretório existir**. Não é:
@@ -226,7 +327,16 @@ risco nenhum.
 
 ## Não coberto
 
-- **macOS e Windows.** O `resolve_bin` e o lugar onde o SDK guarda credencial mudam por SO,
-  e só o Linux foi exercitado. O `USERPROFILE` está no código e não foi rodado.
+- **Windows.** O `resolve_bin` e o lugar onde o SDK guarda credencial mudam por SO. O
+  `USERPROFILE` está no código e não foi rodado.
+- **macOS: o turno.** Desde 08/09/2026 o *chaveamento* da credencial está medido (seção
+  acima) e o `CLAUDE_SECURESTORAGE_CONFIG_DIR` está identificado como a variável que separa
+  as contas do dono. O que continua sem medida é um **turno de verdade** sob cada conta — o
+  `--modelos` não discrimina nesta plataforma, e o único método que fecharia o argumento
+  gasta cota de duas assinaturas.
+- **macOS: nenhum perfil é oferecido hoje.** O seletor mostra só `Padrão do sistema`, e a
+  proposta de como consertar isso — qual variável, como registrar, como reportar login —
+  está em [`.continue/contas-claude-macos.md`](../../.continue/contas-claude-macos.md),
+  ainda **não decidida**.
 - **Gerenciar organização.** Nada aqui cria conta, faz login ou sabe de membership.
 
