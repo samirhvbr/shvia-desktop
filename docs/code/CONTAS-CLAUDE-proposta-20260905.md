@@ -42,7 +42,7 @@ belongs to SHVIA-DESKTOP. This requires coordinated changes in both repositories
 
 ## Proposed interface
 
-![Conceptual account selector](claude-account-profiles.svg)
+![Conceptual account selector](CONTAS-CLAUDE-proposta-20260905.svg)
 
 User-facing copy remains Portuguese. Add a compact CONTA selector in the existing
 composer control row, beside MODELO, visible only for the Claude Code engine.

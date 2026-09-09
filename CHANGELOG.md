@@ -3,6 +3,19 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.30 - the archived proposal points at its diagram by the name the diagram has here
+
+The proposal was renamed when it moved out of the route repository on 08/09/2026
+(`claude-account-profiles.md` → `CONTAS-CLAUDE-proposta-20260905.md`), and the `.svg`
+beside it was renamed with it. The image reference in the body kept the old name, so the
+diagram rendered as a broken image — the archived reasoning lost the picture that carries
+half of it.
+
+The header note added during the move already used the new name, which is why the header
+looked right while line 45 did not. Renaming a file and rewriting the links that point *at*
+it is one move; the links *inside* it are a second one, and this is the half that was
+missed.
+
 ## 1.4.29 - `npm run contas` registers the accounts this machine already has
 
 The Settings screen is the destination; this is the step before it, and it is meant to be
