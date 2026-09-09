@@ -129,7 +129,8 @@ const CLIPBOARD_IMAGE_PASTE_JS: &str = r#"(function () {
 /// Injetado nas páginas remotas (`on_page_load`): **gate de compatibilidade
 /// cliente↔servidor** (item D6 do comparativo 9router × hermes; ADR-018).
 ///
-/// Lê `version.clients.desktop` do `GET /api/v1/health` (ShvIA 2.64.0) e compara
+/// Lê `clients.desktop` do `GET /api/v1/version` (ShvIA 2.110.226; cai no
+/// `GET /api/v1/health` em servidor mais velho) e compara
 /// com o build desta casca. Duas situações, dois tratamentos:
 ///
 /// - **Casca abaixo do `min_version`** — tarja de aviso, com o motivo e o link do
@@ -207,17 +208,53 @@ const VERSION_GATE_JS: &str = r#"(function () {
     return d;
   }
 
-  fetch('/api/v1/health', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
-    .then(function (r) { return r.ok ? r.json() : null; })
+  // >>> versaoDoServidor (cópia idêntica no VERSION_GATE_JS e no ABOUT_MODAL_JS;
+  // `as_duas_copias_do_helper_sao_identicas` trava a divergência)
+  // Lê a versão do servidor de `/api/v1/version` (ShvIA 2.110.226+), que é
+  // AUTENTICADA. Manda o Bearer do `localStorage` — é o mesmo que o app.js usa —
+  // e também o cookie, para o caso de a sessão bastar. Servidor anterior à
+  // 2.110.226 não tem a rota e devolve 404: aí cai no `/api/v1/health`, onde o
+  // bloco `version` mora desde a 2.64.0. O health responde 401 quando o
+  // `HEALTH_TOKEN` está setado, então o fallback só ajuda servidor mais velho —
+  // que é exatamente para quem ele existe.
+  function versaoDoServidor() {
+    var h = { 'Accept': 'application/json' };
+    try {
+      var tk = window.localStorage.getItem('access_token');
+      if (tk) { h['Authorization'] = 'Bearer ' + tk; }
+    } catch (e) { /* storage bloqueado: segue só com o cookie */ }
+    return fetch('/api/v1/version', { headers: h, credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (j && j.version) { return j; }
+        return fetch('/api/v1/health', { headers: h, credentials: 'same-origin' })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (k) {
+            var v = k && k.version;
+            return v ? { version: v.app, clients: v.clients || {} } : null;
+          });
+      })
+      .catch(function () { return null; });
+  }
+  // <<< versaoDoServidor
+
+  // `/api/v1/version` (ShvIA 2.110.226) e NÃO `/api/v1/health`: em produção o
+  // `HEALTH_TOKEN` está setado e o health responde 401 a quem não o tem. O `r.ok`
+  // falso caía no `null` daqui, e o `if (!c)` abaixo lê isso como "servidor
+  // antigo → no-op" — ou seja, ESTE PORTÃO PROTEGIA ZERO em produção, calado,
+  // desde que o token foi ligado. Servidor mais velho não tem a rota nova e
+  // devolve 404, então o fallback para o health continua valendo: lá ele é
+  // público, que era a premissa quando isto foi escrito.
+  versaoDoServidor()
     .then(function (j) {
-      var c = j && j.version && j.version.clients && j.version.clients.desktop;
+      var c = j && j.clients && j.clients.desktop;
       if (!c || !c.min_version) return;                       // servidor antigo → no-op
       if (cmp(BUILD, c.min_version) >= 0) return;             // em dia → nada na tela
 
       // Dispensar é lembrado por versão DO SERVIDOR: se ele subir de novo pedindo
       // outra coisa, o aviso volta. Guardar só um booleano faria o usuário
       // dispensar uma vez e nunca mais ser avisado.
-      var srv = String((j.version && j.version.app) || '');
+      var srv = String(j.version || '');
       try { if (localStorage.getItem(KEY) === srv) return; } catch (e) {}
 
       var texto = c.notice
@@ -350,7 +387,7 @@ const NATIVE_NOTIFY_JS: &str = r#"(function () {
 ///   host remoto) cai no canônico compilado.
 /// - **ShvIA (servidor)**: o rodapé da sidebar (`.account-mini__version`,
 ///   dashboard.blade.php) dá o valor imediato — mas ele é do load da página, e
-///   a janela pode estar aberta há dias; então `GET /api/v1/health`
+///   a janela pode estar aberta há dias; então `GET /api/v1/version`
 ///   (`version.app`) é consultado **sempre** e corrige o valor se o servidor
 ///   foi atualizado. Sem rodapé e com fetch falho (login/offline), "—". O fetch
 ///   é **relativo** e só sai em página remota: da casca local a origem é
@@ -461,6 +498,36 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
 
   // Escopado ao card (não getElementById): o fetch de uma instância anterior
   // ainda em voo escreve no próprio nó destacado, nunca no modal novo.
+  // >>> versaoDoServidor (cópia idêntica no VERSION_GATE_JS e no ABOUT_MODAL_JS;
+  // `as_duas_copias_do_helper_sao_identicas` trava a divergência)
+  // Lê a versão do servidor de `/api/v1/version` (ShvIA 2.110.226+), que é
+  // AUTENTICADA. Manda o Bearer do `localStorage` — é o mesmo que o app.js usa —
+  // e também o cookie, para o caso de a sessão bastar. Servidor anterior à
+  // 2.110.226 não tem a rota e devolve 404: aí cai no `/api/v1/health`, onde o
+  // bloco `version` mora desde a 2.64.0. O health responde 401 quando o
+  // `HEALTH_TOKEN` está setado, então o fallback só ajuda servidor mais velho —
+  // que é exatamente para quem ele existe.
+  function versaoDoServidor() {
+    var h = { 'Accept': 'application/json' };
+    try {
+      var tk = window.localStorage.getItem('access_token');
+      if (tk) { h['Authorization'] = 'Bearer ' + tk; }
+    } catch (e) { /* storage bloqueado: segue só com o cookie */ }
+    return fetch('/api/v1/version', { headers: h, credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (j && j.version) { return j; }
+        return fetch('/api/v1/health', { headers: h, credentials: 'same-origin' })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (k) {
+            var v = k && k.version;
+            return v ? { version: v.app, clients: v.clients || {} } : null;
+          });
+      })
+      .catch(function () { return null; });
+  }
+  // <<< versaoDoServidor
+
   var serverDd = card.querySelector('#shvia-about-server');
   var serverVersion = '…';
   function setServer(v) {
@@ -468,7 +535,7 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
     serverDd.textContent = v;
   }
   // Rodapé da sidebar = valor imediato (foi renderizado no load da página);
-  // /api/v1/health = fonte viva, consultada SEMPRE (o servidor pode ter sido
+  // /api/v1/version = fonte viva, consultada SEMPRE (o servidor pode ter sido
   // atualizado com a janela aberta). Se o fetch falhar, fica o rodapé; sem
   // nenhum dos dois (login/offline), "—".
   var vEl = document.querySelector('.account-mini__version');
@@ -483,10 +550,9 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
   // funciona em qualquer host do servidor sem lista para manter; na casca local
   // não há versão de servidor para mostrar, e "—" é a resposta honesta.
   if (remoto) {
-    fetch('/api/v1/health', { headers: { 'Accept': 'application/json' } })
-      .then(function (r) { return r.ok ? r.json() : null; })
+    versaoDoServidor()
       .then(function (j) {
-        var v = j && j.version && j.version.app;
+        var v = j && j.version;
         if (v) { setServer('v' + String(v).replace(/^v/, '')); }
         else if (!temRodape) { setServer('—'); }
       })
@@ -1419,6 +1485,63 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    /// O helper `versaoDoServidor` existe DUAS vezes — o portão de compatibilidade
+    /// e o modal Sobre são IIFEs injetados separadamente, e nenhum enxerga o outro.
+    ///
+    /// 🔴 Duplicar é a escolha; divergir em silêncio é o defeito. Este teste extrai
+    /// as duas cópias pelos marcadores e exige que sejam byte a byte iguais: quem
+    /// consertar o fallback num lugar e esquecer o outro fica vermelho aqui, em vez
+    /// de descobrir em produção que só metade dos consumidores aprendeu a rota nova.
+    ///
+    /// Foi assim que a rota velha ficou de pé: os dois liam `/api/v1/health`, o
+    /// `HEALTH_TOKEN` foi ligado, e os dois passaram a falhar calados.
+    #[test]
+    fn as_duas_copias_do_helper_sao_identicas() {
+        fn extrair(fonte: &str) -> Vec<&str> {
+            fonte
+                .match_indices("// >>> versaoDoServidor")
+                .map(|(i, _)| {
+                    let resto = &fonte[i..];
+                    let fim = resto
+                        .find("// <<< versaoDoServidor")
+                        .expect("marcador de fim ausente");
+                    &resto[..fim]
+                })
+                .collect()
+        }
+
+        let no_gate = extrair(super::VERSION_GATE_JS);
+        let no_modal = extrair(super::ABOUT_MODAL_JS);
+
+        assert_eq!(no_gate.len(), 1, "o portão de compatibilidade perdeu o helper");
+        assert_eq!(no_modal.len(), 1, "o modal Sobre perdeu o helper");
+        assert_eq!(
+            no_gate[0], no_modal[0],
+            "as duas cópias de versaoDoServidor divergiram — conserte as duas ou extraia para uma só"
+        );
+    }
+
+    /// Nenhum dos dois consumidores pode voltar a depender SÓ do `/health`: ele
+    /// responde 401 em produção desde que o `HEALTH_TOKEN` foi ligado. O `/health`
+    /// segue no fonte como FALLBACK para servidor anterior à 2.110.226, e é essa
+    /// distinção que o teste trava — presença da rota nova, não ausência da velha.
+    #[test]
+    fn os_dois_consumidores_pedem_a_rota_nova_primeiro() {
+        for (nome, js) in [
+            ("VERSION_GATE_JS", super::VERSION_GATE_JS),
+            ("ABOUT_MODAL_JS", super::ABOUT_MODAL_JS),
+        ] {
+            assert!(
+                js.contains("fetch('/api/v1/version'"),
+                "{nome} não pede /api/v1/version — voltaria a falhar calado com o HEALTH_TOKEN ligado"
+            );
+            assert!(
+                js.contains("versaoDoServidor()"),
+                "{nome} não usa o helper"
+            );
+        }
+    }
+
     #[cfg(desktop)]
     use super::{decidir_fechar, AcaoDeFechar};
 

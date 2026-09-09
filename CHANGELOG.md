@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.4.31 - the About window reads the server version again, and the compatibility gate wakes up
+
+**Seen by the owner on 09/09/2026**, in this client's About window:
+`ShvIA servidor —`. The row was there and empty, and finding out why turned up a
+second consumer of the same broken source that matters more than the row.
+
+### Why it was empty
+
+Two sources, and **both are absent on the screen the owner was on**: the footer
+`.account-mini__version` exists only in the chat screen's Blade, and the window
+was on `/painel`; and the live source was `GET /api/v1/health`, which answers
+**401** in production because `HEALTH_TOKEN` is set there. Measured against
+`ai.shvia.org`. That is why the field looked intermittent rather than broken.
+
+### 🔴 The gate was dead, and nothing said so
+
+`VERSION_GATE_JS` reads `clients.desktop` from the same endpoint to warn a shell
+older than the server's `min_version` (D6 / ADR-018). It treats a non-ok response
+as *"old server → no-op"* and returns quietly — so since `HEALTH_TOKEN` was
+switched on, that gate has been **protecting zero** in production. A shell below
+the minimum would never see the notice, and the silence was indistinguishable
+from "you are up to date".
+
+### What changed
+
+Both consumers now call `GET /api/v1/version` (ShvIA 2.110.226), authenticated
+with the same Bearer the web app uses, falling back to `/api/v1/health` for a
+server older than that route — where it is still public, which was the premise
+when this code was written.
+
+**The helper is duplicated on purpose, and the duplication is guarded.** The gate
+and the modal are separate injected IIFEs; neither sees the other. So
+`versaoDoServidor` exists twice between markers, and
+`as_duas_copias_do_helper_sao_identicas` extracts both and demands they match byte
+for byte — fixing one and forgetting the other goes red here instead of in
+production. A second test asserts both ask for the new route first: presence of
+the new one, not absence of the old, because `/health` is still the legitimate
+fallback.
+
+Proven by reversion: making the copies differ reddens the first test; pointing the
+modal back at the old route alone reddens the second.
+
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
