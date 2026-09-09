@@ -3,6 +3,61 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.23 - claude-runner is a separate optional install, in the comments and on the screen
+
+`code_bridge.rs:157` claimed that "o `anna` e o `claude-runner` vêm EMBUTIDOS no app
+instalado". Half of that was false, and it is the expensive half.
+
+Measured on 08/09:
+
+| | declared in `tauri.conf.json` | in `build-local.sh` | in `/Applications/ShvIA.app/Contents/MacOS/` |
+|---|---|---|---|
+| `anna` | `externalBin: ["binaries/anna"]` | staged by `[D5]` / `stage-anna.mjs` | present |
+| `claude-runner` | absent | no step | **absent** |
+
+The runner has never been packaged. It arrives through `claude-runner/install.sh`, which
+leaves a wrapper in `~/.local/bin` — a **separate and optional** install, which is why
+`resolve_bin`'s step (1), "next to the app's executable", can only ever hit for `anna`.
+
+🔴 **What the wrong comment cost.** On a machine without the runner the app says
+`claude-runner não encontrado`. Read next to a comment promising the binary ships inside
+the bundle, that sentence describes a **packaging regression** — something that fell out
+of the installer — and the diagnosis goes looking for it in the build. It is the second
+time in two days that this message pointed a diagnosis at the wrong layer; the **1.4.22**
+entry, directly below, is the first. Documentation that contradicts the code is the
+failure mode `CLAUDE.md` names, and here it had already been paid for twice.
+
+### The comments now state what is measurable
+
+`code_bridge.rs:157` says which engine is embedded, which one is not, and how the second
+one arrives. The `resolve_bin` docblock — correct but silent on the point — now says
+outright that the bundled-beats-PATH rule is an `anna` rule, and that a missing runner is
+an optional install that was never done, **never** a packaging regression.
+
+### And the screen stops being a dead end
+
+Two paths discover the runner's absence, and only one of them said what to do about it:
+
+- `spawn` (`:720`) — named `install.sh` and `claude login`. Fine.
+- the catalogue (`claude_models`, `:340`) — answered `claude-runner não encontrado`, dry.
+
+The dry one is the one the user actually reads. The page requests the model list to draw
+the selector, so it fires **before** any turn exists: whoever has not installed the runner
+hits the catalogue first, and got the message that offered no way out, while the sentence
+that would have helped sat on a path they had not reached yet.
+
+Both now return `ERRO_RUNNER_AUSENTE`, one constant instead of two literals, so the next
+edit to the wording cannot fix one path and leave the other behind. The other two
+catalogue failures stay distinct — `resposta do claude-runner ilegível` and `falha ao
+listar modelos` — because "not installed", "installed and unreadable" and "would not
+start" are three different diagnoses and 1.4.22 is what happens when they blur.
+
+Portuguese text, kept: this is user-facing product copy, the one carve-out to the
+English-only rule.
+
+Green on 08/09: `cargo test` 88 passing, `cargo clippy --locked --all-targets -D warnings`
+silent, and `prova:politica` / `prova:runner-version` / `prova:bump` / `prova:doc` all OK.
+
 ## 1.4.22 - the runner installer copies every file the runner imports, and proves the install loads
 
 `claude-runner/install.sh` copied three files — `claude-runner.mjs`, `package.json`,

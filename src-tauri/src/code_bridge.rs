@@ -154,9 +154,13 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // "esta versão do app sabe fazer X?", e a resposta está na própria casca.
     //
     // ⚠️ Por que existe. A página do Modo Code vem do SERVIDOR e atualiza a cada
-    // deploy; o `anna` e o `claude-runner` vêm EMBUTIDOS no app instalado. Os dois
-    // andam em ritmos diferentes, então uma página nova conversando com uma casca
-    // velha é o estado normal, não a exceção. Sem este flag, a página mandaria
+    // deploy; a casca e os motores só mudam quando alguém INSTALA. E os motores nem
+    // chegam pelo mesmo caminho: o `anna` viaja embutido no app (`externalBin` em
+    // `tauri.conf.json`, item D5), o `claude-runner` NÃO — é instalação separada e
+    // opcional, por `claude-runner/install.sh` (deixa um wrapper em `~/.local/bin`).
+    // Medido em 08/09: o bundle instalado traz `anna` e `shvia-desktop`, e nada mais.
+    // São três ritmos, então uma página nova conversando com uma casca velha é o
+    // estado normal, não a exceção. Sem este flag, a página mandaria
     // `images` no payload e a casca velha — que só lê `text` — descartaria a
     // figura em SILÊNCIO: o chip na tela dizendo que foi, o modelo respondendo
     // sem ter visto nada. Ausência do flag é a resposta "não", e é por isso que
@@ -338,7 +342,7 @@ impl Sidecars {
 /// significa oferecer na tela um modelo que o turno vai recusar.
 fn claude_models(conta_dir: Option<&std::path::Path>) -> serde_json::Value {
     let Some(bin) = resolve_bin("claude-runner") else {
-        return serde_json::json!({ "erro": "claude-runner não encontrado" });
+        return serde_json::json!({ "erro": ERRO_RUNNER_AUSENTE });
     };
     let mut cmd = Command::new(bin);
     cmd.arg("--modelos");
@@ -407,6 +411,17 @@ pub(crate) fn versao_do_anna() -> String {
     }
 }
 
+/// Ausência do `claude-runner`, dita de um jeito que resolve — texto ÚNICO.
+///
+/// É string de TELA (i18n de produto, por isso em português) e sai dos DOIS pontos que
+/// descobrem a ausência: o catálogo (`claude_models`) e o `spawn`. Só o `spawn` dizia o
+/// que fazer; o catálogo respondia `claude-runner não encontrado` seco — e o catálogo é o
+/// que chega ANTES na tela, porque a página pede a lista de modelos para desenhar o
+/// seletor, antes de existir turno. Ou seja: a mensagem sem saída era justamente a que
+/// via quem ainda não tinha instalado o runner. Uma constante, e não duas literais, para
+/// que a próxima correção do texto não conserte um caminho e deixe o outro para trás.
+const ERRO_RUNNER_AUSENTE: &str = "claude-runner não encontrado — rode claude-runner/install.sh (deixa em ~/.local/bin) e faça `claude login` (usa a assinatura; sem API key).";
+
 /// Localiza um binário de motor (`anna` ou `claude-runner`), cross-platform.
 ///
 /// Ordem: (1) **ao lado do executável do ShvIA Desktop**; (2) no PATH; (3) locais
@@ -422,6 +437,14 @@ pub(crate) fn versao_do_anna() -> String {
 /// Quem quer usar o próprio `anna` de propósito ainda consegue: basta não haver
 /// binário empacotado (build sem `--anna`), ou apontar o do PATH por instalação
 /// separada e usar um build sem o sidecar.
+///
+/// **Isso vale só para o `anna`.** O `claude-runner` NÃO é empacotado — não está no
+/// `externalBin` nem no `build-local.sh` —, então para ele o passo (1) nunca acerta:
+/// quem responde é sempre (2)/(3), o wrapper que o `claude-runner/install.sh` deixa em
+/// `~/.local/bin`. Ausência dele é instalação opcional que faltou, NUNCA regressão de
+/// empacotamento — e é essa leitura errada que custou o diagnóstico de 08/09, por isso
+/// os dois pontos que devolvem a ausência dizem `install.sh` na mesma frase
+/// (`ERRO_RUNNER_AUSENTE`).
 fn resolve_bin(base: &str) -> Option<PathBuf> {
     let exe_name = if cfg!(windows) { format!("{base}.exe") } else { base.to_string() };
 
@@ -717,7 +740,7 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     let exe_base = if is_claude { "claude-runner" } else { "anna" };
     let Some(bin) = resolve_bin(exe_base) else {
         let err = if is_claude {
-            "claude-runner não encontrado — rode claude-runner/install.sh (deixa em ~/.local/bin) e faça `claude login` (usa a assinatura; sem API key)."
+            ERRO_RUNNER_AUSENTE
         } else {
             "anna não encontrado. Este build saiu SEM o motor empacotado — instale o anna (SHVIA-CODE) e deixe no PATH (Unix: install.sh; Windows: anna.exe no PATH ou %LOCALAPPDATA%\\Programs\\anna)"
         };
