@@ -3,6 +3,23 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.26 - the Claude Code account proposal is archived beside the document it became
+
+`docs/code/CONTAS-CLAUDE.md` said it *"supersedes the proposal of 05/09/2026 that
+circulated outside the repository"* — and the proposal sat, ignored by git, in the umbrella
+`.continue/` of `~/x/SHVIA` (the `shvia-rota` repository, whose allowlist never named it).
+A document that only exists on one disk is not superseded; it is one `rm` from gone.
+
+- `docs/code/CONTAS-CLAUDE-proposta-20260905.md` + `.svg`: the proposal and its diagram,
+  untouched but for a header that says what it is and points at the living document.
+- `.continue/RETOMADA-CONTAS-CLAUDE-20260906.md`: the resumption note of 06/09, with a
+  header stating what has closed since (PR #71 merged, worktree removed). What remains is
+  the manual validation that needs a desktop session — which is exactly what `.continue/`
+  is for.
+
+Both indexes (`docs/README.md`, `.continue/README.md`) list them.
+
+
 ## 1.4.25 - Record the parallel carrier fix that master's 1.4.22 had already landed
 
 The 1.4.21 commit bumped `version.md` and nothing else: `package.json`,

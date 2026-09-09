@@ -5,7 +5,8 @@
 > [`.continue/contas-claude-macos.md`](../../.continue/contas-claude-macos.md).
 > Decisão e alternativas em
 > [ADR-033](../decisoes.md#adr-033--a-conta-do-claude-code-é-um-id-de-lista-fechada-e-o-diretório-vai-no-filho).
-> Substitui a proposta de 05/09/2026 que circulou fora do repositório.
+> Supersedes the proposal of 05/09/2026, archived beside this file as
+> [CONTAS-CLAUDE-proposta-20260905.md](CONTAS-CLAUDE-proposta-20260905.md).
 
 O motor **Claude Code (assinatura)** ([ADR-014](../decisoes.md#adr-014)) roda com o login
 que o cliente oficial guardou. Quem tem mais de uma conta — uma da empresa, uma pessoal —
