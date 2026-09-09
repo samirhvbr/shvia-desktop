@@ -65,9 +65,21 @@ would promise a fence that does not exist.
 ⚠️ **`git push` was not measured separately.** It is network egress, and the row above
 covers that shape; the doc does not claim more than was run.
 
-⚠️ **Observed once, unexplained:** in the isolated `cat .env` run the runner emitted no
-`tool_call`/`tool_result` — only the final text. If that reproduces, a command can run
-without appearing in the Code timeline, which is its own defect. Not chased here.
+✅ **Investigated and does NOT exist — the command does appear.** An earlier revision of
+this file reported that a run had produced no `tool_call`/`tool_result`, and raised the
+possibility of a command executing without showing in the Code timeline. **It was the
+measuring script, not the runner.** Chased on 09/09/2026 against the raw wire
+(`SHVIA_CODEX_DEBUG=1`): `item/started` arrives with `item.type=commandExecution`, the
+runner's filter accepts exactly that type, and both `tool_call` and `tool_result` are
+emitted with the id, the name and the arguments. The two runs that "showed" the absence
+had been read through a summariser that only printed `gate_request` and `tool_call`, and
+through a `grep` that had died of pattern complexity and returned empty — **empty output
+was read as absence**.
+
+The line stays instead of being deleted: removing it would invite the next person to
+"discover" the same non-defect, and the correction is the useful half. Reading the Codex
+engine's guarantee, this matters — a secret read is **not gated**, and it **is** recorded.
+Those are different sentences and only the first one is a gap.
 
 ## The guarantee, stated with its hole
 
