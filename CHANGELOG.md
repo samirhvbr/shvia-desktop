@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.4.37 - the gate table is a property of a CLI+model pair, and one cell diverges between pairs
+
+Documentation only. Three corrections to `docs/code/MOTOR-CODEX-20260909.md`, all measured
+on 09/09/2026 against an isolated `codex-cli 0.153.4` (`npm --prefix`; the global install
+stayed at `0.142.4` and the runner was not touched).
+
+**The table is of a PAIR, not of "Codex".** Seven of eight cells reproduce exactly on the
+newer CLI. One diverges: `curl` **fires a card** on `0.153.4` + `gpt-6-astra`, where
+`0.142.4` + `gpt-5.3-codex-spark` ran it sandboxed and died on DNS with no card.
+
+🔴 **Which variable causes it cannot be measured, and will not be.** `0.142.4` does not
+know `gpt-6-astra` — no model metadata, backend `400`, the turn dies before any tool — and
+`0.153.4` no longer lists `gpt-5.3-codex-spark`. **Each CLI only runs its own era's
+catalogue**, so no cell exists where one variable moves alone. The disambiguating
+experiment does not exist; this is not a gap to fill later. The *effect* is identical in
+both pairs — nothing leaves — which is why the pill now states the effect
+(`shvia-web 2.110.232`).
+
+**The environment note becomes dated history.** The catalogue behind the `404` is gone:
+`model/list` now answers `gpt-6-astra` (default), `gpt-5.6-sol`, `gpt-5.6-terra`,
+`gpt-5.6-luna`. Neither `gpt-5.5` nor `gpt-5.3-codex-spark` appears. 📋 The hypothesis that
+closes the mystery, consistent but unconfirmed: the `404` was this rollout — a model listed
+as available and default while the backend had already moved past it.
+
+**And how each cell was READ is now on the record.** This machine's `grep` is `ugrep
+7.8.4`, where a negated class with bounded repetition (`[^,]{0,50}`) exceeds its complexity
+limit: error on stderr, **nothing** on stdout, and `LC_ALL=C` does not help. Piped into
+`grep -c` that reads as `0` — indistinguishable from "it did not happen". Twice today an
+empty turn nearly became "no card". Cells read by parsing the NDJSON as JSON are marked
+🧪; those are the ones to trust without re-running.
+
 ## 1.4.36 - the missing tool_call was the measuring script, and the doc says so instead of staying silent
 
 An earlier revision of `docs/code/MOTOR-CODEX-20260909.md` reported, as "observed once,

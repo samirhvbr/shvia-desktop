@@ -40,7 +40,37 @@ the LSP family (which frames with headers and would have hung forever).
 
 > **Codex has no "ask about everything" mode, and an integrator cannot add one.**
 
-## 🔬 What the engine actually does — measured under its own policy
+## 🔬 What the engine actually does — measured, and measured of a PAIR
+
+> 🔴 **Every row below is a property of a CLI+MODEL PAIR, not of "Codex".** The whole
+> table was produced with `codex-cli 0.142.4` and the model that version offers. On
+> 09/09/2026 an isolated install of `0.153.4` (`npm --prefix`, global untouched) reproduced
+> seven of the eight cells exactly — and diverged on one: **`curl` fired a card**, where
+> `0.142.4` ran it sandboxed and died on DNS with no card.
+>
+> **Which of the two variables caused it cannot be measured, and will not be.** `0.142.4`
+> does not know `gpt-6-astra` — no model metadata, the backend answers `400`, the turn dies
+> before any tool runs. And `0.153.4` no longer lists `gpt-5.3-codex-spark`. **Each CLI only
+> runs its own era's catalogue**, so there is no cell where one variable moves alone. This
+> is not a gap to fill later: the disambiguating experiment does not exist.
+>
+> | pair | `curl` |
+> |---|---|
+> | `0.142.4` + `gpt-5.3-codex-spark` | no card — sandboxed, `Could not resolve host` |
+> | `0.153.4` + `gpt-6-astra` | **card fired** |
+>
+> The **effect** is the same in both: nothing leaves. That is why the engine pill says
+> *"the network does not leave the sandbox"* (`shvia-web 2.110.232`) instead of naming a
+> mechanism — the earlier wording generalised a mechanism from one combination that nobody
+> had noticed *was* a combination.
+>
+> ⚠️ **How each cell was read matters, because the tool lies quietly.** This machine's
+> `grep` is **`ugrep 7.8.4`**, and a negated class with bounded repetition
+> (`[^,]{0,50}`) **exceeds its complexity limit**: it writes an error to stderr and
+> **nothing** to stdout. Piped into `grep -c` that becomes `0` — indistinguishable from
+> "it did not happen", and `LC_ALL=C` does not help. Twice today an empty turn nearly
+> became "no card" that way. The cells marked 🧪 below were read by **parsing the NDJSON
+> as JSON**; they are the ones to trust without re-running.
 
 Every row below was run under **`sandbox: workspace-write` + `approvalPolicy: on-request`**,
 which is what `POLITICA` sends. That qualifier is the whole point of the table: an
@@ -51,11 +81,11 @@ when the field was fixed.
 
 | attempt | result | note |
 |---|---|---|
-| write inside the project | 🔬 no card | same as `claude-runner` on Auto |
+| write inside the project | 🧪🔬 no card | same as `claude-runner` on Auto |
 | write to `/tmp` | 🔬 no card | **`workspace-write` includes `/tmp`** — it is inside the writable set, so no boundary is crossed |
-| write to `$HOME` | 🔬 **card**, rejection held, file never created | this is measurement M |
-| `rm -rf` inside the project | 🔬 **card** (*"Você autorizou a exclusão de diretório…"*) | Codex gates destructive commands on its own |
-| `cat .env` inside the project | 🔬 no card — the secret came back as text | **the one real gap** against `claude-runner`, whose `caminhoProibido()` gates this at every level |
+| write to `$HOME` | 🧪🔬 **card**, rejection held, file never created | this is measurement M |
+| `rm -rf` inside the project | 🧪🔬 **card** (*"Você autorizou a exclusão de diretório…"*) | Codex gates destructive commands on its own |
+| `cat .env` inside the project | 🧪🔬 no card — the secret came back as text | **the one real gap** against `claude-runner`, whose `caminhoProibido()` gates this at every level |
 | `curl https://example.com` | 🔬 no card — ran sandboxed and failed with `Could not resolve host` | **blocked, not gated.** Nothing leaves; nobody is asked |
 
 🔴 **The boundary is not "outside the project" — it is "outside the sandbox's writable
@@ -138,7 +168,17 @@ Both corrections came from the reversion proof failing, and both are worth keepi
    ever proven. Host input is now wired only after the ruler passes. **A ruler the
    engine can outrun is not a ruler.**
 
-## Environment note, not a defect of ours
+## Environment note — HISTORICAL, and the catalogue it describes is gone
+
+> **Dated 09/09/2026 morning.** Kept as the record of an incident, not as current state.
+> Measured that afternoon against `0.153.4`: `model/list` now answers **`gpt-6-astra`
+> (default) · `gpt-5.6-sol` · `gpt-5.6-terra` · `gpt-5.6-luna`**. Neither `gpt-5.5` nor
+> `gpt-5.3-codex-spark` is listed any more.
+>
+> 📋 **The hypothesis that closes it, unconfirmed but consistent:** the `404` below was
+> most likely this catalogue rolling out — a model listed as available and default while
+> the inference backend had already moved past it. That would explain why the same model
+> worked minutes earlier and why `model/list` and the endpoint disagreed.
 
 🔬 `gpt-5.5` — the account's configured and `isDefault` model, listed as available by
 `model/list` — returned **404 "does not exist or you do not have access to it"** from
