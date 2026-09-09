@@ -86,6 +86,12 @@ jobs:
           triple="$(rustc -vV | awk '/^host:/{print $2}')"
           : > "src-tauri/binaries/anna-$triple"
           chmod +x "src-tauri/binaries/anna-$triple"
+      # O motor Codex é instalação opcional, e por isso mesmo a régua que confere a
+      # instalação precisa de uma instalação para conferir. O script não usa rede,
+      # npm nem login: copia arquivos, escreve um wrapper e cai na cópia do schema
+      # do repositório quando não há `codex` na máquina — que é o caso aqui.
+      - name: Instala o codex-runner (a régua de CI confere a instalação)
+        run: bash codex-runner/install.sh
       - name: cargo test (inclui a cerca da ponte — F-12)
         working-directory: src-tauri
         run: cargo test --locked
