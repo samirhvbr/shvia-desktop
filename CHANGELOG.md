@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.4.36 - the missing tool_call was the measuring script, and the doc says so instead of staying silent
+
+An earlier revision of `docs/code/MOTOR-CODEX-20260909.md` reported, as "observed once,
+unexplained", that a run had produced no `tool_call`/`tool_result` — raising the
+possibility of a command running without appearing in the Code timeline. Combined with
+the measured fact that Codex does not gate a secret read, that would have meant *"it reads
+`.env` and leaves no trace on screen"*.
+
+**It does leave a trace. The defect was in the instrument.**
+
+Chased against the raw wire (`SHVIA_CODEX_DEBUG=1`), three hypotheses and all three fall:
+the runner does filter `item/started`, but `commandExecution` **is** on its list;
+`item/started` **does** arrive, once, with exactly that type; and both `tool_call` and
+`tool_result` are emitted, with id, name and arguments. The two runs that appeared to show
+the absence were read through a summariser printing only `gate_request` and `tool_call`,
+and through a `grep` that died of pattern complexity and returned empty — **empty output
+read as absence**.
+
+The note is **corrected in place, not deleted**. A document that describes a defect that
+does not exist is worse than no document, but deleting the line silently invites the next
+person to rediscover the same non-defect. What stays is the distinction the chase
+produced: a secret read is **not gated**, and it **is** recorded. Only the first is a gap,
+and the engine pill already says so.
+
 ## 1.4.35 - the Codex runner names the secrets it is about to read without asking
 
 Slice 4, and it closes the only measured gap between the two engines — not by gating,
