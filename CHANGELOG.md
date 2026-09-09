@@ -3,6 +3,58 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.28 - a profile says which variable it switches accounts with, and the shell is asked instead of the person
+
+The owner's answer to the account proposal was *"a mais fácil e menos problemática ao
+usuário"*. Measured, that is neither typing a path nor renaming aliases: it is asking the
+shell, which answers in half a second and imposes no convention.
+
+### `var`, and why the pair is the answer
+
+A profile now records **which** variable it sets. The two are not interchangeable:
+`CLAUDE_CONFIG_DIR` moves the whole configuration home, `CLAUDE_SECURESTORAGE_CONFIG_DIR`
+moves the credential key and leaves the configuration shared. Storing a directory and
+guessing the variable runs a turn under a configuration nobody chose — and on macOS hands
+the client a blank home while the screen keeps naming the account the person picked.
+
+Absent means `CLAUDE_CONFIG_DIR`: a file written before the field describes the original
+mechanism, and reading it as anything else would change what every entry in the fleet means
+on upgrade. Present but unrecognised is **not** a default — the entry is dropped.
+
+🔴 **`cli_config` had to learn the difference too.** "Connect my CLI" writes `settings.json`
+into the profile's home, and a securestorage profile **has no home of its own** — that is the
+point of it. Writing there would put the file where the client never reads: the silent no-op
+1.4.19 fixed for the other kind. Its destination is the shared home, which is the one it
+actually uses.
+
+### Detection: `claudeAccountsDetect` and `claudeAccountAdd`
+
+The shell is asked which of its functions set a Claude account variable, and answers with
+`{alias, var, dir, disponivel}` per candidate. Registration goes by **alias**.
+
+⚠️ **A deliberate gesture, never the boot path.** The seed uses `is_dir()`, free and per
+launch; this starts an **interactive** shell, which sources the person's own config.
+
+🔴 **The fence moved in one direction only.** The path **leaves** for the screen, because
+that is the only way the person can check the resolution picked the right account before
+registering. What the page still cannot do is **send** one: registration carries the alias
+and the native side resolves it on that same call. A compromised page that could name a
+directory would point the agent's credentials wherever it liked.
+
+**What is accepted from a function body is narrow on purpose:** a literal assignment,
+quoted or not, expanding inside `$HOME` using nothing but `$HOME` or `~`. Anything computed
+is dropped, never guessed — evaluating someone's shell is the line this module does not
+cross.
+
+**Proofs (93 Rust tests, was 88):** each profile sets the variable it declares; the long
+variable name is not read as the short one it contains — the mistake that would classify
+every credential profile as a configuration profile, invisibly; a computed, outside-`$HOME`,
+empty or absent value is discarded; unquoted and `~` forms are accepted; and the parser reads
+the shape the owner's Mac actually answers, captured from `zsh -ic 'whence -f claude-me'`.
+
+**Not in this delivery:** the Settings UI. The native half is what makes the accounts
+reachable at all — without it any screen would be decorative.
+
 ## 1.4.27 - the Claude Code engine gets a runbook, and the account proposal gets the owner's answer
 
 **Why now.** On 08/09/2026 the engine was diagnosed from scratch on a machine it had never

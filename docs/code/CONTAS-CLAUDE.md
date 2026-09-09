@@ -38,12 +38,47 @@ sobre a sua conta do ShvIA.
 ```json
 {
   "contas": [
-    { "id": "empresa-blue3", "rotulo": "Empresa · Blue3", "dir": "/home/samir/.claude-blue3" },
-    { "id": "pessoal",       "rotulo": "Pessoal",         "dir": "/home/samir/.claude-pessoal" }
+    { "id": "empresa-blue3", "rotulo": "Empresa · Blue3",
+      "dir": "/home/samir/.claude-blue3", "var": "CLAUDE_CONFIG_DIR" },
+    { "id": "claude-b3", "rotulo": "Empresa · Blue3",
+      "dir": "/Users/samir/.claude-cred-blue3", "var": "CLAUDE_SECURESTORAGE_CONFIG_DIR" }
   ],
   "selecionada": "padrao"
 }
 ```
+
+🔴 **`var` diz QUAL variável o perfil seta, e as duas não são intercambiáveis** (1.4.28).
+`CLAUDE_CONFIG_DIR` move a casa de configuração inteira — ajustes, histórico, `projects/`,
+`sessions/`; `CLAUDE_SECURESTORAGE_CONFIG_DIR` move só a chave da credencial e mantém a
+configuração compartilhada. Guardar um diretório e adivinhar a variável rodaria o turno numa
+configuração que ninguém escolheu, e no macOS entregaria ao cliente uma casa em branco com o
+nome da conta escolhida na tela.
+
+**Ausente significa `CLAUDE_CONFIG_DIR`.** Um arquivo escrito antes deste campo descreve um
+perfil do mecanismo original, e ler como outra coisa mudaria o significado de toda entrada da
+frota numa atualização. Valor presente e desconhecido não vira default: a entrada é
+descartada, como qualquer outra que não passa na validação.
+
+### Descobrir os perfis em vez de digitá-los
+
+`claudeAccountsDetect` pergunta ao **shell** quais funções trocam de conta e devolve
+`{alias, var, dir, disponivel}` para cada uma. Meio segundo, medido. `claudeAccountAdd`
+cadastra uma delas **pelo alias**.
+
+⚠️ **Gesto explícito, nunca o boot.** A semeadura usa `is_dir()`, que é grátis e roda a cada
+abertura; a descoberta sobe um shell **interativo**, que executa a configuração da pessoa.
+Pertence a um botão.
+
+🔴 **A fronteira mudou num sentido só, e é de propósito.** O caminho **sai** para a tela —
+é a única forma de a pessoa conferir que a resolução pegou a conta certa antes de cadastrar.
+O que a página continua sem poder fazer é **mandar** um: o cadastro vai por `alias`, e quem
+resolve é o lado nativo, na mesma chamada. Uma página comprometida que pudesse nomear
+diretório apontaria a credencial do agente para onde quisesse.
+
+**O que é aceito do corpo da função é estreito de propósito:** uma atribuição literal, com ou
+sem aspas, cujo valor expande para dentro do `$HOME` usando nada além de `$HOME` ou `~`.
+Qualquer coisa computada é **descartada, nunca adivinhada** — avaliar o shell da pessoa é a
+linha que este módulo não cruza.
 
 **Semeadura, uma vez.** Na primeira execução o app grava os perfis conhecidos cujo
 diretório **já existe** — `~/.claude-blue3` e `~/.claude-pessoal`. Nada é criado: uma pasta

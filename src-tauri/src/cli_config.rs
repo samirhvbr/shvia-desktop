@@ -214,7 +214,20 @@ pub fn escrever(window: &WebviewWindow, req: String, v: &Value) {
         None
     };
 
-    let destino = cliente.caminho(&home, conta_dir.as_deref());
+    /* 🔴 Só um perfil de CONFIGURAÇÃO tem casa própria para escrever.
+     *
+     * Um perfil `CLAUDE_SECURESTORAGE_CONFIG_DIR` separa apenas o cofre de credencial e
+     * mantém a configuração compartilhada — ele NÃO tem `settings.json` próprio. Gravar
+     * dentro do diretório dele poria o arquivo onde o cliente nunca lê: um no-op silencioso,
+     * que é exatamente o defeito que a 1.4.19 corrigiu para o outro tipo. Então o destino
+     * dele é a casa padrão, que é de fato a que ele usa. */
+    let destino = cliente.caminho(
+        &home,
+        conta_dir
+            .as_ref()
+            .filter(|a| a.var == crate::contas_claude::Var::ConfigDir)
+            .map(|a| a.dir.as_path()),
+    );
 
     // Cinto e suspensório: o caminho é montado aqui, mas conferir que ele está DENTRO do
     // home é o que garante que uma mudança futura no `caminho()` não abra escrita

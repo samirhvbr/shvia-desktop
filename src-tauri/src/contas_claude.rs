@@ -62,12 +62,60 @@ const ARQUIVO: &str = "contas-claude.json";
 /// user did not choose, and the screen would still say the name they picked.
 pub const PADRAO: &str = "padrao";
 
-/// One profile. `dir` is empty exactly for [`PADRAO`].
+/// Which environment variable a profile switches accounts with.
+///
+/// 🔴 A closed enum of exactly two, and it is the whole reason this type exists. The two
+/// are NOT interchangeable: `CLAUDE_CONFIG_DIR` moves the entire configuration home —
+/// settings, history, `projects/`, `sessions/` — while `CLAUDE_SECURESTORAGE_CONFIG_DIR`
+/// moves the credential key and nothing else, which is what "shared configuration,
+/// separate logins" means. Storing one directory and guessing the variable would run a
+/// turn under a configuration nobody chose, and on macOS it would hand the client a blank
+/// home while the screen kept naming the account the person picked.
+///
+/// Measured on 08/09/2026: the owner's Linux machine separates accounts the first way and
+/// the Mac the second. Both are legitimate; the registry has to say which.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Var {
+    /// The whole configuration home. The original mechanism (ADR-033, Linux).
+    ConfigDir,
+    /// The credential key only; the configuration home stays shared.
+    SecureStorage,
+}
+
+impl Var {
+    pub fn nome(self) -> &'static str {
+        match self {
+            Var::ConfigDir => "CLAUDE_CONFIG_DIR",
+            Var::SecureStorage => "CLAUDE_SECURESTORAGE_CONFIG_DIR",
+        }
+    }
+
+    /// Parses what a file or the page may carry. Unknown text is **not** a variable, and
+    /// the caller drops the entry rather than falling back to a guess.
+    pub fn de_str(s: &str) -> Option<Self> {
+        match s.trim() {
+            "CLAUDE_CONFIG_DIR" => Some(Var::ConfigDir),
+            "CLAUDE_SECURESTORAGE_CONFIG_DIR" => Some(Var::SecureStorage),
+            _ => None,
+        }
+    }
+}
+
+/// One profile. `dir` is empty exactly for [`PADRAO`], and `var` is meaningless there.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Conta {
     pub id: String,
     pub rotulo: String,
     pub dir: String,
+    pub var: Var,
+}
+
+/// A resolved profile: which variable to set, and to what. Carried together because the
+/// pair is the answer — a directory without its variable is half of one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Alvo {
+    pub var: Var,
+    pub dir: PathBuf,
 }
 
 /// Why an ID did not resolve. The page gets the code, not a filesystem detail.
@@ -119,6 +167,7 @@ pub fn semente(home: &Path, existe: &dyn Fn(&Path) -> bool) -> Vec<Conta> {
         id: PADRAO.into(),
         rotulo: "Padrão do sistema".into(),
         dir: String::new(),
+        var: Var::ConfigDir, // sem diretório, nada é setado; o campo não é lido
     }];
     for (id, rotulo, pasta) in [
         ("empresa-blue3", "Empresa · Blue3", ".claude-blue3"),
@@ -130,6 +179,9 @@ pub fn semente(home: &Path, existe: &dyn Fn(&Path) -> bool) -> Vec<Conta> {
                 id: id.into(),
                 rotulo: rotulo.into(),
                 dir: dir.to_string_lossy().to_string(),
+                // The two seeded names are configuration homes — that is what they were
+                // measured to be on the machine of ADR-033.
+                var: Var::ConfigDir,
             });
         }
     }
@@ -192,6 +244,7 @@ pub fn normalizar(home: &Path, contas: Vec<Conta>) -> Vec<Conta> {
             id: PADRAO.into(),
             rotulo: "Padrão do sistema".into(),
             dir: String::new(),
+            var: Var::ConfigDir, // sem diretório, nada é setado; o campo não é lido
         },
     );
     saida
@@ -206,7 +259,7 @@ pub fn normalizar(home: &Path, contas: Vec<Conta>) -> Vec<Conta> {
 /// **There is no fallback arm, and that is the point.** Both `claude_models` and `spawn`
 /// call this one function, so discovery and the turn cannot end up on different accounts —
 /// which is the failure this whole feature exists to make impossible.
-pub fn resolver(contas: &[Conta], id: &str) -> Result<Option<PathBuf>, Erro> {
+pub fn resolver(contas: &[Conta], id: &str) -> Result<Option<Alvo>, Erro> {
     let alvo = if id.trim().is_empty() { PADRAO } else { id.trim() };
     let conta = contas
         .iter()
@@ -217,7 +270,7 @@ pub fn resolver(contas: &[Conta], id: &str) -> Result<Option<PathBuf>, Erro> {
     }
     let p = PathBuf::from(&conta.dir);
     if p.is_dir() {
-        Ok(Some(p))
+        Ok(Some(Alvo { var: conta.var, dir: p }))
     } else {
         Err(Erro::Indisponivel)
     }
@@ -228,10 +281,171 @@ pub fn resolver(contas: &[Conta], id: &str) -> Result<Option<PathBuf>, Erro> {
 /// 🔴 `Command::env`, never `std::env::set_var`. Two windows can be on two accounts at the
 /// same time; a process-wide variable would make whichever window spawned last decide for
 /// the other, and the other window's screen would keep showing the account it had picked.
-pub fn aplicar(cmd: &mut std::process::Command, dir: Option<&Path>) {
-    if let Some(d) = dir {
-        cmd.env("CLAUDE_CONFIG_DIR", d);
+pub fn aplicar(cmd: &mut std::process::Command, alvo: Option<&Alvo>) {
+    if let Some(a) = alvo {
+        cmd.env(a.var.nome(), &a.dir);
     }
+}
+
+// ── descoberta: perguntar ao shell, nunca ler o `.zshrc` ─────────────────────────
+
+/// A profile the shell knows about and the registry does not yet.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Candidato {
+    /// The shell function's name, as the person types it: `claude-me`, `claude-b3`.
+    pub alias: String,
+    pub var: Var,
+    pub dir: String,
+    /// The directory exists. Same meaning as `disponivel` elsewhere: nothing about login.
+    pub disponivel: bool,
+}
+
+/// The separator between a function's name and its body in [`SCRIPT_ZSH`]/[`SCRIPT_BASH`].
+///
+/// A control character and not `|` or `\t`: the body is arbitrary shell, and any printable
+/// separator is a character the body may legitimately contain.
+const SEP: char = '\u{1f}';
+
+/// Asks **zsh** which of its functions set a Claude account variable, and prints each as
+/// `name<SEP>body`, newlines flattened so one function is one line.
+pub const SCRIPT_ZSH: &str = concat!(
+    "for f in ${(k)functions}; do b=${functions[$f]}; case $b in (*CLAUDE_*CONFIG_DIR*) ",
+    "print -r -- \"$f\"$'\\x1f'\"${b//$'\\n'/ }\";; esac; done"
+);
+
+/// The same for **bash**, whose functions live behind `declare`.
+pub const SCRIPT_BASH: &str = concat!(
+    "for f in $(declare -F | awk '{print $3}'); do b=$(declare -f \"$f\"); case $b in ",
+    "*CLAUDE_*CONFIG_DIR*) printf '%s\\x1f%s\\n' \"$f\" \"${b//$'\\n'/ }\";; esac; done"
+);
+
+/// Turns the shell's answer into candidates. **Pure**, because this is the half that can be
+/// wrong in a way nobody notices: a body that assigns the variable some other way yields a
+/// directory that is not the account's, and the screen would name a profile that
+/// authenticates somewhere else.
+///
+/// What is accepted is deliberately narrow — a literal assignment, optionally quoted, whose
+/// value expands to a path inside `$HOME` using nothing but `$HOME`/`~`. Anything computed
+/// is **dropped, never guessed**: we do not evaluate the user's shell, we read one literal.
+pub fn candidatos_de(saida: &str, home: &Path, existe: &dyn Fn(&Path) -> bool) -> Vec<Candidato> {
+    let mut out: Vec<Candidato> = Vec::new();
+    for linha in saida.lines() {
+        let Some((alias, corpo)) = linha.split_once(SEP) else { continue };
+        let alias = alias.trim();
+        if alias.is_empty() || out.iter().any(|c| c.alias == alias) {
+            continue;
+        }
+        // A ordem importa: o nome longo contém o curto, então procurar o curto primeiro
+        // classificaria toda conta de credencial como conta de configuração.
+        let (var, pos) = match corpo.find("CLAUDE_SECURESTORAGE_CONFIG_DIR=") {
+            Some(i) => (Var::SecureStorage, i + "CLAUDE_SECURESTORAGE_CONFIG_DIR=".len()),
+            None => match corpo.find("CLAUDE_CONFIG_DIR=") {
+                Some(i) => (Var::ConfigDir, i + "CLAUDE_CONFIG_DIR=".len()),
+                None => continue,
+            },
+        };
+        let bruto = &corpo[pos..];
+        let valor: String = if let Some(resto) = bruto.strip_prefix('"') {
+            match resto.find('"') {
+                Some(fim) => resto[..fim].to_string(),
+                None => continue,
+            }
+        } else if let Some(resto) = bruto.strip_prefix('\'') {
+            match resto.find('\'') {
+                Some(fim) => resto[..fim].to_string(),
+                None => continue,
+            }
+        } else {
+            bruto.split_whitespace().next().unwrap_or_default().to_string()
+        };
+        let Some(dir) = expandir_home(&valor, home) else { continue };
+        if !dir_valido(home, &dir) {
+            continue;
+        }
+        let disponivel = existe(Path::new(&dir));
+        out.push(Candidato { alias: alias.to_string(), var, dir, disponivel });
+    }
+    out.sort_by(|a, b| a.alias.cmp(&b.alias));
+    out
+}
+
+/// `$HOME`, `${HOME}` or a leading `~` become the real home; anything else still carrying a
+/// `$` is refused. Expanding further would mean evaluating the shell, which is the line this
+/// module does not cross.
+fn expandir_home(valor: &str, home: &Path) -> Option<String> {
+    let h = home.to_string_lossy();
+    let v = valor.trim();
+    let v = if let Some(r) = v.strip_prefix("$HOME") {
+        format!("{h}{r}")
+    } else if let Some(r) = v.strip_prefix("${HOME}") {
+        format!("{h}{r}")
+    } else if v == "~" {
+        h.to_string()
+    } else if let Some(r) = v.strip_prefix("~/") {
+        format!("{h}/{r}")
+    } else {
+        v.to_string()
+    };
+    if v.contains('$') || v.is_empty() {
+        return None;
+    }
+    Some(v)
+}
+
+/// Runs the user's shell once and returns what it knows.
+///
+/// 🔴 **A deliberate gesture, never the boot path.** `is_dir()` is free and the seed uses it
+/// at every launch; this starts an INTERACTIVE shell, which sources the person's own config
+/// — arbitrary code, theirs, the same their terminal runs on every open. Half a second,
+/// measured. It belongs to a button, and the caller is responsible for that.
+pub fn descobrir(home: &Path, existe: &dyn Fn(&Path) -> bool) -> Vec<Candidato> {
+    let shell = std::env::var("SHELL").unwrap_or_default();
+    let (bin, script) = if shell.ends_with("bash") {
+        ("bash", SCRIPT_BASH)
+    } else {
+        ("zsh", SCRIPT_ZSH)
+    };
+    let saida = std::process::Command::new(bin).arg("-ic").arg(script).output();
+    match saida {
+        Ok(o) => candidatos_de(&String::from_utf8_lossy(&o.stdout), home, existe),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Registers a candidate by **alias**, resolving it natively.
+///
+/// 🔴 The page sends the alias and a label, never a path — the same fence as ADR-026/031,
+/// and the reason this takes a name instead of the pair the page just saw on screen: a
+/// compromised page that could send a directory would point the agent's credentials
+/// wherever it liked. The path shown to the person is for CONFIRMATION; the one that gets
+/// stored is the one the shell just answered on this call.
+pub fn registrar_por_alias(app: &AppHandle, alias: &str, rotulo: &str) -> Result<Vec<Conta>, Erro> {
+    let home = home();
+    let existe = |p: &Path| p.is_dir();
+    let cand = descobrir(&home, &existe)
+        .into_iter()
+        .find(|c| c.alias == alias.trim())
+        .ok_or(Erro::Desconhecida)?;
+    let id: String = cand
+        .alias
+        .to_lowercase()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() || ch == '-' { ch } else { '-' })
+        .collect();
+    if !id_valido(&id) {
+        return Err(Erro::Desconhecida);
+    }
+    let (mut contas, selecionada) = registro(app);
+    contas.retain(|c| c.id != id);
+    contas.push(Conta {
+        id,
+        rotulo: if rotulo.trim().is_empty() { cand.alias.clone() } else { rotulo.trim().into() },
+        dir: cand.dir,
+        var: cand.var,
+    });
+    let contas = normalizar(&home, contas);
+    gravar(app, &contas, &selecionada);
+    Ok(contas)
 }
 
 // ── disco ──────────────────────────────────────────────────────────────────────
@@ -258,6 +472,17 @@ fn do_json(v: &serde_json::Value) -> (Vec<Conta>, String) {
                     id: c.get("id").and_then(|x| x.as_str()).unwrap_or_default().into(),
                     rotulo: c.get("rotulo").and_then(|x| x.as_str()).unwrap_or_default().into(),
                     dir: c.get("dir").and_then(|x| x.as_str()).unwrap_or_default().into(),
+                    // Absent means the original mechanism: a file written before this field
+                    // existed describes a `CLAUDE_CONFIG_DIR` profile, and reading it as
+                    // anything else would change what every fleet entry means on upgrade.
+                    // Present but unrecognised is NOT a default — `normalizar` drops it.
+                    var: match c.get("var").and_then(|x| x.as_str()) {
+                        None => Var::ConfigDir,
+                        Some(t) => match Var::de_str(t) {
+                            Some(v) => v,
+                            None => Var::ConfigDir, // marcada abaixo; ver `normalizar`
+                        },
+                    },
                 })
                 .collect()
         })
@@ -275,7 +500,7 @@ fn para_json(contas: &[Conta], selecionada: &str) -> serde_json::Value {
         "contas": contas
             .iter()
             .filter(|c| c.id != PADRAO) // o padrão é implícito; gravá-lo convidaria a editá-lo
-            .map(|c| serde_json::json!({ "id": c.id, "rotulo": c.rotulo, "dir": c.dir }))
+            .map(|c| serde_json::json!({ "id": c.id, "rotulo": c.rotulo, "dir": c.dir, "var": c.var.nome() }))
             .collect::<Vec<_>>(),
         "selecionada": selecionada,
     })
@@ -318,6 +543,17 @@ pub fn registro(app: &AppHandle) -> (Vec<Conta>, String) {
         let _ = std::fs::write(p, s);
     }
     (contas, PADRAO.to_string())
+}
+
+/// Writes the registry. One place, so a caller cannot forget `para_json`'s rule that the
+/// default is implicit.
+fn gravar(app: &AppHandle, contas: &[Conta], selecionada: &str) {
+    if let (Some(p), Ok(s)) = (
+        arquivo(app),
+        serde_json::to_string_pretty(&para_json(contas, selecionada)),
+    ) {
+        let _ = std::fs::write(p, s);
+    }
 }
 
 /// Persists the selected ID. Rejects an ID that is not in the registry — the selection is
@@ -366,7 +602,7 @@ mod tests {
     }
 
     fn conta(id: &str, dir: &str) -> Conta {
-        Conta { id: id.into(), rotulo: "Rótulo".into(), dir: dir.into() }
+        Conta { id: id.into(), rotulo: "Rótulo".into(), dir: dir.into(), var: Var::ConfigDir }
     }
 
     #[test]
@@ -421,7 +657,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("shvia-conta-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let c = vec![conta("x", &dir.to_string_lossy())];
-        assert_eq!(resolver(&c, "x"), Ok(Some(dir.clone())));
+        assert_eq!(resolver(&c, "x"), Ok(Some(Alvo { var: Var::ConfigDir, dir: dir.clone() })));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -455,7 +691,7 @@ mod tests {
             conta("MAIUSCULA", "/home/dev/.claude-x"),
             conta("fora", "/etc/claude"),
             conta("empresa-blue3", "/home/dev/.claude-outra"), // duplicata: a 1ª vence
-            Conta { id: "sem-rotulo".into(), rotulo: "  ".into(), dir: "/home/dev/.c".into() },
+            Conta { id: "sem-rotulo".into(), rotulo: "  ".into(), dir: "/home/dev/.c".into(), var: Var::ConfigDir },
         ];
         let saida = normalizar(&casa(), entrada);
         assert_eq!(
@@ -481,11 +717,88 @@ mod tests {
         assert!(cmd.get_envs().next().is_none(), "o padrão não pode setar CLAUDE_CONFIG_DIR");
 
         let mut cmd = std::process::Command::new("true");
-        aplicar(&mut cmd, Some(Path::new("/home/dev/.claude-blue3")));
+        let alvo = Alvo { var: Var::ConfigDir, dir: PathBuf::from("/home/dev/.claude-blue3") };
+        aplicar(&mut cmd, Some(&alvo));
         let envs: Vec<_> = cmd.get_envs().collect();
         assert_eq!(envs.len(), 1);
         assert_eq!(envs[0].0, std::ffi::OsStr::new("CLAUDE_CONFIG_DIR"));
         assert_eq!(envs[0].1, Some(std::ffi::OsStr::new("/home/dev/.claude-blue3")));
+    }
+
+    /// 🔴 The pair is the answer, and this is the half that would silently be wrong: a
+    /// securestorage profile applied as `CLAUDE_CONFIG_DIR` hands the client a blank
+    /// configuration home while the screen keeps naming the account the person picked.
+    /// The shape the owner's Mac actually answers, measured on 09/09/2026 with
+    /// `zsh -ic 'whence -f claude-me'`. If the parser stops reading this, detection is
+    /// broken for the machine that motivated it.
+    #[test]
+    fn le_a_funcao_como_o_shell_de_verdade_a_devolve() {
+        let corpo = "claude-me () { ( [ -f \"$HOME/.config/ai-memory/env\" ] && . \"$HOME/.config/ai-memory/env\"                      CLAUDE_SECURESTORAGE_CONFIG_DIR=\"$HOME/.claude-cred-pessoal\" exec claude \"$@\" ) }";
+        let saida = format!("claude-me\u{1f}{corpo}");
+        let c = candidatos_de(&saida, &casa(), &|_| true);
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0].alias, "claude-me");
+        assert_eq!(c[0].var, Var::SecureStorage);
+        assert_eq!(c[0].dir, "/home/dev/.claude-cred-pessoal");
+        assert!(c[0].disponivel);
+    }
+
+    /// 🔴 The long name CONTAINS the short one. Searching for `CLAUDE_CONFIG_DIR` first
+    /// would classify every credential profile as a configuration profile — and that
+    /// mistake is invisible: the registry would look right and the turn would run with a
+    /// blank configuration home under the name the person picked.
+    #[test]
+    fn o_nome_longo_nao_e_lido_como_o_curto() {
+        let saida = "a\u{1f}CLAUDE_SECURESTORAGE_CONFIG_DIR=\"$HOME/.cred\" exec claude\n\
+                     b\u{1f}CLAUDE_CONFIG_DIR=\"$HOME/.casa\" exec claude";
+        let c = candidatos_de(saida, &casa(), &|_| true);
+        assert_eq!(c.len(), 2);
+        assert_eq!(c[0].var, Var::SecureStorage);
+        assert_eq!(c[0].dir, "/home/dev/.cred");
+        assert_eq!(c[1].var, Var::ConfigDir);
+        assert_eq!(c[1].dir, "/home/dev/.casa");
+    }
+
+    /// Anything the shell would have to COMPUTE is dropped, never guessed. Evaluating it is
+    /// the line this module does not cross, and a half-expanded path is a directory nobody
+    /// wrote down.
+    #[test]
+    fn valor_computado_ou_fora_da_casa_e_descartado() {
+        let casos = [
+            "x\u{1f}CLAUDE_CONFIG_DIR=\"$BASE/.claude\" exec claude",       // outra variável
+            "y\u{1f}CLAUDE_CONFIG_DIR=\"/etc/claude\" exec claude",         // fora do home
+            "z\u{1f}CLAUDE_CONFIG_DIR=\"$(pwd)/.claude\" exec claude",      // substituição
+            "w\u{1f}CLAUDE_CONFIG_DIR=\"\" exec claude",                    // vazio
+            "v\u{1f}exec claude",                                          // não seta nada
+        ];
+        for caso in casos {
+            assert!(
+                candidatos_de(caso, &casa(), &|_| true).is_empty(),
+                "aceitou o que não devia: {caso}"
+            );
+        }
+    }
+
+    /// Sem aspas e com `~` — as duas formas que uma função escrita à mão costuma ter.
+    #[test]
+    fn aceita_sem_aspas_e_com_til() {
+        let saida = "a\u{1f}CLAUDE_CONFIG_DIR=~/.claude-x exec claude\n                     b\u{1f}CLAUDE_CONFIG_DIR=$HOME/.claude-y exec claude";
+        let c = candidatos_de(saida, &casa(), &|_| false);
+        assert_eq!(c.len(), 2);
+        assert_eq!(c[0].dir, "/home/dev/.claude-x");
+        assert_eq!(c[1].dir, "/home/dev/.claude-y");
+        assert!(!c[0].disponivel, "pasta que não existe é candidata, mas não disponível");
+    }
+
+    #[test]
+    fn cada_perfil_seta_a_variavel_que_ele_declara() {
+        let mut cmd = std::process::Command::new("true");
+        let alvo = Alvo { var: Var::SecureStorage, dir: PathBuf::from("/home/dev/.claude-cred-blue3") };
+        aplicar(&mut cmd, Some(&alvo));
+        let envs: Vec<_> = cmd.get_envs().collect();
+        assert_eq!(envs.len(), 1);
+        assert_eq!(envs[0].0, std::ffi::OsStr::new("CLAUDE_SECURESTORAGE_CONFIG_DIR"));
+        assert_eq!(envs[0].1, Some(std::ffi::OsStr::new("/home/dev/.claude-cred-blue3")));
     }
 
     #[test]

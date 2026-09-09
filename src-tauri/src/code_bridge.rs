@@ -132,6 +132,11 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // manda um `id` da lista, NUNCA um caminho: quem traduz id→diretório é o Rust, e é essa
     // a mesma linha do ADR-026 (a página propõe valores) e do ADR-031 (a cerca vem do gesto).
     claudeAccounts: function () { return post('claudeAccounts'); },
+    // Pergunta ao SHELL quais funções trocam de conta. Gesto explícito (botão), nunca no
+    // boot: sobe um shell interativo. → {candidatos:[{alias,var,dir,disponivel}]}
+    claudeAccountsDetect: function () { return post('claudeAccountsDetect'); },
+    // Cadastra um candidato pelo ALIAS — a página nunca manda caminho. {alias, rotulo?}
+    claudeAccountAdd: function (o) { return post('claudeAccountAdd', o || {}); },
     // Persiste a conta escolhida no dispositivo. → {selecionada} | {erro, codigo}
     // Recusa id fora da lista: escolher não pode ser o jeito de inventar um perfil.
     claudeAccountSelect: function (id) { return post('claudeAccountSelect', { accountId: id }); },
@@ -334,13 +339,13 @@ impl Sidecars {
 /// Falha nunca é fatal — devolve `erro` e a UI cai no fallback dela; catálogo
 /// vazio apresentado como "nenhum modelo" seria pior que dizer que não deu.
 ///
-/// `conta_dir` é o `CLAUDE_CONFIG_DIR` do perfil escolhido (ADR-033), já resolvido por
+/// `conta` é o par variável+diretório do perfil escolhido (ADR-033), já resolvido por
 /// `contas_claude::resolver` — o **mesmo** resolvedor que o `spawn` usa. O argumento é
 /// obrigatório de propósito: enquanto esta função não pedia nada, ela e o `spawn` eram
 /// dois caminhos independentes até o mesmo binário, e nada obrigava os dois a concordarem
 /// sobre qual conta estava valendo. O catálogo é por assinatura, então discordar aqui
 /// significa oferecer na tela um modelo que o turno vai recusar.
-fn claude_models(conta_dir: Option<&std::path::Path>) -> serde_json::Value {
+fn claude_models(conta: Option<&crate::contas_claude::Alvo>) -> serde_json::Value {
     let Some(bin) = resolve_bin("claude-runner") else {
         return serde_json::json!({ "erro": ERRO_RUNNER_AUSENTE });
     };
@@ -349,7 +354,7 @@ fn claude_models(conta_dir: Option<&std::path::Path>) -> serde_json::Value {
     if let Some(p) = crate::user_env::sidecar_path() {
         cmd.env("PATH", p);
     }
-    crate::contas_claude::aplicar(&mut cmd, conta_dir);
+    crate::contas_claude::aplicar(&mut cmd, conta);
     match cmd.output() {
         Ok(o) => String::from_utf8_lossy(&o.stdout)
             .lines()
@@ -637,7 +642,7 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             let id = v.get("accountId").and_then(|x| x.as_str()).unwrap_or_default();
             match crate::contas_claude::resolver(&contas, id) {
                 Ok(dir) => {
-                    let out = claude_models(dir.as_deref());
+                    let out = claude_models(dir.as_ref());
                     let ok = out.get("modelos").is_some();
                     reply(window, &req, ok, out);
                 }
@@ -654,6 +659,44 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
         "claudeAccounts" => {
             let out = crate::contas_claude::como_json(window.app_handle());
             reply(window, &req, true, out);
+        }
+        /* Descoberta: pergunta ao SHELL quais funções trocam de conta (ADR-033 §macOS).
+         *
+         * 🔴 Gesto explícito, nunca o boot: sobe um shell INTERATIVO, que roda a config da
+         * pessoa. E aqui o caminho SAI para a tela — é a única forma de ela conferir que a
+         * resolução pegou a conta certa antes de cadastrar. O que a página nunca faz é
+         * MANDAR um: o cadastro abaixo vai por `alias`, e quem resolve é o lado nativo. */
+        "claudeAccountsDetect" => {
+            let home = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default());
+            let achados = crate::contas_claude::descobrir(&home, &|p| p.is_dir());
+            let lista: Vec<_> = achados
+                .iter()
+                .map(|c| {
+                    serde_json::json!({
+                        "alias": c.alias,
+                        "var": c.var.nome(),
+                        "dir": c.dir,
+                        "disponivel": c.disponivel,
+                    })
+                })
+                .collect();
+            reply(window, &req, true, serde_json::json!({ "candidatos": lista }));
+        }
+        "claudeAccountAdd" => {
+            let alias = v.get("alias").and_then(|x| x.as_str()).unwrap_or_default();
+            let rotulo = v.get("rotulo").and_then(|x| x.as_str()).unwrap_or_default();
+            match crate::contas_claude::registrar_por_alias(window.app_handle(), alias, rotulo) {
+                Ok(_) => {
+                    let out = crate::contas_claude::como_json(window.app_handle());
+                    reply(window, &req, true, out);
+                }
+                Err(e) => reply(
+                    window,
+                    &req,
+                    false,
+                    serde_json::json!({ "erro": e.mensagem(), "codigo": e.codigo() }),
+                ),
+            }
         }
         "claudeAccountSelect" => {
             let id = v.get("accountId").and_then(|x| x.as_str()).unwrap_or_default();
@@ -820,7 +863,7 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
                 )
             }
         };
-        crate::contas_claude::aplicar(&mut cmd, conta_dir.as_deref());
+        crate::contas_claude::aplicar(&mut cmd, conta_dir.as_ref());
         resolvida = contas
             .iter()
             .find(|c| c.id == if account_id.trim().is_empty() { crate::contas_claude::PADRAO } else { account_id.trim() })
