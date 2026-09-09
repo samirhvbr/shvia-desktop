@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.4.33 - the Codex runner validates its own payloads, and the sixth defect was in its first line
+
+`esquema.mjs` checks every outgoing request against Codex's generated schema before it
+reaches the wire — the one document in this runner its author did not write. Unknown
+properties are errors even where the schema omits `additionalProperties: false`: for a
+payload we SEND, a field the server does not know is a typo, a rename or a guess.
+
+**It found a sixth defect on its first run, and that one invalidated a day of
+measurements.** The runner had been sending `sandboxMode` to `thread/start` since its
+first line. The field does not exist — it is `sandbox` — so the server discarded it in
+silence. The policy this engine believed it was setting was never set, and every earlier
+observation described Codex's *default*. **A wrong field does not fail; it vanishes.**
+
+Two conclusions flipped once the field was right, and both tables were rewritten:
+
+- **Network is not gated, it is BLOCKED.** The earlier card came from the default
+  sandbox. Under `workspace-write`, `curl` runs inside the sandbox and dies on DNS with
+  nobody asked. Nothing leaves — and nothing is shown either.
+- **The boundary is the sandbox's writable set, not the project.** `workspace-write`
+  includes `/tmp`, so a turn writes there with no card. Measurement M only reproduced
+  once its target moved to `$HOME` — the same `/tmp` trap that had already broken the
+  startup ruler's probe earlier the same day, in a different instrument.
+
+Measured and unchanged: `rm -rf` gets a card (Codex gates destructive commands itself,
+which an earlier version of the doc denied), writes inside the project do not — matching
+`claude-runner` on Auto — and a write to `$HOME` gets a card whose rejection holds.
+
+🔴 **The one gap that stays: `cat .env` is not gated.** `claude-runner` blocks a secret
+read at every level through `caminhoProibido()`; Codex hands the value back. This runner
+cannot close it — `item/started` arrives after the command begins — and there is no
+execpolicy surface to force a prompt: `config/read` exposes only `approval_policy`,
+`approvals_reviewer` and `shell_environment_policy`, and `execpolicy` exists solely as an
+amendment Codex proposes. That "never" is now measured rather than assumed.
+
+`install.sh` **regenerates** the schema from the Codex actually installed
+(`codex app-server generate-json-schema`), falling back to the repo copy only for an
+older CLI — and printing which one it used. A vendored schema goes stale on the next
+Codex release, and a stale schema in a validator rejects fields that became valid while
+accepting ones that stopped being: the same "answers something plausible" failure this
+guard exists to end. Keep the command, not the derived state.
+
+Record, with every row marked 🔬 live or 📋 schema:
+[`docs/code/MOTOR-CODEX-20260909.md`](docs/code/MOTOR-CODEX-20260909.md).
+
+## 1.4.31 - the Codex engine gets a runner, one honest level and a sandbox ruler that refuses to start
 ## 1.4.32 - the Codex engine gets a runner, one honest level and a sandbox ruler that refuses to start
 
 Slice 1 of a third Code-mode engine: `codex-runner/` drives `codex app-server --stdio`

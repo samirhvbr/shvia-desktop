@@ -1,0 +1,6 @@
+[shell_environment_policy]
+inherit = "core"
+
+[shell_environment_policy.set]
+CLAUDE_CODE_SUBAGENT_MODEL = "opus"
+ANTHROPIC_DEFAULT_OPUS_MODEL = "claude-opus-5"

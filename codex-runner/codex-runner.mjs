@@ -43,6 +43,7 @@
 
 import { spawn } from "node:child_process";
 import * as readline from "node:readline";
+import { validarPayload } from "./esquema.mjs";
 import {
   PEDIDOS_QUE_BLOQUEIAM,
   decisaoParaResposta,
@@ -117,6 +118,17 @@ let proximoId = 1;
 const pendentes = new Map(); // our request id → resolve
 
 function pedir(method, params) {
+  // 🔴 The payload is checked against Codex's OWN schema before it leaves. On its
+  // first run this caught `sandboxMode` in `thread/start` — a field that does not
+  // exist (it is `sandbox`), which the server had been ignoring in silence since the
+  // first line of this runner. The policy I believed I was setting was never set;
+  // what I measured was Codex's default. A wrong field does not fail, it is
+  // DISCARDED, and that is exactly the failure this guard exists for.
+  const problemas = validarPayload(method, params);
+  if (problemas.length) {
+    emit({ type: "error", message: `payload inválido em ${method}: ${problemas.join("; ")}` });
+    throw new Error(`payload inválido em ${method}`);
+  }
   const id = proximoId++;
   const linha = JSON.stringify({ jsonrpc: "2.0", id, method, params });
   if (process.env.SHVIA_CODEX_DEBUG) process.stderr.write("[->] " + linha + "\n");
@@ -151,7 +163,7 @@ async function garantirThread() {
     cwd: PROJECT_DIR,
     ...(MODEL ? { model: MODEL } : {}),
     approvalPolicy: askForApproval,
-    sandboxMode,
+    sandbox: sandboxMode,
   });
   threadId = r?.threadId ?? r?.thread?.id ?? null;
   if (!threadId) {
@@ -299,7 +311,7 @@ await pedir("initialize", {
  * The whole promise of this engine is the BOUNDARY: inside the project it writes
  * freely, and to step outside it has to ask. That promise rests on Codex's sandbox
  * actually stopping an outside write — and nothing in the handshake reports whether
- * it does. `thread/start` accepts `sandboxMode` and answers OK either way.
+ * it does. `thread/start` accepts the policy and answers OK either way.
  *
  * So this measures instead of trusting: it asks the server to write a file OUTSIDE
  * the workspace, under the same policy the turns will use, and requires the attempt

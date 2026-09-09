@@ -16,7 +16,26 @@ command -v node >/dev/null 2>&1 || { echo "erro: Node 18+ não encontrado no PAT
 mkdir -p "$DEST" "$BIN"
 # Every file the runner imports. The Claude runner shipped broken once because
 # this list missed a module, so the load proof below exists to catch exactly that.
-cp "$DIR/codex-runner.mjs" "$DIR/protocolo.mjs" "$DIR/package.json" "$DEST/"
+cp "$DIR/codex-runner.mjs" "$DIR/protocolo.mjs" "$DIR/esquema.mjs" "$DIR/package.json" "$DEST/"
+mkdir -p "$DEST/schemas"
+
+# 🔴 The schema is REGENERATED from the Codex that is actually installed, not copied
+# from the repo. A vendored copy goes stale on the next Codex release, and a stale
+# schema in a validator is the worst of both: it rejects fields that became valid and
+# accepts ones that stopped being. The house rule is to keep the command, not the
+# derived state — and here the command is one line.
+#
+# The repo copy is the FALLBACK, for an older `codex` without the generator. Which one
+# was used is printed, because a validator running against an unknown vintage of the
+# protocol is something the next person needs to know.
+if codex app-server generate-json-schema --out "$DEST/schemas" >/dev/null 2>&1 \
+   && [ -f "$DEST/schemas/codex_app_server_protocol.v2.schemas.json" ]; then
+  echo "  schema: gerado do codex instalado ($(codex --version 2>/dev/null | head -1))"
+else
+  cp "$DIR/schemas/codex_app_server_protocol.v2.schemas.json" "$DEST/schemas/"
+  echo "  ⚠️  schema: cópia do repositório — este codex não gera o schema, então a"
+  echo "      validação de payload pode estar medindo uma versão diferente do protocolo."
+fi
 
 NODE_ABS="$(command -v node)"
 cat > "$BIN/codex-runner" <<WRAP

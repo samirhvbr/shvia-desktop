@@ -194,3 +194,37 @@ test("a decisão do cartão de id ZERO é aceita", () => {
   assert.equal(ehDecisao({ id: 3 }), false, "sem decision não é decisão");
   assert.equal(ehDecisao(null), false);
 });
+
+// ── validação de payload contra o schema do próprio Codex ────────────────────
+import { ESQUEMA_DO_METODO, validarPayload } from "./esquema.mjs";
+
+test("campo inventado é RECUSADO — foi assim que o `sandboxMode` apareceu", () => {
+  // 🔴 O caso real, na primeira execução do validador: este runner mandava
+  // `sandboxMode` para o `thread/start` desde a primeira linha. O campo NÃO existe
+  // (é `sandbox`), e o servidor o descartava em silêncio — a política que eu
+  // achava estar definindo nunca foi definida, e o que eu media era o default do
+  // Codex. Campo errado não falha: ele SOME.
+  const p = validarPayload("thread/start", { cwd: "/x", sandboxMode: "workspace-write" });
+  assert.equal(p.length, 1);
+  assert.match(p[0], /sandboxMode.*não existe/);
+
+  // E a forma certa passa.
+  assert.deepEqual(validarPayload("thread/start", { cwd: "/x", sandbox: "workspace-write", approvalPolicy: "on-request" }), []);
+});
+
+test("campo obrigatório ausente é recusado", () => {
+  assert.match(validarPayload("turn/start", { threadId: "t" })[0], /obrigatório `input`/);
+  assert.deepEqual(validarPayload("turn/start", { threadId: "t", input: [] }), []);
+});
+
+test("tipo errado é recusado", () => {
+  assert.match(validarPayload("command/exec", { command: "ls" })[0], /devia ser array/);
+  assert.deepEqual(validarPayload("command/exec", { command: ["ls"] }), []);
+});
+
+test("método que não mandamos não é afirmado", () => {
+  // Não inventa reprovação sobre o que este runner não envia — uma régua que opina
+  // sobre o que não conhece vira ruído e some do radar de quem a lê.
+  assert.deepEqual(validarPayload("thread/list", { qualquer: 1 }), []);
+  assert.ok(Object.keys(ESQUEMA_DO_METODO).includes("initialize"));
+});

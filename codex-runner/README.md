@@ -17,7 +17,12 @@ No npm dependency: it drives the `codex` CLI the user already has.
 
 ## 🔴 The guarantee, and the hole in it — read this before shipping the engine
 
-> **Inside the project, writes do NOT ask. At the sandbox boundary, you get a card.**
+> **Inside the sandbox's writable set, writes do NOT ask. Outside it, you get a card.**
+
+⚠️ That sentence is deliberate and was corrected once. It is **not** "outside the
+project": `workspace-write` includes `/tmp`, so a turn writes there with no card. The
+fence is the writable set, and promising the project would promise a fence that does
+not exist.
 
 That is the entire promise, and it is narrower than the Claude engine's. It is stated
 this way because it is what was measured, not what was hoped: **Codex has no "ask
@@ -36,13 +41,21 @@ Read from `politica.mjs:130-150`, not from memory:
 
 | | claude-runner Auto | this engine |
 |---|---|---|
-| write inside the project | no card | no card — **the same** |
-| network egress | always a card | not measured; likely a boundary request, **unverified** |
-| destructive `Bash` | always a card | none |
-| read of a secret / outside the project | always a card | none |
+| write inside the project | no card | 🔬 no card — **the same** |
+| write outside the writable set | n/a | 🔬 **card**, and the rejection holds |
+| destructive `Bash` (`rm -rf`) | always a card | 🔬 **card** — Codex gates it itself |
+| network egress | always a card | 🔬 **no card — blocked**: it runs sandboxed and fails on DNS |
+| read of `.env` inside the project | always a card | 🔬 **no card** |
 
-The first row matters: "Codex writes without asking" is true, and it is **also true of
-the Claude engine on Auto**. The rows below it are where they genuinely differ.
+Two rows deserve reading twice. "Codex writes without asking" is true and is **also true
+of the Claude engine on Auto** — that is not a Codex weakness. And network is not gated
+here, it is *blocked*: nothing leaves, but nobody is asked either.
+
+🔴 **The one real gap is the last row.** `claude-runner` gates a `.env` read at every
+level via `caminhoProibido()`; Codex reads it and hands back the secret. This runner
+**cannot** close that: it learns of a command from `item/started`, which arrives once the
+command has begun, and there is no execpolicy surface to force a prompt (measured — see
+the doc). Anyone shipping this engine is accepting that gap knowingly.
 
 ## The startup ruler
 
@@ -72,6 +85,7 @@ away — a translation layer that cannot show its input is one nobody can debug.
 | `protocolo.mjs` | the pure translation (policy, notifications, gates, decisions). Everything testable lives here |
 | `protocolo.test.mjs` | `node --test protocolo.test.mjs` |
 | `codex-runner.mjs` | the process: spawn, framing, gate queue, startup ruler |
+| `esquema.mjs` + `schemas/` | every outgoing payload is validated against Codex's own generated schema before it goes on the wire |
 | `install.sh` | install + a load proof, so a missing file fails here and not on the user's first turn |
 
 ⚠️ **Green unit tests are not evidence about this protocol.** Five defects — including
@@ -79,4 +93,8 @@ a turn that ended on the ack, a usage counter stuck at zero and a first card tha
 forever — lived through a green suite, because the tests asserted the shape the author
 invented using data invented in that same shape. The record is
 `docs/code/MOTOR-CODEX-20260909.md`; the rule that came out of it is that payloads get
-validated against the generated schemas before being sent.
+validated against the generated schemas before being sent — and on its first run that
+validator caught a sixth: `sandboxMode`, a field that does not exist in
+`ThreadStartParams`, sent since the runner's first line and discarded in silence. **A
+wrong field does not fail; it vanishes** — and every measurement taken before that fix
+described Codex's default rather than this engine.

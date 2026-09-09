@@ -40,22 +40,34 @@ the LSP family (which frames with headers and would have hung forever).
 
 > **Codex has no "ask about everything" mode, and an integrator cannot add one.**
 
-🔬 A write is a different story. Under `read-only` the agent did not ask — it
-**refused and explained in prose** (*"este ambiente está com sandbox de arquivos em
-modo somente leitura"*), and `prova.txt` was never created. Blocked, not gated.
+## 🔬 What the engine actually does — measured under its own policy
 
-### 🔬 Measurement M — the boundary DOES gate
+Every row below was run under **`sandbox: workspace-write` + `approvalPolicy: on-request`**,
+which is what `POLITICA` sends. That qualifier is the whole point of the table: an
+earlier version of it was measured while the runner sent `sandboxMode`, a field that
+**does not exist** in `ThreadStartParams` (it is `sandbox`). The server discarded it in
+silence, so those numbers described Codex's default, not this engine. Two rows flipped
+when the field was fixed.
 
-Under `on-request` + `workspace-write`, asked to write outside the workspace root:
+| attempt | result | note |
+|---|---|---|
+| write inside the project | 🔬 no card | same as `claude-runner` on Auto |
+| write to `/tmp` | 🔬 no card | **`workspace-write` includes `/tmp`** — it is inside the writable set, so no boundary is crossed |
+| write to `$HOME` | 🔬 **card**, rejection held, file never created | this is measurement M |
+| `rm -rf` inside the project | 🔬 **card** (*"Você autorizou a exclusão de diretório…"*) | Codex gates destructive commands on its own |
+| `cat .env` inside the project | 🔬 no card — the secret came back as text | **the one real gap** against `claude-runner`, whose `caminhoProibido()` gates this at every level |
+| `curl https://example.com` | 🔬 no card — ran sandboxed and failed with `Could not resolve host` | **blocked, not gated.** Nothing leaves; nobody is asked |
 
-```
-gate_request  id 0  scope Bash
-  command: /bin/bash -lc "printf 'ESCAPE' > '…/FORA-DO-SANDBOX.txt'"
-  why: "Posso escrever fora do diretório atual, mas isso fica fora do sandbox…"
-→ rejected → tool_result empty → turn_done → file never created
-```
+🔴 **The boundary is not "outside the project" — it is "outside the sandbox's writable
+set".** Those are different sentences and `/tmp` is the difference. Saying the first one
+would promise a fence that does not exist.
 
-That is the whole promise this engine can make, and it is the reason it ships at all.
+⚠️ **`git push` was not measured separately.** It is network egress, and the row above
+covers that shape; the doc does not claim more than was run.
+
+⚠️ **Observed once, unexplained:** in the isolated `cat .env` run the runner emitted no
+`tool_call`/`tool_result` — only the final text. If that reproduces, a command can run
+without appearing in the Code timeline, which is its own defect. Not chased here.
 
 ## The guarantee, stated with its hole
 
@@ -69,9 +81,9 @@ two engines match. Auto still gates two things Codex does not, **at every level*
 | | claude-runner Auto | Codex engine |
 |---|---|---|
 | write inside the project | no card | no card |
-| network egress (`WebFetch`/`WebSearch`) | 🔬 always a card | 📋 not measured — `workspace-write` disables network by default, so it likely surfaces as a boundary request; **unverified** |
-| destructive `Bash` | 🔬 always a card | ❌ none — no notion of it |
-| read of a secret / outside the project | 🔬 always a card | ❌ none |
+| network egress | 🔬 always a card | 🔬 **no card — blocked**: the command runs sandboxed and fails on DNS |
+| destructive `Bash` (`rm -rf`) | 🔬 always a card | 🔬 **card** — Codex gates it on its own |
+| read of a secret (`.env`) inside the project | 🔬 always a card | 🔬 **no card** — the gap |
 
 Because of that, the Codex engine has **one level, "Sandbox"** — not Manual/Edit/Auto.
 Three labels over one behaviour would be the approval pill lying three different ways.
@@ -125,7 +137,20 @@ this machine, not just SHVIA; the workaround is `model = "gpt-5.3-codex-spark"`.
 ## What is deliberately NOT done
 
 - Bridge and UI (slices 2 and 3) — they wait on Code-mode identity and persistence.
-- Network egress at the boundary — 📋 only. It should be measured before the doc
-  claims it.
+- Closing the `.env` gap. The runner cannot: it learns of a command from
+  `item/started`, which arrives when the command has already begun. Gating reads the
+  way `politica.mjs` does would need Codex to ask first, and it does not.
 - `thread/resume` — the runner starts a fresh thread per process. The app-server
   supports resuming; nothing here uses it yet.
+
+## 🔬 Execpolicy: there is no surface for the integrator
+
+Asked the running server for its config (`config/read`): the only policy-shaped keys are
+`approval_policy`, `approvals_reviewer` and `shell_environment_policy`. In the binary,
+`execpolicy` appears **only** inside the amendment flow
+(`proposed_execpolicy_amendment` / `approved_execpolicy_amendment`) — Codex proposes an
+amendment when it asks, and a client may accept it. There is no rules file to supply and
+no way to force a prompt on a chosen command prefix.
+
+So the `.env` gap cannot be closed by configuration. That "never" is now measured rather
+than assumed.

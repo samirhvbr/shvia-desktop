@@ -1,6 +1,6 @@
 {
   "name": "shvia-codex-runner",
-  "version": "1.4.32",
+  "version": "1.4.33",
   "private": true,
   "type": "module",
   "description": "Motor 'Codex (assinatura ChatGPT)' do Modo Code — orquestra o `codex app-server` e fala o NDJSON do anna (SHVIA-CODE/docs/embedding.md).",
