@@ -20,7 +20,17 @@ BIN="$HOME/.local/bin"
 command -v node >/dev/null 2>&1 || { echo "erro: Node 18+ não encontrado no PATH."; exit 1; }
 
 mkdir -p "$DEST" "$BIN"
-cp "$DIR/claude-runner.mjs" "$DIR/package.json" "$DIR/package-lock.json" "$DEST/"
+# ⚠️ Toda dependência LOCAL do runner entra aqui. O `politica.mjs` entrou na 1.4.7
+# (03/09) como `import ... from "./politica.mjs"` no `claude-runner.mjs`, e esta
+# linha não foi acompanhada: desde então toda instalação nova terminava com o ✓ de
+# sucesso e morria na primeira chamada com `ERR_MODULE_NOT_FOUND`, que a tela
+# mostra como "claude-runner não encontrado" — a mesma mensagem de binário
+# ausente, num caso em que o binário está lá.
+#
+# A régua que impede a repetição é o `--verificar` abaixo: ele importa o módulo
+# instalado, então um import local novo que não for copiado reprova AQUI, no
+# instalador, em vez de reprovar na tela de alguém.
+cp "$DIR/claude-runner.mjs" "$DIR/politica.mjs" "$DIR/package.json" "$DIR/package-lock.json" "$DEST/"
 
 # ── The lock is VERSIONED and installed with `npm ci` (finding F-18) ─────────
 #
@@ -70,6 +80,19 @@ chmod +x "$BIN/claude-runner"
 
 # A versão do SDK vai na tela porque ELA é o catálogo de modelos: quando o
 # seletor não oferece um modelo que já existe, é este número que responde por quê.
+# ── A instalação é CONFERIDA antes de se declarar pronta ─────────────────────
+#
+# O ✓ abaixo dizia "instalado" tendo copiado um conjunto de arquivos incompleto,
+# e quem descobria era o usuário, com uma mensagem que culpava o binário. Importar
+# o módulo instalado exercita a cadeia inteira de imports locais: se faltar
+# arquivo, falha aqui, com o nome do que falta.
+if ! ERRO="$("$NODE_ABS" --input-type=module -e "import('file://$DEST/claude-runner.mjs')" 2>&1 >/dev/null)"; then
+  echo "🔴 a instalação ficou incompleta — o runner não carrega:" >&2
+  printf '%s\n' "$ERRO" | head -5 >&2
+  echo "   (falta copiar algum arquivo do runner? veja o \`cp\` acima)" >&2
+  exit 1
+fi
+
 SDK="$(node -p "require('$DEST/node_modules/@anthropic-ai/claude-agent-sdk/package.json').version" 2>/dev/null || echo '?')"
 echo "✓ claude-runner instalado em $BIN/claude-runner (Agent SDK $SDK)"
 case ":$PATH:" in

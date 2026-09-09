@@ -3,6 +3,42 @@
 Entradas no formato da mensagem de commit (`versão - comentário`, AGENTS.md),
 mais recente primeiro. É daqui que a skill COMMITTER tira a mensagem (AGENTS.md §PS).
 
+## 1.4.22 - the runner installer copies every file the runner imports, and proves the install loads
+
+`claude-runner/install.sh` copied three files — `claude-runner.mjs`, `package.json`,
+`package-lock.json`. Since the **1.4.7** (03/09) the runner also imports `./politica.mjs`,
+and that commit is the one that last touched the installer without adding the file to the
+`cp`. Every install since then finished by printing `✓ claude-runner instalado` and then
+died on the first call:
+
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module '…/shvia-claude-runner/politica.mjs'
+```
+
+🔴 **And the screen blamed the wrong thing.** `code_bridge.rs:340` answers a failed
+`--modelos` with `claude-runner não encontrado`, which is the message for a **missing
+binary**. The binary was there and executable; what was missing was a file next to it. On
+08/09 that sent a diagnosis looking for a packaging regression in a Modo Code delivery that
+had nothing to do with it.
+
+### The fix, and the guard that keeps it fixed
+
+The `cp` gains `politica.mjs`. One line — and one line is exactly what came back five days
+ago, so it does not travel alone: before printing `✓`, the installer now **imports the
+installed module**, which exercises the whole chain of local imports. A new local import
+that nobody adds to the `cp` now fails in the installer, naming the missing file, instead
+of failing on somebody's screen under a message about a binary.
+
+Proof by reversion, run on 08/09: with the old `cp` line restored and the guard in place,
+the installer exits **1** and prints the missing path. With both, `✓` and `--modelos`
+answering the catalogue (Agent SDK 0.3.258).
+
+### Version carriers
+
+`npm run version:sync` ran with the bump, so the six carriers and `version.md` agree at
+1.4.22 — `prova:bump` was **red on `master`** before this (carriers at 1.4.20, `version.md`
+at 1.4.21), which is finding C1 of the 08/09 fleet review, and it goes green here.
+
 ## 1.4.21 - the git hooks arrive from repodocs and are enabled here
 
 Both hooks of the standard now run here: `commit-msg`, which checks the shape of
