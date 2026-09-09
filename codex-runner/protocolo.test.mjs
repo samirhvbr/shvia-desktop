@@ -228,3 +228,25 @@ test("método que não mandamos não é afirmado", () => {
   assert.deepEqual(validarPayload("thread/list", { qualquer: 1 }), []);
   assert.ok(Object.keys(ESQUEMA_DO_METODO).includes("initialize"));
 });
+
+// ── a lista de segredos é IMPORTADA, não copiada ─────────────────────────────
+import { caminhoProibido } from "../claude-runner/politica.mjs";
+import { readFileSync } from "node:fs";
+
+test("o aviso de segredo usa a MESMA lista do outro motor", () => {
+  // 🔴 A régua é sobre a fonte, não sobre o resultado. Copiar os padrões para cá
+  // passaria em qualquer teste de comportamento e divergiria no dia em que alguém
+  // acrescentasse um padrão de um lado só — e a cópia que ficasse para trás seguiria
+  // verde sem proteger nada. Então o que se trava é o `import`.
+  const fonte = readFileSync(new URL("./codex-runner.mjs", import.meta.url), "utf8");
+  assert.match(fonte, /from "\.\.\/claude-runner\/politica\.mjs"/, "a lista deixou de ser importada");
+  assert.ok(!/function caminhoProibido/.test(fonte), "alguém copiou a função para cá");
+
+  // E a lista importada reconhece o que precisa reconhecer.
+  for (const nome of [".env", ".env.local", "id_rsa", "chave.pem", ".git"]) {
+    assert.equal(caminhoProibido(nome), true, `${nome} deixou de contar como segredo`);
+  }
+  // `.env.example` é o contraexemplo que a lista já trata — nunca foi segredo.
+  assert.equal(caminhoProibido(".env.example"), false);
+  assert.equal(caminhoProibido("README.md"), false);
+});

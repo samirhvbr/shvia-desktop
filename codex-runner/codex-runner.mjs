@@ -44,6 +44,10 @@
 import { spawn } from "node:child_process";
 import * as readline from "node:readline";
 import { validarPayload } from "./esquema.mjs";
+// 🔴 IMPORTADO do motor vizinho, nunca copiado. A lista de segredos é a mesma nos dois
+// motores porque é a MESMA lista — duas cópias divergem no dia em que alguém acrescenta
+// um padrão a uma delas, e a que fica para trás segue verde sem proteger nada.
+import { caminhoProibido } from "../claude-runner/politica.mjs";
 import {
   PEDIDOS_QUE_BLOQUEIAM,
   decisaoParaResposta,
@@ -372,10 +376,60 @@ async function provarQueOSandboxSegura() {
   return true;
 }
 
+/**
+ * Avisa que este projeto tem arquivo com cara de segredo — ANTES do primeiro turno.
+ *
+ * 🔴 Por que existe: entre os motores, o Codex tem exatamente UM buraco medido, e é este.
+ * `claude-runner` recusa ler `.env`, `.git/`, chave e credencial em QUALQUER nível, pelo
+ * `caminhoProibido` que este arquivo importa. O Codex lê e devolve o valor sem cartão
+ * nenhum — medido em 09/09/2026, `cat .env` respondeu com o conteúdo e nenhum
+ * `gate_request` foi emitido. Não há configuração que mude isso (não existe superfície de
+ * execpolicy para o integrador) e o runner também não alcança: ele fica sabendo do comando
+ * pelo `item/started`, que chega **depois** de o comando começar.
+ *
+ * Então o que sobra é dizer. Antes, não depois.
+ *
+ * ⚠️ `warn`, NUNCA `exit`. A distinção é de natureza, não de severidade: sandbox que não
+ * segura QUEBRA a garantia do motor e por isso derruba o arranque (código
+ * `SAIDA_SANDBOX_NAO_CONFIRMADO`); um `.env` na pasta é **condição normal de projeto** —
+ * quase todo projeto tem um. Recusar subir por isso tornaria o motor inutilizável e
+ * ensinaria a ignorar o aviso, que é o desfecho pior dos dois.
+ *
+ * Varre só o primeiro nível e para em 200 entradas: é aviso, não auditoria, e roda a cada
+ * spawn. Uma varredura recursiva num monorepo seguraria o arranque para achar o que a
+ * primeira dúzia já teria mostrado.
+ */
+async function avisarSobreSegredosNaPasta() {
+  const { readdir } = await import("node:fs/promises");
+  let entradas;
+  try {
+    entradas = await readdir(PROJECT_DIR, { withFileTypes: true });
+  } catch {
+    return; // pasta ilegível é problema de outro caminho; não é aqui que se descobre
+  }
+  const achados = [];
+  for (const e of entradas.slice(0, 200)) {
+    if (achados.length >= 5) break;
+    if (caminhoProibido(e.name)) achados.push(e.name);
+  }
+  if (!achados.length) return;
+  emit({
+    type: "warn",
+    message:
+      `este projeto tem ${achados.length === 1 ? "um arquivo" : "arquivos"} com cara de segredo `
+      + `(${achados.join(", ")}). O motor Codex LÊ sem perguntar — ele não tem cartão para `
+      + `leitura. Troque de motor ou tire o arquivo da pasta antes de começar.`,
+  });
+}
+
 if (!(await provarQueOSandboxSegura())) {
   try { child.kill(); } catch { /* já foi */ }
   process.exit(3);
 }
 
-// The sandbox held. Only now does the host get a say.
+// O sandbox segurou. O aviso vem ANTES de o host poder mandar turno: um alerta que
+// chega depois do primeiro `cat .env` não é alerta, é registro.
+await avisarSobreSegredosNaPasta();
+
+// Só agora o host tem voz.
 ligarEntradaDoHost();

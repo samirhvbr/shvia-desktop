@@ -137,9 +137,14 @@ this machine, not just SHVIA; the workaround is `model = "gpt-5.3-codex-spark"`.
 ## What is deliberately NOT done
 
 - Bridge and UI (slices 2 and 3) — they wait on Code-mode identity and persistence.
-- Closing the `.env` gap. The runner cannot: it learns of a command from
-  `item/started`, which arrives when the command has already begun. Gating reads the
-  way `politica.mjs` does would need Codex to ask first, and it does not.
+- Closing the `.env` gap **by gating**. The runner cannot: it learns of a command from
+  `item/started`, which arrives when the command has already begun, and there is no
+  execpolicy surface to force a prompt. What it does instead, since `1.4.35`, is **say
+  so before the first turn**: it imports `caminhoProibido` from `claude-runner/politica.mjs`
+  — the same list, never a copy — scans the project root and emits a `warn` naming the
+  files. `warn`, not `exit`: a sandbox that does not hold breaks the engine's guarantee,
+  while a `.env` in the folder is a normal project condition, and refusing to start over
+  it would teach people to ignore the warning.
 - `thread/resume` — the runner starts a fresh thread per process. The app-server
   supports resuming; nothing here uses it yet.
 

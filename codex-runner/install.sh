@@ -17,6 +17,12 @@ mkdir -p "$DEST" "$BIN"
 # Every file the runner imports. The Claude runner shipped broken once because
 # this list missed a module, so the load proof below exists to catch exactly that.
 cp "$DIR/codex-runner.mjs" "$DIR/protocolo.mjs" "$DIR/esquema.mjs" "$DIR/package.json" "$DEST/"
+# 🔴 A lista de segredos vem do motor vizinho por IMPORT, então o arquivo dele viaja
+# junto — no layout que o import espera (`../claude-runner/politica.mjs`). Esquecer
+# esta linha entrega um runner que não carrega, e foi exatamente assim que o
+# `claude-runner` já saiu quebrado uma vez. A prova de carga abaixo pega.
+mkdir -p "$DEST/../claude-runner"
+cp "$DIR/../claude-runner/politica.mjs" "$DEST/../claude-runner/"
 mkdir -p "$DEST/schemas"
 
 # 🔴 The schema is REGENERATED from the Codex that is actually installed, not copied
