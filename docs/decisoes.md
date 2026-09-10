@@ -1874,3 +1874,83 @@ mensagem de erro. A renovação da credencial continua sendo do cliente oficial:
 - **Fica de fora:** o `cli_config.rs`, que grava `~/.claude/settings.json` com o caminho
   fixo. É uma segunda noção de "diretório do Claude" nesta casca, e reconciliá-la é item
   próprio — está escrito em `docs/code/CONTAS-CLAUDE.md`.
+
+---
+
+## ADR-034 — The Run is a posture of the turn, and the orchestrator is a gateway profile
+
+- **Date:** 10/09/2026 · **Status:** Proposed (nothing implemented; the plan is
+  [`docs/code/RUN-20260910.md`](code/RUN-20260910.md))
+
+### Context
+
+Every Code-mode engine ends a turn when its model stops talking, and the person at the
+desktop types "continue". Measured on 10/09/2026 in the three repositories: the Claude
+runner emits `turn_done` on the SDK `result`, Codex on `turn/completed`, `anna` when the
+model returns no tool call; nothing continues a turn but a human. The owner is the
+scheduler of the system.
+
+The house already had most of the answer and did not know it: the `loop-work` skill
+(vendored in every repo on 02/09) is a `Stop` hook with a deterministic ASK×DOC
+classifier, caps, a kill switch and a decision log, measured at 14 stops in a row — but
+it is registered in the global Claude Code settings, and the runner runs with
+`settingSources: []`, so inside the desktop it never fires. The proposal that opened
+this front also asked for a second agent to supervise the first, and for that agent to
+be choosable independently of the coder.
+
+### Decision
+
+**The Run is a posture of the turn, not a mode.** One control (the *Autonomia* pill, next
+to *Aprovação*), one bar that stays alive between turns, and three timeline pieces: the
+continuation line, the human gate card, the summary. Autonomia decides whether the
+**turn** continues; Aprovação keeps deciding whether a **tool** runs. Two axes, two
+pills, never merged.
+
+**Three tiers, in this order, and the first and the last are code.** The rule (no
+model) continues progress reports and sends irreversible actions to the human. When the
+rule says ASK, an optional orchestrator model reads objective, plan, assumptions and
+the last message and answers CONTINUE-with-a-message or ASK_HUMAN. What neither
+resolves goes to the human. Irreversible never reaches a model.
+
+**The orchestrator is a gateway profile, not an engine.** Chosen as `modelo@servidor`
+from the catalogue, with "Rule, no model" as option zero and a different family than the
+coder as the default when a model is chosen — the same reasoning as anna's ADR-003
+(role → profile is a static table; the reviewer is of another family). Its calls are
+audited like any inference, which gives the Claude-subscription engine a trace it does
+not have today.
+
+**The server decides, the page carries, the runner stays credential-free.** The Claude
+runner receives no ShvIA key by design, so its `Stop` hook emits a blocking
+`stop_request` on the NDJSON line — the gate handshake with a new name — and the page
+answers it after calling `POST /api/v1/code/orchestrate`. anna and Codex reach the same
+endpoint from `turn_done`. One decider, three engines.
+
+**Every decision names its decider and is persisted.** Rule, the profile, or you: on the
+continuation line, in the panel's decisions list, in the summary, and as `code_turns`
+rows. Numbers in the summary are collected from what passed through the cards, never
+narrated by the agent.
+
+### Alternatives rejected
+
+- **A second chat reading the first.** Works as a prototype and becomes a mess: no
+  state, no caps, no audit. The proposal itself rejected it.
+- **The orchestrator inside the runner, as a second `query()`.** Only Claude models, only
+  for the Claude engine, and it would need the gateway key inside a process that must not
+  hold it.
+- **The rule classifier ported to the page in JS.** Three copies of one rule (page,
+  runner, server) and a test suite that cannot share a corpus. One implementation, on
+  the server, tested once.
+- **Making the run survive a closed desktop.** That is another product, and it exists:
+  a mission in `SHVIA-WORKSPACE`. The bridge to it is its own front (decided 19/08).
+
+### Consequences
+
+- The runner's `case "result"` has to be fixed first: it matches a subtype the SDK never
+  emits, so today an API error ends a turn silently. With caps in play the silence would
+  hide a ceiling (block B0 of the plan).
+- A guard that errs toward the alarm: orchestrator timeout → rule → ASK goes to the
+  human; a `stop_request` with no answer in 60 s ends the turn normally.
+- The protocol document in SHVIA-CODE gains an optional event; `anna` itself does not
+  change.
+- **Not validated:** nothing. This ADR records the shape; the block that ships each part
+  adds its line here, as ADR-033 did.

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.38 - ADR-034: the Run is a posture of the turn, and the orchestrator is a gateway profile
+
+The decision record behind `docs/code/RUN-20260910.md`. Four decisions: the Run adds a
+posture (Autonomia) next to Aprovação instead of a mode; three tiers where the first and
+the last are code (rule → optional orchestrator model → human); the orchestrator is a
+gateway profile chosen independently of the coder, audited like any inference; and the
+server decides while the page carries, so the Claude runner keeps holding no ShvIA key.
+Four alternatives rejected with the reason, including "a second chat reading the first"
+and "the run survives a closed desktop" (that is a workspace mission, another front).
+
 ## 1.4.38 - the Run in Code mode: design, contracts and build plan, with the proposed screen
 
 Documentation only. `docs/code/RUN-20260910.md` answers, in the code as it is on
