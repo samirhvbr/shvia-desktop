@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.2 - the plan records block B5 as in review, built on the owner's five answers
+
+Documentation only. `docs/code/RUN-20260910.md` ticks B5a, B5b and B5c (the run state
+machine, the screen and the transcript rows — [SHVIA-WEB #114](https://github.com/samirhvbr/shvia-web/pull/114))
+and records what building them settled: the Stop hook is installed on every Claude
+session of a shell with `recursos.run`, the page answers `stop` at once on a normal turn,
+the execution contract and the default sentence became catalog keys. ADR-034 gets its
+"in review" line for B5 and names the two answers that differ from the recommendation
+(Q2: the gate card has a third exit; Q3: US$ 10). The state note follows.
+
 ## 1.5.1 - the plan records block B4 as in review, and the decision it refined
 
 Documentation only. `docs/code/RUN-20260910.md` ticks B4 (the orchestrate endpoint,

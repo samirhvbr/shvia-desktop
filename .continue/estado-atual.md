@@ -3,7 +3,7 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Última atualização: **10/09/2026** (versão 1.5.1).
+> Última atualização: **10/09/2026** (versão 1.5.2).
 
 > ⚠️ **Saneado em 02/09/2026** (achado F-22): descrevia a **1.1.34** com o repo em 1.4.3.
 > Foi o **terceiro** saneamento manual deste arquivo pelo mesmo motivo — daí a régua
@@ -53,8 +53,11 @@ ADR-034. O primeiro bloco (B0) era um defeito do runner que o plano achou: o `ca
 "result"` comparava com um subtipo que o SDK não emite, então erro de API encerrava o
 turno sem linha de erro. **Corrigido na 1.4.39**, com prova por reversão. B1 (o protocolo, SHVIA-CODE 0.11.21),
 B2 e B3 (o runner pergunta antes de parar e a ponte leva os tetos, 1.5.0) entregues; B4
-(o endpoint `/orchestrate`, camada de regra) em revisão no SHVIA-WEB (#110). O próximo é
-o B5, a tela — e ele espera as cinco respostas do dono (§8 do plano).
+(o endpoint `/orchestrate`, camada de regra) em revisão no SHVIA-WEB (#110); B5 (a máquina
+de estados, a tela e as linhas do transcript) em revisão no SHVIA-WEB (#114), construído
+sobre as cinco respostas do dono de 10/09 — Q2 disse **sim** à terceira saída do gate e Q3
+fixou US$ 10. Os dois PRs do WEB são independentes entre si. Próximos: B6 (orquestrador
+como perfil), B7 (Histórico por run), B8 (docs) e B9 (medir cinco runs reais).
 
 **Herança, para não ser lida como estado atual:** o app se auto-atualiza (ADR-022), tem
 bandeja nos 3 SOs (ADR-024),

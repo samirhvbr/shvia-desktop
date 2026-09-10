@@ -1970,5 +1970,10 @@ narrated by the agent.
   One refinement the block forced on D3: a request for permission to proceed is not a
   decision — the classifier itself tells "posso seguir?" from "(a) ou (b)?", because the
   Run's policy stops on ASK where `loop-work` continues by policy.
-- **Not validated:** B5 onwards. Each block adds its line here as it ships, as ADR-033
-  did.
+- **In review:** B5 in SHVIA-WEB ([#114](https://github.com/samirhvbr/shvia-web/pull/114)) — the
+  state machine (`code-run.js`, pure; every row of §4.3 executed in Node), the screen
+  (Autonomia pill, run bar, orchestrator lines, gate card with three exits, summary) and the
+  `run`/`decision` rows of the transcript. Built on the owner's five answers of 10/09/2026;
+  two of them differ from the recommendation: Q2 (the third exit exists) and Q3 (US$ 10).
+- **Not validated:** a real run on a real engine (B9), and B6 onwards. Each block adds its
+  line here as it ships, as ADR-033 did.
