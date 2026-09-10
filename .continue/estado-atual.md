@@ -3,7 +3,7 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Última atualização: **10/09/2026** (versão 1.4.39).
+> Última atualização: **10/09/2026** (versão 1.5.0).
 
 > ⚠️ **Saneado em 02/09/2026** (achado F-22): descrevia a **1.1.34** com o repo em 1.4.3.
 > Foi o **terceiro** saneamento manual deste arquivo pelo mesmo motivo — daí a régua
@@ -51,8 +51,9 @@ independente do coder. **Nada implementado.** Plano em blocos, contratos e a tel
 proposta em [`../docs/code/RUN-20260910.md`](../docs/code/RUN-20260910.md); decisão em
 ADR-034. O primeiro bloco (B0) era um defeito do runner que o plano achou: o `case
 "result"` comparava com um subtipo que o SDK não emite, então erro de API encerrava o
-turno sem linha de erro. **Corrigido na 1.4.39**, com prova por reversão; o próximo é
-o B1 (o evento `stop_request` no protocolo, no SHVIA-CODE).
+turno sem linha de erro. **Corrigido na 1.4.39**, com prova por reversão. B1 (o protocolo, SHVIA-CODE 0.11.21),
+B2 e B3 (o runner pergunta antes de parar e a ponte leva os tetos, 1.5.0) entregues; o
+próximo é o B4, o endpoint `/orchestrate` no SHVIA-WEB.
 
 **Herança, para não ser lida como estado atual:** o app se auto-atualiza (ADR-022), tem
 bandeja nos 3 SOs (ADR-024),

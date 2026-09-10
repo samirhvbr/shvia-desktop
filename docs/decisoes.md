@@ -1962,5 +1962,8 @@ narrated by the agent.
   behind `--parada host`; caps behind `--teto-iteracoes` / `--teto-custo`. 11 tests under
   `node --test`, run by `prova:politica` so CI covers them without a workflow change.
   Not run against a live login.
-- **Not validated:** B3 onwards. Each block adds its line here as it ships, as ADR-033
+- **Shipped:** B3 in 1.5.0 — `argumentos_da_run` in `code_bridge.rs` maps the page's
+  `autonomy` object to the flags (3 tests) and the shim declares `recursos.run`. `cargo
+  test` was not run in the environment that wrote it (no Tauri libraries); CI runs it.
+- **Not validated:** B4 onwards. Each block adds its line here as it ships, as ADR-033
   did.

@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.5.0 - the bridge carries the run caps to the runner and declares the capability
+
+Block B3 of `docs/code/RUN-20260910.md`. `spawn` reads the page's `autonomy` object
+(`{stopByHost, maxIterations, maxCostUsd}`) and, on the Claude engine only, turns it
+into `--parada host`, `--teto-iteracoes N` and `--teto-custo X` through
+`argumentos_da_run`, a pure mapper with three tests: no object → no flag (yesterday's
+page spawns exactly what it spawned); the armed run → the three flags; an invalid cap
+(0, negative, a word) is dropped, never coerced — `maxTurns: 0` would end every turn
+before it started with the screen showing a run that "ran".
+
+The shim declares `recursos.run: true`. Presence, never a version number: a new page on
+an old shell reads the absence as "no" and continues between turns only, which works on
+every shell, the same design as `recursos.imagem` and `recursos.conta`.
+
+`cargo test` was not run in the environment that wrote this (no Tauri system libraries);
+`rustfmt` parses the file and CI runs the tests.
+
 ## 1.5.0 - the Claude runner asks the host before ending a turn, and takes the run caps from the command line
 
 Block B2 of `docs/code/RUN-20260910.md` (ADR-034). Minor bump: a new runtime capability

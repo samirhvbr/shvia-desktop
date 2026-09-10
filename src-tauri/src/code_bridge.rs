@@ -78,7 +78,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
   }
   window.__shviaCode = {
     // sessão do agente
-    spawn: function (o) { return post('spawn', o || {}); },   // {projectDir, apiKey, model?, effort?, url?, engine?, modelDoClaude?, accountId?}  engine:'claude' = assinatura; modelDoClaude:true = model/effort vieram de claudeModels(), nao do gateway; accountId = perfil de conta (ver claudeAccounts)
+    spawn: function (o) { return post('spawn', o || {}); },   // {projectDir, apiKey, model?, effort?, url?, engine?, modelDoClaude?, accountId?, autonomy?}  autonomy:{stopByHost, maxIterations, maxCostUsd} = a Run (RUN-20260910), só no motor claude;  engine:'claude' = assinatura; modelDoClaude:true = model/effort vieram de claudeModels(), nao do gateway; accountId = perfil de conta (ver claudeAccounts)
     send:  function (o) { return post('send', { payload: o }); }, // {type:'user',text} | {id,decision}
     kill:  function () { return post('kill'); },
     onEvent: function (cb) { if (typeof cb === 'function') listeners.push(cb); },
@@ -177,7 +177,11 @@ pub const BRIDGE_JS: &str = r#"(function () {
     //           flag, o web não desenha o seletor CONTA e a régua fica a de antes — que é
     //           o certo, porque um seletor que a casca ignorasse mostraria a conta errada
     //           na tela enquanto o turno rodasse na outra.
-    recursos: { imagem: true, conta: true },
+    //   run:    this shell carries the Run to the Claude runner (RUN-20260910, B3): the
+    //           `autonomy` field of `spawn` becomes `--parada host` and the two caps. Without
+    //           the flag the page falls back to continuing BETWEEN turns only, which works on
+    //           every shell — presence, never a version number, same as `imagem`.
+    recursos: { imagem: true, conta: true, run: true },
     // chamados pelo Rust (eval):
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
     _emit: function (evt) { for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }
@@ -805,6 +809,45 @@ fn url_do_servidor(url: &str) -> bool {
     }
 }
 
+/// The Run's flags for the Claude runner (RUN-20260910, B3), from the `autonomy` object
+/// the page sends in `spawn`: `{stopByHost: bool, maxIterations: n, maxCostUsd: x}`.
+///
+/// Absent object → no flag, and the runner behaves as before 1.5.0: it never emits
+/// `stop_request` and sets no cap. Presence, not a version number, is the gate — the
+/// `recursos.run` flag in the shim is how the page learns this shell knows the field.
+///
+/// A value that is not a positive number is DROPPED, never coerced: a cap of 0 would end
+/// every turn before it started, and the runner refuses it the same way (`parada.mjs`).
+/// Two guards agreeing is not redundancy here — the flag crosses a process boundary, and
+/// each side reads its own input.
+fn argumentos_da_run(autonomy: Option<&serde_json::Value>) -> Vec<String> {
+    let mut args: Vec<String> = Vec::new();
+    let Some(a) = autonomy.filter(|a| a.is_object()) else {
+        return args;
+    };
+    if a.get("stopByHost").and_then(|x| x.as_bool()).unwrap_or(false) {
+        args.push("--parada".into());
+        args.push("host".into());
+    }
+    if let Some(n) = a
+        .get("maxIterations")
+        .and_then(|x| x.as_f64())
+        .filter(|n| n.is_finite() && *n >= 1.0)
+    {
+        args.push("--teto-iteracoes".into());
+        args.push((n.floor() as u64).to_string());
+    }
+    if let Some(c) = a
+        .get("maxCostUsd")
+        .and_then(|x| x.as_f64())
+        .filter(|c| c.is_finite() && *c > 0.0)
+    {
+        args.push("--teto-custo".into());
+        args.push(format!("{c}"));
+    }
+    args
+}
+
 fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or_default().to_string();
     let dir = s("projectDir");
@@ -924,6 +967,12 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
         let aprovacao = s("approval");
         if !aprovacao.is_empty() {
             cmd.args(["--aprovacao", &aprovacao]);
+        }
+        // A Run (RUN-20260910, B3): the page arms the stop handshake and the caps. Only
+        // the Claude runner knows these flags today; `anna` and the Codex runner continue
+        // between turns, from the page, and receive nothing here.
+        for a in argumentos_da_run(v.get("autonomy")) {
+            cmd.arg(a);
         }
     } else {
         cmd.arg("--json").args(["--tools", "local"]);
@@ -2033,6 +2082,42 @@ mod tests_cerca {
         let bases = vec![raiz.join("projeto")];
         let escapou = std::fs::canonicalize(raiz.join("projeto/sub/../../outro")).unwrap();
         assert!(!dentro_de_alguma(&escapou, &bases));
+    }
+}
+
+#[cfg(test)]
+mod tests_run {
+    use super::*;
+
+    /// No `autonomy` → no flag. The page of yesterday spawns exactly what it spawned.
+    #[test]
+    fn sem_autonomy_nenhuma_flag() {
+        assert!(argumentos_da_run(None).is_empty());
+        assert!(argumentos_da_run(Some(&serde_json::json!("nao-e-objeto"))).is_empty());
+        assert!(argumentos_da_run(Some(&serde_json::json!({}))).is_empty());
+    }
+
+    /// The armed run becomes the three flags the runner reads (`parada.mjs`).
+    #[test]
+    fn a_run_armada_vira_as_tres_flags() {
+        let v = serde_json::json!({ "stopByHost": true, "maxIterations": 100, "maxCostUsd": 5 });
+        assert_eq!(
+            argumentos_da_run(Some(&v)),
+            vec!["--parada", "host", "--teto-iteracoes", "100", "--teto-custo", "5"]
+        );
+        // A fractional cost keeps its decimals; a fractional iteration count floors.
+        let v = serde_json::json!({ "maxIterations": 2.9, "maxCostUsd": 0.5 });
+        assert_eq!(argumentos_da_run(Some(&v)), vec!["--teto-iteracoes", "2", "--teto-custo", "0.5"]);
+    }
+
+    /// 🔴 An invalid cap is dropped, never coerced to 0: `maxTurns: 0` would end every
+    /// turn before it started, with the screen showing a run that "ran".
+    #[test]
+    fn teto_invalido_nao_vira_flag() {
+        let v = serde_json::json!({ "stopByHost": false, "maxIterations": 0, "maxCostUsd": -1 });
+        assert!(argumentos_da_run(Some(&v)).is_empty());
+        let v = serde_json::json!({ "maxIterations": "cem", "maxCostUsd": "cinco", "stopByHost": "sim" });
+        assert!(argumentos_da_run(Some(&v)).is_empty());
     }
 }
 
