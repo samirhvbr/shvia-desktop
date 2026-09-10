@@ -382,8 +382,30 @@ function traduzirMensagem(message, estado, modelo) {
         cost: message.total_cost_usd ?? 0,
         estimated: true, // sob assinatura o custo USD é indicativo, não faturado por token
       });
-      if (message.subtype === "error") {
-        eventos.push({ type: "error", message: String(message.result ?? "erro no turno") });
+      // ⚠️ O SDK NUNCA manda `subtype: "error"` num `result`. Até a 1.4.38 era o
+      // único subtipo que este `case` reconhecia, e ele não existe: medido nos tipos
+      // da 0.3.258 (10/09/2026), um turno que morre num erro de API chega como
+      // `success` com `is_error: true` e o texto em `result`; os outros desfechos
+      // chegam como `error_during_execution`, `error_max_turns`,
+      // `error_max_budget_usd` ou `error_max_structured_output_retries`, com a
+      // lista em `errors`. Nenhum casava — e um 401 fechava a timeline como
+      // `usage` + `turn_done`, sem linha de erro. É a família de defeito que a
+      // prova deste arquivo existe para pegar: erro que não erra.
+      //
+      // Teto estourado (`maxTurns`, `maxBudgetUsd` — os tetos da run, B2 do
+      // RUN-20260910) NÃO é erro: é o runner parando onde mandaram parar. Sai
+      // como `warn`, a forma que o `anna` usa para o teto dele, e o turno fecha
+      // normalmente — quem decide se continua é a página, e a linha diz por quê.
+      const sub = String(message.subtype ?? "success");
+      if (sub === "error_max_turns") {
+        const n = message.num_turns != null ? ` (${message.num_turns})` : "";
+        eventos.push({ type: "warn", message: `teto de iterações do turno atingido${n}: o agente parou aqui; mande outra mensagem para seguir` });
+      } else if (sub === "error_max_budget_usd") {
+        eventos.push({ type: "warn", message: "teto de custo do turno atingido: o agente parou aqui; mande outra mensagem para seguir" });
+      } else if (sub !== "success" || message.is_error) {
+        const lista = Array.isArray(message.errors) ? message.errors.filter(Boolean).map(String) : [];
+        const texto = lista.length ? lista.join(" · ") : (message.result ? String(message.result) : `erro no turno (${sub})`);
+        eventos.push({ type: "error", message: texto });
       }
       eventos.push({ type: "turn_done" });
       break;

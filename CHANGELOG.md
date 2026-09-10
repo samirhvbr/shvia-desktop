@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.4.39 - the Claude runner reports the turn errors the SDK actually emits
+
+Block B0 of `docs/code/RUN-20260910.md`, the one the plan found while reading the code.
+`traduzirMensagem` only emitted `error` on a `result` whose `subtype` was `"error"`, and
+the pinned SDK (0.3.258) never emits that subtype on a `result`. 📋 Measured in the type
+declarations: a turn that dies on an API error arrives as `success` with `is_error: true`
+and the text in `result`; the other endings arrive as `error_during_execution`,
+`error_max_turns`, `error_max_budget_usd` or `error_max_structured_output_retries`, with
+the list in `errors`. None matched, so a 401 closed the timeline as `usage` +
+`turn_done` — no error line. The family of defect this runner's proof exists to catch:
+the error that does not err.
+
+**What changes on screen.** `success` + `is_error` and the `error_*` subtypes now draw
+the error line with the SDK's own text. The two caps (`error_max_turns`,
+`error_max_budget_usd`) are **not** errors: they are the runner stopping where it was
+told to, so they come out as `warn` — the shape `anna` uses for its own round cap — and
+the turn closes normally. Nothing sets those caps yet; block B2 will, and this is what
+keeps a hit ceiling from being silent.
+
+🔬 **Proved by reversal.** Five rules entered `scripts/prova-montar-prompt.mjs` first
+and were run against the unfixed runner: four red (`success`+`is_error`,
+`error_during_execution`, and the two caps), one green (a clean `success` stays clean).
+With the fix, 35 rules green; `node --check`, `prova:runner-version` and
+`prova:politica` unchanged. The old rule for a literal `subtype: "error"` stays green
+too — the new branch treats any non-`success` subtype as an error, so the file's own
+contract is not broken by the fix.
+
+Not reproduced live: this environment has no Claude Code login. The proof runs the real
+function extracted from the file, as it always has.
+
 ## 1.4.38 - the state note opens the Run front and points at its plan
 
 `.continue/estado-atual.md` gains the Run as an open front, pointing at

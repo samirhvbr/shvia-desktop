@@ -150,6 +150,33 @@ const err = traduzir({ type: "result", subtype: "error", result: "estourou" });
 conferir("result de erro emite error E turn_done",
   err.eventos.map((e) => e.type).join(",") === "usage,error,turn_done", err.eventos.map((e) => e.type));
 
+// ⚠️ O SDK NUNCA manda `subtype: "error"` num `result` — a régua acima fixa um
+// contrato que só existia neste arquivo. Medido nos tipos da 0.3.258 (10/09/2026):
+// o erro chega como `subtype: "success"` com `is_error: true` e o texto em `result`
+// (turno que morreu num erro de API), ou como `error_during_execution` /
+// `error_max_turns` / `error_max_budget_usd` / `error_max_structured_output_retries`,
+// com a lista em `errors`. Até a 1.4.38 nenhum desses casava com o `if`, e um turno
+// morto por 401 fechava a timeline como `usage` + `turn_done` — sem linha de erro,
+// que é a família de defeito que este arquivo existe para pegar. Com os tetos da
+// run (B2 do RUN-20260910), o silêncio esconderia um teto estourado.
+const tipos = (r) => r.eventos.map((e) => e.type).join(",");
+const api401 = traduzir({ type: "result", subtype: "success", is_error: true, result: "API Error: 401 Unauthorized", usage: { input_tokens: 1, output_tokens: 0 } });
+conferir("success com is_error é ERRO na tela, e o texto é o do result",
+  tipos(api401) === "usage,error,turn_done" && api401.eventos[1]?.message?.includes("401"), api401.eventos);
+const exec = traduzir({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["a ferramenta morreu no meio"] });
+conferir("error_during_execution é ERRO na tela, com o texto de `errors`",
+  tipos(exec) === "usage,error,turn_done" && exec.eventos[1]?.message?.includes("morreu"), exec.eventos);
+// Teto estourado NÃO é erro: é o runner parando onde mandaram parar. Vira `warn`
+// (a forma que o `anna` usa para o teto dele) e fecha o turno — a página decide se
+// continua, e a linha diz por que parou.
+const teto = traduzir({ type: "result", subtype: "error_max_turns", is_error: true, errors: [] });
+conferir("error_max_turns é AVISO + turn_done, não erro", tipos(teto) === "usage,warn,turn_done", teto.eventos);
+const custo = traduzir({ type: "result", subtype: "error_max_budget_usd", is_error: true, errors: [] });
+conferir("error_max_budget_usd é AVISO + turn_done, não erro", tipos(custo) === "usage,warn,turn_done", custo.eventos);
+// E o turno normal continua limpo: `success` sem `is_error` não ganha nem aviso.
+const limpo = traduzir({ type: "result", subtype: "success", is_error: false, result: "pronto" });
+conferir("success sem is_error fecha limpo (só usage e turn_done)", tipos(limpo) === "usage,turn_done", limpo.eventos);
+
 // Mensagem de tipo desconhecido não pode explodir nem inventar evento: SDK novo
 // manda tipos que este runner não conhece, e derrubar o turno por isso seria
 // trocar uma funcionalidade que falta por uma sessão perdida.
@@ -195,4 +222,4 @@ if (falhas.length) {
   for (const f of falhas) console.error(`  ✗ ${f}`);
   process.exit(1);
 }
-console.log("[prova-runner] OK: 8 réguas do montarPrompt + 19 da traduzirMensagem + 3 do `--version` (forma de cada evento, o fallback de texto e o turn_done que destrava a tela).");
+console.log("[prova-runner] OK: 8 réguas do montarPrompt + 24 da traduzirMensagem + 3 do `--version` (forma de cada evento, o fallback de texto e o turn_done que destrava a tela).");

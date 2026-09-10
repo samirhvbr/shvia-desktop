@@ -3,7 +3,7 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Última atualização: **10/09/2026** (versão 1.4.38).
+> Última atualização: **10/09/2026** (versão 1.4.39).
 
 > ⚠️ **Saneado em 02/09/2026** (achado F-22): descrevia a **1.1.34** com o repo em 1.4.3.
 > Foi o **terceiro** saneamento manual deste arquivo pelo mesmo motivo — daí a régua
@@ -49,9 +49,10 @@ continuar os turnos sozinho e a parar só onde um humano é necessário — uma 
 orquestrador visíveis na timeline. O orquestrador é um perfil do gateway, escolhido
 independente do coder. **Nada implementado.** Plano em blocos, contratos e a tela
 proposta em [`../docs/code/RUN-20260910.md`](../docs/code/RUN-20260910.md); decisão em
-ADR-034. O primeiro bloco (B0) é um defeito do runner que o plano achou: o `case
-"result"` compara com um subtipo que o SDK não emite, então erro de API hoje encerra o
-turno sem linha de erro.
+ADR-034. O primeiro bloco (B0) era um defeito do runner que o plano achou: o `case
+"result"` comparava com um subtipo que o SDK não emite, então erro de API encerrava o
+turno sem linha de erro. **Corrigido na 1.4.39**, com prova por reversão; o próximo é
+o B1 (o evento `stop_request` no protocolo, no SHVIA-CODE).
 
 **Herança, para não ser lida como estado atual:** o app se auto-atualiza (ADR-022), tem
 bandeja nos 3 SOs (ADR-024),

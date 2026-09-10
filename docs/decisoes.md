@@ -1952,5 +1952,9 @@ narrated by the agent.
   human; a `stop_request` with no answer in 60 s ends the turn normally.
 - The protocol document in SHVIA-CODE gains an optional event; `anna` itself does not
   change.
-- **Not validated:** nothing. This ADR records the shape; the block that ships each part
-  adds its line here, as ADR-033 did.
+- **Shipped:** B0 in 1.4.39 — the runner's `case "result"` matches the subtypes the SDK
+  emits; the two caps come out as `warn`, everything else that is not a clean `success`
+  as `error`. Proved by reversal in `scripts/prova-montar-prompt.mjs` (four rules red
+  before, 35 green after). Not run against a live login.
+- **Not validated:** everything else. Each block adds its line here as it ships, as
+  ADR-033 did.
