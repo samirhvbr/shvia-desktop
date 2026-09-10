@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.38 - the state note opens the Run front and points at its plan
+
+`.continue/estado-atual.md` gains the Run as an open front, pointing at
+`docs/code/RUN-20260910.md`, and its header moves to this version so the freshness ruler
+(`prova:doc`) measures the file as current. Nothing else in the note changes.
+
 ## 1.4.38 - ADR-034: the Run is a posture of the turn, and the orchestrator is a gateway profile
 
 The decision record behind `docs/code/RUN-20260910.md`. Four decisions: the Run adds a
