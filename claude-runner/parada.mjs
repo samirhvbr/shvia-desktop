@@ -24,7 +24,14 @@
 /** No answer from the host within this → `stop`. The turn ends normally. */
 export const TETO_MS = 60_000;
 
-/** `last` is cut here: the host already has the full text from the `text` deltas. */
+/**
+ * `last` is cut here: the host already has the full text from the `text` deltas. The TAIL
+ * is what survives the cut, never the head: the execution contract asks the coder to END
+ * with `RUN_DONE:`/`NEEDS_INPUT:`, and the orchestrator's rule reads the closing paragraphs
+ * for the question or the handoff. The head is the report; the tail is the decision.
+ * Measured by the skeptical panel of 10/09/2026 (SHVIA-WEB #110): with the head kept, a
+ * closing summary over 4,000 characters flipped every tier of the rule to CONTINUE.
+ */
 export const LAST_MAX = 4000;
 
 /** What the model reads when the host says `continue` without a message of its own. */
@@ -40,7 +47,7 @@ export function montarStopRequest({ id, iteration, last, reason }) {
     type: "stop_request",
     id: String(id),
     iteration: Number.isFinite(iteration) && iteration > 0 ? Math.floor(iteration) : 0,
-    last: texto.length > LAST_MAX ? texto.slice(0, LAST_MAX) : texto,
+    last: texto.length > LAST_MAX ? texto.slice(-LAST_MAX) : texto,
     reason: typeof reason === "string" && reason ? reason : "model_stopped",
   };
 }

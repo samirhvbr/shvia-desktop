@@ -21,13 +21,16 @@ import {
  * it cannot, because every path that is not an explicit `continue` ends the turn.
  */
 
-test("stop_request carries the four fields and cuts `last` at LAST_MAX", () => {
-  const longo = "x".repeat(LAST_MAX + 500);
+test("stop_request carries the four fields and cuts `last` at LAST_MAX, keeping the TAIL", () => {
+  // The contract's markers and the rule's closing zone live at the END of the message:
+  // a cut that kept the head threw away exactly what the orchestrator reads.
+  const longo = "x".repeat(LAST_MAX + 500) + "\n\nRUN_DONE: entregue";
   const ev = montarStopRequest({ id: "s-7", iteration: 7, last: longo, reason: "model_stopped" });
   assert.equal(ev.type, "stop_request");
   assert.equal(ev.id, "s-7");
   assert.equal(ev.iteration, 7);
   assert.equal(ev.last.length, LAST_MAX);
+  assert.ok(ev.last.endsWith("RUN_DONE: entregue"), "the tail survives the cut");
   assert.equal(ev.reason, "model_stopped");
 });
 

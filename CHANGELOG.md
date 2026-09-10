@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.4 - the runner keeps the tail of a long last message, where the decision lives
+
+`claude-runner/parada.mjs` cut `last` at 4,000 characters keeping the HEAD. The execution
+contract asks the coder to end with `RUN_DONE:`/`NEEDS_INPUT:`, and the orchestrator's rule
+reads the closing paragraphs for the question or the handoff — the head is the report, the
+tail is the decision. The skeptical panel of 10/09/2026 on the classifier
+([SHVIA-WEB #110](https://github.com/samirhvbr/shvia-web/pull/110)) measured it: a closing
+summary over 4,000 characters flipped every tier (marker, question, irreversible action) to
+CONTINUE. The cut now keeps the tail, and the test asserts the marker survives it. The page
+side (SHVIA-WEB #114) stops forwarding this field at all when it holds the full text.
+
 ## 1.5.3 - the shim exposes a native notification the page can raise
 
 `window.__shviaCode.notify({title, body})`: fire-and-forget, no reply, the bridge token
