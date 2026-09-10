@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.1 - the plan records block B4 as in review, and the decision it refined
+
+Documentation only. `docs/code/RUN-20260910.md` ticks B4 (the orchestrate endpoint,
+rule tier, in review in SHVIA-WEB) and records the two things building it changed in the
+contract of §4.2: markers come before the caps, and a request for permission to proceed
+continues while a choice stops. ADR-034 gets the same line under "In review".
+
 ## 1.5.0 - the bridge carries the run caps to the runner and declares the capability
 
 Block B3 of `docs/code/RUN-20260910.md`. `spawn` reads the page's `autonomy` object

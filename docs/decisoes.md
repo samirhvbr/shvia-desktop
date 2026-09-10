@@ -1965,5 +1965,10 @@ narrated by the agent.
 - **Shipped:** B3 in 1.5.0 — `argumentos_da_run` in `code_bridge.rs` maps the page's
   `autonomy` object to the flags (3 tests) and the shim declares `recursos.run`. `cargo
   test` was not run in the environment that wrote it (no Tauri libraries); CI runs it.
-- **Not validated:** B4 onwards. Each block adds its line here as it ships, as ADR-033
+- **In review:** B4 in SHVIA-WEB (`RunOrchestrator`, `POST /api/v1/code/orchestrate`,
+  rule tier). 28 unit cases green there; the door's feature test runs in that repo's CI.
+  One refinement the block forced on D3: a request for permission to proceed is not a
+  decision — the classifier itself tells "posso seguir?" from "(a) ou (b)?", because the
+  Run's policy stops on ASK where `loop-work` continues by policy.
+- **Not validated:** B5 onwards. Each block adds its line here as it ships, as ADR-033
   did.
