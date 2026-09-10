@@ -116,6 +116,12 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
   and takes the run caps from the command line (`maxTurns`, `maxBudgetUsd`); the bridge
   turns the page's `autonomy` object into those flags and declares `recursos.run`. Nothing
   on screen yet — the page (SHVIA-WEB, blocks B4 and B5) is what arms a run.
+- **The page can raise a native notification** (`1.5.3`): the shim exposes
+  `__shviaCode.notify({title, body})`, fire-and-forget, carrying the bridge token like
+  every other message. Until then only the shell's own poll could post `notify`
+  (ADR-011); a page posting to the native handler by hand was dropped for lack of the
+  token — and is banned on the web side (finding F-16). The Run's gate card (SHVIA-WEB
+  block B5) uses it when the window is not in front. Presence of the method is the flag.
 
 ## Limitações conhecidas
 

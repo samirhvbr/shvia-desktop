@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.5.3 - the shim exposes a native notification the page can raise
+
+`window.__shviaCode.notify({title, body})`: fire-and-forget, no reply, the bridge token
+attached like every other message. The `notify` action already existed in Rust (ADR-011)
+but only the shell's own notification poll could reach it: the Rust side drops any message
+without `__t`, and the page has no way to attach the token except through the shim. The
+Run's gate card ([SHVIA-WEB #114](https://github.com/samirhvbr/shvia-web/pull/114), block
+B5) posted to the native handler by hand — which never reached the shell, and which the
+web's `prova-voz-passa-pelo-token` guard refuses (finding F-16: the native handler is
+reachable from every frame, the shim only from the page that carries the token). Presence
+of the method is the capability flag, the same design as `recursos`. `docs/funcionalidades.md`
+records it.
+
 ## 1.5.2 - the plan records block B5 as in review, built on the owner's five answers
 
 Documentation only. `docs/code/RUN-20260910.md` ticks B5a, B5b and B5c (the run state

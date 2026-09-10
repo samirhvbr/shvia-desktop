@@ -155,6 +155,17 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // como gate responderia sempre "sim". Aqui ele serve para MOSTRAR a versão do
     // motor a quem for pedir suporte.
     engineStatus: function (engine) { return post('engineStatus', { engine: engine || 'gateway' }); },
+    // Native OS notification, fire-and-forget (no reqId, no reply): the same `notify`
+    // action the shell's own notification poll posts (ADR-011), now reachable from the
+    // page — the Run's gate card uses it when the person walked away (RUN-20260910, B5).
+    // It exists here because every message without the token is dropped in Rust, so a
+    // page posting to the native handler by hand never reached the shell (and is banned
+    // on the web side by `prova-voz-passa-pelo-token`, finding F-16). Presence of this
+    // method is the capability flag, same design as `recursos`.
+    notify: function (o) {
+      o = o || {};
+      sendNative(JSON.stringify({ action: 'notify', title: String(o.title || ''), body: String(o.body || ''), __t: '__SHVIA_BRIDGE_TOKEN__' }));
+    },
     // CAPACIDADES desta casca. Constante local, sem ida ao Rust — a pergunta é
     // "esta versão do app sabe fazer X?", e a resposta está na própria casca.
     //
