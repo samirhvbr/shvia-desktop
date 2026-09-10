@@ -1975,5 +1975,10 @@ narrated by the agent.
   (Autonomia pill, run bar, orchestrator lines, gate card with three exits, summary) and the
   `run`/`decision` rows of the transcript. Built on the owner's five answers of 10/09/2026;
   two of them differ from the recommendation: Q2 (the third exit exists) and Q3 (US$ 10).
-- **Not validated:** a real run on a real engine (B9), and B6 onwards. Each block adds its
+- **In review:** B6 in SHVIA-WEB ([#120](https://github.com/samirhvbr/shvia-web/pull/120), the model tier, stacked on #110; [#121](https://github.com/samirhvbr/shvia-web/pull/121),
+  the Orquestrador pill and the project pin, stacked on #114). The profile decides only where
+  the rule stopped on a question or a handoff; every failure falls on the human signed by the
+  rule; each consultation is an `inference_requests` row with `origin = code-orch` (D4). No
+  default profile (Q5): the pill starts on the rule.
+- **Not validated:** a real run on a real engine (B9), and B7 onwards. Each block adds its
   line here as it ships, as ADR-033 did.

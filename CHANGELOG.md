@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.5 - the plan records block B6 as in review, in two stacked pull requests
+
+Documentation only. `docs/code/RUN-20260910.md` ticks B6 (the orchestrator can be a gateway
+profile — [SHVIA-WEB #120](https://github.com/samirhvbr/shvia-web/pull/120), the model tier, stacked on #110; [SHVIA-WEB #121](https://github.com/samirhvbr/shvia-web/pull/121), the
+Orquestrador pill and the project pin, stacked on #114) and records what building it settled:
+the profile is consulted only where the rule stopped on a question or a handoff, every
+failure falls on the human signed by the rule, and the pin lives on the project. ADR-034 gets
+its "in review" line for B6; the state note follows. Six version carriers moved together.
+
 ## 1.5.4 - the runner keeps the tail of a long last message, where the decision lives
 
 `claude-runner/parada.mjs` cut `last` at 4,000 characters keeping the HEAD. The execution
