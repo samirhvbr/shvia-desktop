@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Run no Modo Code</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  /* Paleta = tokens.css do SHVIA-WEB (preset default) + acento terracota do Modo Code.
+     Dark-only de propósito: é o mundo visual do produto, e o mockup mostra a tela como ela é. */
+  :root{
+    --page:#070A10;
+    --bg:#0B0F17; --bg-2:#0E131D; --bg-3:#131A26; --bg-4:#19212F;
+    --line:rgba(150,170,200,.10); --line-2:rgba(150,170,200,.18);
+    --tx:#ECF1F8; --tx-dim:#97A3B5; --tx-faint:#5E6B82;
+    --azure:#34B3EC; --azure-strong:#5FC8F5; --azure-deep:#0071BD; --azure-soft:rgba(52,179,236,.12); --on-azure:#04121D;
+    --green:#2BD576; --green-soft:rgba(43,213,118,.12);
+    --amber:#F5C242; --amber-soft:rgba(245,194,66,.12);
+    --red:#EF6E6E; --red-soft:rgba(239,110,110,.12);
+    --acc:#C87F5A; --on-acc:#2A1408; --acc-soft:rgba(200,127,90,.14); --acc-line:rgba(200,127,90,.4);
+    --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --disp:'Space Grotesk',var(--sans);
+    --mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Consolas,monospace;
+    --sidebar-w:176px; --panel-w:282px;
+  }
+  *{box-sizing:border-box}
+  html{color-scheme:dark}
+  body{margin:0;background:var(--page);color:var(--tx);font:13px/1.45 var(--sans);padding-block:28px 56px;padding-inline:16px}
+  svg.i{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.15em;flex:0 0 auto}
+  svg.i.f{fill:currentColor;stroke:none}
+  button{font:inherit;color:inherit}
+  button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--azure);outline-offset:2px}
+
+  /* ── cabeçalho da página do mockup ─────────────────────────────────────── */
+  .page{max-width:1240px;margin:0 auto}
+  .page-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px 28px;margin-bottom:16px}
+  .eyebrow{font:500 10px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--tx-faint);margin:0 0 8px}
+  h1{font:600 26px/1.1 var(--disp);letter-spacing:-.01em;margin:0 0 8px;text-wrap:balance}
+  .thesis{max-width:62ch;margin:0;color:var(--tx-dim);font-size:13.5px}
+  .thesis b{color:var(--tx);font-weight:600}
+  .states{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+  .states__lbl{font:500 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--tx-faint)}
+  .seg{display:inline-flex;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;background:var(--bg-2)}
+  .seg button{border:0;background:transparent;padding:7px 13px;color:var(--tx-dim);font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+  .seg button+button{border-left:1px solid var(--line)}
+  .seg button[aria-pressed="true"]{background:var(--acc);color:var(--on-acc);font-weight:600}
+  .seg .dot{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.7}
+  .example{font:400 11px/1.4 var(--mono);color:var(--tx-faint)}
+
+  /* ── a moldura do app ───────────────────────────────────────────────────── */
+  .frame-wrap{overflow-x:auto;border-radius:14px}
+  .frame{position:relative;min-width:1120px;height:800px;background:var(--bg);border:1px solid var(--line-2);border-radius:14px;overflow:hidden;display:grid;grid-template-columns:var(--sidebar-w) var(--panel-w) minmax(0,1fr);grid-template-rows:46px minmax(0,1fr) auto}
+  /* estados: esconde só o que NÃO pertence ao estado ativo; o que pertence mantém o display da própria classe */
+  .frame[data-state="run"]  [data-for]:not([data-for~="run"]),
+  .frame[data-state="ask"]  [data-for]:not([data-for~="ask"]),
+  .frame[data-state="done"] [data-for]:not([data-for~="done"]){display:none !important}
+
+  /* marcador de legenda (o número aponta para a explicação abaixo da tela) */
+  .mk{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--acc);color:var(--on-acc);font:600 10px/1 var(--mono);flex:0 0 auto;box-shadow:0 0 0 2px var(--bg)}
+  .mk--abs{position:absolute;z-index:3}
+
+  /* coluna 1 — sidebar */
+  .sb{grid-row:1/-1;display:flex;flex-direction:column;gap:14px;padding:16px 14px;background:linear-gradient(180deg,#0D121B,rgba(17,23,31,.9));border-right:1px solid var(--line)}
+  .sb__brand{display:flex;align-items:baseline;gap:8px;padding:2px 4px}
+  .sb__brand b{font:600 17px/1 var(--disp);letter-spacing:-.01em}
+  .sb__brand span{font:500 9.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--tx-faint)}
+  .sb__new{width:100%;border:0;border-radius:14px;padding:11px 12px;background:linear-gradient(135deg,var(--azure-deep),var(--azure));color:var(--on-azure);font-weight:700;cursor:pointer;text-align:left;display:flex;align-items:center;gap:8px}
+  .sb__sec{font:500 9.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--tx-faint);padding:6px 4px 2px}
+  .sb__item{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:9px;color:var(--tx-dim);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sb__item .i{color:var(--tx-faint)}
+  .sb__item.is-on{background:var(--bg-3);color:var(--tx)}
+  .sb__item.is-on .i{color:var(--acc)}
+  .sb__item small{margin-left:auto;font:400 10px/1 var(--mono);color:var(--tx-faint)}
+  .sb__list{display:flex;flex-direction:column;gap:2px}
+
+  /* coluna 2 — painel do projeto (#code-folder) */
+  .pn{grid-row:1/-1;display:flex;flex-direction:column;background:var(--bg-2);border-right:1px solid var(--line);font-size:12.5px;overflow:hidden}
+  .cf-scope{display:flex;align-items:center;gap:6px;padding:8px 8px;border-bottom:1px solid var(--line)}
+  .cf-scope__chip{display:flex;align-items:center;gap:6px;flex:1 1 auto;min-width:0;padding:4px 7px;font-weight:600;color:var(--tx)}
+  .cf-scope__chip .i{color:var(--acc)}
+  .cf-scope__trust,.cf-scope__more{display:flex;align-items:center;gap:5px;border:1px solid var(--line-2);border-radius:7px;padding:4px 8px;background:none;color:var(--tx-dim);font-size:11.5px;cursor:pointer}
+  .cf-scope__trust.is-on{background:var(--acc);border-color:var(--acc);color:var(--on-acc)}
+  .cf-tabs{display:flex;gap:2px;padding:6px 8px 0;border-bottom:1px solid var(--line)}
+  .cf-tab{background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:6px 7px;color:var(--tx-faint);font-size:11.5px;cursor:pointer;display:flex;align-items:center;gap:5px;white-space:nowrap}
+  .cf-tab.is-active{color:var(--tx);border-bottom-color:var(--acc)}
+  .cf-tab__n{font:500 10px/1 var(--mono);padding:2px 5px;border-radius:9px;background:var(--bg-3);color:var(--tx-faint)}
+  .cf-pane{display:flex;flex-direction:column;gap:8px;padding:10px 8px}
+  .cf-resumo{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .cf-fato{display:flex;flex-direction:column;gap:3px;padding:8px 10px;border-radius:8px;background:var(--bg-3);min-width:0;position:relative}
+  .cf-fato--wide{grid-column:1/-1}
+  .cf-fato__k{color:var(--tx-faint);font:500 9.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase}
+  .cf-fato__v{color:var(--tx);font-size:12px;line-height:1.35;overflow-wrap:anywhere}
+  .cf-fato__v.mono{font-family:var(--mono);font-size:11.5px}
+  .cf-fato--run{border:1px solid var(--acc-line);background:var(--acc-soft)}
+  .cf-fato--run .cf-fato__k{color:var(--acc)}
+  .cf-fato--ask{border:1px solid rgba(245,194,66,.4);background:var(--amber-soft)}
+  .cf-fato--ask .cf-fato__k{color:var(--amber)}
+  .cf-fato--done{border:1px solid rgba(43,213,118,.35);background:var(--green-soft)}
+  .cf-fato--done .cf-fato__k{color:var(--green)}
+  .cf-atalhos{display:flex;flex-wrap:wrap;gap:6px}
+  .cf-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--acc-line);background:var(--acc-soft);color:var(--acc);border-radius:9px;font:500 11.5px/1 var(--sans);cursor:pointer}
+  .cf-hint{color:var(--tx-faint);font-size:11px;line-height:1.5}
+  .cf-sec{font:500 9.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--tx-faint);padding:6px 2px 0}
+  .cf-dec{display:flex;flex-direction:column;gap:4px}
+  .cf-dec__row{display:flex;gap:8px;align-items:baseline;padding:5px 8px;border-radius:7px;background:var(--bg-3);font-size:11.5px;color:var(--tx-dim)}
+  .cf-dec__row b{font:500 10.5px/1.4 var(--mono);color:var(--tx-faint);flex:0 0 auto}
+  .cf-dec__row .i{flex:0 0 auto;color:var(--acc);align-self:center}
+  .cf-dec__row.is-ask .i{color:var(--amber)}
+
+  /* coluna 3 — topbar, timeline, composer */
+  .tb{display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--line);font-size:12px;color:var(--tx-dim);overflow:hidden;white-space:nowrap}
+  .code-seg{display:inline-flex;border:1px solid var(--line-2);border-radius:10px;overflow:hidden}
+  .code-seg button{border:0;background:transparent;padding:5px 12px;color:var(--tx-dim);font:500 12px/1 var(--sans);display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+  .code-seg button.is-on{background:var(--acc);color:var(--on-acc);font-weight:600}
+  .tb__proj{display:inline-flex;align-items:center;gap:7px;padding:4px 10px;border:1px solid rgba(52,179,236,.5);border-radius:999px;background:rgba(52,179,236,.08);color:var(--tx)}
+  .tb__proj .i{color:var(--azure-strong)}
+  .cc-engine-seg{position:relative;display:inline-flex;align-items:center;gap:4px;padding:3px 4px 3px 10px;border:1px solid var(--amber);border-radius:999px;background:rgba(14,19,29,.84);font-family:var(--mono)}
+  .cc-engine-seg__caption{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--tx-dim);padding-right:4px}
+  .cc-engine-seg__opt{display:inline-flex;align-items:center;gap:5px;border:0;background:transparent;color:var(--tx-dim);font:600 11px/1 var(--mono);padding:5px 8px;border-radius:999px;cursor:pointer}
+  .cc-engine-seg__opt .i{font-size:.72rem;color:var(--tx-faint)}
+  .cc-engine-seg__opt.is-on{background:var(--amber-soft);color:var(--amber)}
+  .cc-engine-seg__opt.is-on .i{color:var(--amber)}
+  .tb__sp{flex:1}
+  .gpu{display:inline-flex;align-items:flex-end;gap:2px;height:12px}
+  .gpu i{display:block;width:3px;background:var(--green);border-radius:1px;animation:gpu 1.3s ease-in-out infinite}
+  .gpu i:nth-child(1){height:5px}.gpu i:nth-child(2){height:9px;animation-delay:.2s}.gpu i:nth-child(3){height:7px;animation-delay:.4s}.gpu i:nth-child(4){height:11px;animation-delay:.1s}
+  @keyframes gpu{50%{transform:scaleY(.55)}}
+  .tb__gpu{display:inline-flex;align-items:center;gap:6px;font:500 9.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--tx-faint)}
+  .state-pill{display:inline-flex;align-items:center;gap:7px;padding:4px 10px;border:1px solid var(--line-2);border-radius:999px;background:var(--bg-3);color:var(--tx);font-size:11.5px}
+  .state-pill i{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+  .tb__ver{font:500 9.5px/1 var(--mono);letter-spacing:.08em;color:var(--tx-dim);min-width:0;overflow:hidden;text-overflow:ellipsis}
+
+  .tl{position:relative;overflow-y:auto;padding:20px 24px 10px;display:flex;flex-direction:column;gap:12px;scrollbar-width:thin;scrollbar-color:var(--bg-4) transparent}
+  .tl>*{flex:0 0 auto}
+  .ct-user{align-self:flex-end;max-width:78%;margin:0 0 4px;background:var(--acc-soft);border:1px solid var(--acc-line);border-right:3px solid var(--acc);border-radius:12px 4px 4px 12px;padding:9px 13px;color:var(--tx);font-weight:500;white-space:pre-wrap;overflow-wrap:anywhere}
+  .ct-user__run{display:flex;flex-wrap:wrap;gap:5px 8px;align-items:center;margin-top:8px;padding-top:7px;border-top:1px dashed var(--acc-line);font:500 10.5px/1.4 var(--mono);color:var(--acc);font-weight:500}
+  .ct-user__run .i{color:var(--acc)}
+  .ct-user__run .sep{color:var(--acc-line)}
+  .ct-assistant{color:var(--tx);line-height:1.6;max-width:72ch}
+  .ct-assistant p{margin:0 0 6px}.ct-assistant p:last-child{margin:0}
+  .ct-assistant code,.ct-card code,.ct-orch code,.ct-summary code{font-family:var(--mono);font-size:.92em;background:var(--bg-3);padding:1px 5px;border-radius:5px;color:var(--tx)}
+  .ct-assistant ol{margin:4px 0 6px;padding-left:20px}
+  .ct-assistant li{margin:1px 0}
+  .ct-tool{display:flex;align-items:center;gap:8px;color:var(--tx-dim);font:11px/1.4 var(--mono)}
+  .ct-tool .i{color:var(--tx-faint);width:14px}
+  .ct-tool em{font-style:normal;color:var(--tx-faint)}
+  .ct-card{border:1px solid var(--line-2);border-radius:10px;overflow:hidden;background:var(--bg-2);position:relative}
+  .ct-card__head{display:flex;align-items:center;gap:8px;padding:7px 11px;background:var(--bg-3);font:11.5px/1.3 var(--mono);color:var(--tx-dim)}
+  .ct-card__head .i{color:var(--acc)}
+  .ct-card__head b{font-weight:500;color:var(--tx)}
+  .ct-state{margin-left:auto;font:500 10.5px/1 var(--sans);white-space:nowrap}
+  .ct-state--ok{color:var(--green)}.ct-state--wait{color:var(--amber)}.ct-state--auto{color:var(--acc)}.ct-state--run{color:var(--acc)}
+  .ct-card__why{padding:6px 11px 0;color:var(--tx-dim);font-size:11.5px}
+  .ct-card__body{padding:8px 11px;font:11px/1.55 var(--mono);overflow-x:auto;color:var(--tx-dim)}
+  .ct-card__body div{white-space:pre}
+  .ct-diff-add{color:var(--green);background:rgba(43,213,118,.1)}
+  .ct-diff-del{color:var(--red);background:rgba(239,110,110,.1)}
+  .ct-diff-ctx{color:var(--tx-faint)}
+  .ct-cmd{color:var(--tx)}
+  .ct-out{color:var(--tx-dim);white-space:pre-wrap}
+  .ct-exit-ok{color:var(--green)}
+  .ct-card__foot{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:8px 11px;border-top:1px solid var(--line)}
+  .ct-card__foot .lead{margin-right:auto;color:var(--tx-faint);font-size:11px}
+  .ct-btn{padding:5px 14px;border-radius:8px;border:1px solid var(--line-2);background:transparent;color:var(--tx-dim);font:500 11.5px/1 var(--sans);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .ct-btn:hover{color:var(--tx)}
+  .ct-btn--primary{background:var(--acc);border-color:var(--acc);color:var(--on-acc);font-weight:600}
+  .ct-btn--danger:hover{color:var(--red);border-color:rgba(239,110,110,.4);background:var(--red-soft)}
+  .ct-metrics{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;color:var(--tx-faint);font:10.5px/1.4 var(--mono)}
+  .ct-metrics .i{color:var(--acc)}
+  .ct-metrics .sep{opacity:.6}
+
+  /* NOVO — a linha de continuação do orquestrador: mesma família visual do .ct-tool,
+     porque é um evento do laço, não fala do agente nem do usuário. */
+  .ct-orch{position:relative;display:grid;grid-template-columns:18px 1fr;gap:2px 8px;padding:8px 11px 8px 10px;border-left:2px solid var(--acc);border-radius:0 8px 8px 0;background:linear-gradient(90deg,var(--acc-soft),transparent 70%)}
+  .ct-orch .i{color:var(--acc);grid-row:1/3;margin-top:2px}
+  .ct-orch__t{font:600 11.5px/1.4 var(--sans);color:var(--acc)}
+  .ct-orch__t span{font:500 10.5px/1 var(--mono);color:var(--tx-faint);margin-left:8px}
+  .ct-orch__why{font:10.5px/1.5 var(--mono);color:var(--tx-dim)}
+  .ct-orch__why b{font-weight:500;color:var(--tx)}
+  .ct-orch__sent{grid-column:2;margin-top:3px;font:10.5px/1.5 var(--mono);color:var(--tx-faint)}
+  .ct-orch__sent q{quotes:"«" "»";color:var(--tx-dim)}
+
+  /* NOVO — cartão de portão humano: a run parou porque a decisão é sua. */
+  .ct-gate{border-color:rgba(245,194,66,.45)}
+  .ct-gate .ct-card__head{background:rgba(245,194,66,.08)}
+  .ct-gate .ct-card__head .i{color:var(--amber)}
+  .ct-gate__body{padding:9px 11px 2px;font-size:12.5px;line-height:1.55;color:var(--tx)}
+  .ct-gate__why{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin:8px 0 6px;font:11px/1.5 var(--mono);color:var(--tx-dim)}
+  .ct-gate__why b{font-weight:500;color:var(--tx-faint)}
+  .ct-gate__why em{font-style:normal;color:var(--tx)}
+  .ct-gate__notice{display:flex;align-items:center;gap:7px;color:var(--tx-dim);font-size:11.5px;padding:0 11px 8px}
+  .ct-gate__notice .i{color:var(--amber)}
+
+  /* NOVO — resumo da run: o que a pessoa lê quando volta. */
+  .ct-summary{border-color:rgba(43,213,118,.35)}
+  .ct-summary .ct-card__head{background:rgba(43,213,118,.07)}
+  .ct-summary .ct-card__head .i{color:var(--green)}
+  .ct-summary__grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px 11px 4px}
+  .ct-summary__cell{display:flex;flex-direction:column;gap:3px;padding:8px 10px;border-radius:8px;background:var(--bg-3)}
+  .ct-summary__k{font:500 9.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--tx-faint)}
+  .ct-summary__v{font:600 15px/1.2 var(--disp);color:var(--tx);font-variant-numeric:tabular-nums}
+  .ct-summary__v small{font:400 10.5px/1 var(--mono);color:var(--tx-dim);margin-left:5px}
+  .ct-summary__proof{display:flex;flex-wrap:wrap;gap:6px 14px;padding:6px 11px 10px;font:11px/1.5 var(--mono);color:var(--tx-dim)}
+  .ct-summary__proof .i{color:var(--green)}
+  .ct-session-end{display:flex;align-items:center;gap:10px;margin:14px 0 4px;color:var(--tx-dim);font-size:11px}
+  .ct-session-end::before,.ct-session-end::after{content:'';flex:1;height:1px;background:var(--line-2)}
+  .ct-cursor{display:inline-block;width:7px;height:13px;background:var(--acc);vertical-align:-2px;margin-left:2px;animation:blink 1s steps(2) infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  /* composer + barra da run */
+  .cp{display:flex;flex-direction:column;gap:0;padding:0 18px 12px;border-top:1px solid var(--line);position:relative}
+  .runbar{position:relative;display:flex;align-items:center;gap:8px;margin:10px 0 8px;padding:8px 10px;white-space:nowrap;border:1px solid var(--acc-line);background:var(--acc-soft);border-radius:11px;color:var(--acc);font-size:12px;font-weight:600}
+  .runbar__spin{width:13px;height:13px;border:2px solid var(--acc-line);border-top-color:var(--acc);border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .runbar__dots{display:inline-flex;gap:3px}
+  .runbar__dots i{width:4px;height:4px;border-radius:50%;background:var(--acc);animation:dot 1.1s ease-in-out infinite}
+  .runbar__dots i:nth-child(2){animation-delay:.15s}.runbar__dots i:nth-child(3){animation-delay:.3s}
+  @keyframes dot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-2px)}}
+  .runbar__m{display:inline-flex;align-items:center;gap:4px;font:500 11px/1 var(--mono);color:var(--tx-dim);font-variant-numeric:tabular-nums;padding-left:8px;white-space:nowrap;border-left:1px solid var(--acc-line)}
+  .runbar__m b{font-weight:600;color:var(--tx)}
+  .runbar__m .i{color:var(--acc)}
+  .runbar__timer{margin-left:auto;font:500 11px/1 var(--mono);color:var(--tx-dim);font-variant-numeric:tabular-nums}
+  .runbar__btn{padding:4px 10px;border:1px solid var(--acc-line);background:transparent;color:var(--tx-dim);border-radius:8px;font:600 11px/1.4 var(--sans);cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+  .runbar__btn:hover{color:var(--tx)}
+  .runbar__btn--stop:hover{color:var(--red);border-color:rgba(239,110,110,.4);background:var(--red-soft)}
+  .runbar--ask{border-color:rgba(245,194,66,.5);background:var(--amber-soft);color:var(--amber)}
+  .runbar--ask .runbar__m{border-left-color:rgba(245,194,66,.4)}
+  .runbar--ask .runbar__m .i{color:var(--amber)}
+  .runbar--ask .runbar__btn{border-color:rgba(245,194,66,.4)}
+  .runbar--done{border-color:rgba(43,213,118,.35);background:var(--green-soft);color:var(--green)}
+  .runbar--done .runbar__m{border-left-color:rgba(43,213,118,.35)}
+  .runbar--done .runbar__m .i{color:var(--green)}
+  .queue-bar{display:flex;align-items:center;gap:8px;margin:8px 0 0;font-size:11px;color:var(--tx-dim)}
+  .queue-bar__chip{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px solid var(--line-2);border-radius:999px;background:var(--bg-2);color:var(--tx);max-width:360px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .queue-bar__chip small{color:var(--tx-faint);font-family:var(--mono)}
+  .cp__row{display:flex;align-items:flex-end;gap:10px;margin-top:10px}
+  .cp__ta{flex:1;min-height:44px;padding:11px 12px;border:1px solid var(--line-2);border-radius:12px;background:var(--bg-2);color:var(--tx-faint);font:13px/1.4 var(--sans)}
+  .cp__ta b{color:var(--tx);font-weight:500}
+  .cp__ic{width:34px;height:34px;border-radius:50%;border:1px solid var(--line-2);background:transparent;color:var(--tx-dim);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+  .cp__send{width:34px;height:34px;border-radius:50%;border:0;background:var(--acc);color:var(--on-acc);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+  .cp__ctl{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;position:relative}
+  .pill{display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border:1px solid var(--line);border-radius:9px;background:var(--bg-3);color:var(--tx);font-size:12px;cursor:pointer;position:relative}
+  .pill .lbl{font:500 9.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--tx-dim)}
+  .pill .chev{color:var(--tx-faint)}
+  .pill--auto .i.lead{color:var(--acc)}
+  .pill--run{border-color:var(--acc-line);background:var(--acc-soft)}
+  .pill--run .lbl{color:var(--acc)}
+  .pill--run .i.lead{color:var(--acc)}
+  .pill--run .val{color:var(--tx);font-weight:600}
+  .pill__hint{font:400 10.5px/1 var(--mono);color:var(--tx-faint);padding-left:6px;border-left:1px solid var(--line-2)}
+
+  /* ── legenda abaixo da tela ─────────────────────────────────────────────── */
+  .legend{max-width:1240px;margin:26px auto 0;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .lg{display:grid;grid-template-columns:auto 1fr;gap:8px 12px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--bg-2)}
+  .lg .mk{margin-top:2px;width:18px;height:18px;font-size:10.5px}
+  .lg h3{margin:0;font:600 13.5px/1.35 var(--sans);color:var(--tx)}
+  .lg p{grid-column:2;margin:0;color:var(--tx-dim);font-size:12.5px;line-height:1.55;max-width:48ch}
+  .lg p+p{margin-top:2px}
+  .lg p b{color:var(--tx);font-weight:600}
+  .lg code{font:11px/1.4 var(--mono);background:var(--bg-3);padding:1px 5px;border-radius:5px;color:var(--tx)}
+  .sec{max-width:1240px;margin:26px auto 0;display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .sec h2{font:600 15px/1.3 var(--disp);margin:0 0 10px;letter-spacing:-.005em}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font:500 10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--tx-faint)}
+  td{color:var(--tx-dim)}
+  td:first-child{color:var(--tx);font-weight:500;white-space:nowrap}
+  td code{font:11px/1.4 var(--mono);background:var(--bg-3);padding:1px 5px;border-radius:5px;color:var(--tx)}
+  .keep{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+  .keep li{display:grid;grid-template-columns:auto 1fr;gap:10px;color:var(--tx-dim);font-size:12.5px;line-height:1.5}
+  .keep li .i{color:var(--green);margin-top:3px}
+  .keep li b{color:var(--tx);font-weight:600}
+  .foot{max-width:1240px;margin:26px auto 0;color:var(--tx-faint);font:11px/1.6 var(--mono)}
+
+  @media (max-width:900px){
+    .legend{grid-template-columns:1fr}
+    .sec{grid-template-columns:1fr}
+    .states{align-items:flex-start}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .runbar__spin,.runbar__dots i,.gpu i,.ct-cursor{animation:none}
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></symbol>
+  <symbol id="i-ast" viewBox="0 0 24 24"><path d="M12 3v18M4.5 7.5l15 9M19.5 7.5l-15 9"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 4l-4 16"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M7 5h3v14H7zM14 5h3v14h-3z"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24"><path d="M4 17l6-5-6-5M12 19h8"/></symbol>
+  <symbol id="i-diff" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M9 14h6M12 11v6"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6"/></symbol>
+  <symbol id="i-rot" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7M21 3v6h-6"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><path d="M21 21l-4.3-4.3M17 10.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21h4"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 22V4h12l-1 4 1 4H4"/></symbol>
+  <symbol id="i-git" viewBox="0 0 24 24"><path d="M6 3v12M6 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6M18 6a3 3 0 1 0 0 6 3 3 0 0 0 0-6M18 12c0 3-6 3-12 3"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H8l-5 3 1.5-5A8 8 0 1 1 21 12z"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 18a9 9 0 1 1 16 0M12 13l4-4"/></symbol>
+  <symbol id="i-coin" viewBox="0 0 24 24"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9 10.5c0-1 1.3-2 3-2s3 1 3 2-1.3 1.5-3 2-3 1-3 2 1.3 2 3 2 3-1 3-2M12 6.5v2M12 15.5v2"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" stroke-width="2.4"/></symbol>
+</svg>
+
+<div class="page">
+  <div class="page-head">
+    <div>
+      <p class="eyebrow">SHVIA · Modo Code · proposta de tela · 10/09/2026</p>
+      <h1>Run no Modo Code</h1>
+      <p class="thesis">A tela não ganha um modo novo. Ganha <b>um controle</b> (Autonomia), <b>uma barra</b> que fica viva entre turnos, e <b>três peças na timeline</b>: a continuação automática, o portão humano e o resumo. Cartões de aprovação, abas e composer continuam onde estão.</p>
+    </div>
+    <div class="states">
+      <span class="states__lbl">A mesma tela em três momentos</span>
+      <div class="seg" role="group" aria-label="Estado da run">
+        <button type="button" data-set="run" aria-pressed="true"><span class="dot" style="color:var(--acc)"></span>Rodando</button>
+        <button type="button" data-set="ask" aria-pressed="false"><span class="dot" style="color:var(--amber)"></span>Parou: decisão sua</button>
+        <button type="button" data-set="done" aria-pressed="false"><span class="dot" style="color:var(--green)"></span>Concluída</button>
+      </div>
+      <span class="example">base: web 2.110.234 · app 1.4.37 · valores na tela são exemplo</span>
+    </div>
+  </div>
+
+  <div class="frame-wrap">
+  <div class="frame" id="frame" data-state="run">
+
+    <!-- coluna 1 · sidebar -->
+    <aside class="sb" aria-label="Barra lateral">
+      <div class="sb__brand"><b>ShvIA</b><span>Blue3</span></div>
+      <button type="button" class="sb__new"><svg class="i"><use href="#i-plus"/></svg>Novo chat</button>
+      <div>
+        <div class="sb__sec">Projetos</div>
+        <div class="sb__list">
+          <div class="sb__item is-on"><svg class="i"><use href="#i-code"/></svg>SHVIA-WEB<small>code</small></div>
+          <div class="sb__item"><svg class="i"><use href="#i-code"/></svg>SHVIA-DESKTOP<small>code</small></div>
+          <div class="sb__item"><svg class="i"><use href="#i-code"/></svg>SHVIA-CODE<small>code</small></div>
+          <div class="sb__item"><svg class="i"><use href="#i-folder"/></svg>RADIANT</div>
+        </div>
+      </div>
+      <div>
+        <div class="sb__sec">Hoje</div>
+        <div class="sb__list">
+          <div class="sb__item is-on"><svg class="i"><use href="#i-msg"/></svg>Módulo Markdown</div>
+          <div class="sb__item"><svg class="i"><use href="#i-msg"/></svg>Cabeçalho da versão</div>
+          <div class="sb__item"><svg class="i"><use href="#i-msg"/></svg>Teste do gate 401</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- coluna 2 · painel do projeto (#code-folder) -->
+    <section class="pn" aria-label="Painel do projeto">
+      <div class="cf-scope">
+        <div class="cf-scope__chip"><svg class="i"><use href="#i-folder"/></svg><span>SHVIA-WEB</span></div>
+        <button type="button" class="cf-scope__trust is-on"><svg class="i"><use href="#i-shield"/></svg>Confiando</button>
+        <button type="button" class="cf-scope__more" aria-label="Ações do projeto"><svg class="i"><use href="#i-dots"/></svg></button>
+      </div>
+      <div class="cf-tabs" role="tablist">
+        <button type="button" class="cf-tab is-active" role="tab" aria-selected="true">Geral</button>
+        <button type="button" class="cf-tab" role="tab" aria-selected="false">Arquivos<span class="cf-tab__n">1.284</span></button>
+        <button type="button" class="cf-tab" role="tab" aria-selected="false">Alterações<span class="cf-tab__n" data-for="run">6</span><span class="cf-tab__n" data-for="ask">9</span><span class="cf-tab__n" data-for="done">14</span></button>
+        <button type="button" class="cf-tab" role="tab" aria-selected="false">Histórico</button>
+      </div>
+      <div class="cf-pane">
+        <div class="cf-resumo">
+          <div class="cf-fato"><span class="cf-fato__k">Confiança</span><span class="cf-fato__v">aprovando sozinho</span></div>
+          <div class="cf-fato"><span class="cf-fato__k">Motor</span><span class="cf-fato__v mono">opus-4-8 · alto</span></div>
+          <div class="cf-fato"><span class="cf-fato__k">Git</span><span class="cf-fato__v mono">markdown-ws · <span data-for="run">6</span><span data-for="ask">9</span><span data-for="done">14</span> alterados</span></div>
+          <div class="cf-fato"><span class="cf-fato__k">Arquivos</span><span class="cf-fato__v mono">1.284</span></div>
+
+          <div class="cf-fato cf-fato--wide cf-fato--run" data-for="run">
+            <span class="mk mk--abs" style="top:-7px;right:-6px">6</span>
+            <span class="cf-fato__k">Run · até terminar</span>
+            <span class="cf-fato__v mono">rodando · 12/100 iterações · US$ 0,84 de 5,00</span>
+          </div>
+          <div class="cf-fato cf-fato--wide cf-fato--ask" data-for="ask">
+            <span class="mk mk--abs" style="top:-7px;right:-6px">6</span>
+            <span class="cf-fato__k">Run · parada</span>
+            <span class="cf-fato__v mono">esperando você · 23/100 · US$ 1,31 de 5,00</span>
+          </div>
+          <div class="cf-fato cf-fato--wide cf-fato--done" data-for="done">
+            <span class="mk mk--abs" style="top:-7px;right:-6px">6</span>
+            <span class="cf-fato__k">Run · concluída há 3 min</span>
+            <span class="cf-fato__v mono">41 iterações · 1h47 · US$ 1,92 est.</span>
+          </div>
+        </div>
+        <div class="cf-atalhos">
+          <button type="button" class="cf-btn"><svg class="i"><use href="#i-diff"/></svg>Ver alterações</button>
+          <button type="button" class="cf-btn"><svg class="i"><use href="#i-list"/></svg>Decisões <span data-for="run">(9)</span><span data-for="ask">(10)</span><span data-for="done">(11)</span></button>
+        </div>
+        <p class="cf-hint">O agente lê e escreve nesta pasta. A run continua os turnos sozinha; as ferramentas seguem a Aprovação de sempre.</p>
+
+        <div class="cf-sec">Decisões da run</div>
+        <div class="cf-dec">
+          <div class="cf-dec__row"><svg class="i"><use href="#i-rot"/></svg><b>07</b><span>continuou · relato de etapa · regra</span></div>
+          <div class="cf-dec__row"><svg class="i"><use href="#i-rot"/></svg><b>09</b><span>continuou · pediu confirmação · regra</span></div>
+          <div class="cf-dec__row"><svg class="i"><use href="#i-rot"/></svg><b>11</b><span>continuou · relato de etapa · regra</span></div>
+          <div class="cf-dec__row is-ask" data-for="ask done"><svg class="i"><use href="#i-user"/></svg><b>23</b><span>parou · pergunta + irreversível · você</span></div>
+          <div class="cf-dec__row is-ask" data-for="done"><svg class="i"><use href="#i-user"/></svg><b>31</b><span>parou · escolha de biblioteca · você</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- coluna 3 · topbar -->
+    <header class="tb">
+      <div class="code-seg"><button type="button"><svg class="i"><use href="#i-msg"/></svg>Chat</button><button type="button" class="is-on"><svg class="i"><use href="#i-code"/></svg>Code</button></div>
+      <span class="tb__proj"><svg class="i"><use href="#i-folder"/></svg>SHVIA-WEB</span>
+      <div class="cc-engine-seg" data-engine="claude">
+        <span class="cc-engine-seg__caption">Motor</span>
+        <button type="button" class="cc-engine-seg__opt"><svg class="i"><use href="#i-bolt"/></svg>SHVIA</button>
+        <button type="button" class="cc-engine-seg__opt is-on"><svg class="i"><use href="#i-ast"/></svg>Claude Code</button>
+        <button type="button" class="cc-engine-seg__opt"><svg class="i"><use href="#i-code"/></svg>Codex</button>
+      </div>
+      <span class="tb__sp"></span>
+      <span class="state-pill"><i></i>Conectado</span>
+      <span class="tb__ver">v2.110.234 · app 1.4.37</span>
+    </header>
+
+    <!-- coluna 3 · timeline -->
+    <main class="tl" id="tl" aria-label="Timeline do agente">
+
+      <div class="ct-user">Implementa o módulo Markdown do workspace conforme docs/ROADMAP/MARKDOWN-WORKSPACE.md. Trabalha até terminar: só me chama se houver decisão de arquitetura, ação destrutiva ou informação que só eu tenho.<div class="ct-user__run"><svg class="i"><use href="#i-play"/></svg>até terminar<span class="sep">·</span>teto 100 iterações<span class="sep">·</span>US$ 5,00<span class="sep">·</span>Aprovação Auto</div></div>
+
+      <div class="ct-assistant"><p>Li o roadmap e a ADR-0005 do workspace. Vou em cinco etapas:</p><ol><li>migration e model</li><li>API sob <code>/api/v1/markdown</code></li><li>editor</li><li>sync</li><li>resolução de conflito</li></ol><p>Começo pela migration.</p></div>
+
+      <div class="ct-tool"><svg class="i"><use href="#i-file"/></svg>read <em>docs/ROADMAP/MARKDOWN-WORKSPACE.md · 14 KB</em></div>
+      <div class="ct-tool"><svg class="i"><use href="#i-search"/></svg>grep <em>'markdown' app/ resources/ · 7 resultados</em></div>
+      <div class="ct-tool"><svg class="i"><use href="#i-file"/></svg>read <em>app/Models/Folder.php</em></div>
+
+      <div class="ct-card">
+        <div class="ct-card__head"><svg class="i"><use href="#i-diff"/></svg><b>database/migrations/2026_09_10_100000_create_markdown_docs_table.php</b><span class="ct-state ct-state--auto">aprovado automaticamente</span></div>
+        <div class="ct-card__body"><div class="ct-diff-ctx">Schema::create('markdown_docs', function (Blueprint $table) {</div><div class="ct-diff-add">+    $table->id();</div><div class="ct-diff-add">+    $table->foreignId('folder_id')->constrained()->cascadeOnDelete();</div><div class="ct-diff-add">+    $table->string('slug', 120);</div><div class="ct-diff-add">+    $table->longText('body_md');</div><div class="ct-diff-add">+    $table->unsignedInteger('version')->default(1);</div><div class="ct-diff-ctx">});</div></div>
+      </div>
+
+      <div class="ct-card">
+        <div class="ct-card__head"><svg class="i"><use href="#i-term"/></svg><b>php artisan test --filter=MarkdownDoc</b><span class="ct-state ct-state--ok">ok · exit 0</span></div>
+        <div class="ct-card__body"><div class="ct-out">PASS  Tests\Feature\MarkdownDocTest
+  ✓ creates a doc under a project
+  ✓ refuses a doc from another user
+
+Tests: <span class="ct-exit-ok">2 passed</span> (9 assertions)</div></div>
+      </div>
+
+      <div class="ct-assistant"><p>Etapa 1 concluída: migration, model e teste de posse. Posso seguir para a API?</p></div>
+      <div class="ct-metrics"><svg class="i"><use href="#i-gauge"/></svg><span>3.412 tok</span><span class="sep">·</span><span>US$ 0,07 est.</span><span class="sep">·</span><span>claude-opus-4-8</span><span class="sep">·</span><span>2m14s</span></div>
+
+      <!-- NOVO 3 · continuação do orquestrador -->
+      <div class="ct-orch">
+        <span class="mk mk--abs" style="top:-8px;left:-9px">3</span>
+        <svg class="i"><use href="#i-rot"/></svg>
+        <div class="ct-orch__t">Continuou sozinho<span>iteração 7</span></div>
+        <div class="ct-orch__why">relato de etapa com pedido de confirmação · <b>DOC / pergunta-retórica</b> · decidiu: <b>regra</b> · hook Stop, dentro do turno</div>
+        <div class="ct-orch__sent">enviado: <q>Continue conforme o plano. Não peça confirmação entre etapas.</q></div>
+      </div>
+
+      <!-- cauda do estado RODANDO -->
+      <div class="ct-assistant" data-for="run"><p>Etapa 2, API. Criando o <code>MarkdownDocController</code> e as rotas sob <code>/api/v1/markdown</code>, com a mesma checagem de posse do <code>CodeTurnController</code>.</p></div>
+      <div class="ct-tool" data-for="run"><svg class="i"><use href="#i-file"/></svg>read <em>routes/api.php</em></div>
+      <div class="ct-card" data-for="run">
+        <div class="ct-card__head"><svg class="i"><use href="#i-diff"/></svg><b>app/Http/Controllers/Api/MarkdownDocController.php</b><span class="ct-state ct-state--auto">aprovado automaticamente</span></div>
+        <div class="ct-card__body"><div class="ct-diff-add">+    public function store(Request $request, Folder $folder): JsonResponse</div><div class="ct-diff-add">+    {</div><div class="ct-diff-add">+        $this->authorizeOwnership($request->user(), $folder);</div><div class="ct-diff-add">+        $data = $request->validate([...]);</div></div>
+      </div>
+      <div class="ct-assistant" data-for="run"><p>Rotas registradas. Agora o teste da API<span class="ct-cursor"></span></p></div>
+
+      <!-- cauda do estado PAROU: DECISÃO SUA -->
+      <div class="ct-assistant" data-for="ask done"><p>Etapa 2 concluída: API com teste de posse e paginação.</p></div>
+      <div class="ct-orch" data-for="ask done">
+        <svg class="i"><use href="#i-rot"/></svg>
+        <div class="ct-orch__t">Continuou sozinho<span>iteração 11</span></div>
+        <div class="ct-orch__why">relato de etapa · <b>DOC / relato</b> · decidiu: <b>regra</b> · hook Stop, dentro do turno</div>
+        <div class="ct-orch__sent">enviado: <q>Continue conforme o plano.</q></div>
+      </div>
+      <div class="ct-assistant" data-for="ask"><p>Etapa 3, editor. Antes do sync preciso de uma escolha sua: o storage atual guarda <code>documents.body_html</code> já renderizado.</p><p>(a) substituir por <code>body_md</code>, com migration que <b>apaga a coluna antiga</b>; é o desenho mais limpo.<br>(b) manter as duas e converter aos poucos; preserva os 1.940 documentos existentes sem reprocessar.</p><p>Qual você prefere?</p></div>
+
+      <div class="ct-card ct-gate" data-for="ask">
+        <span class="mk mk--abs" style="top:-8px;left:-9px">4</span>
+        <div class="ct-card__head"><svg class="i"><use href="#i-user"/></svg><b>Decisão sua · a run parou aqui</b><span class="ct-state ct-state--wait">esperando você</span></div>
+        <div class="ct-gate__body">O agente fez uma pergunta que a run não responde sozinha, e uma das opções é irreversível.
+          <div class="ct-gate__why"><b>sinal</b><em>pergunta direta ao usuário</em><b>e mais</b><em>a opção (a) é migration destrutiva (apaga <code>documents.body_html</code>)</em><b>política</b><em>parar em ASK e em ação irreversível · orquestrador: regra, sem modelo</em><b>iteração</b><em>23 de 100 · US$ 1,31 gastos</em></div>
+        </div>
+        <div class="ct-gate__notice"><svg class="i"><use href="#i-bell"/></svg>Avisado na bandeja do sistema às 15:42.</div>
+        <div class="ct-card__foot"><span class="lead">Responda no campo abaixo; a run retoma com a sua resposta.</span><button type="button" class="ct-btn ct-btn--danger"><svg class="i"><use href="#i-stop"/></svg>Encerrar a run</button><button type="button" class="ct-btn ct-btn--primary">Responder</button></div>
+      </div>
+
+      <!-- cauda do estado CONCLUÍDA -->
+      <div class="ct-user" data-for="done">(b). Manter as duas e converter aos poucos. Nada de apagar coluna.</div>
+      <div class="ct-orch" data-for="done">
+        <svg class="i"><use href="#i-user"/></svg>
+        <div class="ct-orch__t">Retomou com a sua resposta<span>iteração 24</span></div>
+        <div class="ct-orch__why">decisão registrada · <b>ASK respondido</b> · decidiu: <b>você</b> · 1 de 2 intervenções desta run</div>
+      </div>
+      <div class="ct-assistant" data-for="done"><p>Etapa 5 concluída. Resolução de conflito por versão (o último grava, com aviso). Suíte inteira verde e Pint limpo. O que ficou de fora está declarado no fim do doc: <b>sem edição colaborativa em tempo real</b>, que o roadmap marca como fase seguinte.</p></div>
+      <div class="ct-card" data-for="done">
+        <div class="ct-card__head"><svg class="i"><use href="#i-term"/></svg><b>php artisan test</b><span class="ct-state ct-state--ok">ok · exit 0</span></div>
+        <div class="ct-card__body"><div class="ct-out">Tests: <span class="ct-exit-ok">2.851 passed</span>, 25 skipped (11.3s)</div></div>
+      </div>
+      <div class="ct-metrics" data-for="done"><svg class="i"><use href="#i-gauge"/></svg><span>2.108 tok</span><span class="sep">·</span><span>US$ 0,05 est.</span><span class="sep">·</span><span>claude-opus-4-8</span><span class="sep">·</span><span>1m41s</span></div>
+
+      <div class="ct-card ct-summary" data-for="done">
+        <span class="mk mk--abs" style="top:-8px;left:-9px">5</span>
+        <div class="ct-card__head"><svg class="i"><use href="#i-flag"/></svg><b>Run concluída</b><span class="ct-state ct-state--ok">1h47 · 41 iterações · o agente parou sozinho</span></div>
+        <div class="ct-summary__grid">
+          <div class="ct-summary__cell"><span class="ct-summary__k">Arquivos alterados</span><span class="ct-summary__v">14<small>+612 −88</small></span></div>
+          <div class="ct-summary__cell"><span class="ct-summary__k">Comandos</span><span class="ct-summary__v">27<small>27 com exit 0</small></span></div>
+          <div class="ct-summary__cell"><span class="ct-summary__k">Tokens · custo</span><span class="ct-summary__v">61.204<small>US$ 1,92 est.</small></span></div>
+          <div class="ct-summary__cell"><span class="ct-summary__k">Continuações automáticas</span><span class="ct-summary__v">9<small>todas por regra</small></span></div>
+          <div class="ct-summary__cell"><span class="ct-summary__k">Decisões suas</span><span class="ct-summary__v">2</span></div>
+          <div class="ct-summary__cell"><span class="ct-summary__k">Motor</span><span class="ct-summary__v" style="font-size:13px">Claude Code<small>opus-4-8 · alto</small></span></div>
+        </div>
+        <div class="ct-summary__proof"><span><svg class="i"><use href="#i-check"/></svg> php artisan test</span><span><svg class="i"><use href="#i-check"/></svg> ./vendor/bin/pint --test</span><span><svg class="i"><use href="#i-check"/></svg> entregáveis do roadmap: 5 de 5</span></div>
+        <div class="ct-card__foot"><span class="lead">Números coletados do que passou pelos cartões, não do relato do agente.</span><button type="button" class="ct-btn"><svg class="i"><use href="#i-list"/></svg>Decisões (11)</button><button type="button" class="ct-btn ct-btn--primary"><svg class="i"><use href="#i-diff"/></svg>Ver alterações</button></div>
+      </div>
+      <div class="ct-session-end" data-for="done"><span>Run encerrada. O agente continua nesta sessão; a próxima mensagem é um turno normal.</span></div>
+
+    </main>
+
+    <!-- coluna 3 · composer -->
+    <footer class="cp">
+      <!-- NOVO 2 · barra da run: substitui a barra "trabalhando" enquanto a run está armada -->
+      <div class="runbar" data-for="run">
+        <span class="mk mk--abs" style="top:-8px;left:-9px">2</span>
+        <span class="runbar__spin"></span>
+        <span>Rodando até terminar</span>
+        <span class="runbar__dots"><i></i><i></i><i></i></span>
+        <span class="runbar__m"><svg class="i"><use href="#i-rot"/></svg><b>12</b>/100 it</span>
+        <span class="runbar__m"><svg class="i"><use href="#i-coin"/></svg><b>US$ 0,84</b>/5,00</span>
+        <span class="runbar__m"><b>9</b> auto · <b>0</b> suas</span>
+        <span class="runbar__timer">41:07</span>
+        <button type="button" class="runbar__btn"><svg class="i"><use href="#i-pause"/></svg>Pausar</button>
+        <button type="button" class="runbar__btn runbar__btn--stop"><svg class="i"><use href="#i-stop"/></svg>Parar</button>
+      </div>
+      <div class="runbar runbar--ask" data-for="ask">
+        <span class="mk mk--abs" style="top:-8px;left:-9px">2</span>
+        <svg class="i"><use href="#i-pause"/></svg>
+        <span>Parada · esperando você</span>
+        <span class="runbar__m"><svg class="i"><use href="#i-rot"/></svg><b>23</b>/100 it</span>
+        <span class="runbar__m"><svg class="i"><use href="#i-coin"/></svg><b>US$ 1,31</b>/5,00</span>
+        <span class="runbar__m"><b>9</b> auto · <b>1</b> sua</span>
+        <span class="runbar__timer">1:02:19</span>
+        <button type="button" class="runbar__btn"><svg class="i"><use href="#i-play"/></svg>Retomar</button>
+        <button type="button" class="runbar__btn runbar__btn--stop"><svg class="i"><use href="#i-stop"/></svg>Parar</button>
+      </div>
+      <div class="runbar runbar--done" data-for="done">
+        <span class="mk mk--abs" style="top:-8px;left:-9px">2</span>
+        <svg class="i"><use href="#i-check"/></svg>
+        <span>Concluída</span>
+        <span class="runbar__m"><svg class="i"><use href="#i-rot"/></svg><b>41</b> it</span>
+        <span class="runbar__m"><svg class="i"><use href="#i-coin"/></svg><b>US$ 1,92</b>/5,00</span>
+        <span class="runbar__m"><svg class="i"><use href="#i-clock"/></svg>1h47</span>
+        <span class="runbar__timer">há 3 min</span>
+        <button type="button" class="runbar__btn">Fechar</button>
+      </div>
+
+      <div class="queue-bar" data-for="run"><span>⏳ na fila (1)</span><span class="queue-bar__chip">Quando chegar no sync, usa a mesma fila do code_turns em vez de… <small>sai no próximo fim de turno</small></span></div>
+
+      <div class="cp__row">
+        <div class="cp__ta" data-for="run">Enquanto a run roda, sua mensagem entra na fila e o agente a lê no próximo fim de turno.</div>
+        <div class="cp__ta" data-for="ask"><b>Responda ao agente.</b> A run retoma com a sua resposta.</div>
+        <div class="cp__ta" data-for="done">O que fazer nesta pasta?</div>
+        <button type="button" class="cp__ic" aria-label="Anexar"><svg class="i"><use href="#i-clip"/></svg></button>
+        <button type="button" class="cp__send" aria-label="Enviar"><svg class="i"><use href="#i-up"/></svg></button>
+      </div>
+      <div class="cp__ctl">
+        <span class="pill"><span class="lbl">Conta</span>blue3<svg class="i chev"><use href="#i-chev"/></svg></span>
+        <span class="pill"><span class="lbl">Modelo</span>claude-opus-4-8<svg class="i chev"><use href="#i-chev"/></svg></span>
+        <span class="pill"><span class="lbl">Esforço</span>alto<svg class="i chev"><use href="#i-chev"/></svg></span>
+        <span class="pill pill--auto"><svg class="i lead"><use href="#i-shield"/></svg><span class="lbl">Aprovação</span>Auto<svg class="i chev"><use href="#i-chev"/></svg></span>
+        <span class="pill pill--run"><span class="mk mk--abs" style="top:-8px;left:-8px">1</span><svg class="i lead"><use href="#i-play"/></svg><span class="lbl">Autonomia</span><span class="val">Até terminar</span><span class="pill__hint">100 it · US$ 5 · orq. regra</span><svg class="i chev"><use href="#i-chev"/></svg></span>
+      </div>
+    </footer>
+  </div>
+  </div>
+
+  <section class="legend" aria-label="O que muda na tela">
+    <div class="lg"><span class="mk">1</span><h3>Autonomia: o único controle novo</h3><p>Uma pill ao lado da <b>Aprovação</b>, com dois valores: <b>Um turno</b> (o de hoje) e <b>Até terminar</b>. Persistida por projeto, como a Aprovação. O menu dela guarda os tetos, iterações e custo com padrão 100 e US$ 5, e o <b>orquestrador</b>: "Regra, sem modelo" (o padrão) ou um perfil do catálogo do gateway, no formato modelo@servidor, de preferência de outra família que o coder.</p><p>Autonomia diz se o <b>turno</b> continua sozinho. Aprovação diz se a <b>ferramenta</b> roda sozinha. São eixos diferentes e ficam em pills diferentes: uma run em Aprovação Manual continua os turnos e ainda pede cartão a cada escrita.</p></div>
+    <div class="lg"><span class="mk">2</span><h3>A barra da run vive entre turnos</h3><p>É a barra "trabalhando" de hoje, que deixa de sumir no <code>turn_done</code> enquanto a run está armada. Mostra iteração e custo <b>contra o teto</b>, quantas vezes continuou sozinha e quantas parou em você.</p><p><b>Pausar</b> segura no próximo fim de turno. <b>Parar</b> é o kill switch, o mesmo gesto do <code>.loop/STOP</code>. Os dois existem desde a primeira versão.</p></div>
+    <div class="lg"><span class="mk">3</span><h3>Cada continuação é uma linha visível</h3><p>Quando o orquestrador decide seguir, a timeline ganha uma linha na família das ferramentas: o veredito do classificador, <b>quem decidiu</b> (regra, o perfil do modelo ou você), o mecanismo usado e o texto que foi injetado. Nunca fica escondido.</p><p>É o que torna a run <b>auditável</b> depois: quem voltar sabe onde o agente pediu confirmação e o que respondeu por você.</p></div>
+    <div class="lg"><span class="mk">4</span><h3>O portão humano é um cartão</h3><p>A run para quando o classificador diz ASK ou quando a próxima ação é irreversível. O cartão diz <b>por quê</b>, em sinais, não em adjetivos: pergunta direta, migration destrutiva, política vigente.</p><p>Você responde no composer de sempre. O aviso chega na bandeja do sistema pelo canal de notificação que o Modo Code já tem.</p></div>
+    <div class="lg"><span class="mk">5</span><h3>O resumo é coletado, não narrado</h3><p>Arquivos vêm dos diffs que passaram pelos cartões, comandos vêm com o exit code real, tokens vêm do evento <code>usage</code>. O agente não escreve o resumo; ele sai do que a tela já registrou.</p><p>É a tela de "voltei duas horas depois", e o mesmo desenho do checkpoint do workspace.</p></div>
+    <div class="lg"><span class="mk">6</span><h3>A run aparece no painel do projeto</h3><p>Um fato a mais na aba Geral, na cor do estado, e a lista de decisões abaixo dele. Trocar de aba não perde a run de vista.</p><p>O Histórico passa a agrupar por run, com os mesmos totais que o resumo mostra.</p></div>
+  </section>
+
+  <section class="sec">
+    <div>
+      <h2>Como a continuação acontece, por motor</h2>
+      <table>
+        <thead><tr><th>Motor</th><th>Mecanismo</th><th>Custo de um "continue"</th></tr></thead>
+        <tbody>
+          <tr><td>Claude Code</td><td>hook <code>Stop</code> dentro do turno: o modelo tenta parar, o classificador diz DOC, o hook devolve o motivo e o turno segue com o contexto intacto</td><td>quase zero; sem turno novo</td></tr>
+          <tr><td>SHVIA (anna)</td><td>entre turnos: no <code>turn_done</code>, a página classifica a última resposta e empurra "continue" na fila que já existe</td><td>um turno inteiro</td></tr>
+          <tr><td>Codex</td><td>entre turnos, igual ao anna; o <code>codex app-server</code> não tem superfície de hook</td><td>um turno inteiro</td></tr>
+        </tbody>
+      </table>
+      <p class="cf-hint" style="margin-top:8px">A linha de continuação (3) nomeia o mecanismo em cada caso. A tela é a mesma nos três motores; muda só a palavra. Quem decide é o mesmo nos três: a regra, ou o perfil de orquestrador escolhido no gateway, sempre pela página, nunca pelo runner.</p>
+    </div>
+    <div>
+      <h2>O que não muda</h2>
+      <ul class="keep">
+        <li><svg class="i"><use href="#i-check"/></svg><span><b>Cartões de aprovação</b> continuam mandando nas ferramentas. A run nunca aprova um diff ou um comando; só decide se o turno seguinte começa.</span></li>
+        <li><svg class="i"><use href="#i-check"/></svg><span><b>Aprovação Manual / Edit / Auto</b> e <b>Confiar</b> seguem valendo por cima da run.</span></li>
+        <li><svg class="i"><use href="#i-check"/></svg><span><b>Fila do composer</b>: mensagem sua durante a run entra na fila e sai no próximo fim de turno, como hoje.</span></li>
+        <li><svg class="i"><use href="#i-check"/></svg><span><b>Abas do painel</b>, chip de projeto, seletor de motor: mesmos lugares, mesmos nomes.</span></li>
+        <li><svg class="i"><use href="#i-check"/></svg><span><b>Fechar o desktop encerra a run.</b> Este desenho é o do trabalho que você acompanha; o que sobrevive à máquina fechada é missão no workspace, e a ponte para lá é a frente B.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <p class="foot">Vocabulário visual do SHVIA-WEB (tokens.css, code-mode.css) com o acento terracota do Modo Code. Classes novas propostas: <code>.cc-autonomy</code> (com o orquestrador no menu), <code>.ct-runbar</code>, <code>.ct-orch</code>, <code>.ct-gate</code>, <code>.ct-summary</code>. Ícones são substitutos dos Font Awesome do produto.</p>
+</div>
+
+<script>
+  (function () {
+    var frame = document.getElementById('frame');
+    var tl = document.getElementById('tl');
+    var btns = document.querySelectorAll('.seg [data-set]');
+    function set(state) {
+      frame.setAttribute('data-state', state);
+      btns.forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-set') === state)); });
+      tl.scrollTop = tl.scrollHeight;
+    }
+    btns.forEach(function (b) { b.addEventListener('click', function () { set(b.getAttribute('data-set')); }); });
+    if (window.claude && window.claude.hot && window.claude.hot.ready) {
+      window.claude.hot.snapshot && window.claude.hot.snapshot(function () { return { state: frame.getAttribute('data-state') }; });
+      window.claude.hot.ready(function (d) { set((d && d.state) || 'run'); });
+    } else {
+      set('run');
+    }
+  })();
+</script>
+
+</body>
+</html>

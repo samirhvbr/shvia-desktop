@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.4.38 - the Run in Code mode: design, contracts and build plan, with the proposed screen
+
+Documentation only. `docs/code/RUN-20260910.md` answers, in the code as it is on
+10/09/2026, the eight questions the orchestration proposal asked (where a turn ends, who
+sends the next one, what survives a restart), lists what is reused instead of rebuilt
+(`loop-work`, the gate handshake, the page's queue, the SDK caps, anna's cast, the
+workspace mission), and specifies the contracts: the `stop_request` NDJSON event, the
+`POST /api/v1/code/orchestrate` endpoint with its tiers, the page's run state machine,
+the two new `code_turns` kinds, the execution contract and the runner flags. The build
+plan is ten blocks written as queue lines, each with its proof and commit subject.
+
+🔴 **The finding that opens the plan:** `claude-runner.mjs:385` only emits `error` on a
+`result` with `subtype === "error"`, and the pinned SDK (0.3.258) never emits that
+subtype on a `result` — the real ones are `error_during_execution`, `error_max_turns`,
+`error_max_budget_usd` and `success` with `is_error`. Today an API error ends a turn as
+`usage` + `turn_done`, with no error line. Read in the type declarations, not reproduced
+live; it is block B0, and it ships before anything else.
+
+`docs/code/modo-code-run-mockup.html` is the proposed screen, built on the real tokens
+and classes of `code-mode.css`, in three states: running, stopped on a decision of yours,
+done. Values on the screen are examples.
+
 ## 1.4.37 - the gate table is a property of a CLI+model pair, and one cell diverges between pairs
 
 Documentation only. Three corrections to `docs/code/MOTOR-CODEX-20260909.md`, all measured
