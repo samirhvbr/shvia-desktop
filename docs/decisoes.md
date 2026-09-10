@@ -1956,5 +1956,11 @@ narrated by the agent.
   emits; the two caps come out as `warn`, everything else that is not a clean `success`
   as `error`. Proved by reversal in `scripts/prova-montar-prompt.mjs` (four rules red
   before, 35 green after). Not run against a live login.
-- **Not validated:** everything else. Each block adds its line here as it ships, as
-  ADR-033 did.
+- **Shipped:** B1 in SHVIA-CODE 0.11.21 — `stop_request` and its answer documented in
+  `embedding.md`, optional per engine; `anna` unchanged.
+- **Shipped:** B2 in 1.5.0 — `claude-runner/parada.mjs` (pure) + the `Stop` hook wired
+  behind `--parada host`; caps behind `--teto-iteracoes` / `--teto-custo`. 11 tests under
+  `node --test`, run by `prova:politica` so CI covers them without a workflow change.
+  Not run against a live login.
+- **Not validated:** B3 onwards. Each block adds its line here as it ships, as ADR-033
+  did.

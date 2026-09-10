@@ -107,6 +107,13 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
   and sets `CLAUDE_CONFIG_DIR` **on the child**, so two windows can hold two accounts at once.
   Discovery and spawn share one resolver, and an ID that does not resolve fails instead of
   quietly landing on the default account. See [code/CONTAS-CLAUDE.md](code/CONTAS-CLAUDE.md).
+- **The runner reports the turn errors the SDK actually emits** (`1.4.39`, block B0 of the
+  Run): `success` with `is_error` and the `error_*` subtypes draw the error line; the two
+  caps come out as `warn`. Before, a 401 ended a turn with no line at all.
+- **The Claude runner asks the host before ending a turn** (`1.5.0`, block B2 of
+  [code/RUN-20260910.md](code/RUN-20260910.md), ADR-034): with `--parada host` it emits a
+  `stop_request`, blocks, and does what the host answers (60 s ceiling → stop); the run caps
+  come from `--teto-iteracoes` / `--teto-custo`. Off without the flags.
 
 ## Limitações conhecidas
 

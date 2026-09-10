@@ -26,12 +26,14 @@
 //        estruturada, nunca em base64 no meio do texto.
 //     {"type":"exit"}                                     encerra
 //     {"id":"...","decision":"approve"|"always"|"reject"} resposta a um gate_request
+//     {"id":"...","decision":"continue"|"stop","message"}   resposta a um stop_request
 //   runner → Host (stdout):
 //     {"type":"model","model","server"}
 //     {"type":"text","delta"}
 //     {"type":"tool_call","id","name","arguments"}
 //     {"type":"tool_result","id","name","bytes","content"}
 //     {"type":"gate_request","id","scope","policy","preview"}   (BLOQUEIA)
+//     {"type":"stop_request","id","iteration","last","reason"}  (BLOQUEIA; só com --parada host)
 //     {"type":"usage","tokens","cost","estimated"}
 //     {"type":"turn_done"} | {"type":"error"|"warn","message"}
 
@@ -39,6 +41,9 @@ import * as readline from "node:readline";
 // A política de permissão (cerca de leitura, rede e destrutivo) mora em módulo próprio —
 // é a única forma de ela ter teste, já que este arquivo roda ao ser importado (F-13/F-29).
 import { EDICAO, LEITURA, PATH_ARG, decidir } from "./politica.mjs";
+// The stop handshake of the Run (RUN-20260910, B2) lives in its own pure module for the
+// same reason: it is proved by `parada.test.mjs`, and this file cannot be imported by a test.
+import { encerrarPendentes, esperarDecisao, montarStopRequest, opcoesDaRun, saidaDoHook } from "./parada.mjs";
 
 // ---------------------------------------------------------------- saída NDJSON
 function emit(obj) {
@@ -47,6 +52,7 @@ function emit(obj) {
 
 // ------------------------------------------------------------------ argumentos
 // --model <perfil>  --cwd <dir>   (tudo opcional; espelha o spawn do anna)
+// --parada host  --teto-iteracoes N  --teto-custo X   (a Run: RUN-20260910, B2)
 function argOf(flag) {
   const i = process.argv.indexOf(flag);
   return i >= 0 && i + 1 < process.argv.length ? process.argv[i + 1] : undefined;
@@ -162,6 +168,49 @@ const APROVACAO = (() => {
   const v = argOf("--aprovacao");
   return v === "edit" || v === "auto" ? v : "manual";
 })();
+
+/**
+ * A Run (docs/code/RUN-20260910.md, B2): `--parada host` installs the `Stop` hook that asks
+ * the host before a turn ends; `--teto-iteracoes` and `--teto-custo` become the SDK caps.
+ * Without the flags nothing here is installed and the runner behaves as before 1.5.0 —
+ * a host that does not know `stop_request` never receives it (embedding.md).
+ */
+const RUN = opcoesDaRun(argOf);
+
+// ------------------------------------------------- paradas pendentes (id → resolve)
+// The same design as `pendingGates`: the stdin reader resolves by `id`. Ids are `s-N`,
+// so they never collide with a tool_use_id. The stdin reader looks here FIRST, because
+// the two handshakes share the `id` + `decision` shape.
+const pendingStops = new Map();
+let stopSeq = 0;
+let stopsNoTurno = 0;
+
+/**
+ * The `Stop` hook. The model wants to end the turn; the runner asks the host and does
+ * what it is told. `continue` → `{decision:'block', reason}` and the model goes on in
+ * the same context; `stop` → `{}` and the turn ends as it always did. No answer in 60 s
+ * → stop (parada.mjs): a closed page must never hang a turn.
+ *
+ * `stop_hook_active` is deliberately NOT used as a latch: it turns true on the second
+ * stop and never goes back, so the documented `if (stop_hook_active) allow` pattern
+ * would give one continuation and end the run. Who limits is the host (loop-work
+ * learned this first, ADR-002 of the skill).
+ */
+async function stopHook(input) {
+  stopsNoTurno += 1;
+  const id = `s-${++stopSeq}`;
+  emit(montarStopRequest({
+    id,
+    iteration: stopsNoTurno,
+    last: input?.last_assistant_message ?? "",
+    reason: "model_stopped",
+  }));
+  const decisao = await esperarDecisao(pendingStops, id);
+  if (decisao.motivo === "teto") {
+    process.stderr.write(`[parada] ${id}: sem resposta do host em 60 s — o turno encerra\n`);
+  }
+  return saidaDoHook(decisao);
+}
 
 // (toolName, input) → preview do gate_request (diff | command | commit)
 function toPreview(toolName, input) {
@@ -423,7 +472,14 @@ async function runTurn(text, images) {
     settingSources: [],           // NÃO herda ~/.claude/settings.json do usuário
     hooks: {
       PreToolUse: [{ hooks: [preToolUse] }], // política única de permissão
+      // Only with `--parada host` (RUN-20260910, B2). Absent, the SDK ends the turn
+      // as before and no `stop_request` ever leaves this process.
+      ...(RUN.parada ? { Stop: [{ hooks: [stopHook] }] } : {}),
     },
+    // The run caps, straight to the SDK. A hit cap comes back as `error_max_turns` /
+    // `error_max_budget_usd`, which `traduzirMensagem` turns into `warn` + `turn_done`.
+    ...(RUN.maxTurns ? { maxTurns: RUN.maxTurns } : {}),
+    ...(RUN.maxBudgetUsd ? { maxBudgetUsd: RUN.maxBudgetUsd } : {}),
     ...(MODEL ? { model: MODEL } : {}),
     // `effort` guia a profundidade do raciocínio ('low'…'max'). Só entra quando
     // pedido: sem a flag, vale o default do modelo (`high`) — mandar um valor
@@ -436,6 +492,7 @@ async function runTurn(text, images) {
   // O estado atravessa as mensagens do turno: `sessionId` para o `resume` do
   // turno seguinte, `sawTextDelta` para o fallback de texto do bloco assistant.
   let estado = { sessionId, sawTextDelta: false };
+  stopsNoTurno = 0; // `iteration` of the stop_request counts within the turn
 
   for await (const message of query({ prompt: montarPrompt(text, images), options })) {
     const r = traduzirMensagem(message, estado, MODEL);
@@ -488,6 +545,12 @@ rl.on("line", (raw) => {
     return;
   }
   if (msg.id && msg.decision) {
+    // A stop decision first: same `id` + `decision` shape as the gates, different map.
+    const parada = pendingStops.get(msg.id);
+    if (parada) {
+      parada(msg);
+      return;
+    }
     const resolve = pendingGates.get(msg.id);
     if (resolve) {
       pendingGates.delete(msg.id);
@@ -504,6 +567,7 @@ rl.on("line", (raw) => {
 rl.on("close", () => {
   for (const [, resolve] of pendingGates) resolve("reject");
   pendingGates.clear();
+  encerrarPendentes(pendingStops); // stop pendente sem host vira `stop`, igual ao gate
   stdinClosed = true;
   if (!busy && queue.length === 0) process.exit(0); // one-shot já ocioso
 });

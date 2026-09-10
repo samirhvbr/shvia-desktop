@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.5.0 - the Claude runner asks the host before ending a turn, and takes the run caps from the command line
+
+Block B2 of `docs/code/RUN-20260910.md` (ADR-034). Minor bump: a new runtime capability
+of the engine, off by default.
+
+**`--parada host`** installs the SDK `Stop` hook. When the model wants to end a turn, the
+runner emits a `stop_request` (`id`, `iteration`, `last` cut at 4.000 characters,
+`reason`), **blocks**, and does what the host answers: `continue` becomes the hook output
+`{decision:'block', reason}` — the model goes on in the same context, with the host's
+message as its reason — and `stop` becomes an empty output, the turn ending exactly as
+it always did. No answer in 60 s → `stop`; stdin closed → `stop`. The runner never
+decides; the page does, on behalf of the server's orchestrator. Without the flag the
+hook is not installed and no `stop_request` ever leaves the process — a host that does
+not know the event never receives it (SHVIA-CODE 0.11.21, `embedding.md`).
+
+**`--teto-iteracoes N` and `--teto-custo X`** go straight to the SDK (`maxTurns`,
+`maxBudgetUsd`), only when positive numbers. A hit cap comes back as `error_max_turns` /
+`error_max_budget_usd`, which 1.4.39 already turns into `warn` + `turn_done`.
+
+**`stop_hook_active` is deliberately not a latch.** It turns true on the second stop and
+never goes back, so the documented `if (stop_hook_active) allow` would give one
+continuation and end the run. Who limits is the host — the `loop-work` skill learned
+this first.
+
+The handshake lives in `claude-runner/parada.mjs`, pure, with 11 tests in
+`parada.test.mjs`; `npm run prova:politica` now runs both runner test files, so CI
+covers them without a workflow change. `prova:runner` (35 rules) and
+`prova:runner-version` unchanged and green. Not run against a live login.
+
+🔴 One defect caught by the proof before it shipped: `esperarDecisao` armed the timer
+before registering the resolver, so a ceiling that fired at once found no request and
+the promise never settled. The test's instant timer hung; the order is now resolver
+first, timer second.
+
 ## 1.4.39 - the Claude runner reports the turn errors the SDK actually emits
 
 Block B0 of `docs/code/RUN-20260910.md`, the one the plan found while reading the code.
