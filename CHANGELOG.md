@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.5.7 - the Run is documented at the state each of its sides actually reached
+
+Documentation only, block **B8** of [`docs/code/RUN-20260910.md`](docs/code/RUN-20260910.md).
+
+**What the block asked for was "the Run is documented as shipped", and half of it is not
+shipped.** Measured on 11/09/2026 before writing a line:
+
+| side | where it is |
+|---|---|
+| B4 the endpoint, B5 the screen, B6 the model tier, B7 the history | **merged**, SHVIA-WEB `2.110.254` → `2.110.258` |
+| B0 the runner's turn errors, B2 the `stop_request`, B3 the bridge caps | open PR, [shvia-desktop #5](https://github.com/samirhvbr/shvia-desktop/pull/5) |
+| B1 the NDJSON protocol | open PR, [shvia-code #1](https://github.com/samirhvbr/shvia-code/pull/1) |
+| the route item | open PR, [shvia-rota #1](https://github.com/samirhvbr/shvia-rota/pull/1), and it is **T35**, not the T33 the plan still named |
+
+So the documentation says that, and not "shipped". A document that claims a feature is in
+people's hands when the client half is still in review is the `CANAL-WHATSAPP` failure of
+§10 with the sides swapped: whoever reads it decides with confidence, and is wrong.
+
+- `docs/funcionalidades.md` gains the Run as its own phase, with what a person can do
+  today and what is still behind a PR.
+- **ADR-034** leaves *Proposed* for **Accepted**, scoped: accepted and in production for
+  the server and the page; the runner side in PR; and **Q5 stays open** — no default
+  orchestrator profile until B9 measures five real runs, which is the one thing the ADR
+  said would decide it.
+- The run mockup is marked approved, with the versions the screen was built against.
+- The plan's status line stops saying B4 to B7 are "in review" and records the three
+  follow-up PRs the reviews of those blocks produced.
+
+
 ## 1.5.6 - the plan records block B7 as in review
 
 Documentation only. `docs/code/RUN-20260910.md` ticks B7 (the Histórico groups turns by

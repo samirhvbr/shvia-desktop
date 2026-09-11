@@ -123,6 +123,45 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
   token — and is banned on the web side (finding F-16). The Run's gate card (SHVIA-WEB
   block B5) uses it when the window is not in front. Presence of the method is the flag.
 
+## Phase 4 — the Run in Code mode (1.5.x)
+
+The plan is [`code/RUN-20260910.md`](code/RUN-20260910.md), the decision is
+[ADR-034](decisoes.md#adr-034), and the screen is
+[`code/modo-code-run-mockup.html`](code/modo-code-run-mockup.html).
+
+**What the Run is.** Code mode continuing its own turns and stopping only where a person
+is needed. It is not a new mode: it is a posture of the turn. The **Autonomia** pill, next
+to Aprovação, chooses between *Um turno* and *Até terminar* per project; the approval gate
+for commands keeps working inside a run exactly as outside it. Nothing runs or writes
+without the person seeing it — the Run changes who types "continue", not who approves.
+
+**Who decides, at every stop.** The page asks `POST /api/v1/code/orchestrate` and gets one
+decision back — CONTINUE, ASK_HUMAN, DONE or STOP — signed by whoever took it. The rule
+tier decides alone and costs nothing: markers first (a run that says it finished, finished),
+then the caps, then announced irreversible actions (which never reach a model — policy is
+code), then a question-versus-report classifier. Only where the rule stopped on a question
+or a handoff, and only if the person pinned an **Orquestrador** profile on the project, is a
+gateway model consulted — bounded at 20 s, audited as `origin = code-orch` like any other
+inference, and any failure of it falls back to the human signed by the rule.
+
+**What the person sees.** A run bar between turns (Pausar, Retomar, Parar), one line per
+decision on the timeline saying who decided and why, a gate card with three exits when it
+stops, and a summary when it ends. In the Histórico, a run is one group inside its session,
+under the numbers the summary showed.
+
+🔴 **State, honestly, on 11/09/2026.** The server and the page are **in production**
+(SHVIA-WEB `2.110.254` through `2.110.258`). The desktop side — the runner reporting turn
+errors, asking the host before ending a turn, and carrying the run caps — is **in review**
+in [shvia-desktop #5](https://github.com/samirhvbr/shvia-desktop/pull/5), and the NDJSON
+protocol that documents `stop_request` is in [shvia-code #1](https://github.com/samirhvbr/shvia-code/pull/1).
+Until those land, a shell without `recursos.run` simply never arms a run, and the page
+treats the absent capability the way it treats an absent orchestrator: it stops on the
+person.
+
+**Not measured yet.** Five real runs on the three engines, rule only (block B9), counting
+escalations by signal and false continues. Until that number exists there is **no default
+orchestrator profile** — the pill opens on *Regra, sem modelo*.
+
 ## Limitações conhecidas
 
 - ⚠️ **Mic e Ctrl+V de imagem no Linux** (`0.4.4`, **ADR-008**): o shell habilita
