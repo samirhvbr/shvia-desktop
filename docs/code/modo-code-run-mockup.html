@@ -32,6 +32,12 @@
   button{font:inherit;color:inherit}
   button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--azure);outline-offset:2px}
 
+  .aprovacao{max-width:1180px;margin:28px auto 0;padding:14px 18px;border-radius:10px;
+    background:var(--bg-2);border:1px solid var(--line);color:var(--tx-dim);
+    font-size:13.5px;line-height:1.55;}
+  .aprovacao b{color:var(--tx);font-weight:600;}
+  .aprovacao span{display:block;margin-top:6px;color:var(--tx-faint);font-size:12.5px;}
+
   /* ── cabeçalho da página do mockup ─────────────────────────────────────── */
   .page{max-width:1240px;margin:0 auto}
   .page-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px 28px;margin-bottom:16px}
@@ -318,7 +324,7 @@
 <div class="page">
   <div class="page-head">
     <div>
-      <p class="eyebrow">SHVIA · Modo Code · proposta de tela · 10/09/2026</p>
+      <p class="eyebrow">SHVIA · Modo Code · referência visual aprovada · 10/09/2026</p>
       <h1>Run no Modo Code</h1>
       <p class="thesis">A tela não ganha um modo novo. Ganha <b>um controle</b> (Autonomia), <b>uma barra</b> que fica viva entre turnos, e <b>três peças na timeline</b>: a continuação automática, o portão humano e o resumo. Cartões de aprovação, abas e composer continuam onde estão.</p>
     </div>
@@ -638,6 +644,16 @@ Tests: <span class="ct-exit-ok">2 passed</span> (9 assertions)</div></div>
     }
   })();
 </script>
+
+<div class="aprovacao">
+  <b>Referência visual aprovada em 11/09/2026</b>, depois de a tela existir de verdade:
+  Autonomia, barra do run, linha de decisão, portão com três saídas e cartão de resumo
+  entraram no SHVIA-WEB <b>2.110.255</b>, a pílula Orquestrador na <b>2.110.257</b> e o
+  agrupamento do Histórico na <b>2.110.258</b>. Aprovar depois da implementação é
+  deliberado: um mockup aprovado antes vira promessa, e a tela entregue é que diz se o
+  desenho se sustentou. Onde a tela divergiu do mockup, a tela manda.
+  <span>Os números na tela deste mockup continuam sendo exemplo, como o cabeçalho diz.</span>
+</div>
 
 </body>
 </html>
