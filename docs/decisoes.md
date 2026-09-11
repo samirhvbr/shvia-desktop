@@ -1980,5 +1980,9 @@ narrated by the agent.
   the rule stopped on a question or a handoff; every failure falls on the human signed by the
   rule; each consultation is an `inference_requests` row with `origin = code-orch` (D4). No
   default profile (Q5): the pill starts on the rule.
-- **Not validated:** a real run on a real engine (B9), and B7 onwards. Each block adds its
+- **In review:** B7 in SHVIA-WEB ([#122](https://github.com/samirhvbr/shvia-web/pull/122), stacked on #121) — the
+  Histórico shows a run as one group inside its session, with the end row's numbers (the
+  summary card's, never recomputed); a run without an end row says so instead of showing
+  zeros, and the session keeps counting every turn.
+- **Not validated:** a real run on a real engine (B9), and B8 onwards. Each block adds its
   line here as it ships, as ADR-033 did.

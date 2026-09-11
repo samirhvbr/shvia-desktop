@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.6 - the plan records block B7 as in review
+
+Documentation only. `docs/code/RUN-20260910.md` ticks B7 (the Histórico groups turns by
+run — [SHVIA-WEB #122](https://github.com/samirhvbr/shvia-web/pull/122), stacked on #121) and
+records the three edges building it settled: the arming question is written before the run's
+start row and belongs to the run; a run without an end row says so instead of showing zeros;
+an end whose start is on the older page is a group with its numbers and nothing inside.
+ADR-034 gets its "in review" line for B7; the state note follows. Six version carriers moved
+together.
+
 ## 1.5.5 - the plan records block B6 as in review, in two stacked pull requests
 
 Documentation only. `docs/code/RUN-20260910.md` ticks B6 (the orchestrator can be a gateway

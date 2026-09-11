@@ -3,7 +3,7 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Última atualização: **10/09/2026** (versão 1.5.5).
+> Última atualização: **11/09/2026** (versão 1.5.6).
 
 > ⚠️ **Saneado em 02/09/2026** (achado F-22): descrevia a **1.1.34** com o repo em 1.4.3.
 > Foi o **terceiro** saneamento manual deste arquivo pelo mesmo motivo — daí a régua
@@ -58,8 +58,9 @@ de estados, a tela e as linhas do transcript) em revisão no SHVIA-WEB (#114), c
 sobre as cinco respostas do dono de 10/09 — Q2 disse **sim** à terceira saída do gate e Q3
 fixou US$ 10; B6 (o orquestrador como perfil do gateway) em revisão em dois PRs empilhados:
 #120 (camada de modelo, sobre o #110) e #121 (pill Orquestrador e pin no projeto, sobre o
-#114). Os PRs do WEB formam duas pilhas independentes (#110 → #120 e #114 → #121). Próximos:
-B7 (Histórico por run), B8 (docs) e B9 (medir cinco runs reais).
+#114); B7 (o Histórico agrupa os turnos por run) em revisão no SHVIA-WEB (#122, sobre o
+#121). Os PRs do WEB formam duas pilhas independentes (#110 → #120 e #114 → #121 → #122).
+Próximos: B8 (docs) e B9 (medir cinco runs reais).
 
 **Herança, para não ser lida como estado atual:** o app se auto-atualiza (ADR-022), tem
 bandeja nos 3 SOs (ADR-024),
