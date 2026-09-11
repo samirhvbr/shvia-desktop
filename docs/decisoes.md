@@ -1879,8 +1879,26 @@ mensagem de erro. A renovação da credencial continua sendo do cliente oficial:
 
 ## ADR-034 — The Run is a posture of the turn, and the orchestrator is a gateway profile
 
-- **Date:** 10/09/2026 · **Status:** Proposed (nothing implemented; the plan is
-  [`docs/code/RUN-20260910.md`](code/RUN-20260910.md))
+- **Date:** 10/09/2026 · **Status:** **Accepted**, scoped — updated 11/09/2026
+  · The plan is [`docs/code/RUN-20260910.md`](code/RUN-20260910.md)
+
+> **What "accepted" covers, and what it does not.** The server and the page are in
+> production: SHVIA-WEB `2.110.254` (the `/code/orchestrate` endpoint and the rule),
+> `2.110.255` (the screen and the state machine), `2.110.257` (the model tier and the
+> Orquestrador pill) and `2.110.258` (the history grouped by run). The **desktop side is
+> still in review** — the runner's turn errors, the `stop_request` and the bridge's caps
+> are in [shvia-desktop #5](https://github.com/samirhvbr/shvia-desktop/pull/5), and the
+> NDJSON protocol in [shvia-code #1](https://github.com/samirhvbr/shvia-code/pull/1).
+> Nothing breaks while they wait: a shell that does not declare `recursos.run` never arms
+> a run, and the page treats that the way it treats an absent orchestrator — it stops on
+> the person.
+>
+> 🔴 **Q5 stays OPEN, and that is the whole point of leaving it written here.** This ADR
+> chose the orchestrator to be a gateway profile and said the default would be decided by
+> measurement, not by argument. **The measurement (block B9: five real runs, rule only, on
+> the three engines) has not happened.** So there is no default profile: the pill opens on
+> *Regra, sem modelo*, and it stays that way until the number exists. An ADR that reads
+> "accepted" everywhere would quietly close the one question it deliberately left open.
 
 ### Context
 
