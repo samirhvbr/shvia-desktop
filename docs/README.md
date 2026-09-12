@@ -17,6 +17,7 @@
 | [code/CONTAS-CLAUDE.md](code/CONTAS-CLAUDE.md) | Perfis de **conta do Claude Code** no Modo Code (ADR-033): o registro local, o contrato da ponte e onde o `CLAUDE_CONFIG_DIR` é aplicado. |
 | [code/CONTAS-CLAUDE-proposta-20260905.md](code/CONTAS-CLAUDE-proposta-20260905.md) | **Archived:** the proposal that became CONTAS-CLAUDE.md (05/09/2026), with its diagram. Kept for the reasoning behind ADR-033. Moved out of the route repository on 08/09/2026. |
 | [code/MODO-CODE-20260709.md](code/MODO-CODE-20260709.md) | Spec do **Modo Code** (09/07/2026) — o desenho que a ponte nativa implementa. |
+| [code/RUN-20260910.md](code/RUN-20260910.md) | **The Run in Code mode** (10/09/2026) — design, contracts and build plan for turns that continue by themselves: where a turn ends today (the eight answers), the three tiers (rule → orchestrator profile → human), the `stop_request` handshake, the `/orchestrate` endpoint, the run state machine, and the blocks to queue. Proposal; nothing implemented. Screen: [code/modo-code-run-mockup.html](code/modo-code-run-mockup.html). Decision: ADR-034. |
 | [code/F0-mapa.md](code/F0-mapa.md) | **Histórico:** o mapeamento F0 do Modo Code, de 09/07/2026. O cabeçalho ainda diz *"aguardando ratificação"* — foi ratificado pelos fatos: a ponte existe desde a 1.1.x e passou pelos achados F-12, F-13 e F-15. Fica como registro do que se sabia antes de escrever o código. |
 
 ## Convenções de docs

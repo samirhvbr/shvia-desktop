@@ -107,6 +107,60 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
   and sets `CLAUDE_CONFIG_DIR` **on the child**, so two windows can hold two accounts at once.
   Discovery and spawn share one resolver, and an ID that does not resolve fails instead of
   quietly landing on the default account. See [code/CONTAS-CLAUDE.md](code/CONTAS-CLAUDE.md).
+- **The runner reports the turn errors the SDK actually emits** (`1.4.39`, block B0 of the
+  Run): `success` with `is_error` and the `error_*` subtypes draw the error line; the two
+  caps come out as `warn`. Before, a 401 ended a turn with no line at all.
+- **The Run reaches the engine** (`1.5.0`, blocks B2 and B3 of
+  [code/RUN-20260910.md](code/RUN-20260910.md), ADR-034): with `--parada host` the Claude
+  runner asks the host before ending a turn (`stop_request`, blocking, 60 s ceiling → stop)
+  and takes the run caps from the command line (`maxTurns`, `maxBudgetUsd`); the bridge
+  turns the page's `autonomy` object into those flags and declares `recursos.run`. Nothing
+  on screen yet — the page (SHVIA-WEB, blocks B4 and B5) is what arms a run.
+- **The page can raise a native notification** (`1.5.3`): the shim exposes
+  `__shviaCode.notify({title, body})`, fire-and-forget, carrying the bridge token like
+  every other message. Until then only the shell's own poll could post `notify`
+  (ADR-011); a page posting to the native handler by hand was dropped for lack of the
+  token — and is banned on the web side (finding F-16). The Run's gate card (SHVIA-WEB
+  block B5) uses it when the window is not in front. Presence of the method is the flag.
+
+## Phase 4 — the Run in Code mode (1.5.x)
+
+The plan is [`code/RUN-20260910.md`](code/RUN-20260910.md), the decision is
+[ADR-034](decisoes.md#adr-034), and the screen is
+[`code/modo-code-run-mockup.html`](code/modo-code-run-mockup.html).
+
+**What the Run is.** Code mode continuing its own turns and stopping only where a person
+is needed. It is not a new mode: it is a posture of the turn. The **Autonomia** pill, next
+to Aprovação, chooses between *Um turno* and *Até terminar* per project; the approval gate
+for commands keeps working inside a run exactly as outside it. Nothing runs or writes
+without the person seeing it — the Run changes who types "continue", not who approves.
+
+**Who decides, at every stop.** The page asks `POST /api/v1/code/orchestrate` and gets one
+decision back — CONTINUE, ASK_HUMAN, DONE or STOP — signed by whoever took it. The rule
+tier decides alone and costs nothing: markers first (a run that says it finished, finished),
+then the caps, then announced irreversible actions (which never reach a model — policy is
+code), then a question-versus-report classifier. Only where the rule stopped on a question
+or a handoff, and only if the person pinned an **Orquestrador** profile on the project, is a
+gateway model consulted — bounded at 20 s, audited as `origin = code-orch` like any other
+inference, and any failure of it falls back to the human signed by the rule.
+
+**What the person sees.** A run bar between turns (Pausar, Retomar, Parar), one line per
+decision on the timeline saying who decided and why, a gate card with three exits when it
+stops, and a summary when it ends. In the Histórico, a run is one group inside its session,
+under the numbers the summary showed.
+
+🔴 **State, honestly, on 12/09/2026.** The server and the page are **in production**
+(SHVIA-WEB `2.110.254` through `2.110.258`). The NDJSON protocol that documents
+`stop_request` merged in SHVIA-CODE `0.11.22` on 12/09
+([#1](https://github.com/samirhvbr/shvia-code/pull/1)). The desktop side — the runner
+reporting turn errors, asking the host before ending a turn, and carrying the run caps —
+lands with this commit ([shvia-desktop #5](https://github.com/samirhvbr/shvia-desktop/pull/5)).
+What is still **not** done is **B9**: the five real runs that measure the rule. Until B9 runs,
+no default orchestrator profile exists and Q5 of the plan stays open.
+
+**Not measured yet.** Five real runs on the three engines, rule only (block B9), counting
+escalations by signal and false continues. Until that number exists there is **no default
+orchestrator profile** — the pill opens on *Regra, sem modelo*.
 
 ## Limitações conhecidas
 

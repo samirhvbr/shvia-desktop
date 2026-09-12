@@ -1,5 +1,238 @@
 # Changelog
 
+## 1.5.8 - the Run's documentation is re-measured at merge, not at the moment it was written
+
+Documentation only, and the second half of **B8**. The 1.5.7 wrote the state of the Run as
+measured on 11/09; four of the things it measured changed between that commit and this merge,
+and a document that says "in review" about something already in production is worse than one
+that says nothing.
+
+**What moved, all verified against the remotes rather than remembered:**
+
+- **B1 merged**, in SHVIA-CODE `0.11.22` on 12/09. The four places that called it *"shipped in
+  0.11.21"* or pointed at an open PR now say where it actually is. The `0.11.22` is the
+  review's own finding: `embedding.md` said `last` was "cut at 4.000 characters" without
+  naming the end that survives, and the obvious reading — the head — is the half the
+  skeptical panel of 10/09 already measured flipping every tier to `continue`. The contract
+  now says the tail, which is what `parada.mjs` has done since 1.5.4.
+- **The three follow-up PRs merged** on 11/09 (`2.110.259` to `2.110.261`). The plan said
+  *"Until they land, those defects are in production"*; they landed the same evening.
+- **The route item is T35** in the body too, not only in the status note that corrected it.
+- **B9 is named as the one block still open**, in every document that describes the state.
+  It was implied before by a `[ ]` in the plan and stated nowhere else; the state note and
+  the features log now say it, because those are the two a person reads first.
+
+No code, no contract and no test changed. `prova:bump`, `prova:runner`, `prova:politica`,
+`prova:runner-version` and `prova:doc` all green before and after.
+
+## 1.5.7 - the Run is documented at the state each of its sides actually reached
+
+Documentation only, block **B8** of [`docs/code/RUN-20260910.md`](docs/code/RUN-20260910.md).
+
+**What the block asked for was "the Run is documented as shipped", and half of it is not
+shipped.** Measured on 11/09/2026 before writing a line:
+
+| side | where it is |
+|---|---|
+| B4 the endpoint, B5 the screen, B6 the model tier, B7 the history | **merged**, SHVIA-WEB `2.110.254` → `2.110.258` |
+| B0 the runner's turn errors, B2 the `stop_request`, B3 the bridge caps | open PR, [shvia-desktop #5](https://github.com/samirhvbr/shvia-desktop/pull/5) |
+| B1 the NDJSON protocol | open PR, [shvia-code #1](https://github.com/samirhvbr/shvia-code/pull/1) |
+| the route item | open PR, [shvia-rota #1](https://github.com/samirhvbr/shvia-rota/pull/1), and it is **T35**, not the T33 the plan still named |
+
+So the documentation says that, and not "shipped". A document that claims a feature is in
+people's hands when the client half is still in review is the `CANAL-WHATSAPP` failure of
+§10 with the sides swapped: whoever reads it decides with confidence, and is wrong.
+
+- `docs/funcionalidades.md` gains the Run as its own phase, with what a person can do
+  today and what is still behind a PR.
+- **ADR-034** leaves *Proposed* for **Accepted**, scoped: accepted and in production for
+  the server and the page; the runner side in PR; and **Q5 stays open** — no default
+  orchestrator profile until B9 measures five real runs, which is the one thing the ADR
+  said would decide it.
+- The run mockup is marked approved, with the versions the screen was built against.
+- The plan's status line stops saying B4 to B7 are "in review" and records the three
+  follow-up PRs the reviews of those blocks produced.
+
+
+## 1.5.6 - the plan records block B7 as in review
+
+Documentation only. `docs/code/RUN-20260910.md` ticks B7 (the Histórico groups turns by
+run — [SHVIA-WEB #122](https://github.com/samirhvbr/shvia-web/pull/122), stacked on #121) and
+records the three edges building it settled: the arming question is written before the run's
+start row and belongs to the run; a run without an end row says so instead of showing zeros;
+an end whose start is on the older page is a group with its numbers and nothing inside.
+ADR-034 gets its "in review" line for B7; the state note follows. Six version carriers moved
+together.
+
+## 1.5.5 - the plan records block B6 as in review, in two stacked pull requests
+
+Documentation only. `docs/code/RUN-20260910.md` ticks B6 (the orchestrator can be a gateway
+profile — [SHVIA-WEB #120](https://github.com/samirhvbr/shvia-web/pull/120), the model tier, stacked on #110; [SHVIA-WEB #121](https://github.com/samirhvbr/shvia-web/pull/121), the
+Orquestrador pill and the project pin, stacked on #114) and records what building it settled:
+the profile is consulted only where the rule stopped on a question or a handoff, every
+failure falls on the human signed by the rule, and the pin lives on the project. ADR-034 gets
+its "in review" line for B6; the state note follows. Six version carriers moved together.
+
+## 1.5.4 - the runner keeps the tail of a long last message, where the decision lives
+
+`claude-runner/parada.mjs` cut `last` at 4,000 characters keeping the HEAD. The execution
+contract asks the coder to end with `RUN_DONE:`/`NEEDS_INPUT:`, and the orchestrator's rule
+reads the closing paragraphs for the question or the handoff — the head is the report, the
+tail is the decision. The skeptical panel of 10/09/2026 on the classifier
+([SHVIA-WEB #110](https://github.com/samirhvbr/shvia-web/pull/110)) measured it: a closing
+summary over 4,000 characters flipped every tier (marker, question, irreversible action) to
+CONTINUE. The cut now keeps the tail, and the test asserts the marker survives it. The page
+side (SHVIA-WEB #114) stops forwarding this field at all when it holds the full text.
+
+## 1.5.3 - the shim exposes a native notification the page can raise
+
+`window.__shviaCode.notify({title, body})`: fire-and-forget, no reply, the bridge token
+attached like every other message. The `notify` action already existed in Rust (ADR-011)
+but only the shell's own notification poll could reach it: the Rust side drops any message
+without `__t`, and the page has no way to attach the token except through the shim. The
+Run's gate card ([SHVIA-WEB #114](https://github.com/samirhvbr/shvia-web/pull/114), block
+B5) posted to the native handler by hand — which never reached the shell, and which the
+web's `prova-voz-passa-pelo-token` guard refuses (finding F-16: the native handler is
+reachable from every frame, the shim only from the page that carries the token). Presence
+of the method is the capability flag, the same design as `recursos`. `docs/funcionalidades.md`
+records it.
+
+## 1.5.2 - the plan records block B5 as in review, built on the owner's five answers
+
+Documentation only. `docs/code/RUN-20260910.md` ticks B5a, B5b and B5c (the run state
+machine, the screen and the transcript rows — [SHVIA-WEB #114](https://github.com/samirhvbr/shvia-web/pull/114))
+and records what building them settled: the Stop hook is installed on every Claude
+session of a shell with `recursos.run`, the page answers `stop` at once on a normal turn,
+the execution contract and the default sentence became catalog keys. ADR-034 gets its
+"in review" line for B5 and names the two answers that differ from the recommendation
+(Q2: the gate card has a third exit; Q3: US$ 10). The state note follows.
+
+## 1.5.1 - the plan records block B4 as in review, and the decision it refined
+
+Documentation only. `docs/code/RUN-20260910.md` ticks B4 (the orchestrate endpoint,
+rule tier, in review in SHVIA-WEB) and records the two things building it changed in the
+contract of §4.2: markers come before the caps, and a request for permission to proceed
+continues while a choice stops. ADR-034 gets the same line under "In review".
+
+## 1.5.0 - the bridge carries the run caps to the runner and declares the capability
+
+Block B3 of `docs/code/RUN-20260910.md`. `spawn` reads the page's `autonomy` object
+(`{stopByHost, maxIterations, maxCostUsd}`) and, on the Claude engine only, turns it
+into `--parada host`, `--teto-iteracoes N` and `--teto-custo X` through
+`argumentos_da_run`, a pure mapper with three tests: no object → no flag (yesterday's
+page spawns exactly what it spawned); the armed run → the three flags; an invalid cap
+(0, negative, a word) is dropped, never coerced — `maxTurns: 0` would end every turn
+before it started with the screen showing a run that "ran".
+
+The shim declares `recursos.run: true`. Presence, never a version number: a new page on
+an old shell reads the absence as "no" and continues between turns only, which works on
+every shell, the same design as `recursos.imagem` and `recursos.conta`.
+
+`cargo test` was not run in the environment that wrote this (no Tauri system libraries);
+`rustfmt` parses the file and CI runs the tests.
+
+## 1.5.0 - the Claude runner asks the host before ending a turn, and takes the run caps from the command line
+
+Block B2 of `docs/code/RUN-20260910.md` (ADR-034). Minor bump: a new runtime capability
+of the engine, off by default.
+
+**`--parada host`** installs the SDK `Stop` hook. When the model wants to end a turn, the
+runner emits a `stop_request` (`id`, `iteration`, `last` cut at 4.000 characters,
+`reason`), **blocks**, and does what the host answers: `continue` becomes the hook output
+`{decision:'block', reason}` — the model goes on in the same context, with the host's
+message as its reason — and `stop` becomes an empty output, the turn ending exactly as
+it always did. No answer in 60 s → `stop`; stdin closed → `stop`. The runner never
+decides; the page does, on behalf of the server's orchestrator. Without the flag the
+hook is not installed and no `stop_request` ever leaves the process — a host that does
+not know the event never receives it (SHVIA-CODE 0.11.21, `embedding.md`).
+
+**`--teto-iteracoes N` and `--teto-custo X`** go straight to the SDK (`maxTurns`,
+`maxBudgetUsd`), only when positive numbers. A hit cap comes back as `error_max_turns` /
+`error_max_budget_usd`, which 1.4.39 already turns into `warn` + `turn_done`.
+
+**`stop_hook_active` is deliberately not a latch.** It turns true on the second stop and
+never goes back, so the documented `if (stop_hook_active) allow` would give one
+continuation and end the run. Who limits is the host — the `loop-work` skill learned
+this first.
+
+The handshake lives in `claude-runner/parada.mjs`, pure, with 11 tests in
+`parada.test.mjs`; `npm run prova:politica` now runs both runner test files, so CI
+covers them without a workflow change. `prova:runner` (35 rules) and
+`prova:runner-version` unchanged and green. Not run against a live login.
+
+🔴 One defect caught by the proof before it shipped: `esperarDecisao` armed the timer
+before registering the resolver, so a ceiling that fired at once found no request and
+the promise never settled. The test's instant timer hung; the order is now resolver
+first, timer second.
+
+## 1.4.39 - the Claude runner reports the turn errors the SDK actually emits
+
+Block B0 of `docs/code/RUN-20260910.md`, the one the plan found while reading the code.
+`traduzirMensagem` only emitted `error` on a `result` whose `subtype` was `"error"`, and
+the pinned SDK (0.3.258) never emits that subtype on a `result`. 📋 Measured in the type
+declarations: a turn that dies on an API error arrives as `success` with `is_error: true`
+and the text in `result`; the other endings arrive as `error_during_execution`,
+`error_max_turns`, `error_max_budget_usd` or `error_max_structured_output_retries`, with
+the list in `errors`. None matched, so a 401 closed the timeline as `usage` +
+`turn_done` — no error line. The family of defect this runner's proof exists to catch:
+the error that does not err.
+
+**What changes on screen.** `success` + `is_error` and the `error_*` subtypes now draw
+the error line with the SDK's own text. The two caps (`error_max_turns`,
+`error_max_budget_usd`) are **not** errors: they are the runner stopping where it was
+told to, so they come out as `warn` — the shape `anna` uses for its own round cap — and
+the turn closes normally. Nothing sets those caps yet; block B2 will, and this is what
+keeps a hit ceiling from being silent.
+
+🔬 **Proved by reversal.** Five rules entered `scripts/prova-montar-prompt.mjs` first
+and were run against the unfixed runner: four red (`success`+`is_error`,
+`error_during_execution`, and the two caps), one green (a clean `success` stays clean).
+With the fix, 35 rules green; `node --check`, `prova:runner-version` and
+`prova:politica` unchanged. The old rule for a literal `subtype: "error"` stays green
+too — the new branch treats any non-`success` subtype as an error, so the file's own
+contract is not broken by the fix.
+
+Not reproduced live: this environment has no Claude Code login. The proof runs the real
+function extracted from the file, as it always has.
+
+## 1.4.38 - the state note opens the Run front and points at its plan
+
+`.continue/estado-atual.md` gains the Run as an open front, pointing at
+`docs/code/RUN-20260910.md`, and its header moves to this version so the freshness ruler
+(`prova:doc`) measures the file as current. Nothing else in the note changes.
+
+## 1.4.38 - ADR-034: the Run is a posture of the turn, and the orchestrator is a gateway profile
+
+The decision record behind `docs/code/RUN-20260910.md`. Four decisions: the Run adds a
+posture (Autonomia) next to Aprovação instead of a mode; three tiers where the first and
+the last are code (rule → optional orchestrator model → human); the orchestrator is a
+gateway profile chosen independently of the coder, audited like any inference; and the
+server decides while the page carries, so the Claude runner keeps holding no ShvIA key.
+Four alternatives rejected with the reason, including "a second chat reading the first"
+and "the run survives a closed desktop" (that is a workspace mission, another front).
+
+## 1.4.38 - the Run in Code mode: design, contracts and build plan, with the proposed screen
+
+Documentation only. `docs/code/RUN-20260910.md` answers, in the code as it is on
+10/09/2026, the eight questions the orchestration proposal asked (where a turn ends, who
+sends the next one, what survives a restart), lists what is reused instead of rebuilt
+(`loop-work`, the gate handshake, the page's queue, the SDK caps, anna's cast, the
+workspace mission), and specifies the contracts: the `stop_request` NDJSON event, the
+`POST /api/v1/code/orchestrate` endpoint with its tiers, the page's run state machine,
+the two new `code_turns` kinds, the execution contract and the runner flags. The build
+plan is ten blocks written as queue lines, each with its proof and commit subject.
+
+🔴 **The finding that opens the plan:** `claude-runner.mjs:385` only emits `error` on a
+`result` with `subtype === "error"`, and the pinned SDK (0.3.258) never emits that
+subtype on a `result` — the real ones are `error_during_execution`, `error_max_turns`,
+`error_max_budget_usd` and `success` with `is_error`. Today an API error ends a turn as
+`usage` + `turn_done`, with no error line. Read in the type declarations, not reproduced
+live; it is block B0, and it ships before anything else.
+
+`docs/code/modo-code-run-mockup.html` is the proposed screen, built on the real tokens
+and classes of `code-mode.css`, in three states: running, stopped on a decision of yours,
+done. Values on the screen are examples.
+
 ## 1.4.37 - the gate table is a property of a CLI+model pair, and one cell diverges between pairs
 
 Documentation only. Three corrections to `docs/code/MOTOR-CODEX-20260909.md`, all measured

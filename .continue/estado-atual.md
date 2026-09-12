@@ -3,7 +3,7 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Última atualização: **09/09/2026** (versão 1.4.29).
+> Última atualização: **11/09/2026** (versão 1.5.7).
 
 > ⚠️ **Saneado em 02/09/2026** (achado F-22): descrevia a **1.1.34** com o repo em 1.4.3.
 > Foi o **terceiro** saneamento manual deste arquivo pelo mesmo motivo — daí a régua
@@ -42,6 +42,40 @@ copiado para cá.
 `npm run contas`. A ponte já tem `claudeAccountsDetect` e `claudeAccountAdd`, testadas e sem
 chamador. A decisão de desenho está em
 [`contas-claude-macos.md`](contas-claude-macos.md).
+
+**Em aberto desde 10/09/2026, e é a frente seguinte: a Run.** O Modo Code passa a
+continuar os turnos sozinho e a parar só onde um humano é necessário — uma pill
+(Autonomia) ao lado da Aprovação, uma barra viva entre turnos, e as decisões do
+orquestrador visíveis na timeline. O orquestrador é um perfil do gateway, escolhido
+independente do coder. **Nada implementado.** Plano em blocos, contratos e a tela
+proposta em [`../docs/code/RUN-20260910.md`](../docs/code/RUN-20260910.md); decisão em
+ADR-034. O primeiro bloco (B0) era um defeito do runner que o plano achou: o `case
+"result"` comparava com um subtipo que o SDK não emite, então erro de API encerrava o
+turno sem linha de erro. **Corrigido na 1.4.39**, com prova por reversão.
+
+🔴 **Onde cada lado está, medido em 12/09/2026 — agora os dois lados estão no mesmo
+lugar.** No SHVIA-WEB, B4, B5, B6 e B7 **pousaram**: o endpoint e a regra, a máquina de
+estados e a tela, a camada de modelo com a pill Orquestrador, e o Histórico agrupado por
+run. No SHVIA-CODE, B1 **pousou** na `0.11.22` (12/09). Aqui, B0, B2 e B3 pousam com este
+commit. A casca passa a declarar `recursos.run`; antes disso a página não armava run
+nenhuma — tratava a capacidade ausente como trata orquestrador ausente, parando na pessoa.
+B8 (esta doc) está feito na 1.5.7.
+
+⚠️ **O que NÃO pousou é o B9** — as cinco runs reais que medem a regra, nos três motores.
+Nada do Run foi exercitado contra um turno de verdade; o que existe são provas de módulo
+puro e o CI. Enquanto o B9 não rodar, não há perfil padrão de orquestrador e o Q5 do plano
+segue aberto.
+
+⚠️ **Revisar os blocos do WEB produziu três PRs de correção, e eles estão abertos.** Um
+deles é o portão de permissão que a camada de modelo nunca teve — era o único caminho de
+inferência daquele repositório que despachava sem `enforceProfileLimits`, então dava para
+nomear como orquestrador um perfil que o papel da pessoa proíbe. Outro corrige três bordas
+do agrupamento do Histórico, uma delas documentada no plano e não implementada. Até
+pousarem, esses defeitos estão em produção.
+
+**B9 é o que falta de verdade, e é do dono:** cinco runs reais, só regra, nos três motores.
+Sem esse número não existe perfil padrão de orquestrador — a pill abre em *Regra, sem
+modelo*, e é assim que fica.
 
 **Herança, para não ser lida como estado atual:** o app se auto-atualiza (ADR-022), tem
 bandeja nos 3 SOs (ADR-024),

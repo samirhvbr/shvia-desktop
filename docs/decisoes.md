@@ -1874,3 +1874,136 @@ mensagem de erro. A renovação da credencial continua sendo do cliente oficial:
 - **Fica de fora:** o `cli_config.rs`, que grava `~/.claude/settings.json` com o caminho
   fixo. É uma segunda noção de "diretório do Claude" nesta casca, e reconciliá-la é item
   próprio — está escrito em `docs/code/CONTAS-CLAUDE.md`.
+
+---
+
+## ADR-034 — The Run is a posture of the turn, and the orchestrator is a gateway profile
+
+- **Date:** 10/09/2026 · **Status:** **Accepted**, scoped — updated 11/09/2026
+  · The plan is [`docs/code/RUN-20260910.md`](code/RUN-20260910.md)
+
+> **What "accepted" covers, and what it does not.** The server and the page are in
+> production: SHVIA-WEB `2.110.254` (the `/code/orchestrate` endpoint and the rule),
+> `2.110.255` (the screen and the state machine), `2.110.257` (the model tier and the
+> Orquestrador pill) and `2.110.258` (the history grouped by run). The **desktop side is
+> now **landing too** — the NDJSON protocol merged in SHVIA-CODE `0.11.22` on 12/09/2026
+> ([#1](https://github.com/samirhvbr/shvia-code/pull/1)), and the runner's turn errors, the
+> `stop_request` and the bridge's caps land with this commit
+> ([shvia-desktop #5](https://github.com/samirhvbr/shvia-desktop/pull/5)).
+> Nothing broke while they waited: a shell that does not declare `recursos.run` never arms
+> a run, and the page treats that the way it treats an absent orchestrator — it stops on
+> the person.
+>
+> 🔴 **Q5 stays OPEN, and that is the whole point of leaving it written here.** This ADR
+> chose the orchestrator to be a gateway profile and said the default would be decided by
+> measurement, not by argument. **The measurement (block B9: five real runs, rule only, on
+> the three engines) has not happened.** So there is no default profile: the pill opens on
+> *Regra, sem modelo*, and it stays that way until the number exists. An ADR that reads
+> "accepted" everywhere would quietly close the one question it deliberately left open.
+
+### Context
+
+Every Code-mode engine ends a turn when its model stops talking, and the person at the
+desktop types "continue". Measured on 10/09/2026 in the three repositories: the Claude
+runner emits `turn_done` on the SDK `result`, Codex on `turn/completed`, `anna` when the
+model returns no tool call; nothing continues a turn but a human. The owner is the
+scheduler of the system.
+
+The house already had most of the answer and did not know it: the `loop-work` skill
+(vendored in every repo on 02/09) is a `Stop` hook with a deterministic ASK×DOC
+classifier, caps, a kill switch and a decision log, measured at 14 stops in a row — but
+it is registered in the global Claude Code settings, and the runner runs with
+`settingSources: []`, so inside the desktop it never fires. The proposal that opened
+this front also asked for a second agent to supervise the first, and for that agent to
+be choosable independently of the coder.
+
+### Decision
+
+**The Run is a posture of the turn, not a mode.** One control (the *Autonomia* pill, next
+to *Aprovação*), one bar that stays alive between turns, and three timeline pieces: the
+continuation line, the human gate card, the summary. Autonomia decides whether the
+**turn** continues; Aprovação keeps deciding whether a **tool** runs. Two axes, two
+pills, never merged.
+
+**Three tiers, in this order, and the first and the last are code.** The rule (no
+model) continues progress reports and sends irreversible actions to the human. When the
+rule says ASK, an optional orchestrator model reads objective, plan, assumptions and
+the last message and answers CONTINUE-with-a-message or ASK_HUMAN. What neither
+resolves goes to the human. Irreversible never reaches a model.
+
+**The orchestrator is a gateway profile, not an engine.** Chosen as `modelo@servidor`
+from the catalogue, with "Rule, no model" as option zero and a different family than the
+coder as the default when a model is chosen — the same reasoning as anna's ADR-003
+(role → profile is a static table; the reviewer is of another family). Its calls are
+audited like any inference, which gives the Claude-subscription engine a trace it does
+not have today.
+
+**The server decides, the page carries, the runner stays credential-free.** The Claude
+runner receives no ShvIA key by design, so its `Stop` hook emits a blocking
+`stop_request` on the NDJSON line — the gate handshake with a new name — and the page
+answers it after calling `POST /api/v1/code/orchestrate`. anna and Codex reach the same
+endpoint from `turn_done`. One decider, three engines.
+
+**Every decision names its decider and is persisted.** Rule, the profile, or you: on the
+continuation line, in the panel's decisions list, in the summary, and as `code_turns`
+rows. Numbers in the summary are collected from what passed through the cards, never
+narrated by the agent.
+
+### Alternatives rejected
+
+- **A second chat reading the first.** Works as a prototype and becomes a mess: no
+  state, no caps, no audit. The proposal itself rejected it.
+- **The orchestrator inside the runner, as a second `query()`.** Only Claude models, only
+  for the Claude engine, and it would need the gateway key inside a process that must not
+  hold it.
+- **The rule classifier ported to the page in JS.** Three copies of one rule (page,
+  runner, server) and a test suite that cannot share a corpus. One implementation, on
+  the server, tested once.
+- **Making the run survive a closed desktop.** That is another product, and it exists:
+  a mission in `SHVIA-WORKSPACE`. The bridge to it is its own front (decided 19/08).
+
+### Consequences
+
+- The runner's `case "result"` has to be fixed first: it matches a subtype the SDK never
+  emits, so today an API error ends a turn silently. With caps in play the silence would
+  hide a ceiling (block B0 of the plan).
+- A guard that errs toward the alarm: orchestrator timeout → rule → ASK goes to the
+  human; a `stop_request` with no answer in 60 s ends the turn normally.
+- The protocol document in SHVIA-CODE gains an optional event; `anna` itself does not
+  change.
+- **Shipped:** B0 in 1.4.39 — the runner's `case "result"` matches the subtypes the SDK
+  emits; the two caps come out as `warn`, everything else that is not a clean `success`
+  as `error`. Proved by reversal in `scripts/prova-montar-prompt.mjs` (four rules red
+  before, 35 green after). Not run against a live login.
+- **Shipped:** B1 in SHVIA-CODE `0.11.22`, merged 12/09/2026 — `stop_request` and its answer
+  documented in `embedding.md`, optional per engine; `anna` unchanged. The `0.11.22` on top of
+  the `0.11.21` that was written is the review's: the contract now says `last` keeps the
+  **tail**, not the head, which is the same fact B2's 1.5.4 measured in the emitter.
+- **Shipped:** B2 in 1.5.0 — `claude-runner/parada.mjs` (pure) + the `Stop` hook wired
+  behind `--parada host`; caps behind `--teto-iteracoes` / `--teto-custo`. 11 tests under
+  `node --test`, run by `prova:politica` so CI covers them without a workflow change.
+  Not run against a live login.
+- **Shipped:** B3 in 1.5.0 — `argumentos_da_run` in `code_bridge.rs` maps the page's
+  `autonomy` object to the flags (3 tests) and the shim declares `recursos.run`. `cargo
+  test` was not run in the environment that wrote it (no Tauri libraries); CI runs it.
+- **In review:** B4 in SHVIA-WEB (`RunOrchestrator`, `POST /api/v1/code/orchestrate`,
+  rule tier). 28 unit cases green there; the door's feature test runs in that repo's CI.
+  One refinement the block forced on D3: a request for permission to proceed is not a
+  decision — the classifier itself tells "posso seguir?" from "(a) ou (b)?", because the
+  Run's policy stops on ASK where `loop-work` continues by policy.
+- **In review:** B5 in SHVIA-WEB ([#114](https://github.com/samirhvbr/shvia-web/pull/114)) — the
+  state machine (`code-run.js`, pure; every row of §4.3 executed in Node), the screen
+  (Autonomia pill, run bar, orchestrator lines, gate card with three exits, summary) and the
+  `run`/`decision` rows of the transcript. Built on the owner's five answers of 10/09/2026;
+  two of them differ from the recommendation: Q2 (the third exit exists) and Q3 (US$ 10).
+- **In review:** B6 in SHVIA-WEB ([#120](https://github.com/samirhvbr/shvia-web/pull/120), the model tier, stacked on #110; [#121](https://github.com/samirhvbr/shvia-web/pull/121),
+  the Orquestrador pill and the project pin, stacked on #114). The profile decides only where
+  the rule stopped on a question or a handoff; every failure falls on the human signed by the
+  rule; each consultation is an `inference_requests` row with `origin = code-orch` (D4). No
+  default profile (Q5): the pill starts on the rule.
+- **In review:** B7 in SHVIA-WEB ([#122](https://github.com/samirhvbr/shvia-web/pull/122), stacked on #121) — the
+  Histórico shows a run as one group inside its session, with the end row's numbers (the
+  summary card's, never recomputed); a run without an end row says so instead of showing
+  zeros, and the session keeps counting every turn.
+- **Not validated:** a real run on a real engine (B9), and B8 onwards. Each block adds its
+  line here as it ships, as ADR-033 did.

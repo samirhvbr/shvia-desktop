@@ -52,6 +52,28 @@ const TOLERANCIA_PATCH = 25;
  * the same way reported "1002 minors behind", which is nonsense that would teach anyone to
  * ignore this check. The right signal there is the HIGHEST version mentioned.
  */
+/**
+ * A version that belongs to ANOTHER repository is not a claim about this one.
+ *
+ * Added 11/09/2026, when `funcionalidades.md` gained the Run. That feature spans four
+ * repositories, and saying which of them shipped which half is the whole point of the
+ * section — the SHVIA-WEB versions it names (`2.110.254` … `2.110.258`) are higher than
+ * anything this repository has ever had, so "the highest version mentioned" read them as
+ * this document's own claim and reported 251 patches behind.
+ *
+ * The check was not wrong to look at the highest number; it had no way to tell WHOSE number
+ * it was. Now it does: a match introduced by another repository's name, inside the window
+ * below, is skipped. Two things keep this from becoming a hole. The names are the fleet's,
+ * so the list is closed by construction rather than guessed. And a version with **no**
+ * repository named still counts — which is exactly the F-22 case this file exists for, so
+ * the original defect stays caught.
+ *
+ * The window is a clause, not a paragraph, on purpose: "SHVIA-WEB 2.110.254" is an
+ * attribution, while a repo name three sentences earlier is not.
+ */
+const OUTRO_REPO = /\b(?:SHVIA|shvia)[-\s](?:WEB|CODE|MOBILE|ROTA|SITE|WORKSPACE|web|code|mobile|rota|site|workspace)\b/;
+const JANELA_DE_ATRIBUICAO = 60;
+
 const DOCS = [
   { file: '.continue/estado-atual.md', modo: 'declarada', re: /vers[ãa]o\s+(\d+\.\d+\.\d+)\)/i },
   { file: 'docs/funcionalidades.md', modo: 'maior-citada', re: /\b(\d+\.\d+\.\d+)\b/g },
@@ -68,7 +90,9 @@ for (const { file, re, modo } of DOCS) {
   }
   let achada;
   if (modo === 'maior-citada') {
-    const todas = [...txt.matchAll(re)].map((x) => x[1]);
+    const todas = [...txt.matchAll(re)]
+      .filter((x) => !OUTRO_REPO.test(txt.slice(Math.max(0, x.index - JANELA_DE_ATRIBUICAO), x.index)))
+      .map((x) => x[1]);
     achada = todas.sort((a, b) => {
       const [A, B] = [a, b].map((v) => v.split('.').map(Number));
       return A[0] - B[0] || A[1] - B[1] || A[2] - B[2];
