@@ -1886,10 +1886,11 @@ mensagem de erro. A renovação da credencial continua sendo do cliente oficial:
 > production: SHVIA-WEB `2.110.254` (the `/code/orchestrate` endpoint and the rule),
 > `2.110.255` (the screen and the state machine), `2.110.257` (the model tier and the
 > Orquestrador pill) and `2.110.258` (the history grouped by run). The **desktop side is
-> still in review** — the runner's turn errors, the `stop_request` and the bridge's caps
-> are in [shvia-desktop #5](https://github.com/samirhvbr/shvia-desktop/pull/5), and the
-> NDJSON protocol in [shvia-code #1](https://github.com/samirhvbr/shvia-code/pull/1).
-> Nothing breaks while they wait: a shell that does not declare `recursos.run` never arms
+> now **landing too** — the NDJSON protocol merged in SHVIA-CODE `0.11.22` on 12/09/2026
+> ([#1](https://github.com/samirhvbr/shvia-code/pull/1)), and the runner's turn errors, the
+> `stop_request` and the bridge's caps land with this commit
+> ([shvia-desktop #5](https://github.com/samirhvbr/shvia-desktop/pull/5)).
+> Nothing broke while they waited: a shell that does not declare `recursos.run` never arms
 > a run, and the page treats that the way it treats an absent orchestrator — it stops on
 > the person.
 >
@@ -1974,8 +1975,10 @@ narrated by the agent.
   emits; the two caps come out as `warn`, everything else that is not a clean `success`
   as `error`. Proved by reversal in `scripts/prova-montar-prompt.mjs` (four rules red
   before, 35 green after). Not run against a live login.
-- **Shipped:** B1 in SHVIA-CODE 0.11.21 — `stop_request` and its answer documented in
-  `embedding.md`, optional per engine; `anna` unchanged.
+- **Shipped:** B1 in SHVIA-CODE `0.11.22`, merged 12/09/2026 — `stop_request` and its answer
+  documented in `embedding.md`, optional per engine; `anna` unchanged. The `0.11.22` on top of
+  the `0.11.21` that was written is the review's: the contract now says `last` keeps the
+  **tail**, not the head, which is the same fact B2's 1.5.4 measured in the emitter.
 - **Shipped:** B2 in 1.5.0 — `claude-runner/parada.mjs` (pure) + the `Stop` hook wired
   behind `--parada host`; caps behind `--teto-iteracoes` / `--teto-custo`. 11 tests under
   `node --test`, run by `prova:politica` so CI covers them without a workflow change.

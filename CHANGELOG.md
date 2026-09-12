@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.5.8 - the Run's documentation is re-measured at merge, not at the moment it was written
+
+Documentation only, and the second half of **B8**. The 1.5.7 wrote the state of the Run as
+measured on 11/09; four of the things it measured changed between that commit and this merge,
+and a document that says "in review" about something already in production is worse than one
+that says nothing.
+
+**What moved, all verified against the remotes rather than remembered:**
+
+- **B1 merged**, in SHVIA-CODE `0.11.22` on 12/09. The four places that called it *"shipped in
+  0.11.21"* or pointed at an open PR now say where it actually is. The `0.11.22` is the
+  review's own finding: `embedding.md` said `last` was "cut at 4.000 characters" without
+  naming the end that survives, and the obvious reading — the head — is the half the
+  skeptical panel of 10/09 already measured flipping every tier to `continue`. The contract
+  now says the tail, which is what `parada.mjs` has done since 1.5.4.
+- **The three follow-up PRs merged** on 11/09 (`2.110.259` to `2.110.261`). The plan said
+  *"Until they land, those defects are in production"*; they landed the same evening.
+- **The route item is T35** in the body too, not only in the status note that corrected it.
+- **B9 is named as the one block still open**, in every document that describes the state.
+  It was implied before by a `[ ]` in the plan and stated nowhere else; the state note and
+  the features log now say it, because those are the two a person reads first.
+
+No code, no contract and no test changed. `prova:bump`, `prova:runner`, `prova:politica`,
+`prova:runner-version` and `prova:doc` all green before and after.
+
 ## 1.5.7 - the Run is documented at the state each of its sides actually reached
 
 Documentation only, block **B8** of [`docs/code/RUN-20260910.md`](docs/code/RUN-20260910.md).

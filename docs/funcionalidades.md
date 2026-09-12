@@ -149,14 +149,14 @@ decision on the timeline saying who decided and why, a gate card with three exit
 stops, and a summary when it ends. In the Histórico, a run is one group inside its session,
 under the numbers the summary showed.
 
-🔴 **State, honestly, on 11/09/2026.** The server and the page are **in production**
-(SHVIA-WEB `2.110.254` through `2.110.258`). The desktop side — the runner reporting turn
-errors, asking the host before ending a turn, and carrying the run caps — is **in review**
-in [shvia-desktop #5](https://github.com/samirhvbr/shvia-desktop/pull/5), and the NDJSON
-protocol that documents `stop_request` is in [shvia-code #1](https://github.com/samirhvbr/shvia-code/pull/1).
-Until those land, a shell without `recursos.run` simply never arms a run, and the page
-treats the absent capability the way it treats an absent orchestrator: it stops on the
-person.
+🔴 **State, honestly, on 12/09/2026.** The server and the page are **in production**
+(SHVIA-WEB `2.110.254` through `2.110.258`). The NDJSON protocol that documents
+`stop_request` merged in SHVIA-CODE `0.11.22` on 12/09
+([#1](https://github.com/samirhvbr/shvia-code/pull/1)). The desktop side — the runner
+reporting turn errors, asking the host before ending a turn, and carrying the run caps —
+lands with this commit ([shvia-desktop #5](https://github.com/samirhvbr/shvia-desktop/pull/5)).
+What is still **not** done is **B9**: the five real runs that measure the rule. Until B9 runs,
+no default orchestrator profile exists and Q5 of the plan stays open.
 
 **Not measured yet.** Five real runs on the three engines, rule only (block B9), counting
 escalations by signal and false continues. Until that number exists there is **no default

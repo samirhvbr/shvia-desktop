@@ -53,13 +53,18 @@ ADR-034. O primeiro bloco (B0) era um defeito do runner que o plano achou: o `ca
 "result"` comparava com um subtipo que o SDK não emite, então erro de API encerrava o
 turno sem linha de erro. **Corrigido na 1.4.39**, com prova por reversão.
 
-🔴 **Onde cada lado está, medido em 11/09/2026 — e os dois lados NÃO estão no mesmo
+🔴 **Onde cada lado está, medido em 12/09/2026 — agora os dois lados estão no mesmo
 lugar.** No SHVIA-WEB, B4, B5, B6 e B7 **pousaram**: o endpoint e a regra, a máquina de
 estados e a tela, a camada de modelo com a pill Orquestrador, e o Histórico agrupado por
-run. Aqui e no SHVIA-CODE, B0, B1, B2 e B3 seguem **em PR** (#5 e #1). Enquanto isso não
-mergear, a casca não declara `recursos.run` e a página simplesmente não arma run nenhuma —
-ela trata a capacidade ausente como trata orquestrador ausente, parando na pessoa. B8 (esta
-doc) está feito na 1.5.7.
+run. No SHVIA-CODE, B1 **pousou** na `0.11.22` (12/09). Aqui, B0, B2 e B3 pousam com este
+commit. A casca passa a declarar `recursos.run`; antes disso a página não armava run
+nenhuma — tratava a capacidade ausente como trata orquestrador ausente, parando na pessoa.
+B8 (esta doc) está feito na 1.5.7.
+
+⚠️ **O que NÃO pousou é o B9** — as cinco runs reais que medem a regra, nos três motores.
+Nada do Run foi exercitado contra um turno de verdade; o que existe são provas de módulo
+puro e o CI. Enquanto o B9 não rodar, não há perfil padrão de orquestrador e o Q5 do plano
+segue aberto.
 
 ⚠️ **Revisar os blocos do WEB produziu três PRs de correção, e eles estão abertos.** Um
 deles é o portão de permissão que a camada de modelo nunca teve — era o único caminho de
