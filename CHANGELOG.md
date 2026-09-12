@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.9 - Load Codex models from the installed client
+
+Expose the paginated Codex model catalogue through the desktop bridge. Send the selected
+model and reasoning effort to the subscription runner without gateway routing parameters.
+Catalogue queries are bounded to 20 seconds and never start an inference turn.
+
+Validation: live catalogue query; pagination/error protocol tests; Rust bridge suite.
+Requires the matching SHVIA-WEB Codex catalogue selector.
+
 ## 1.5.8 - the Run's documentation is re-measured at merge, not at the moment it was written
 
 Documentation only, and the second half of **B8**. The 1.5.7 wrote the state of the Run as

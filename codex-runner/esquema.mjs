@@ -37,6 +37,7 @@ function definicoes() {
 /** The method → params-definition map. Only what this runner actually sends. */
 export const ESQUEMA_DO_METODO = Object.freeze({
   "initialize": "InitializeParams",
+  "model/list": "ModelListParams",
   "thread/start": "ThreadStartParams",
   "turn/start": "TurnStartParams",
   "command/exec": "CommandExecParams",
