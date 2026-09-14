@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.5.10 - the catalogue test stops being a file nobody runs
+
+`1.5.9` shipped `codex-runner/catalogue.test.mjs` — three real tests that spawn the runner
+against a fake `codex` binary and assert the pagination, the error path and the
+`turn/start` schema. **No ruler ran it.** `prova:politica` named two files by hand
+(`politica.test.mjs`, `parada.test.mjs`), CI runs only the `prova:*` scripts, and nothing
+in `.github/workflows/ci.yml` mentions the new file. A test that no ruler runs guards
+nothing, which is the same §13 the house already applies to skipped tests.
+
+The fix is the one this repository already chose once: `1.5.0` added `parada.test.mjs` to
+`prova:politica` *"so CI covers them without a workflow change"*. The same move here —
+`prova:politica` now names the third file, and CI picks it up with no workflow edit.
+
+🔬 **Proved by reversal, not by reading:** with `cursor = page.nextCursor` replaced by
+`cursor = null` (the runner stops paginating), `prova:politica` goes **1 red / 22 green**;
+restored, **23 green**. Before this commit the same break passed unnoticed — the ruler
+reported 20 green and never loaded the file.
+
+📌 **One gap named rather than fixed:** the pagination-repeat guard
+(`if (cursor && seen.has(cursor)) throw`) is *not* covered — the fake binary never repeats
+a cursor, so removing that line keeps the suite green. Writing the case belongs with
+whoever extends the fake; saying so beats leaving a guard that looks tested.
+
+No change to the runner, the bridge or the protocol.
+
 ## 1.5.9 - Load Codex models from the installed client
 
 Expose the paginated Codex model catalogue through the desktop bridge. Send the selected
