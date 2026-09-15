@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.5.11 - rustls moves off the TLS 1.3 handshake advisory
+
+`cargo-deny` turned CI red on **RUSTSEC-2026-0285**: rustls accepted TLS 1.3 handshake
+messages sent at the wrong encryption level when they followed a key-changing message in
+the same record — a plaintext `EncryptedExtensions` packed into the `ServerHello` record was
+accepted, where RFC 8446 §5.1 requires the connection to end with `unexpected_message`.
+
+🔬 **Not this branch's doing, and measured rather than assumed:** `rustls 0.23.42` is
+byte-identical on `master` and on this branch, and the only other line this branch changed
+in `src-tauri/Cargo.lock` is the app's own version. `master`'s last CI was green on 12/09 —
+**before the advisory existed**. The RustSec database is fetched fresh on every run, so
+`master` goes red too the next time anything pushes to it. Fixing it here is cheaper than
+letting the next delivery discover it.
+
+`cargo update -p rustls --precise 0.23.45` — the plain `-p rustls` stops at `0.23.43`, which
+is still inside the advisory's range. Lockfile only, four lines, both bumps inside `0.23.x`
+and `0.103.x`:
+
+| crate | from | to |
+|---|---|---|
+| `rustls` | 0.23.42 | **0.23.45** (advisory asks `>= 0.23.45`) |
+| `rustls-webpki` | 0.103.13 | 0.103.15 (pulled by the above) |
+
+📋 **`cargo check` could not run here:** the build script needs
+`src-tauri/binaries/anna-x86_64-unknown-linux-gnu`, the sidecar that is gitignored on
+purpose, so the failure is the missing file and not the code. **CI is the run of record**
+for `cargo test`, `clippy` and `cargo-deny`.
+
 ## 1.5.10 - the catalogue test stops being a file nobody runs
 
 `1.5.9` shipped `codex-runner/catalogue.test.mjs` — three real tests that spawn the runner
