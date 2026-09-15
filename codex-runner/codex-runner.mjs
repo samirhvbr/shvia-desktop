@@ -89,6 +89,12 @@ if (process.argv.includes("--version")) {
 
 const PROJECT_DIR = argOf("--cwd") || process.cwd();
 const MODEL = argOf("--model");
+const EFFORT = argOf("--effort");
+const listModels = process.argv.includes("--modelos");
+const catalogueTimeout = listModels ? setTimeout(() => {
+  emit({ erro: "Tempo esgotado ao consultar modelos do Codex." });
+  encerrar(1);
+}, 20000) : null;
 // `--aprovacao` is accepted and IGNORED, on purpose: the bridge passes it to every
 // engine, and refusing to start over a flag that cannot change anything would break
 // the spawn for no gain. The engine has one policy; see POLITICA for why.
@@ -183,7 +189,7 @@ async function rodarTurno(texto) {
     if (!tid) return;
     emit({ type: "model", model: MODEL || "codex", server: "chatgpt" });
     const acabou = new Promise((resolve) => { fimDoTurno = resolve; });
-    await pedir("turn/start", { threadId: tid, input: [{ type: "text", text: texto }] });
+    await pedir("turn/start", { threadId: tid, input: [{ type: "text", text: texto }], ...(EFFORT ? { effort: EFFORT } : {}) });
     // The ack came back; now WAIT for the turn itself.
     await acabou;
   } catch (e) {
@@ -308,6 +314,34 @@ function encerrar(code) {
 await pedir("initialize", {
   clientInfo: { name: "shvia-codex-runner", title: "ShvIA Code mode", version: "1.0.0" },
 });
+
+// Listing is a control request: no thread, turn or sandbox probe is started.
+if (listModels) {
+  try {
+    const modelos = [];
+    const seen = new Set();
+    let cursor = null;
+    do {
+      const page = await pedir("model/list", { cursor });
+      if (!page || !Array.isArray(page.data)) throw new Error("Resposta inválida do Codex.");
+      for (const m of page.data) {
+        modelos.push({ value: m.model, displayName: m.displayName, description: m.description,
+          isDefault: m.isDefault, supportsEffort: !!m.supportedReasoningEfforts?.length,
+          supportedEffortLevels: (m.supportedReasoningEfforts || []).map(e => e.reasoningEffort) });
+      }
+      cursor = page.nextCursor;
+      if (cursor && seen.has(cursor)) throw new Error("Paginação repetida no catálogo do Codex.");
+      seen.add(cursor);
+    } while (cursor);
+    if (!modelos.length) throw new Error("Catálogo do Codex vazio.");
+    emit({ modelos });
+    clearTimeout(catalogueTimeout);
+    encerrar(0);
+  } catch (e) {
+    emit({ erro: e.message });
+    encerrar(1);
+  }
+}
 
 /**
  * 🔴 STARTUP RULER — the engine refuses to run if the sandbox does not hold.

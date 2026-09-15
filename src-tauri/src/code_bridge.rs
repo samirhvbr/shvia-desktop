@@ -123,6 +123,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // `{accountId}` escolhe SOB QUAL CONTA o catálogo é perguntado (ADR-033). Sem ele, a
     // conta padrão do CLI. O catálogo é por conta: assinaturas diferentes oferecem modelos
     // diferentes, e uma lista carregada sob outra conta é um alvo que o turno vai recusar.
+    codexModels: function () { return post('codexModels', {}); },
     claudeModels: function (o) { return post('claudeModels', o || {}); },
     // Perfis de conta do Claude Code desta máquina (ADR-033).
     // → {contas:[{id,rotulo,disponivel,motivo}], selecionada}
@@ -389,6 +390,26 @@ fn claude_models(conta: Option<&crate::contas_claude::Alvo>) -> serde_json::Valu
             .filter(|v| v.get("modelos").is_some())
             .unwrap_or_else(|| serde_json::json!({ "erro": "resposta do claude-runner ilegível" })),
         Err(e) => serde_json::json!({ "erro": format!("falha ao listar modelos: {e}") }),
+    }
+}
+
+/// Query the same runner and PATH used for Codex turns. The runner bounds the request.
+fn codex_models() -> serde_json::Value {
+    let Some(bin) = resolve_bin("codex-runner") else {
+        return serde_json::json!({ "erro": ERRO_CODEX_AUSENTE });
+    };
+    let mut cmd = Command::new(bin);
+    cmd.arg("--modelos");
+    if let Some(p) = crate::user_env::sidecar_path() {
+        cmd.env("PATH", p);
+    }
+    match cmd.output() {
+        Ok(o) => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .find(|v| v.get("modelos").is_some() || v.get("erro").is_some())
+            .unwrap_or_else(|| serde_json::json!({ "erro": "Atualize o codex-runner para listar os modelos." })),
+        Err(e) => serde_json::json!({ "erro": format!("Falha ao listar modelos do Codex: {e}") }),
     }
 }
 
@@ -696,6 +717,10 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             }
             reply(window, &req, true, read_file(path, file));
         }
+        "codexModels" => {
+            let out = codex_models();
+            reply(window, &req, out.get("modelos").is_some(), out);
+        }
         "claudeModels" => {
             // A conta é resolvida ANTES de rodar o binário: id desconhecido ou pasta que
             // sumiu não spawnam nada. Falhar aqui é mais barato e mais honesto que subir um
@@ -984,6 +1009,19 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
         // between turns, from the page, and receive nothing here.
         for a in argumentos_da_run(v.get("autonomy")) {
             cmd.arg(a);
+        }
+    } else if engine == "codex" {
+        if !v.get("modelDoCodex").and_then(|x| x.as_bool()).unwrap_or(false) || model.is_empty() {
+            return reply(
+                window,
+                req,
+                false,
+                serde_json::json!({ "error": "Carregue o catálogo do Codex antes de enviar." }),
+            );
+        }
+        cmd.args(["--cwd", &dir, "--model", &model]);
+        if !effort.is_empty() {
+            cmd.args(["--effort", &effort]);
         }
     } else {
         cmd.arg("--json").args(["--tools", "local"]);

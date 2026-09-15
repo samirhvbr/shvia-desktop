@@ -188,7 +188,7 @@ this machine, not just SHVIA; the workaround is `model = "gpt-5.3-codex-spark"`.
 
 ## What is deliberately NOT done
 
-- Bridge and UI (slices 2 and 3) — they wait on Code-mode identity and persistence.
+- The model catalogue bridge is implemented as described below; other integration slices retain their existing scope.
 - Closing the `.env` gap **by gating**. The runner cannot: it learns of a command from
   `item/started`, which arrives when the command has already begun, and there is no
   execpolicy surface to force a prompt. What it does instead, since `1.4.35`, is **say
@@ -211,3 +211,19 @@ no way to force a prompt on a chosen command prefix.
 
 So the `.env` gap cannot be closed by configuration. That "never" is now measured rather
 than assumed.
+
+## Live model catalogue (1.5.9)
+
+`codexModels()` invokes `codex-runner --modelos` using the same binary resolution and
+PATH as execution. It queries every `model/list` page and returns model IDs, labels,
+default selection and supported reasoning efforts. No local model allowlist is kept.
+The request has a 20-second deadline and does not create a thread or inference turn.
+
+The matching SHVIA-WEB selector passes `modelDoCodex: true`, the native model ID and
+selected effort. The bridge requires that catalogue marker, passes `--cwd` and
+`--model`/`--effort`, and excludes gateway routing arguments and the SHVIA API key.
+The runner sends effort through `turn/start`. Old web pages without the marker must
+reload the matching web update; old desktop builds cannot expose this catalogue.
+
+Validation commands: `cd codex-runner && npm test`, `node codex-runner/codex-runner.mjs
+--modelos`, and `cargo test --lib` from `src-tauri` after installing the runner.
