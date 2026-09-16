@@ -29,9 +29,7 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 - **Multi-janela** (`0.3.0`): menu `Arquivo → Nova janela` (`Ctrl/Cmd+N`) abre
   janelas extras (`win-*`) que **compartilham a sessão** (cookie) — conversas/
   projetos lado a lado. `Ctrl/Cmd+W` fecha; `Ctrl/Cmd+Q` sai.
-- **Branding** (`0.3.1`): ícone = a **seta da Blue3** em **P&B** + **"AI"** no
-  azul-claro `#24b0e5` sobre quadrado **navy** `#0d1b2a`. Splash + favicon na mesma
-  paleta. Fontes em `brand/`; assets servidos de `public/`.
+- **Portal branding** (`1.5.12`): cyan/navy Portal app icon, transparent monochrome tray template and matching splash symbol. Canonical artwork and historical snapshots live in SHVIA-WEB `brand/`; see [brand.md](brand.md) for regeneration.
 - **Estado da janela persistido** + **links externos no navegador** (`0.4.0`): as
   janelas são criadas **no Rust** (`build_shvia_window`); `tauri-plugin-window-state`
   guarda tamanho/posição entre reinícios, e `on_navigation` manda origens fora de

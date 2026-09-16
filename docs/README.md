@@ -37,3 +37,7 @@
   (`https://ai.shvia.org`).
 - **SHVTERM** (`/Users/samir/Projetos/SHVTERM`) — base técnica (Tauri), repo irmão.
 - **`archive/claude-fork`** — snapshot do fork Claude Desktop descartado.
+
+## Product identity
+
+See [Portal artwork and regeneration](brand.md).

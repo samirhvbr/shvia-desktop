@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.12 - adopt the Portal product identity
+
+Replace the previous ShvIA mark with the approved Portal symbol. Refresh application icons and browser/splash assets from the canonical artwork in SHVIA-WEB `brand/atual`; the previous files are archived in `brand/versao1`. See `docs/brand.md` for scope and regeneration.
+
 ## 1.5.11 - rustls moves off the TLS 1.3 handshake advisory
 
 `cargo-deny` turned CI red on **RUSTSEC-2026-0285**: rustls accepted TLS 1.3 handshake
