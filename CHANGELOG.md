@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.5.13 - the bridge says WHICH engine is missing, and lets the screen pick the language
+
+🔴 **Half the sentence was translated and half was not — and the untranslated half was the one
+that says what to do.**
+
+The page interpolates what the bridge sends into the `:erro` of `code.conta_catalogo_falhou`,
+a key that **is** catalogued in both languages. On an English screen that produced:
+
+> Could not list the models for this Claude Code account (**claude-runner não encontrado —
+> rode claude-runner/install.sh** …).
+
+The catalogued half spoke English; the blob inside the parentheses did not. The three
+`ERRO_*_AUSENTE` constants are Portuguese prose, and prose written on this side of the bridge
+cannot be in the reader's language, because this side does not know it.
+
+**Translating the constants would only swap who is left out.** What the bridge knows is WHICH
+absence it is; the language belongs to the screen, which has a catalogue. So `motor_do_engine`
+now returns a third field — a stable code, `runner_ausente` / `codex_ausente` /
+`anna_ausente` — and the three payloads carry it beside the prose.
+
+**The prose stays, on purpose.** An older page, or a code this screen does not yet know, falls
+back to it instead of showing no message at all. And `{erro, codigo}` is not a new convention
+here: the account bridge has answered in that shape since 1.4.28. This follows it.
+
+The test asserts the codes are stable, distinct per engine, and never empty — an empty code
+would be indistinguishable from "the bridge sent no code", which is exactly the case where the
+screen must fall back.
+
+**The screen half is `SHVIA-WEB`, and it ships separately.** Until it lands nothing changes for
+the reader: the page keeps reading `erro`, and the new field goes unused. Naming that here so
+this entry is not read as the defect being closed — it is one of its two halves.
+
 ## 1.5.12 - adopt the Portal product identity
 
 Replace the previous ShvIA mark with the approved Portal symbol. Refresh application icons and browser/splash assets from the canonical artwork in SHVIA-WEB `brand/atual`; the previous files are archived in `brand/versao1`. See `docs/brand.md` for scope and regeneration.

@@ -78,7 +78,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
   }
   window.__shviaCode = {
     // sessão do agente
-    spawn: function (o) { return post('spawn', o || {}); },   // {projectDir, apiKey, model?, effort?, url?, engine?, modelDoClaude?, accountId?, autonomy?}  autonomy:{stopByHost, maxIterations, maxCostUsd} = a Run (RUN-20260910), só no motor claude;  engine:'claude' = assinatura; modelDoClaude:true = model/effort vieram de claudeModels(), nao do gateway; accountId = perfil de conta (ver claudeAccounts)
+    spawn: function (o) { return post('spawn', o || {}); },   // erro de motor ausente vem {error, codigo} — ver claudeModels;  {projectDir, apiKey, model?, effort?, url?, engine?, modelDoClaude?, accountId?, autonomy?}  autonomy:{stopByHost, maxIterations, maxCostUsd} = a Run (RUN-20260910), só no motor claude;  engine:'claude' = assinatura; modelDoClaude:true = model/effort vieram de claudeModels(), nao do gateway; accountId = perfil de conta (ver claudeAccounts)
     send:  function (o) { return post('send', { payload: o }); }, // {type:'user',text} | {id,decision}
     kill:  function () { return post('kill'); },
     onEvent: function (cb) { if (typeof cb === 'function') listeners.push(cb); },
@@ -118,7 +118,9 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // Catálogo do motor Claude Code, perguntado ao Agent SDK (não é o catálogo
     // do gateway). Cada item traz supportsEffort + supportedEffortLevels, para a
     // UI listar o que existe e DESABILITAR o que não se aplica.
-    // → {modelos:[{value,resolvedModel,displayName,description,supportsEffort,supportedEffortLevels}]} | {erro}
+    // → {modelos:[{value,resolvedModel,displayName,description,supportsEffort,supportedEffortLevels}]} | {erro, codigo?}
+    // `codigo` ('runner_ausente'|'codex_ausente') existe para a tela escolher a LÍNGUA: o `erro`
+    // é português e a tela é bilíngue. Sem código conhecido, mostre o `erro` — é a reserva.
     //
     // `{accountId}` escolhe SOB QUAL CONTA o catálogo é perguntado (ADR-033). Sem ele, a
     // conta padrão do CLI. O catálogo é por conta: assinaturas diferentes oferecem modelos
@@ -375,7 +377,7 @@ impl Sidecars {
 /// significa oferecer na tela um modelo que o turno vai recusar.
 fn claude_models(conta: Option<&crate::contas_claude::Alvo>) -> serde_json::Value {
     let Some(bin) = resolve_bin("claude-runner") else {
-        return serde_json::json!({ "erro": ERRO_RUNNER_AUSENTE });
+        return serde_json::json!({ "erro": ERRO_RUNNER_AUSENTE, "codigo": COD_RUNNER_AUSENTE });
     };
     let mut cmd = Command::new(bin);
     cmd.arg("--modelos");
@@ -396,7 +398,7 @@ fn claude_models(conta: Option<&crate::contas_claude::Alvo>) -> serde_json::Valu
 /// Query the same runner and PATH used for Codex turns. The runner bounds the request.
 fn codex_models() -> serde_json::Value {
     let Some(bin) = resolve_bin("codex-runner") else {
-        return serde_json::json!({ "erro": ERRO_CODEX_AUSENTE });
+        return serde_json::json!({ "erro": ERRO_CODEX_AUSENTE, "codigo": COD_CODEX_AUSENTE });
     };
     let mut cmd = Command::new(bin);
     cmd.arg("--modelos");
@@ -481,7 +483,24 @@ const ERRO_CODEX_AUSENTE: &str = "codex-runner não encontrado — rode codex-ru
 /// Ausência do `anna`, que até aqui era uma string solta dentro do `spawn`.
 const ERRO_ANNA_AUSENTE: &str = "anna não encontrado. Este build saiu SEM o motor empacotado — instale o anna (SHVIA-CODE) e deixe no PATH (Unix: install.sh; Windows: anna.exe no PATH ou %LOCALAPPDATA%\\Programs\\anna)";
 
-/// Nome do motor → binário e a frase de ausência dele. **Um lugar só.**
+/// 🔴 Código estável da ausência, ao lado da frase. **A frase é português; a tela é
+/// bilíngue.**
+///
+/// Medido em 16/09/2026: a página interpola o que a ponte manda no `:erro` de
+/// `code.conta_catalogo_falhou`, que ESTÁ catalogado nos dois idiomas. Quem usa a tela em
+/// inglês lia *"Could not list the models for this Claude Code account (claude-runner não
+/// encontrado — rode claude-runner/install.sh…)"* — metade traduzida, metade não, e a metade
+/// não traduzida é justamente a que diz o que fazer.
+///
+/// Traduzir a constante aqui só inverteria quem fica sem entender. O que a ponte sabe é QUAL
+/// ausência é; a língua é assunto da tela, que tem catálogo. Então ela manda o código, e a
+/// frase segue junto como reserva — página velha, ou código que a tela ainda não conhece,
+/// continua mostrando o que mostrava.
+const COD_RUNNER_AUSENTE: &str = "runner_ausente";
+const COD_CODEX_AUSENTE: &str = "codex_ausente";
+const COD_ANNA_AUSENTE: &str = "anna_ausente";
+
+/// Nome do motor → binário, a frase de ausência dele e o código dela. **Um lugar só.**
 ///
 /// 🔴 Eram DOIS testes binários independentes — `engineStatus` fazia
 /// `if base == "claude" { "claude-runner" } else { "anna" }` e o `spawn` repetia a
@@ -493,11 +512,11 @@ const ERRO_ANNA_AUSENTE: &str = "anna não encontrado. Este build saiu SEM o mot
 ///
 /// O default continua sendo o `anna`: motor desconhecido não é erro de spawn, é o
 /// gateway. Mudar isso quebraria a página velha que não manda `engine`.
-fn motor_do_engine(engine: &str) -> (&'static str, &'static str) {
+fn motor_do_engine(engine: &str) -> (&'static str, &'static str, &'static str) {
     match engine {
-        "claude" => ("claude-runner", ERRO_RUNNER_AUSENTE),
-        "codex" => ("codex-runner", ERRO_CODEX_AUSENTE),
-        _ => ("anna", ERRO_ANNA_AUSENTE),
+        "claude" => ("claude-runner", ERRO_RUNNER_AUSENTE, COD_RUNNER_AUSENTE),
+        "codex" => ("codex-runner", ERRO_CODEX_AUSENTE, COD_CODEX_AUSENTE),
+        _ => ("anna", ERRO_ANNA_AUSENTE, COD_ANNA_AUSENTE),
     }
 }
 
@@ -823,7 +842,7 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
         // responderia sempre "sim" — o contrário do que um gate precisa fazer.
         "engineStatus" => {
             let base = v.get("engine").and_then(|x| x.as_str()).unwrap_or("gateway");
-            let (exe, _) = motor_do_engine(base);
+            let (exe, _, _) = motor_do_engine(base);
             let st = engine_status(exe);
             reply(window, &req, true, st);
         }
@@ -906,9 +925,10 @@ fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     // (embedding.md), então o bridge e a UI de cards não mudam. Sem `engine` = anna.
     let engine = s("engine");
     let is_claude = engine == "claude";
-    let (exe_base, erro_ausente) = motor_do_engine(&engine);
+    let (exe_base, erro_ausente, cod_ausente) = motor_do_engine(&engine);
     let Some(bin) = resolve_bin(exe_base) else {
-        return reply(window, req, false, serde_json::json!({ "error": erro_ausente }));
+        return reply(window, req, false,
+            serde_json::json!({ "error": erro_ausente, "codigo": cod_ausente }));
     };
 
     let mut cmd = Command::new(bin);
@@ -2202,6 +2222,34 @@ mod tests_motor {
         assert!(!motor_do_engine("codex").1.contains("claude login"));
     }
 
+    /// 🔴 O código da ausência é o que a TELA usa para escolher a língua, então ele tem de
+    /// ser estável e distinto por motor.
+    ///
+    /// O par frase+código existe porque a frase é português e a tela é bilíngue: quem usa
+    /// em inglês lia a metade que diz o que fazer em português. A ponte não traduz — ela
+    /// diz QUAL ausência é, e a tela, que tem catálogo, escolhe a frase.
+    ///
+    /// A frase continua viajando junto de propósito: página velha, ou código que a tela
+    /// ainda não conhece, cai nela em vez de ficar sem mensagem nenhuma.
+    #[test]
+    fn cada_ausencia_tem_codigo_estavel_e_distinto() {
+        assert_eq!(motor_do_engine("claude").2, "runner_ausente");
+        assert_eq!(motor_do_engine("codex").2, "codex_ausente");
+        assert_eq!(motor_do_engine("gateway").2, "anna_ausente");
+        // Motor desconhecido segue o binário: cai no gateway, e o código acompanha.
+        assert_eq!(motor_do_engine("").2, "anna_ausente");
+
+        let codigos = ["claude", "codex", "gateway"].map(|e| motor_do_engine(e).2);
+        for (i, a) in codigos.iter().enumerate() {
+            for b in codigos.iter().skip(i + 1) {
+                assert_ne!(a, b, "dois motores com o mesmo código: a tela não tem como separar");
+            }
+            // Um código vazio seria indistinguível de "a ponte não mandou código", que é
+            // exatamente o caso em que a tela DEVE cair na frase.
+            assert!(!a.is_empty());
+        }
+    }
+
     /// 🔴 O `exit 3` do `codex-runner` NÃO é ausência de motor: o binário existe,
     /// respondeu e recusou servir porque o sandbox não segurou. Se a ponte contar isso
     /// como "motor indisponível", a tela manda reinstalar o que já está instalado e o
@@ -2294,7 +2342,7 @@ mod smoke_codex_ao_vivo {
     /// achei" é sempre "não instalei", nunca ambiguidade.
     #[test]
     fn o_codex_runner_esta_instalado_e_responde() {
-        let (exe, erro) = motor_do_engine("codex");
+        let (exe, erro, _) = motor_do_engine("codex");
         assert!(resolve_bin(exe).is_some(), "{erro}");
 
         let st = engine_status(exe);
@@ -2309,7 +2357,7 @@ mod smoke_codex_ao_vivo {
     #[test]
     #[ignore = "exige codex-runner instalado (codex-runner/install.sh)"]
     fn a_ponte_acha_o_codex_runner_e_ele_responde() {
-        let (exe, erro) = motor_do_engine("codex");
+        let (exe, erro, _) = motor_do_engine("codex");
         let bin = resolve_bin(exe).unwrap_or_else(|| panic!("{erro}"));
 
         let st = engine_status(exe);
