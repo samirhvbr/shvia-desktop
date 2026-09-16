@@ -141,6 +141,13 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // explícito: baixa pacote da rede e leva segundos. → {saida} | {erro, codigo}
     // codigo: 'recursos_ausentes' (build sem a fonte) | 'bash_ausente' | 'instalacao_falhou'
     // O `erro` de 'instalacao_falhou' é a saída INTEIRA do install.sh — mostre como veio.
+    // Portão 2 — o login pela tela. `status` é leitura pura e sem cota.
+    claudeAuthStatus: function (o) { return post('claudeAuthStatus', o || {}); },      // → {loggedIn, email, subscriptionType, ...} | {erro, codigo}
+    // `Start` devolve a URL e DEIXA o cliente vivo esperando o código; `Code` o entrega.
+    // Um por vez: começar de novo cancela o anterior (o código só vale para o PKCE que o gerou).
+    claudeAuthLoginStart: function (o) { return post('claudeAuthLoginStart', o || {}); },  // → {url} | {erro, codigo}
+    claudeAuthLoginCode: function (o) { return post('claudeAuthLoginCode', o || {}); },    // {codigo} → {saida} | {erro, codigo}
+    claudeAuthLoginCancel: function () { return post('claudeAuthLoginCancel'); },
     claudeRunnerInstall: function () { return post('claudeRunnerInstall'); },
     claudeAccountsDetect: function () { return post('claudeAccountsDetect'); },
     // Cadastra um candidato pelo ALIAS — a página nunca manda caminho. {alias, rotulo?}
@@ -563,6 +570,171 @@ const SAIDA_SANDBOX_NAO_CONFIRMADO: i32 = 3;
 /// silêncio quando o `bundle.resources` muda de forma, e um erro aqui só apareceria para
 /// quem clica o botão numa máquina sem o repositório — a pessoa com menos condição de
 /// diagnosticar.
+/// Login do Claude Code conduzido pela tela, em vez de pelo terminal (portão 2).
+///
+/// ## O que foi MEDIDO antes de desenhar, em 16/09/2026
+///
+/// O `claude auth login --claudeai` **não é um redirect de navegador**: ele abre o
+/// navegador, imprime a URL e fica esperando um **código colado no stdin**. Rodado sem
+/// TTY, com stdin fechado, imprimiu exatamente:
+///
+/// ```text
+/// Opening browser to sign in…
+/// If the browser didn't open, visit: https://claude.com/cai/oauth/authorize?...
+/// Paste code here if prompted >
+/// ```
+///
+/// É isso que torna o portão 2 fazível: há uma URL para mostrar e um campo para preencher.
+/// Um fluxo puramente de redirect não teria onde a tela entrar.
+///
+/// ## Por que o processo fica VIVO entre as duas chamadas
+///
+/// O código só vale para a sessão que gerou o `code_challenge` (PKCE) — matar o processo e
+/// subir outro invalida o código que a pessoa acabou de copiar. Então o filho fica aqui,
+/// esperando, e o segundo handler escreve no stdin dele.
+///
+/// 🔴 **Um login por vez, e o novo CANCELA o anterior.** Dois processos vivos significam
+/// dois `code_challenge` diferentes, e o código colado casaria com um deles por sorte. Um
+/// erro que acontece uma vez em duas é pior que um erro que acontece sempre.
+static LOGIN_EM_CURSO: OnceLock<Mutex<Option<LoginEmCurso>>> = OnceLock::new();
+
+struct LoginEmCurso {
+    filho: Child,
+    stdin: ChildStdin,
+}
+
+fn login_slot() -> &'static Mutex<Option<LoginEmCurso>> {
+    LOGIN_EM_CURSO.get_or_init(|| Mutex::new(None))
+}
+
+/// Cancela um login pendente, se houver. Idempotente.
+fn cancelar_login() {
+    if let Ok(mut g) = login_slot().lock() {
+        if let Some(mut l) = g.take() {
+            let _ = l.filho.kill();
+        }
+    }
+}
+
+/// `claude auth status --json` com o perfil de conta aplicado.
+///
+/// 🔴 **Isto substitui a sonda de existência no Keychain** que a proposta de contas tinha
+/// desenhado — e a medição que decidiu está registrada: no Mac do dono o slot do
+/// `claude-b3` EXISTE (`Claude Code-credentials-851c8232`) e este comando responde
+/// `loggedIn: false`. Existir não é estar logado; credencial vencida ocupa o slot igual.
+///
+/// E há a diferença que mais importa: a sonda lia uma derivação **interna e não
+/// documentada** do cliente, então não podia bloquear nada. Este é comando público, com
+/// `--json` declarado no `--help`. Continua não bloqueando turno — mas agora por escolha,
+/// não por desconfiança.
+fn claude_auth_status(conta: Option<&crate::contas_claude::Alvo>) -> serde_json::Value {
+    let Some(bin) = resolve_bin("claude") else {
+        return serde_json::json!({ "erro": "claude não encontrado no PATH", "codigo": "cli_ausente" });
+    };
+    let mut cmd = Command::new(bin);
+    cmd.arg("auth").arg("status").arg("--json");
+    if let Some(p) = crate::user_env::sidecar_path() {
+        cmd.env("PATH", p);
+    }
+    crate::contas_claude::aplicar(&mut cmd, conta);
+    match cmd.output() {
+        Ok(o) => {
+            let txt = String::from_utf8_lossy(&o.stdout);
+            serde_json::from_str::<serde_json::Value>(txt.trim()).unwrap_or_else(|_| {
+                serde_json::json!({
+                    "erro": format!("resposta ilegível do `claude auth status`: {}", txt.trim()),
+                    "codigo": "resposta_ilegivel",
+                })
+            })
+        }
+        Err(e) => serde_json::json!({
+            "erro": format!("não consegui perguntar ao cliente: {e}"),
+            "codigo": "cli_falhou",
+        }),
+    }
+}
+
+/// Começa o login e devolve a URL que o cliente imprimiu.
+fn iniciar_login(conta: Option<&crate::contas_claude::Alvo>) -> Result<String, (&'static str, String)> {
+    cancelar_login();
+    let bin = resolve_bin("claude")
+        .ok_or(("cli_ausente", "claude não encontrado no PATH".to_string()))?;
+    let mut cmd = Command::new(bin);
+    cmd.arg("auth").arg("login").arg("--claudeai");
+    if let Some(p) = crate::user_env::sidecar_path() {
+        cmd.env("PATH", p);
+    }
+    crate::contas_claude::aplicar(&mut cmd, conta);
+    cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut filho = cmd.spawn().map_err(|e| {
+        ("spawn_falhou", format!("não consegui iniciar o login: {e}"))
+    })?;
+    let stdin = filho.stdin.take().ok_or(("spawn_falhou", "sem stdin".to_string()))?;
+    let saida = filho.stdout.take().ok_or(("spawn_falhou", "sem stdout".to_string()))?;
+
+    /* Lê até achar a URL. O cliente a imprime na SEGUNDA linha e depois fica no prompt
+     * "Paste code here if prompted > " — que NÃO termina em `\n`. Por isso a leitura é por
+     * linha e para na URL: esperar o fim da saída esperaria para sempre. */
+    let mut leitor = BufReader::new(saida);
+    let mut url = String::new();
+    for _ in 0..12 {
+        let mut linha = String::new();
+        match leitor.read_line(&mut linha) {
+            Ok(0) => break,
+            Ok(_) => {
+                if let Some(i) = linha.find("https://") {
+                    url = linha[i..].trim().to_string();
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    if url.is_empty() {
+        let _ = filho.kill();
+        return Err((
+            "sem_url",
+            "o cliente não imprimiu a URL de autorização — o fluxo de login mudou?".to_string(),
+        ));
+    }
+    if let Ok(mut g) = login_slot().lock() {
+        *g = Some(LoginEmCurso { filho, stdin });
+    }
+    Ok(url)
+}
+
+/// Entrega o código colado ao processo que está esperando por ele.
+fn concluir_login(codigo: &str) -> Result<String, (&'static str, String)> {
+    let mut guarda = login_slot()
+        .lock()
+        .map_err(|_| ("estado_perdido", "estado do login inacessível".to_string()))?;
+    let Some(mut login) = guarda.take() else {
+        return Err((
+            "sem_login",
+            "não há login em curso — comece de novo para gerar uma URL nova".to_string(),
+        ));
+    };
+    // 🔴 O código é ESCRITO e nunca guardado, nem registrado, nem devolvido à tela. Ele vale
+    // uma vez e é do usuário; o único lugar a que pertence é o stdin do cliente.
+    writeln!(login.stdin, "{codigo}").map_err(|e| {
+        ("escrita_falhou", format!("não consegui entregar o código: {e}"))
+    })?;
+    drop(login.stdin);
+    let saida = login.filho.wait_with_output().map_err(|e| {
+        ("espera_falhou", format!("o login não terminou: {e}"))
+    })?;
+    let texto = format!(
+        "{}{}",
+        String::from_utf8_lossy(&saida.stdout),
+        String::from_utf8_lossy(&saida.stderr),
+    );
+    if saida.status.success() {
+        Ok(texto)
+    } else {
+        Err(("login_falhou", texto))
+    }
+}
+
 fn script_do_instalador(app: &tauri::AppHandle) -> Result<PathBuf, (&'static str, String)> {
     let dir = app.path().resource_dir().map_err(|e| {
         ("recursos_ausentes", format!("não achei a pasta de recursos do app: {e}"))
@@ -810,6 +982,57 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
         "codexModels" => {
             let out = codex_models();
             reply(window, &req, out.get("modelos").is_some(), out);
+        }
+        /* Portão 2: o login, conduzido pela tela (1.5.17).
+         *
+         * `claudeAuthStatus` é leitura pura e sem cota — o `claude auth status --json` é
+         * comando público, com `--json` declarado no `--help` do cliente.
+         *
+         * Os dois seguintes formam UM fluxo: `...LoginStart` sobe o cliente e devolve a URL,
+         * `...LoginCode` entrega o código colado. O processo fica vivo entre os dois porque o
+         * código só vale para o `code_challenge` da sessão que o gerou. */
+        "claudeAuthStatus" => {
+            let (contas, _) = crate::contas_claude::registro(window.app_handle());
+            let id = v.get("accountId").and_then(|x| x.as_str()).unwrap_or_default();
+            match crate::contas_claude::resolver(&contas, id) {
+                Ok(dir) => {
+                    let out = claude_auth_status(dir.as_ref());
+                    let ok = out.get("erro").is_none();
+                    reply(window, &req, ok, out);
+                }
+                Err(e) => reply(window, &req, false,
+                    serde_json::json!({ "erro": e.mensagem(), "codigo": e.codigo() })),
+            }
+        }
+        "claudeAuthLoginStart" => {
+            let (contas, _) = crate::contas_claude::registro(window.app_handle());
+            let id = v.get("accountId").and_then(|x| x.as_str()).unwrap_or_default();
+            match crate::contas_claude::resolver(&contas, id) {
+                Ok(dir) => match iniciar_login(dir.as_ref()) {
+                    Ok(url) => reply(window, &req, true, serde_json::json!({ "url": url })),
+                    Err((c, m)) => reply(window, &req, false,
+                        serde_json::json!({ "erro": m, "codigo": c })),
+                },
+                Err(e) => reply(window, &req, false,
+                    serde_json::json!({ "erro": e.mensagem(), "codigo": e.codigo() })),
+            }
+        }
+        "claudeAuthLoginCode" => {
+            let codigo = v.get("codigo").and_then(|x| x.as_str()).unwrap_or_default().trim().to_string();
+            if codigo.is_empty() {
+                reply(window, &req, false,
+                    serde_json::json!({ "erro": "código vazio", "codigo": "codigo_vazio" }));
+            } else {
+                match concluir_login(&codigo) {
+                    Ok(saida) => reply(window, &req, true, serde_json::json!({ "saida": saida })),
+                    Err((c, m)) => reply(window, &req, false,
+                        serde_json::json!({ "erro": m, "codigo": c })),
+                }
+            }
+        }
+        "claudeAuthLoginCancel" => {
+            cancelar_login();
+            reply(window, &req, true, serde_json::json!({ "cancelado": true }));
         }
         "claudeModels" => {
             // A conta é resolvida ANTES de rodar o binário: id desconhecido ou pasta que
@@ -2318,6 +2541,51 @@ mod tests_motor {
         assert!(motor_do_engine("gateway").1.contains("anna"));
         // E nenhuma delas manda o usuário para o instalador do vizinho.
         assert!(!motor_do_engine("codex").1.contains("claude login"));
+    }
+
+    /// O código de autorização é ESCRITO no stdin do cliente e não mora em lugar nenhum.
+    ///
+    /// Ele vale uma vez, é do usuário, e o único destino legítimo é o processo que o
+    /// espera. Este teste lê a própria fonte porque o que ele trava é uma AUSÊNCIA — que
+    /// o código não seja guardado em struct, devolvido à tela nem registrado em log — e
+    /// ausência não se prova exercitando o caminho feliz.
+    #[test]
+    fn o_codigo_de_login_nao_e_guardado_nem_devolvido() {
+        let fonte = include_str!("code_bridge.rs");
+        let corpo = fonte
+            .split("fn concluir_login")
+            .nth(1)
+            .and_then(|x| x.split("fn script_do_instalador").next())
+            .unwrap_or("");
+        assert!(!corpo.is_empty(), "a função sumiu ou mudou de nome — esta régua mediria o nada");
+        assert!(corpo.contains("writeln!(login.stdin"), "o código tem de ir para o stdin do cliente");
+        for proibido in ["println!", "eprintln!", "log::", "\"codigo\": codigo", "codigo.to_string()"] {
+            assert!(
+                !corpo.contains(proibido),
+                "`{proibido}` no caminho do código de autorização: ele não pode ser registrado nem devolvido",
+            );
+        }
+    }
+
+    /// Um login por vez, e começar de novo cancela o anterior.
+    ///
+    /// Dois processos vivos significam dois `code_challenge` (PKCE) diferentes, e o código
+    /// que a pessoa colou casaria com um deles por sorte. Um erro que acontece uma vez em
+    /// duas é pior que um que acontece sempre — ninguém o reproduz para consertar.
+    #[test]
+    fn comecar_um_login_cancela_o_anterior() {
+        let fonte = include_str!("code_bridge.rs");
+        let corpo = fonte
+            .split("fn iniciar_login")
+            .nth(1)
+            .and_then(|x| x.split("fn concluir_login").next())
+            .unwrap_or("");
+        assert!(!corpo.is_empty());
+        assert!(
+            corpo.trim_start().starts_with("cancelar_login();")
+                || corpo.contains("cancelar_login();"),
+            "iniciar um login sem cancelar o anterior deixa dois PKCE vivos",
+        );
     }
 
     /// A fonte do runner está declarada no `bundle.resources`, e o caminho que a ponte

@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.5.17 - the login can happen on the screen, because the client's flow has a place for it
+
+**Gate 2, and it opened because of a measurement rather than a design.** `claude auth login
+--claudeai` was run without a TTY on 16/09/2026 and is **not** a pure browser redirect: it
+opens the browser, prints the authorisation URL, and waits for a **code pasted on stdin**.
+That is exactly the shape a screen can carry — a URL to show, a field to fill. A pure redirect
+would have left the app nothing to do, and gate 2 would have stayed a terminal.
+
+Three bridge methods. `claudeAuthStatus` is pure reading and spends no quota.
+`claudeAuthLoginStart` runs the client and returns the URL; `claudeAuthLoginCode` hands over
+the pasted code.
+
+**The client process stays alive between the two calls**, because the code is only valid for
+the `code_challenge` (PKCE) of the session that produced it — killing it and spawning another
+invalidates the code the person just copied. **One login at a time, and a new one cancels the
+previous:** two live challenges would make a pasted code match by luck, and a bug that happens
+one time in two is worse than one that happens always, because nobody reproduces it.
+
+🔴 **The code is written to the client's stdin and stored nowhere** — not in a struct, not
+returned to the screen, not logged. A test asserts that *absence*, reading the function's own
+source, because an absence cannot be proved by exercising the happy path.
+
+**`claude auth status --json` replaces the Keychain-existence probe** that
+`contas-claude-macos.md` had designed, and the measurement that decided it stands on its own:
+on this Mac the `claude-b3` slot **exists** (`Claude Code-credentials-851c8232`, reproduced
+from `sha256(dir)[0:8]`) while the command answers **`loggedIn: false`**. Existence is not
+login — an expired credential occupies the slot just the same. And the probe read an
+undocumented internal derivation, so by its own rule it could never block anything; this is a
+public command with `--json` in its `--help`. It still does not block a turn, but now by
+choice rather than by distrust.
+
+**The screen half is `SHVIA-WEB` and ships separately.** Until it lands the three methods have
+no caller, so this is one half of the gate. And the flow itself has **not** been exercised end
+to end: doing so consumes a real authorisation on the owner's account, which is his gesture,
+not mine.
+
 ## 1.5.16 - the runner's source travels in the installer, and the app can install it
 
 **The gate that stopped every new user.** The `claude-runner` never travelled in the

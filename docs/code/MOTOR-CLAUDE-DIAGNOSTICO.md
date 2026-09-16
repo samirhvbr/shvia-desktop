@@ -72,6 +72,51 @@ have to store. See `.continue/contas-claude-macos.md`.
 app to use. It lands in the default slot, which is the one the app reads, and the picker's
 `Padrão do sistema` stays truthful.
 
+### From 1.5.17 the app can do this itself, and here is what made it possible
+
+`claude auth login --claudeai` was measured without a TTY on 16/09/2026, and it is **not** a
+pure browser redirect:
+
+```text
+Opening browser to sign in…
+If the browser didn't open, visit: https://claude.com/cai/oauth/authorize?…
+Paste code here if prompted >
+```
+
+It opens the browser, prints the URL, and **waits for a code on stdin**. That is exactly the
+shape a screen can carry: a URL to show and a field to fill. A pure redirect would have left
+the app nothing to do.
+
+The client process **stays alive between the two steps** because the code is only valid for
+the `code_challenge` (PKCE) of the session that produced it: killing it and starting another
+invalidates the code the person just copied. One login at a time, and starting a new one
+cancels the previous — two live challenges would make a pasted code match by luck, and a bug
+that happens one time in two is worse than one that happens always.
+
+🔴 **The code is written to the client's stdin and stored nowhere** — not in a struct, not
+returned to the screen, not logged. A test asserts that absence, because an absence cannot be
+proved by exercising the happy path.
+
+### Asking whether an account is logged in, without spending quota
+
+`claude auth status --json` is a public command (`--json` is in its own `--help`) and answers
+for a profile when the profile's variable is applied:
+
+```bash
+claude auth status --json                                   # the default slot
+CLAUDE_SECURESTORAGE_CONFIG_DIR=~/.claude-cred-blue3 claude auth status --json
+```
+
+🔴 **This replaces the Keychain-existence probe** that `contas-claude-macos.md` proposed, and
+the measurement that decided it is worth keeping: on the owner's Mac the `claude-b3` slot
+**exists** (`Claude Code-credentials-851c8232`, reproduced from `sha256(dir)[0:8]`) while this
+command answers **`loggedIn: false`**. Existence is not login — an expired credential occupies
+the slot just the same.
+
+And the difference that matters more: the probe read an **undocumented internal derivation**,
+so by its own rule it could never block anything. This is a public command. It still does not
+block a turn — but now by choice rather than by distrust.
+
 ---
 
 ## 2. `claude-runner não encontrado`
