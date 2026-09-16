@@ -22,6 +22,28 @@
  * and wrong in its body, and no script catches that. What it removes is the case that
  * actually happened — nobody noticing that sixty releases went by.
  *
+ * ## Extending it to the BODY was tried and measured false (16/09/2026)
+ *
+ * Twice now the header was current while the body was not: on 09/09 the header said 1.4.3 and
+ * the body 1.1.19, and on 16/09 a paragraph still called three SHVIA-WEB PRs "open" five days
+ * after they merged. The obvious repair is to point the `maior-citada` mode — the one that
+ * works on `funcionalidades.md` — at `estado-atual.md` too.
+ *
+ * It does not work, and the reason is worth keeping so nobody spends the afternoon again.
+ * `funcionalidades.md` is a log OF VERSIONS: every number in it is a release of this
+ * repository, so the highest one is a claim. `estado-atual.md` is PROSE, and prose cites
+ * other people's versions. Measured on the real file, the highest own-looking version is
+ * **`7.1.0` — pacman's**, named in a note about building on Arch. Six majors ahead of this
+ * repository. The comment above already says what a number nobody believes does to a check:
+ * it teaches people to ignore it.
+ *
+ * The other rot is worse for a script: "PR #123 is open" is a fact about ANOTHER repository,
+ * and this clone cannot check it offline. Reading a sibling checkout is exactly what 1.5.7
+ * removed from this file.
+ *
+ * So the scope stated above is not an oversight to be closed later — it is the measured
+ * boundary. This class of rot is repaired by re-reading, not by a ruler.
+ *
  * Run: `node scripts/prova-frescor-da-doc.mjs`
  */
 import { readFileSync } from 'node:fs';

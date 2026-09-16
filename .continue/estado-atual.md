@@ -66,12 +66,29 @@ Nada do Run foi exercitado contra um turno de verdade; o que existe são provas 
 puro e o CI. Enquanto o B9 não rodar, não há perfil padrão de orquestrador e o Q5 do plano
 segue aberto.
 
-⚠️ **Revisar os blocos do WEB produziu três PRs de correção, e eles estão abertos.** Um
-deles é o portão de permissão que a camada de modelo nunca teve — era o único caminho de
-inferência daquele repositório que despachava sem `enforceProfileLimits`, então dava para
-nomear como orquestrador um perfil que o papel da pessoa proíbe. Outro corrige três bordas
-do agrupamento do Histórico, uma delas documentada no plano e não implementada. Até
-pousarem, esses defeitos estão em produção.
+✅ **Revisar os blocos do WEB produziu três PRs de correção, e os três POUSARAM em
+11/09/2026** — `SHVIA-WEB` #123, #124 e #125 (2.110.259–2.110.261). Um deles era o portão de
+permissão que a camada de modelo nunca teve: o único caminho de inferência daquele
+repositório que despachava sem `enforceProfileLimits`, e dava para nomear como orquestrador
+um perfil que o papel da pessoa proíbe. Hoje a chamada está em `RunModelTier.php:127`. Outro
+corrigiu três bordas do agrupamento do Histórico, uma delas documentada no plano e não
+implementada.
+
+> 🔴 **Esta frase dizia "e eles estão abertos… esses defeitos estão em produção" até
+> 16/09/2026** — cinco dias depois de os três terem sido mesclados. A afirmação envelheceu
+> sozinha, como toda afirmação sobre estado de terceiro, e **a régua do F-22 passou verde o
+> tempo todo**: ela compara o CABEÇALHO deste arquivo com o `version.md`, e o cabeçalho
+> estava em dia. É a mesma classe do saneamento de 09/09, quando o cabeçalho dizia 1.4.3 e o
+> corpo dizia 1.1.19 — a régua mede distância, não mentira.
+>
+> **Estender a régua ao corpo foi tentado e medido em 16/09, e NÃO funciona aqui.** O modo
+> "maior versão citada" que serve ao `funcionalidades.md` lê deste arquivo o **`7.1.0` do
+> pacman** (linha 138) como se fosse afirmação dele: seis majors à frente do repositório, um
+> número que ninguém acredita — exatamente o absurdo que o comentário do próprio script cita
+> como o que ensina a ignorar uma régua. E a frase que apodreceu aqui fala de **PR de outro
+> repositório**, que este clone não tem como conferir offline. Fica registrado para ninguém
+> refazer a tentativa: **esta classe de podridão não tem guarda mecânica barata; ela se
+> conserta relendo.**
 
 **B9 é o que falta de verdade, e é do dono:** cinco runs reais, só regra, nos três motores.
 Sem esse número não existe perfil padrão de orquestrador — a pill abre em *Regra, sem

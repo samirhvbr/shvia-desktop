@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.5.14 - the state note stops calling three merged PRs open, and the ruler's limit is measured
+
+A paragraph in `.continue/estado-atual.md` said the three review-correction PRs of the Run
+were **open**, and closed with *"until they land, those defects are in production"*. They
+landed on **11/09/2026** — `SHVIA-WEB` #123, #124 and #125 (2.110.259–2.110.261). The
+permission gate it names is on master, at `RunModelTier.php:127`.
+
+**The F-22 ruler was green the whole time, and that is the finding, not the typo.** It
+compares this file's HEADER against `version.md`, and the header was current. Same class as
+the 09/09 sanitation, when the header said 1.4.3 and the body said 1.1.19: the ruler measures
+distance, not untruth.
+
+**So extending it to the body was tried, and measurement rejected it.** Pointing the
+`maior-citada` mode — the one that works on `funcionalidades.md` — at `estado-atual.md`
+reads **`7.1.0`, which is pacman's version**, named in a note about building on Arch. Six
+majors ahead of this repository: the kind of number that, as this script's own comment says,
+teaches people to ignore a check.
+
+The second half is worse for a script. *"PR #123 is open"* is a fact about **another
+repository**, and this clone cannot check it offline — reading a sibling checkout is exactly
+what 1.5.7 removed from this file.
+
+Both measurements are recorded in the script's header and in the note itself, so the next
+person does not spend the afternoon rediscovering them. **The stated scope is not an oversight
+waiting to be closed: it is the measured boundary.** This class of rot is repaired by
+re-reading, and the note now says when it was last re-read.
+
 ## 1.5.13 - the bridge says WHICH engine is missing, and lets the screen pick the language
 
 🔴 **Half the sentence was translated and half was not — and the untranslated half was the one
