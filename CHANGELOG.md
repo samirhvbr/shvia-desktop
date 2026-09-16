@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.5.16 - the runner's source travels in the installer, and the app can install it
+
+**The gate that stopped every new user.** The `claude-runner` never travelled in the
+installer, so the only way in was to clone the repository and run `install.sh` — and the
+absence message told people to run a file that was not on their machine. Anyone who is not a
+developer stopped there.
+
+**What travels and what does not, and why they are different things.** `anna` is a
+self-contained 5.7 MB Mach-O binary: it goes in the installer at no cost. The runner is a
+script plus **236 MB of `node_modules`**, and needs Node. So the installer now carries the
+**source** — ~124 KB — and `npm ci` creates the tree on the machine, at an explicit click.
+Bundling the tree would roughly quadruple the installer for something that must be built
+locally anyway.
+
+🔴 **The resource list is a GLOB, not a list of names, and that is the lesson of 1.5.15.**
+A hand-written list of the runner's files has gone stale three times (`politica.mjs` from
+1.4.7, `parada.mjs` from 1.5.0). `*.mjs` picks up a new module with no maintenance. The two
+test files ship too, ~11 KB — the price of a rule that cannot rot. And `prova:instalador` now
+measures **both** lists, the `cp` and the resources, because the glob is today's choice and
+nothing stops someone replacing it with names tomorrow "so the tests do not ship". It measures
+coverage, not form.
+
+**It does not reimplement the install.** The handler runs the **same `install.sh`**, which
+locates itself by its own path and finds its siblings next to it. Writing the steps again in
+Rust would create two definitions of what an installation is, and the one a developer tests in
+a terminal would stop being the one a user receives. Its output — Node missing, a file that
+did not copy, the network — comes back whole to the screen rather than being re-explained here.
+
+**The source is looked for in two places, and that is not indecision.** The resources are
+declared as `../claude-runner/...`, and Tauri rewrites that `..` as a literal `_up_` segment —
+its convention, which has changed between versions. Betting on one path would surface the
+failure only in the packaged app, for someone who clicked the button without the repository:
+the person least able to diagnose it, a whole release later. Two `is_file()` calls survive the
+convention changing again, and the error names every path it tried.
+
+**The screen half is `SHVIA-WEB` and ships separately** — the button, and the absence message
+pointing at it. Until it lands the bridge method has no caller, so this entry is one half of
+the gate, not its closure.
+
 ## 1.5.15 - the installer carries every module the runner imports, and CI can tell
 
 🔴 **Since 1.5.0 the Claude runner could not be installed at all, and the Run has not been

@@ -74,13 +74,46 @@ for (const runner of RUNNERS) {
   if (!ok) falhas++;
   console.log(`  ${ok ? '✓' : '✗'} ${runner.padEnd(16)} importa ${precisa.size} módulo(s) local(is)`
     + (ok ? '' : ` · FORA do cp: ${faltando.join(', ')}`));
+
+  /* A SEGUNDA lista, criada em 1.5.16: o `bundle.resources` que faz a fonte do runner
+   * viajar no instalador do app, para quem não tem o repositório clonado.
+   *
+   * 🔴 Ela nasce com GLOB (`*.mjs`) exatamente porque a lista à mão falhou três vezes —
+   * mas o glob é uma escolha de hoje, e nada impede alguém de trocá-lo por nomes amanhã
+   * "para não embarcar os testes". Esta parte da régua existe para esse dia: ela mede a
+   * COBERTURA, não a forma. Glob continua verde sem manutenção; lista só fica verde
+   * enquanto estiver completa. */
+  if (runner === 'claude-runner') {
+    const conf = JSON.parse(readFileSync(join(ROOT, 'src-tauri', 'tauri.conf.json'), 'utf8'));
+    const recursos = conf?.bundle?.resources;
+    const origens = Array.isArray(recursos) ? recursos : Object.keys(recursos ?? {});
+    const cobre = (arquivo) => origens.some((o) => {
+      const base = o.split('/').pop();
+      if (base === arquivo) return true;
+      if (!base.includes('*')) return false;
+      const re = new RegExp('^' + base.split('*').map((x) => x.replace(/[.+^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
+      return re.test(arquivo);
+    });
+    const fora = [...precisa, 'install.sh', 'package.json', 'package-lock.json']
+      .filter((a) => !cobre(a)).sort();
+    const okRes = origens.length > 0 && fora.length === 0;
+    if (!okRes) falhas++;
+    console.log(`  ${okRes ? '✓' : '✗'} ${'bundle.resources'.padEnd(16)} `
+      + (origens.length === 0
+        ? 'não existe — a fonte do runner não viaja no instalador'
+        : okRes ? `${origens.length} padrão(ões) cobrem o que a instalação precisa`
+          : `FORA dos recursos: ${fora.join(', ')}`));
+  }
 }
 
 if (falhas) {
   console.error(
-    `\n🔴 ${falhas} instalador(es) não copiam um módulo que o runner importa.\n`
-      + '   A instalação nasce quebrada, e a guarda do próprio instalador só acusa\n'
-      + '   durante uma instalação — o CI não instala. Acrescente o arquivo ao `cp`.\n',
+    `\n🔴 ${falhas} lista(s) não cobrem um arquivo que a instalação precisa.\n`
+      + '   São DUAS, e o conserto depende de qual reprovou:\n'
+      + '     · `cp` do install.sh ....... o arquivo não chega ao destino da instalação\n'
+      + '     · bundle.resources ......... o arquivo não viaja no instalador do app\n'
+      + '   A guarda do próprio install.sh só acusa a primeira, e só DURANTE uma\n'
+      + '   instalação — o CI não instala, e é por isso que esta régua lê texto.\n',
   );
   process.exit(1);
 }

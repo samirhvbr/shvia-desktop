@@ -137,6 +137,11 @@ pub const BRIDGE_JS: &str = r#"(function () {
     claudeAccounts: function () { return post('claudeAccounts'); },
     // Pergunta ao SHELL quais funções trocam de conta. Gesto explícito (botão), nunca no
     // boot: sobe um shell interativo. → {candidatos:[{alias,var,dir,disponivel}]}
+    // Instala o `claude-runner` a partir da fonte que veio NO INSTALADOR. Gesto
+    // explícito: baixa pacote da rede e leva segundos. → {saida} | {erro, codigo}
+    // codigo: 'recursos_ausentes' (build sem a fonte) | 'bash_ausente' | 'instalacao_falhou'
+    // O `erro` de 'instalacao_falhou' é a saída INTEIRA do install.sh — mostre como veio.
+    claudeRunnerInstall: function () { return post('claudeRunnerInstall'); },
     claudeAccountsDetect: function () { return post('claudeAccountsDetect'); },
     // Cadastra um candidato pelo ALIAS — a página nunca manda caminho. {alias, rotulo?}
     claudeAccountAdd: function (o) { return post('claudeAccountAdd', o || {}); },
@@ -552,6 +557,72 @@ const SAIDA_SANDBOX_NAO_CONFIRMADO: i32 = 3;
 /// empacotamento — e é essa leitura errada que custou o diagnóstico de 08/09, por isso
 /// os dois pontos que devolvem a ausência dizem `install.sh` na mesma frase
 /// (`ERRO_RUNNER_AUSENTE`).
+/// Onde a fonte do runner mora dentro do app instalado.
+///
+/// Separada do `instalar_claude_runner` para ter teste: o caminho é a parte que quebra em
+/// silêncio quando o `bundle.resources` muda de forma, e um erro aqui só apareceria para
+/// quem clica o botão numa máquina sem o repositório — a pessoa com menos condição de
+/// diagnosticar.
+fn script_do_instalador(app: &tauri::AppHandle) -> Result<PathBuf, (&'static str, String)> {
+    let dir = app.path().resource_dir().map_err(|e| {
+        ("recursos_ausentes", format!("não achei a pasta de recursos do app: {e}"))
+    })?;
+    /* DOIS candidatos, e isso não é indecisão.
+     *
+     * O `bundle.resources` lista os arquivos com `../claude-runner/...`, porque a fonte
+     * mora fora do `src-tauri`. O Tauri reescreve esse `..` como um segmento literal
+     * `_up_` dentro da pasta de recursos — convenção dele, não nossa, e que já mudou entre
+     * versões. Apostar num único caminho faria a falha aparecer só no app empacotado, para
+     * quem clicou o botão numa máquina sem o repositório: a pessoa com menos condição de
+     * diagnosticar, e depois de um release inteiro.
+     *
+     * Procurar nos dois custa dois `is_file()` e sobrevive à convenção mudar de novo. */
+    let candidatos = [
+        dir.join("_up_").join("claude-runner").join("install.sh"),
+        dir.join("claude-runner").join("install.sh"),
+    ];
+    if let Some(script) = candidatos.iter().find(|p| p.is_file()) {
+        return Ok(script.clone());
+    }
+    Err((
+        "recursos_ausentes",
+        // Os caminhos procurados SAEM na mensagem: um `bundle.resources` com destino
+        // trocado é indistinguível de um build velho sem olhar onde se olhou.
+        format!(
+            "este build não traz a fonte do runner (procurei em {})",
+            candidatos.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(" e em "),
+        ),
+    ))
+}
+
+/// Roda o `install.sh` que veio no instalador e devolve a saída dele.
+fn instalar_claude_runner(app: &tauri::AppHandle) -> Result<String, (&'static str, String)> {
+    let script = script_do_instalador(app)?;
+    let mut cmd = Command::new("bash");
+    cmd.arg(&script);
+    // App de GUI não herda o PATH do shell (ADR-029), e o `install.sh` precisa do `node` e
+    // do `npm`. Sem isto o botão falharia dizendo que não há Node numa máquina que tem.
+    if let Some(p) = crate::user_env::sidecar_path() {
+        cmd.env("PATH", p);
+    }
+    let saida = cmd.output().map_err(|e| {
+        ("bash_ausente", format!("não consegui executar o instalador: {e}"))
+    })?;
+    let texto = format!(
+        "{}{}",
+        String::from_utf8_lossy(&saida.stdout),
+        String::from_utf8_lossy(&saida.stderr),
+    );
+    if saida.status.success() {
+        Ok(texto)
+    } else {
+        // A saída INTEIRA volta para a tela. O `install.sh` já diz o que falta — Node
+        // ausente, import que não copiou, rede — e traduzir isso aqui criaria uma segunda
+        // explicação que envelhece separado da primeira.
+        Err(("instalacao_falhou", texto))
+    }
+}
+
 fn resolve_bin(base: &str) -> Option<PathBuf> {
     let exe_name = if cfg!(windows) { format!("{base}.exe") } else { base.to_string() };
 
@@ -772,6 +843,33 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
          * pessoa. E aqui o caminho SAI para a tela — é a única forma de ela conferir que a
          * resolução pegou a conta certa antes de cadastrar. O que a página nunca faz é
          * MANDAR um: o cadastro abaixo vai por `alias`, e quem resolve é o lado nativo. */
+        /* Instala o `claude-runner` a partir da fonte que viaja NO INSTALADOR (1.5.16).
+         *
+         * 🔴 O portão que travava todo usuário novo: o runner nunca viajou no instalador,
+         * e a única saída era clonar o repositório e rodar o `install.sh`. Quem não é
+         * desenvolvedor parava aí — e a mensagem de ausência mandava rodar um arquivo que
+         * não existia na máquina dele.
+         *
+         * A fonte são ~124 KB (`bundle.resources`); os 236 MB de `node_modules` ficam de
+         * fora e nascem aqui, com `npm ci`, na máquina. São naturezas diferentes: o `anna`
+         * é um binário autossuficiente e viaja; o runner é script mais árvore de
+         * dependências e precisa de Node.
+         *
+         * Gesto explícito, nunca no boot: baixa pacote da rede e leva segundos.
+         *
+         * **Não reimplementa a instalação.** Roda o MESMO `install.sh` — que se localiza
+         * pelo próprio caminho e acha os irmãos ao lado. Reescrever os passos em Rust
+         * criaria duas definições do que é uma instalação, e a que o desenvolvedor testa
+         * no terminal deixaria de ser a que o usuário recebe. */
+        "claudeRunnerInstall" => {
+            match instalar_claude_runner(window.app_handle()) {
+                Ok(saida) => reply(window, &req, true, serde_json::json!({ "saida": saida })),
+                Err((codigo, msg)) => reply(
+                    window, &req, false,
+                    serde_json::json!({ "erro": msg, "codigo": codigo }),
+                ),
+            }
+        }
         "claudeAccountsDetect" => {
             let home = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default());
             let achados = crate::contas_claude::descobrir(&home, &|p| p.is_dir());
@@ -2220,6 +2318,34 @@ mod tests_motor {
         assert!(motor_do_engine("gateway").1.contains("anna"));
         // E nenhuma delas manda o usuário para o instalador do vizinho.
         assert!(!motor_do_engine("codex").1.contains("claude login"));
+    }
+
+    /// A fonte do runner está declarada no `bundle.resources`, e o caminho que a ponte
+    /// procura tem de casar com o que o Tauri produz.
+    ///
+    /// Este teste não abre o app empacotado — ele trava a parte que dá para travar sem
+    /// bundle: que a busca tem MAIS DE UM candidato, e que o `_up_` (a reescrita do `..`
+    /// pelo Tauri, convenção dele e que já mudou entre versões) está entre eles. Um
+    /// caminho único aqui faria a falha aparecer só no app instalado, para quem clicou o
+    /// botão sem ter o repositório — e depois de um release inteiro.
+    #[test]
+    fn a_fonte_do_runner_e_procurada_em_mais_de_um_lugar() {
+        let conf = include_str!("../tauri.conf.json");
+        assert!(conf.contains("\"resources\""), "sem `bundle.resources` a fonte não viaja");
+        assert!(conf.contains("../claude-runner/*.mjs"), "o glob é o que impede a lista de envelhecer");
+
+        let fonte = include_str!("code_bridge.rs");
+        let corpo = fonte
+            .split("fn script_do_instalador")
+            .nth(1)
+            .and_then(|x| x.split("fn instalar_claude_runner").next())
+            .unwrap_or("");
+        assert!(corpo.contains("\"_up_\""), "o caminho que o Tauri produz para `..` não é procurado");
+        assert_eq!(
+            corpo.matches("install.sh").count(),
+            3,
+            "dois candidatos mais a mensagem que os nomeia: procurar num lugar só quebra em silêncio",
+        );
     }
 
     /// 🔴 O código da ausência é o que a TELA usa para escolher a língua, então ele tem de

@@ -90,6 +90,23 @@ The installer verifies itself since 1.4.22: it imports the installed module befo
 
 ---
 
+## 2a. There is no runner at all, and no repository either (1.5.16)
+
+Until 1.5.16 the answer to "`claude-runner não encontrado`" was *clone the repository and run
+`install.sh`* — which is not an answer for anyone who installed ShvIA and is not a developer.
+The message named a file that was not on their machine.
+
+The installer now carries the runner's **source** (~124 KB) and the app installs it on an
+explicit click. `node_modules` is not bundled: 236 MB that must be built locally anyway, and
+`anna` is a self-contained binary while the runner is a script plus a dependency tree — two
+different kinds of thing.
+
+**Node is the dependency that remains.** The install runs `npm ci`, so a machine without Node
+fails there, and `install.sh` says so in its own words: its output comes back whole to the
+screen rather than being re-explained by the bridge.
+
+From a terminal the path has not changed: `bash claude-runner/install.sh`.
+
 ## 2b. The runner is installed but OLD — and the Run silently does nothing
 
 `claude-runner --version` against `version.md` is the whole check, and it is worth doing
