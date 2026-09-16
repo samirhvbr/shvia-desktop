@@ -67,6 +67,9 @@ jobs:
       # arquivo já tinha sido saneado à mão DUAS vezes pelo mesmo motivo.)
       - name: Frescor da doc de estado (F-22)
         run: npm run prova:doc
+
+      - name: O instalador copia todo modulo que o runner importa
+        run: npm run prova:instalador
       # `src-tauri/binaries/` is gitignored on purpose: the `anna` sidecar depends on the
       # build machine (ADR-021), so it is staged by `scripts/stage-anna.mjs` and never
       # committed. But `externalBin` in `tauri.conf.json` makes the Tauri build script

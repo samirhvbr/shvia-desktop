@@ -1,7 +1,7 @@
 {
   "name": "shvia-desktop",
   "private": true,
-  "version": "1.5.14",
+  "version": "1.5.15",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -19,6 +19,7 @@
     "prova:runner-version": "node claude-runner/claude-runner.mjs --version",
     "runner:sdk-bump": "node scripts/bump-sdk-do-runner.mjs",
     "prova:doc": "node scripts/prova-frescor-da-doc.mjs",
+    "prova:instalador": "node scripts/prova-instalador-copia-os-imports.mjs",
     "contas": "node scripts/contas-claude.mjs"
   },
   "devDependencies": {

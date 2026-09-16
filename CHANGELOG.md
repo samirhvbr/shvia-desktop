@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.5.15 - the installer carries every module the runner imports, and CI can tell
+
+🔴 **Since 1.5.0 the Claude runner could not be installed at all, and the Run has not been
+running on any machine that did not reinstall before that.**
+
+`claude-runner/install.sh` copies its files by a **hand-written list**. 1.5.0 added
+`parada.mjs` — the Stop hook that *is* the Run on this engine — to the runner's imports and
+not to that list. A fresh install then refused at its own import guard, and an existing
+install kept working while quietly lacking the Run: an older runner answers turns perfectly
+and simply never asks the host whether to continue. Nothing errors.
+
+**Measured on the owner's Mac while starting gate 1:** installed runner `1.4.20`, repository
+`1.5.14`, and `parada.mjs` absent. So **B9 — five real runs on three engines — would have
+measured nothing on the Claude engine**, and the screen has no way to tell that apart from a
+run that decided to stop.
+
+**Third time in this class.** `politica.mjs` was left out of the same `cp` from 1.4.7 until
+03/09/2026; `parada.mjs` from 1.5.0 until today.
+
+**Why the 1.4.22 guard did not catch it — and it is a good guard.** It imports the installed
+module before printing ✓, so the whole local import chain is exercised and a missing file
+fails loudly with its name. But it only runs **during an installation**, and CI does not
+install. The defect travelled six days and fourteen versions with nothing to say so, and the
+person who pays is whoever installs from scratch — precisely the one with no way to know the
+defect is not theirs.
+
+So `npm run prova:instalador` reads **text**: every `./x.mjs` the runner imports, following
+the chain rather than the first level, against the installer's `cp` line. No install, no
+`node_modules`, runs anywhere — which is where the 1.4.22 guard cannot reach. It matches only
+the `cp` line, because the file's own comments name these modules while explaining the two
+previous defects, and matching the whole file would go green on the explanation.
+
+`codex-runner` was measured in the same pass and is correct: it imports `esquema.mjs` and
+`protocolo.mjs` and copies both.
+
+**Verified end to end, not just by the ruler:** the installer was run on this machine and the
+runner went from `1.4.20` to `1.5.14` with `parada.mjs` present. The Stop hook exists here for
+the first time, which is what B9 needs.
+
 ## 1.5.14 - the state note stops calling three merged PRs open, and the ruler's limit is measured
 
 A paragraph in `.continue/estado-atual.md` said the three review-correction PRs of the Run

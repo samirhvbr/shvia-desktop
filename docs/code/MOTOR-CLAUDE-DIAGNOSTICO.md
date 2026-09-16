@@ -90,6 +90,31 @@ The installer verifies itself since 1.4.22: it imports the installed module befo
 
 ---
 
+## 2b. The runner is installed but OLD — and the Run silently does nothing
+
+`claude-runner --version` against `version.md` is the whole check, and it is worth doing
+before blaming the Run for not working.
+
+**Measured on the owner's Mac, 16/09/2026: installed `1.4.20`, repo `1.5.14`.** Twenty-four
+versions, and the one that matters is **1.5.0**, which added `parada.mjs` — the Stop hook
+that IS the Run on the Claude engine. An older runner answers turns perfectly well and
+simply never asks the host whether to continue. Nothing errors. The Run just does not
+happen, and the screen has no way to tell that apart from a run that decided to stop.
+
+🔴 **And until 1.5.15 reinstalling did not fix it, because the installer was the defect.**
+`install.sh` copied its files by a hand-written list that never gained `parada.mjs`, so a
+fresh install refused at its own import guard — the guard added in 1.4.22, doing its job.
+**Third time in this class:** `politica.mjs` was left out from 1.4.7 to 1.4.22, and
+`parada.mjs` from 1.5.0 to 1.5.15.
+
+The guard is good and was not enough: it only runs **during an installation**, and CI does
+not install. So `npm run prova:instalador` now reads the imports against the `cp` line as
+text — no install, no `node_modules`, runs anywhere, which is exactly where the 1.4.22 guard
+cannot reach.
+
+**If `--version` is behind:** `bash claude-runner/install.sh` from the repository. It is
+idempotent, and from 1.5.15 the install is complete.
+
 ## 3. The account picker shows only `Padrão do sistema`
 
 **Not a regression.** `contas_claude::semente()` offers a named profile only when its

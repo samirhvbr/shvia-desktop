@@ -30,7 +30,7 @@ mkdir -p "$DEST" "$BIN"
 # A régua que impede a repetição é o `--verificar` abaixo: ele importa o módulo
 # instalado, então um import local novo que não for copiado reprova AQUI, no
 # instalador, em vez de reprovar na tela de alguém.
-cp "$DIR/claude-runner.mjs" "$DIR/politica.mjs" "$DIR/package.json" "$DIR/package-lock.json" "$DEST/"
+cp "$DIR/claude-runner.mjs" "$DIR/politica.mjs" "$DIR/parada.mjs" "$DIR/package.json" "$DIR/package-lock.json" "$DEST/"
 
 # ── The lock is VERSIONED and installed with `npm ci` (finding F-18) ─────────
 #
