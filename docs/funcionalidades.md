@@ -160,6 +160,34 @@ no default orchestrator profile exists and Q5 of the plan stays open.
 escalations by signal and false continues. Until that number exists there is **no default
 orchestrator profile** — the pill opens on *Regra, sem modelo*.
 
+## Phase 5 — the three gates a new user walks through (1.5.15 → 1.6.0)
+
+Measured on 16/09/2026: someone who installs ShvIA and picks the Claude engine meets **three
+gates in order**, and until this phase only the third had any answer on screen.
+
+| gate | before | now |
+|---|---|---|
+| **1 · no runner** | *"run `claude-runner/install.sh`"* — a file only a cloner has | the source rides in the installer (~124 KB) and a button runs `npm ci` · **1.5.16** |
+| **2 · no login** | `claude auth login` in a terminal; `/login` does not exist in the panel | URL and code field on screen, verdict from `claude auth status` · **1.5.17 → 1.6.0** |
+| **3 · no account** | hand-edited JSON, or `npm run contas` from a clone | Settings detects the shell's aliases and registers the chosen ones · **1.4.28/1.4.29** |
+
+Two defects were found **under** gate 1 while opening it, and both had been shipping silently:
+
+- **1.5.15** — `install.sh` copies its files by a hand-written list that never gained
+  `parada.mjs` (the Run's Stop hook, added in 1.5.0). Since then a fresh install refused at
+  its own guard, and an existing one kept answering turns **without the Run**. Measured here:
+  installed runner `1.4.20` against repository `1.5.14`. `prova:instalador` now reads the
+  imports against both lists — the `cp` and `bundle.resources` — as text, because the
+  installer's own guard only fires **during** an installation and CI does not install.
+- **1.6.0** — the login flow has **two endings**, and 1.5.17 only handled one. The browser can
+  finish it with no code pasted; an invalid code does not end the process; the exit code is
+  `0` either way. The screen half is in `SHVIA-WEB`.
+
+🔴 **Node is the cost of one choice, not a product requirement.** Measured: `claude` itself is
+a self-contained Mach-O binary; the runner is a shell wrapper that `exec`s `node` with the
+`.mjs` because it carries the Agent SDK. Whether the runner should speak to the native binary
+instead is open, and it is the honest form of "gate 1 still needs Node".
+
 ## Limitações conhecidas
 
 - ⚠️ **Mic e Ctrl+V de imagem no Linux** (`0.4.4`, **ADR-008**): o shell habilita

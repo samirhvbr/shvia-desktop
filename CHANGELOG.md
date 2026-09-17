@@ -1,5 +1,75 @@
 # Changelog
 
+## 1.6.0 - the login survives its second ending, and 1.5.17's claim about an account is withdrawn
+
+**1.5.17 shipped a login flow that could only finish one of the two ways the client actually
+finishes.** Measuring it, with a junk code under a profile with nothing to lose, produced this:
+
+```text
+[0.2s out] Opening browser to sign in…
+[0.2s out] If the browser didn't open, visit: https://claude.com/cai/oauth/authorize?…
+[0.2s out] Paste code here if prompted >
+[0.3s err] Invalid code. Please make sure the full code was copied.   ← the junk code
+[25.4s out] Login successful.                                          ← the BROWSER finished
+exit code 0
+```
+
+Four facts, and each one moves a piece of the design:
+
+| measured | consequence |
+|---|---|
+| the browser can finish the flow **with no code pasted** | waiting for a code before waiting for the child hangs forever in that ending |
+| an invalid code **does not end the process** | `wait_with_output` after writing never returns |
+| **exit code 0 in both endings** | the exit code decides nothing |
+| the code is **not echoed** on either pipe | true of this version, promised by nobody |
+
+**The shape that follows.** `stdin` is taken at creation. A thread **drains** both pipes and
+waits for the child; when it exits, the page hears `{type:'claude_login_fim', code}`.
+Delivering the code only **writes** and returns at once. The verdict comes from
+`claude auth status`, never from stdout and never from the exit code.
+
+Draining is not fussiness: reading stdout only up to the URL and dropping the pipe lets the
+system buffer fill while the person is in the browser, and the client blocks on its next
+write. And what is drained is **discarded** — the client makes no promise about what it
+prints, and sending login output to the screen is a decision that only has to be wrong once.
+
+**The URL is scraped from undocumented output, so it obeys the rule that retired the Keychain
+probe:** tolerant extraction (first plausible authorisation URL, anywhere in the line, not
+matched against the surrounding sentence, which has changed between versions), a **fixture of
+the 2.1.273 output** in the tests, and an explicit fallback — *"I did not recognise the
+output; run `claude auth login` in a terminal"* — instead of a wrong URL.
+
+**TTL: 15 minutes, and it is a CHOICE, not a derivation.** The measurement meant to find the
+client's own timeout produced no number — it **succeeded** in 25.4 s instead of giving up.
+Finding its timeout needs a run nobody authorises, and that is the owner's gesture. The
+constant says so, and says what replaces it when the number exists.
+
+**The login process is killed on `RunEvent::Exit`.** It does not live in the sidecar map —
+it is not a project session — so `kill_all` never covered it, and without this line a
+`claude auth login` outlives the app with no screen left to hand it a code.
+
+## 🔴 Withdrawn: what 1.5.17 said about the `claude-b3` account
+
+That entry stated *"the slot exists and the command answers `loggedIn: false`, so existence is
+not login"* **as a settled fact about the account**. It is not one. Both live hypotheses — an
+expired credential, or a reading that did not come from that profile — predict exactly what
+was seen. A single reading cannot separate them, and the doc said otherwise.
+
+What later measurement did settle: `auth status` **does** honour the profile variable, and
+`auth login` **does** write to the profile's slot without touching the default. What it did
+**not** settle, and cannot: **provenance per reading for a credential profile.**
+`configDirectory` follows `CLAUDE_CONFIG_DIR` and, under `CLAUDE_SECURESTORAGE_CONFIG_DIR`,
+correctly returns the default home — that variable moves only the credential key. So there is
+no a-priori invariant that an answer came from the profile asked for, and the screen must
+render the third state, never "signed out". `claude_auth_status` now also refuses a payload
+whose `loggedIn` is not a boolean, for the same reason.
+
+**A ruler habit, named because it bit three times on 16/09.** Rulers that read source must
+read **code**, not text: the bash-4 lint went red on the comment explaining the defect it
+guards; a check for `saida:` matched a **parameter name**; and a check for `lixo.clear()`
+stayed green with the line **commented out**. All three now strip comments or target the exact
+construct.
+
 ## 1.5.17 - the login can happen on the screen, because the client's flow has a place for it
 
 **Gate 2, and it opened because of a measurement rather than a design.** `claude auth login

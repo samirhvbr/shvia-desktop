@@ -1478,6 +1478,10 @@ pub fn run() {
         }
         tauri::RunEvent::Exit => {
             app_handle.state::<code_bridge::Sidecars>().kill_all();
+            // 🔴 O login NÃO mora no mapa de sidecars — é um `static` próprio, porque não é
+            // sessão de projeto. Sem esta linha ele sobrevive ao app: um `claude auth login`
+            // pendurado, sem tela nenhuma para entregar o código, esperando até o teto.
+            code_bridge::cancelar_login();
         }
         _ => {}
     });

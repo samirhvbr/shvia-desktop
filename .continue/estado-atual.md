@@ -3,7 +3,7 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Última atualização: **11/09/2026** (versão 1.5.7).
+> Última atualização: **17/09/2026** (versão 1.6.0).
 
 > ⚠️ **Saneado em 02/09/2026** (achado F-22): descrevia a **1.1.34** com o repo em 1.4.3.
 > Foi o **terceiro** saneamento manual deste arquivo pelo mesmo motivo — daí a régua
@@ -29,6 +29,23 @@
 > acusar foi a régua do F-22, ao cruzar a tolerância de 25 patches no bump da 1.4.29: ela
 > mede o cabeçalho, não o corpo, e o corpo estava pior. Vale como medição da régua também —
 > ela pega a distância, não a mentira.
+
+**1.6.0 — os três portões de quem instala.** Medido em 16/09: quem instala o ShvIA e escolhe
+o motor Claude atravessa **runner ausente → sem login → sem conta**, nessa ordem, e até esta
+semana só o terceiro tinha resposta na tela. O runner passou a viajar no instalador (1.5.16) e
+o login ganhou URL e campo de código (1.5.17 → 1.6.0). **As metades de tela estão em PR no
+`SHVIA-WEB` e o portão 2 não fechou**: o caminho principal do login nunca rodou ponta a ponta.
+
+🔴 **Dois defeitos estavam embaixo do portão 1, calados.** O `install.sh` não copiava o
+`parada.mjs` desde a 1.5.0, então **a Run não existia em nenhuma máquina que não reinstalou** —
+esta aqui estava com o runner 1.4.20 contra o repo 1.5.14. Isso é pré-requisito do **B9**, que
+teria medido nada no motor Claude. Corrigido na 1.5.15, com régua que lê os imports contra as
+duas listas.
+
+⚠️ **Estado de conta nesta máquina, em 17/09:** o slot padrão está **deslogado** e o
+`claude-me` está logado. Os dois por gesto meu durante medição, não por uso. O `claude-b3`
+responde `loggedIn: false`, e **isso é leitura, não conclusão** — a proveniência por leitura
+não é afirmável para perfil de credencial (ver o runbook).
 
 **1.4.29** — o Modo Code alcança mais de uma conta do Claude Code: um perfil grava **qual
 variável** ele seta (1.4.28), e `npm run contas` cadastra as que a máquina já tem

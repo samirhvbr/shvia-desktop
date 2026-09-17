@@ -107,11 +107,31 @@ claude auth status --json                                   # the default slot
 CLAUDE_SECURESTORAGE_CONFIG_DIR=~/.claude-cred-blue3 claude auth status --json
 ```
 
-🔴 **This replaces the Keychain-existence probe** that `contas-claude-macos.md` proposed, and
-the measurement that decided it is worth keeping: on the owner's Mac the `claude-b3` slot
-**exists** (`Claude Code-credentials-851c8232`, reproduced from `sha256(dir)[0:8]`) while this
-command answers **`loggedIn: false`**. Existence is not login — an expired credential occupies
-the slot just the same.
+🔴 **This replaces the Keychain-existence probe** that `contas-claude-macos.md` proposed:
+the probe read an undocumented internal derivation, so by its own rule it could never block
+anything, while this is a public command.
+
+⚠️ **What is measured, and what is NOT — corrected on 17/09/2026.** The 1.5.17 entry said
+*"the `claude-b3` slot exists and the command answers `loggedIn: false`, so existence is not
+login"* as if that settled the account's state. **It does not.** Both live hypotheses — the
+credential expired, or the reading did not come from that profile — predict exactly what was
+seen, and a single reading cannot tell them apart.
+
+What later measurement DID settle:
+
+| question | answer |
+|---|---|
+| does `auth status` honour the profile variable? | **yes** — same command reads `true` under `…cred-pessoal` and `false` without it |
+| does `auth login` write to the profile's slot? | **yes** — the credential landed in that slot and the default's `mdat` did not move |
+| can provenance be asserted per reading? | **no, not for a credential profile** — see below |
+
+🔴 **`configDirectory` cannot serve as the provenance invariant for a credential profile.**
+It follows `CLAUDE_CONFIG_DIR` and, with `CLAUDE_SECURESTORAGE_CONFIG_DIR`, it correctly
+returns the default home, because that variable moves only the credential key. So for a
+securestorage profile there is **no a-priori invariant** that a given answer came from the
+profile asked for, and the honest rendering is the third state — *could not ask* — never
+"signed out". Reporting "signed out" for an account that is standing invites redoing a login
+that did not need redoing, which is the whole reason the third state exists.
 
 And the difference that matters more: the probe read an **undocumented internal derivation**,
 so by its own rule it could never block anything. This is a public command. It still does not
