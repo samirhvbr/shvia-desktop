@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.6.1 - the status says whether it can vouch for where it read
+
+The invariant the owner asked for — *`configDirectory` equal to the profile's directory, or
+else "could not ask"* — **can only live on this side**, and 1.6.0 left it unbuilt. The page
+never receives a profile's directory (ADR-033, deliberately), so it cannot apply the rule
+itself; if it could, the screen and `spawn` would be two sources on which account is in effect.
+
+`claudeAuthStatus` now answers with `proveniencia`:
+
+| case | answer | why |
+|---|---|---|
+| no profile | `confirmada` | nothing was overridden, so the reading and the turn share an environment |
+| `CLAUDE_CONFIG_DIR` | compares canonicalised paths | this is the case the invariant exists to catch |
+| `CLAUDE_SECURESTORAGE_CONFIG_DIR` | `nao_confirmavel` | that variable moves only the credential key, so `configDirectory` is the default home **by design** |
+
+🔴 **The screen must render `nao_confirmavel` as "could not ask", never as "signed out".**
+Telling someone an account is signed out when it is standing invites redoing a login that did
+not need redoing — the exact error the third state exists to prevent.
+
+The client-too-old case lands in the same place: no `configDirectory` in the payload is "could
+not ask", not "not signed in".
+
 ## 1.6.0 - the login survives its second ending, and 1.5.17's claim about an account is withdrawn
 
 **1.5.17 shipped a login flow that could only finish one of the two ways the client actually

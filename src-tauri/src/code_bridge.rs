@@ -142,7 +142,16 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // codigo: 'recursos_ausentes' (build sem a fonte) | 'bash_ausente' | 'instalacao_falhou'
     // O `erro` de 'instalacao_falhou' é a saída INTEIRA do install.sh — mostre como veio.
     // Portão 2 — o login pela tela. `status` é leitura pura e sem cota.
-    claudeAuthStatus: function (o) { return post('claudeAuthStatus', o || {}); },      // → {loggedIn, email, subscriptionType, ...} | {erro, codigo}
+    // → {loggedIn, email, subscriptionType, proveniencia, proveniencia_motivo?} | {erro, codigo}
+    //
+    // 🔴 `proveniencia` diz se dá para AFIRMAR que a resposta veio do perfil pedido:
+    //   'confirmada'      → vale o `loggedIn`
+    //   'nao_confirmavel' → TERCEIRO ESTADO ("não consegui perguntar"), NUNCA "não conectado"
+    //
+    // Perfil de credencial é sempre 'nao_confirmavel', e não é defeito do cliente: a
+    // variável dele move só a chave, então o `configDirectory` volta sendo a casa padrão
+    // por desenho. Renderizar isso como "não conectado" manda refazer um login de pé.
+    claudeAuthStatus: function (o) { return post('claudeAuthStatus', o || {}); },
     // `Start` devolve a URL e DEIXA o cliente vivo esperando o código; `Code` o entrega.
     // Um por vez: começar de novo cancela o anterior (o código só vale para o PKCE que o gerou).
     claudeAuthLoginStart: function (o) { return post('claudeAuthLoginStart', o || {}); },  // → {url} | {erro, codigo}
@@ -678,7 +687,16 @@ fn claude_auth_status(conta: Option<&crate::contas_claude::Alvo>) -> serde_json:
                 // 🔴 `loggedIn` tem de ser BOOLEANO. Ausente ou de outro tipo é "não sei",
                 // não "não logado": um JSON que mudou de forma não pode virar convite a
                 // refazer um login que já está de pé.
-                Ok(v) if v.get("loggedIn").is_some_and(|x| x.is_boolean()) => v,
+                Ok(mut v) if v.get("loggedIn").is_some_and(|x| x.is_boolean()) => {
+                    if let Some(o) = v.as_object_mut() {
+                        let (p, motivo) = proveniencia(conta, o.get("configDirectory"));
+                        o.insert("proveniencia".into(), serde_json::json!(p));
+                        if let Some(m) = motivo {
+                            o.insert("proveniencia_motivo".into(), serde_json::json!(m));
+                        }
+                    }
+                    v
+                }
                 Ok(v) => serde_json::json!({
                     "erro": format!("resposta sem `loggedIn` booleano: {v}"),
                     "codigo": "resposta_sem_forma",
@@ -693,6 +711,67 @@ fn claude_auth_status(conta: Option<&crate::contas_claude::Alvo>) -> serde_json:
             "erro": format!("não consegui perguntar ao cliente: {e}"),
             "codigo": "cli_falhou",
         }),
+    }
+}
+
+/// A leitura veio do perfil que foi pedido? **É a invariante, e ela mora AQUI.**
+///
+/// A página nunca recebe o diretório de um perfil — por desenho, desde a ADR-033 —, então
+/// ela não tem como aplicar a invariante sozinha. Se aplicasse, precisaria do caminho, e aí
+/// a tela e o `spawn` seriam duas fontes sobre qual conta está valendo.
+///
+/// Três respostas, e a do meio é a que evita o pior erro:
+///
+/// - **sem perfil** → `confirmada`. Nada foi sobrescrito, então a leitura e o turno usam o
+///   mesmo ambiente. A invariante existe para pegar "setei a variável e a resposta ignorou",
+///   que não pode acontecer quando não se seta nada.
+/// - **`CLAUDE_CONFIG_DIR`** → compara o `configDirectory` devolvido com o do perfil,
+///   canonicalizado. Igual, vale o `loggedIn`; diferente ou ausente, não vale.
+/// - **`CLAUDE_SECURESTORAGE_CONFIG_DIR`** → `nao_confirmavel`, **e isso não é defeito do
+///   cliente**: essa variável move só a chave da credencial, então o `configDirectory` volta
+///   sendo a casa padrão porque é mesmo a casa padrão. Não existe invariante a priori.
+///
+/// 🔴 A tela tem de renderizar `nao_confirmavel` como **"não consegui perguntar"**, nunca
+/// como "não conectado". Dizer "não conectado" para uma conta de pé convida a refazer um
+/// login que não precisava — que é o erro que o terceiro estado existe para evitar.
+fn proveniencia(
+    conta: Option<&crate::contas_claude::Alvo>,
+    dir_lido: Option<&serde_json::Value>,
+) -> (&'static str, Option<String>) {
+    use crate::contas_claude::Var;
+    let Some(alvo) = conta else {
+        return ("confirmada", None);
+    };
+    match alvo.var {
+        Var::SecureStorage => (
+            "nao_confirmavel",
+            Some(
+                "perfil de credencial: a variável move só a chave, então o `configDirectory` \
+                 é a casa padrão por desenho e não prova de onde a resposta veio"
+                    .to_string(),
+            ),
+        ),
+        Var::ConfigDir => {
+            let Some(lido) = dir_lido.and_then(|x| x.as_str()) else {
+                return (
+                    "nao_confirmavel",
+                    Some("a resposta não trouxe `configDirectory` (cliente anterior à 2.1.268?)".to_string()),
+                );
+            };
+            let canon = |p: &str| {
+                std::fs::canonicalize(p)
+                    .map(|x| x.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| p.trim_end_matches('/').to_string())
+            };
+            if canon(lido) == canon(&alvo.dir.to_string_lossy()) {
+                ("confirmada", None)
+            } else {
+                (
+                    "nao_confirmavel",
+                    Some(format!("pedi {} e a resposta veio de {}", alvo.dir.display(), lido)),
+                )
+            }
+        }
     }
 }
 
@@ -2694,6 +2773,40 @@ mod tests_motor {
         assert!(motor_do_engine("gateway").1.contains("anna"));
         // E nenhuma delas manda o usuário para o instalador do vizinho.
         assert!(!motor_do_engine("codex").1.contains("claude login"));
+    }
+
+    /// A invariante de proveniência, nos três casos.
+    ///
+    /// 🔴 O caso do meio é o que mais importa e o menos óbvio: perfil de CREDENCIAL não tem
+    /// invariante a priori, porque a variável dele move só a chave e o `configDirectory`
+    /// volta sendo a casa padrão **por desenho**. Tratar isso como "não conectado" mandaria
+    /// a pessoa refazer um login de pé — o erro que o terceiro estado existe para evitar.
+    #[test]
+    fn a_proveniencia_separa_o_que_da_para_afirmar_do_que_nao_da() {
+        use crate::contas_claude::{Alvo, Var};
+        let json = |s: &str| serde_json::json!(s);
+
+        // Sem perfil: nada foi sobrescrito, leitura e turno no mesmo ambiente.
+        assert_eq!(proveniencia(None, Some(&json("/Users/x/.claude"))).0, "confirmada");
+        assert_eq!(proveniencia(None, None).0, "confirmada");
+
+        // Perfil de credencial: nunca confirmável, e o motivo diz por quê.
+        let cred = Alvo { var: Var::SecureStorage, dir: "/Users/x/.claude-cred-b3".into() };
+        let (p, motivo) = proveniencia(Some(&cred), Some(&json("/Users/x/.claude")));
+        assert_eq!(p, "nao_confirmavel");
+        assert!(motivo.unwrap().contains("só a chave"));
+
+        // Casa de configuração: confirma quando bate.
+        let casa = Alvo { var: Var::ConfigDir, dir: "/tmp".into() };
+        assert_eq!(proveniencia(Some(&casa), Some(&json("/tmp"))).0, "confirmada");
+
+        // …e recusa quando NÃO bate. Este é o caso que a invariante existe para pegar.
+        let (p2, m2) = proveniencia(Some(&casa), Some(&json("/Users/x/.claude")));
+        assert_eq!(p2, "nao_confirmavel");
+        assert!(m2.unwrap().contains("pedi /tmp"));
+
+        // Cliente velho, sem o campo: também é "não sei", nunca "não conectado".
+        assert_eq!(proveniencia(Some(&casa), None).0, "nao_confirmavel");
     }
 
     /// A saída medida do `claude auth login --claudeai` na 2.1.273, VERBATIM.
