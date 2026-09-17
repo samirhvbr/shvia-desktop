@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.6.2 - the bundled anna goes to 0.11.22, and the dialog was right all along
+
+**The 1.6.1 build shipped `anna` 0.11.18 while `SHVIA-CODE` was already at 0.11.22.** The owner
+built and installed 0.11.22 into `~/.local/bin`, reopened the app, and the About dialog kept
+saying `v0.11.18`. That is not a cache and not a defect: `resolve_bin` looks **beside the app's
+executable first**, and only then at the PATH. The dialog already said which one it had found —
+the word is **`(empacotado)`**, and it exists for exactly this question.
+
+So the fix is not in the lookup. It is `scripts/stage-anna.mjs`, which copies the binary into
+`src-tauri/binaries/` where `externalBin` picks it up. Run here against `~/.local/bin/anna`:
+
+```
+[stage-anna] empacotando anna 0.11.22
+```
+
+**Verified by hash, not by trust.** The staged file is
+`2b1c6d3500c6d791bb1324da97131abfd9604fba29b23c301d27ac8ef62e0178`, byte-identical to what the
+owner's `build-local.sh` printed. `codesign --verify` says *valid on disk*.
+
+🔴 **What this commit carries, and what it does NOT.** `src-tauri/binaries/` is **gitignored**,
+so the binary is not in this commit — only the version bump and this entry are. The claim "this
+version bundles 0.11.22" is therefore true of **a build made from a staged tree**, not a property
+of the source. Whoever builds elsewhere gets whatever `stage-anna` finds there.
+
+**And nothing guards this.** No proof compares the staged binary against `SHVIA-CODE`'s version,
+which is why 1.6.1 shipped a stale engine without anything going red. Recorded as a gap rather
+than fixed here: a guard that reads a sibling repository is exactly what 1.5.7 removed from the
+doc proof, so the honest shape needs thinking about rather than a quick check.
+
 ## 1.6.1 - the status says whether it can vouch for where it read
 
 The invariant the owner asked for — *`configDirectory` equal to the profile's directory, or
