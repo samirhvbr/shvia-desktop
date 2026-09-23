@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6.16 - the Codex protocol tests run in CI, and so will the next test file
+
+**`codex-runner/protocolo.test.mjs` had 18 passing tests that nothing ran.** CI runs the runner
+tests through one script, `prova:politica`, and it listed three files; this was the fourth. No
+npm script mentioned it either. It covers the Codex engine's protocol — payload validation
+against Codex's own schema, the gate id-0 handling, the decision vocabularies — and a
+regression in any of it would have stayed green. Same class as 1.5.10, "the catalogue test
+stops being a file nobody runs".
+
+- `prova:politica` now runs it: 48 tests, up from 29.
+- A ruler makes the class impossible to repeat quietly: every `*.test.mjs` in `claude-runner/`
+  and `codex-runner/` must be in `prova:politica`. Reversal measured: taking the file out of the
+  script fails the ruler with "nothing runs it".
+
 ## 1.6.15 - the shell's way out, network and secrets, always asks in the Claude engine
 
 🔴 **ADR-032 closed network egress and secret reads for the tools, not for the shell.**

@@ -239,3 +239,18 @@ test("the shell's way out — network and secrets — always asks, at every leve
     assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${c}`);
   }
 });
+
+// 🔴 1.6.16. `codex-runner/protocolo.test.mjs` had 18 passing tests and nothing ran it — not an
+// npm script, not CI — the same class as 1.5.10 ("the catalogue test stops being a file nobody
+// runs"). A test file is only a test once something runs it: every one in the two runner
+// folders must be in `prova:politica`, the script CI runs.
+test("every runner test file is in the script CI runs", () => {
+  const raiz = new URL("..", import.meta.url).pathname;
+  const pacote = JSON.parse(fs.readFileSync(path.join(raiz, "package.json"), "utf8"));
+  const script = pacote.scripts["prova:politica"];
+  for (const pasta of ["claude-runner", "codex-runner"]) {
+    for (const f of fs.readdirSync(path.join(raiz, pasta)).filter((n) => n.endsWith(".test.mjs"))) {
+      assert.ok(script.includes(`${pasta}/${f}`), `${pasta}/${f} is not in prova:politica — nothing runs it`);
+    }
+  }
+});
