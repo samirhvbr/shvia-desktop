@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.6.9 - Linux gets a Quit that exists, in the menu and in the tray
+
+🔴 **On Linux there was no way to quit the app except killing it.** Both `Sair` items — the
+`Arquivo` menu and the tray — were `PredefinedMenuItem::quit`, and muda 0.19 supports only
+Separator/Copy/Cut/Paste/SelectAll/About as predefined items on GTK; everything else is dropped
+without an error. `Fechar janela` (`close_window`) disappeared the same way. With
+`close_to_tray = true` by default (ADR-024), closing the window only hides it, so the process
+had to be killed — which skips `RunEvent::Exit`, the one place that kills the agents and any
+pending `claude auth login`. ADR-024 promised "a saída de verdade continua a um clique"; on
+Linux it never was, since 1.1.0.
+
+- Linux: plain `MenuItem`s — `Sair` (Ctrl+Q) and `Fechar janela` (Ctrl+W) in `Arquivo`, `Sair do
+  ShvIA` in the tray — handled by `app.exit(0)` (the official route, through `RunEvent::Exit`) and
+  by closing the focused window (through `decidir_fechar`, like its title-bar button).
+- macOS and Windows keep the predefined items, which work there.
+- A ruler reads `lib.rs` and `tray.rs` and fails if a predefined quit/close-window item appears
+  without `#[cfg(not(target_os = "linux"))]` right above it, or if a Linux handler disappears. It
+  is a source check and says so: a test cannot open a GTK menu. Reversal measured: dropping the
+  guard fails it at the exact line.
+
+Suite: 117 = 116 passed + 1 ignored; clippy clean on Linux and on `x86_64-pc-windows-gnu`.
+⚠️ Not clicked on a real desktop session here; the next Linux build is where it shows.
+
 ## 1.6.8 - the Windows build compiles again, two months after it stopped
 
 🔴 **No Windows build was possible from 0.9.0 (19/07) to this version.** The origin check of the

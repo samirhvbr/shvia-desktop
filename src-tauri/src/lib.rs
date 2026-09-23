@@ -1298,6 +1298,21 @@ pub fn run() {
                 true,
                 Some("CmdOrCtrl+R"),
             )?;
+            // The predefined `quit` and `close_window` items do not exist on GTK: muda
+            // 0.19 supports only Separator/Copy/Cut/Paste/SelectAll/About there and drops
+            // the rest without an error (`is_item_supported`, gtk/mod.rs). Until 1.6.9 the
+            // Linux menu had neither — and with "close keeps running" on by default, no way
+            // out but killing the process, which skips `RunEvent::Exit`. Plain items with our
+            // own handlers on Linux; the native ones stay where they work.
+            #[cfg(target_os = "linux")]
+            let fechar_janela =
+                MenuItem::with_id(handle, "close-window", "Fechar janela", true, Some("CmdOrCtrl+W"))?;
+            #[cfg(not(target_os = "linux"))]
+            let fechar_janela = PredefinedMenuItem::close_window(handle, Some("Fechar janela"))?;
+            #[cfg(target_os = "linux")]
+            let sair = MenuItem::with_id(handle, "quit", "Sair", true, Some("CmdOrCtrl+Q"))?;
+            #[cfg(not(target_os = "linux"))]
+            let sair = PredefinedMenuItem::quit(handle, Some("Sair"))?;
             let arquivo = Submenu::with_items(
                 handle,
                 "Arquivo",
@@ -1306,8 +1321,8 @@ pub fn run() {
                     &nova_janela,
                     &recarregar,
                     &PredefinedMenuItem::separator(handle)?,
-                    &PredefinedMenuItem::close_window(handle, Some("Fechar janela"))?,
-                    &PredefinedMenuItem::quit(handle, Some("Sair"))?,
+                    &fechar_janela,
+                    &sair,
                 ],
             )?;
             // Editar: no macOS (WKWebView) os atalhos Cmd+C/V/X/A/Z só funcionam
@@ -1373,6 +1388,17 @@ pub fn run() {
         .on_menu_event(|app, event| match event.id().as_ref() {
             "new-window" => {
                 let _ = open_new_window(app);
+            }
+            // Linux only (see the menu above). `exit` goes through `RunEvent::Exit`, which
+            // kills every sidecar and any pending login; closing the focused window goes
+            // through `decidir_fechar`, the same as its title-bar button.
+            "quit" => app.exit(0),
+            "close-window" => {
+                if let Some(w) =
+                    app.webview_windows().values().find(|w| w.is_focused().unwrap_or(false))
+                {
+                    let _ = w.close();
+                }
             }
             "check-update" => {
                 updater::verificar_agora(app);
@@ -2002,4 +2028,44 @@ mod tests {
         );
     }
 
+    /// 🔴 muda 0.19 drops the predefined quit/close-window items on GTK without an error,
+    /// and that is how Linux had no "Sair" until 1.6.9. This is a SOURCE check, and says
+    /// so: a test cannot open a GTK menu. It guards the one decision — those two
+    /// predefined items never reach a Linux build — and that Linux has handlers for its own.
+    /// The needles are built at run time so this test cannot match its own text.
+    #[test]
+    fn itens_predefinidos_que_o_gtk_descarta_nao_chegam_ao_linux() {
+        let predefinidos = [
+            ["PredefinedMenuItem", "::quit("].concat(),
+            ["PredefinedMenuItem", "::close_window("].concat(),
+        ];
+        let guarda = ["#[cfg(not(target_os = ", "\"linux\"))]"].concat();
+        let mut achados = 0;
+        for (nome, fonte) in [("lib.rs", include_str!("lib.rs")), ("tray.rs", include_str!("tray.rs"))] {
+            let linhas: Vec<&str> = fonte.lines().collect();
+            for (i, linha) in linhas.iter().enumerate() {
+                let codigo = linha.split("//").next().unwrap_or("");
+                if !predefinidos.iter().any(|p| codigo.contains(p.as_str())) {
+                    continue;
+                }
+                achados += 1;
+                let anterior = linhas[..i]
+                    .iter()
+                    .rev()
+                    .map(|l| l.trim())
+                    .find(|l| !l.is_empty() && !l.starts_with("//"))
+                    .unwrap_or("");
+                assert_eq!(
+                    anterior, guarda,
+                    "{nome}:{}: predefined item GTK drops, without the not-linux cfg right above it",
+                    i + 1
+                );
+            }
+        }
+        assert!(achados > 0, "found no predefined item: if all became plain items, delete this ruler");
+        let lib = include_str!("lib.rs");
+        let tray = include_str!("tray.rs");
+        assert!(lib.contains(&["\"quit\" => app", ".exit(0)"].concat()), "lib.rs lost the Linux quit handler");
+        assert!(tray.contains(&["\"tray-quit\" => app", ".exit(0)"].concat()), "tray.rs lost the Linux quit handler");
+    }
 }

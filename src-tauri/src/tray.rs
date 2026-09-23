@@ -174,6 +174,14 @@ fn montar_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         None::<&str>,
     )?;
 
+    // On GTK the predefined `quit` is dropped silently (see the app menu in lib.rs), so
+    // until 1.6.9 the Linux tray had no way to quit. A plain item handled below instead.
+    #[cfg(target_os = "linux")]
+    let sair = MenuItem::with_id(app, "tray-quit", "Sair do ShvIA", true, None::<&str>)?;
+    // The predefined item ends through Tauri's own route, which `ExitRequested` reads as a
+    // user request (`code` set) rather than "the last window closed".
+    #[cfg(not(target_os = "linux"))]
+    let sair = PredefinedMenuItem::quit(app, Some("Sair do ShvIA"))?;
     Menu::with_items(
         app,
         &[
@@ -185,10 +193,7 @@ fn montar_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &autostart,
             &recolher,
             &PredefinedMenuItem::separator(app)?,
-            // `quit` predefinido: ele dispara o encerramento pela via oficial do Tauri,
-            // que é a que o `ExitRequested` reconhece como pedido do usuário (`code`
-            // preenchido) em vez de "fechou a última janela".
-            &PredefinedMenuItem::quit(app, Some("Sair do ShvIA"))?,
+            &sair,
         ],
     )
 }
@@ -243,6 +248,8 @@ pub fn instalar(app: &AppHandle) -> tauri::Result<()> {
 fn tratar_menu(app: &AppHandle, id: &str) {
     match id {
         "tray-open" => mostrar(app),
+        // Linux only: `exit` runs `RunEvent::Exit` (sidecars and pending login killed).
+        "tray-quit" => app.exit(0),
         "tray-update" => crate::updater::verificar_agora(app),
         "tray-autostart" => {
             let ligado = app.autolaunch().is_enabled().unwrap_or(false);

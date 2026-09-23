@@ -1053,6 +1053,13 @@ um só não bastaria:
 - **`Sair do ShvIA`** na bandeja e `Sair` no menu `Arquivo` — a saída de verdade
   continua a um clique. Os dois usam o `PredefinedMenuItem::quit`, que encerra pela via
   oficial do Tauri, não pelo caminho que interceptamos.
+  > **23/09/2026: on Linux this was never true.** muda 0.19 supports only
+  > Separator/Copy/Cut/Paste/SelectAll/About as predefined items on GTK and drops the rest
+  > without an error, so neither `Sair` existed on Linux since 1.1.0 — with
+  > `close_to_tray = true`, the only way out was killing the process, which skips
+  > `RunEvent::Exit`. From 1.6.9 Linux uses plain items whose handlers call `app.exit(0)`
+  > (the same official route); macOS and Windows keep the predefined ones. A ruler in
+  > `lib.rs` keeps predefined quit/close-window out of Linux builds.
 - **Aviso nativo na primeira vez**, uma única vez na vida da instalação. Sem ele a
   janela desaparece e a conclusão natural é "o app travou". Repetido, viraria ruído que
   o usuário aprende a ignorar — e ele precisa ser lido exatamente na primeira vez.
