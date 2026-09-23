@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.6.20 - a failed read of the published manifest aborts the publish instead of dropping platforms
+
+🔴 **A flaky network could silently cut a whole platform off updates.** `build-local.sh
+--publish` downloads the server's `release.json`, merges this platform into it, and uploads the
+result over the server's. The download was fail-open on purpose — "sem rede, sem manifesto
+publicado ou JSON ilegível, segue sem mesclar" — while the function's own header describes what
+that costs: the upload then replaces the server's manifest with one holding only this platform,
+and the others' users stop getting updates with no error anywhere. A timeout, a 5xx, a DNS
+failure and a genuine "never published" were the same answer.
+
+- Only two answers are trusted: **200** (merge) and **404** (first publish ever). Anything else —
+  and a 200 whose body is not JSON (a proxy's error page) — aborts the publish with the reason
+  and the way out. `SHVIA_PUBLISH_SEM_MESCLAR=1` discards the published manifest on purpose.
+- `scripts/prova-manifesto-remoto.mjs` (`npm run prova:manifesto`, a CI step) runs the REAL
+  `fetch_remote_manifest`, cut out of the script, under `set -euo pipefail`, against a local HTTP
+  server: 200, 404, 502, 200-with-garbage, refused, and the override. Reversal measured: the old
+  function lets the three failures through with status 0.
+- 🔬 The proof's first version measured the fix as broken: it ran the child synchronously, which
+  blocked the event loop of the server living in the same process, so curl connected and waited
+  out its timeout. The harness was wrong, not the function; it runs the child asynchronously now,
+  with the reason written where the next person would repeat it.
+
+Not in this entry, and still open: two machines publishing the same version at once still race
+(last upload wins), and a stale checkout can still publish an older version.
+
 ## 1.6.19 - slow bridge work leaves the UI thread, and every external call has a deadline
 
 🔴 **Several bridge actions froze every window, and one could freeze them for good.**

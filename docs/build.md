@@ -240,6 +240,13 @@ Três coisas que o passo manual não fazia, e cada uma corresponde a um erro rea
    responde, e só os usuários de Windows param de receber update. Isso substitui o
    passo manual de "copiar o `release.json` de uma máquina para a outra".
 
+   **Since 1.6.20 a failed download aborts the publish.** Before, a timeout, a 5xx, a refused
+   connection or unreadable JSON all counted as "nothing published", and the upload replaced
+   the server's manifest with one holding only this platform — the loss above, triggered by
+   a flaky network. Only HTTP 200 (merge) and 404 (first publish ever) are trusted now. To
+   discard the published manifest on purpose: `SHVIA_PUBLISH_SEM_MESCLAR=1 ./build-local.sh
+   --publish`. Proven by `npm run prova:manifesto` (a local HTTP server, the real function).
+
    **E o merge é por ARTEFATO, não por plataforma (1.1.19).** "Uma máquina por
    plataforma" deixou de valer no Linux: a Arch gera o `.pkg.tar.zst` (`makepkg`,
    ADR-028) e a Debian não. Enquanto a plataforma inteira era substituída, publicar

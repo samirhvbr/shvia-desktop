@@ -79,6 +79,10 @@ jobs:
       # failure there never breaks a publish that already reached the server.
       - name: The installers go to the Release, without breaking the publish
         run: npm run prova:anexa
+      # A failed read of the published manifest aborts the publish instead of replacing the
+      # server's manifest with one holding only this platform (1.6.20).
+      - name: A failed manifest read never drops the other platforms
+        run: npm run prova:manifesto
       # `src-tauri/binaries/` is gitignored on purpose: the `anna` sidecar depends on the
       # build machine (ADR-021), so it is staged by `scripts/stage-anna.mjs` and never
       # committed. But `externalBin` in `tauri.conf.json` makes the Tauri build script

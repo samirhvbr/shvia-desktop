@@ -789,18 +789,49 @@ PUBLIC_BASE="${SHVIA_PUBLIC_BASE:-https://ai.shvia.org}"
 # O sintoma é o pior possível — nada falha no build, nada falha no endpoint, e os
 # usuários de Windows simplesmente param de receber update.
 #
-# Fail-open: sem rede, sem manifesto publicado ou JSON ilegível, segue sem mesclar
-# (o release-manifest.mjs recomeça, que é o comportamento de antes deste passo).
+# 🔴 Until 1.6.20 this was fail-open: no network, a 5xx, a timeout or unreadable JSON all
+# read as "nothing published", and the scp then replaced the server's manifest with one that
+# had only THIS platform — the exact silent loss described above, triggered by a flaky
+# network. Now only two answers are trusted: 200 (merge on top of it) and 404 (nothing was
+# ever published: start fresh). Anything else aborts the publish. An operator who KNOWS the
+# remote manifest must be discarded sets SHVIA_PUBLISH_SEM_MESCLAR=1.
+#
+# The decision alone, so scripts/prova-manifesto-remoto.mjs can measure it: $1 = curl's exit
+# code, $2 = the HTTP status curl reports ("000" when there was no response at all).
+veredito_do_manifesto_remoto() {
+  local rc="${1:-}" http="${2:-}"
+  if [ "$rc" = "0" ] && [ "$http" = "200" ]; then echo "mesclar"; return 0; fi
+  if [ "$rc" = "0" ] && [ "$http" = "404" ]; then echo "recomecar"; return 0; fi
+  echo "abortar"
+}
+
 fetch_remote_manifest() {
   local url="$PUBLIC_BASE/storage/desktop/release.json"
-  local tmp; tmp="$(mktemp)"
-  if ! curl -fsS --max-time 20 -o "$tmp" "$url" 2>/dev/null; then
-    echo "    (sem manifesto publicado em $url — nada a mesclar)"
-    rm -f "$tmp"; return 0
+  if [ "${SHVIA_PUBLISH_SEM_MESCLAR:-0}" = "1" ]; then
+    echo "    ⚠️ SHVIA_PUBLISH_SEM_MESCLAR=1 — o manifesto publicado será SUBSTITUÍDO, sem mesclar"
+    return 0
   fi
+  local tmp; tmp="$(mktemp)"
+  local http rc=0
+  http="$(curl -sS --max-time 20 -o "$tmp" -w '%{http_code}' "$url" 2>/dev/null)" || rc=$?
+  case "$(veredito_do_manifesto_remoto "$rc" "$http")" in
+    mesclar) ;;
+    recomecar)
+      echo "    (nenhum manifesto publicado em $url — primeira publicação, nada a mesclar)"
+      rm -f "$tmp"; return 0 ;;
+    *)
+      echo "" >&2
+      echo "  ✗ NÃO CONSEGUI LER o manifesto publicado (curl=$rc, HTTP ${http:-?})." >&2
+      echo "    Publicar agora substituiria o release.json do servidor por um só com esta" >&2
+      echo "    plataforma — as outras param de receber update, sem erro em lugar nenhum." >&2
+      echo "    Tente de novo com a rede estável. Para descartar o publicado de propósito:" >&2
+      echo "    SHVIA_PUBLISH_SEM_MESCLAR=1 ./build-local.sh --publish" >&2
+      rm -f "$tmp"; return 1 ;;
+  esac
   if ! node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$tmp" 2>/dev/null; then
-    echo "    ⚠️ o release.json publicado não é JSON válido — ignorando"
-    rm -f "$tmp"; return 0
+    echo "  ✗ o release.json publicado NÃO é JSON válido — publicar por cima apagaria o que" >&2
+    echo "    ele descreve. Confira o servidor, ou use SHVIA_PUBLISH_SEM_MESCLAR=1." >&2
+    rm -f "$tmp"; return 1
   fi
   # shellcheck disable=SC2016  # `${...}` aqui é template literal de JS, não de bash
   local plats; plats="$(node -e '
