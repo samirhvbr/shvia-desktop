@@ -90,6 +90,9 @@ jobs:
       # A Mac build without the Apple signature is never published, by any path (1.6.22).
       - name: An unsigned Mac build is never published
         run: npm run prova:apple
+      # Reusing the last bundle requires that nothing it carries changed (1.6.23).
+      - name: The bundle reuse sees every bundled input
+        run: npm run prova:reuso
       # `src-tauri/binaries/` is gitignored on purpose: the `anna` sidecar depends on the
       # build machine (ADR-021), so it is staged by `scripts/stage-anna.mjs` and never
       # committed. But `externalBin` in `tauri.conf.json` makes the Tauri build script

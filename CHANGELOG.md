@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.6.23 - reusing the last bundle notices a change to anything the bundle carries
+
+**The reuse check looked at a hand-written list of sources, and the bundle carries more.**
+`build-local.sh` skips the build when `release.json` matches the version and nothing in that list
+is newer than the artifacts. Missing from it: `claude-runner/` (shipped whole as
+`bundle.resources`), `src-tauri/icons`, `Cargo.lock`, `build.rs`, `public/` and
+`package-lock.json`. The versioning rule lets several commits share a version, so a second
+commit that only fixed the runner or bumped a locked dependency found the build "fresh" and
+published the old bundle under the new commit.
+
+- The list now has them all; `node_modules` is pruned (not a source, and slow to scan).
+- `scripts/prova-reuso-ve-o-que-empacota.mjs` (`npm run prova:reuso`, a CI step) reads
+  `tauri.conf.json` and fails when a resource, icon or external binary it bundles has no root in
+  the list — so the next resource added to the bundle fails here instead of being forgotten —
+  and runs the real `find`: a newer runner file stops the reuse, a newer `node_modules` file does
+  not. Reversal measured: the old list is missing five entries.
+
 ## 1.6.22 - an unsigned Mac build can no longer be published, by any path
 
 🔴 **A test build could ship to every Mac.** `--no-sign` skips the Apple signature and

@@ -1,7 +1,7 @@
 {
   "name": "shvia-desktop",
   "private": true,
-  "version": "1.6.22",
+  "version": "1.6.23",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -25,6 +25,7 @@
     "prova:manifesto": "node scripts/prova-manifesto-remoto.mjs",
     "prova:chaves": "node scripts/prova-chave-das-assinaturas.mjs",
     "prova:apple": "node scripts/prova-assinatura-apple.mjs",
+    "prova:reuso": "node scripts/prova-reuso-ve-o-que-empacota.mjs",
     "contas": "node scripts/contas-claude.mjs"
   },
   "devDependencies": {

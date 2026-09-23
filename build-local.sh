@@ -776,11 +776,20 @@ can_reuse_build() {
   # (scripts/sync-version.mjs), então incluí-los aqui não gera falso positivo.
   # `src-tauri/binaries/` entra por causa do D5: um `anna` novo empacotado exige
   # rebuild, e ele não aparece em nenhuma outra fonte.
+  #
+  # 🔴 Until 1.6.23 the list missed inputs the bundle carries: `claude-runner/` (shipped whole
+  # as `bundle.resources`), `src-tauri/icons`, `Cargo.lock`, `build.rs`, `public/` and
+  # `package-lock.json`. Two commits may share a version (the versioning rule allows it), and a
+  # second one that only fixed the runner or bumped a locked dependency was "reused" — the old
+  # bundle shipped under the new commit. scripts/prova-reuso-ve-o-que-empacota.mjs reads
+  # tauri.conf.json and fails when something it bundles is missing here. `node_modules` is
+  # pruned: it is not a source, and scanning it made the check slow.
   local novas
   novas="$(find src src-tauri/src src-tauri/capabilities src-tauri/binaries \
-                index.html package.json vite.config.ts tsconfig.json \
-                src-tauri/Cargo.toml src-tauri/tauri.conf.json \
-             -type f -newer "$ref" -print -quit 2>/dev/null || true)"
+                src-tauri/icons claude-runner public \
+                index.html package.json package-lock.json vite.config.ts tsconfig.json \
+                src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/build.rs src-tauri/tauri.conf.json \
+             \( -name node_modules -prune \) -o \( -type f -newer "$ref" -print -quit \) 2>/dev/null || true)"
   if [ -n "$novas" ]; then
     REUSE_MOTIVO="fonte mais nova que o build: $novas"
     return 1
