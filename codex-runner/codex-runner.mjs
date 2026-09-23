@@ -167,6 +167,19 @@ let fimDoTurno = null;
 let stdinFechado = false;
 const fila = [];
 
+// 🔴 The app-server dying on its own (crash, OOM, killed) must END the runner. Until
+// 1.6.17 only `error` (spawn failure) was handled: every pending request waited for an
+// answer that could not come, `turn/completed` never arrived, and the page sat on
+// "working" forever — at startup, too, stuck on `initialize`. `encerrar` sets
+// `encerrando` first, so our own shutdown is not reported as a crash.
+let encerrando = false;
+child.on("exit", (code, signal) => {
+  if (encerrando) return;
+  emit({ type: "error", message: `o app-server do Codex encerrou sem aviso (${signal ?? `código ${code}`}).` });
+  if (fimDoTurno) emit({ type: "turn_done" });
+  encerrar(1);
+});
+
 async function garantirThread() {
   if (threadId) return threadId;
   const r = await pedir("thread/start", {
@@ -298,6 +311,7 @@ readline.createInterface({ input: process.stdin })
 }
 
 function encerrar(code) {
+  encerrando = true;
   // Every open card is REJECTED on the way out. Leaving them unanswered would
   // leave the app-server blocked on a decision nobody can give any more, and the
   // safe default when the person is gone is "no".

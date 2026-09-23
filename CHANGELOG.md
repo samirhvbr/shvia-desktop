@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.6.17 - a Codex app-server that dies ends the turn instead of hanging it
+
+**The Codex engine waited forever on a dead process.** `codex-runner.mjs` listened only for the
+app-server's `error` event, which is a spawn failure. If the app-server died afterwards — crash,
+OOM, killed — every pending request waited for an answer that could not come, `turn/completed`
+never arrived, and the page sat on "working" indefinitely. Startup had the same hole: the
+runner hung on `initialize`. (The Claude engine does not have this gap: its SDK loop throws.)
+
+- `child.on("exit")`: unless the runner itself is shutting down (`encerrar` now marks that
+  first), it emits an `error` naming the exit code or signal, a `turn_done` if a turn was open,
+  and ends the runner — so the bridge sees the sidecar exit and the page can recover.
+- `codex-runner/ciclo.test.mjs`, with fake app-servers in the style of `catalogue.test.mjs`: one
+  dies before answering `initialize`, one answers it and dies on the next request. Each runs
+  with a 5 s timeout, so a hang is a failure, not a skip. Reversal measured: with the handler
+  off, both fail with "the runner hung". The file is in `prova:politica` (1.6.16's ruler checks).
+
+Runner suites via `prova:politica`: 50 = 50 passed.
+
 ## 1.6.16 - the Codex protocol tests run in CI, and so will the next test file
 
 **`codex-runner/protocolo.test.mjs` had 18 passing tests that nothing ran.** CI runs the runner
