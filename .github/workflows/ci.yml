@@ -70,6 +70,11 @@ jobs:
 
       - name: O instalador copia todo modulo que o runner importa
         run: npm run prova:instalador
+      # The updater-key check mark only prints when the proof happened (1.6.3). The
+      # ruler existed but nothing called it, so a regression in build-local.sh would
+      # go unseen until the one act this product cannot undo: a release with the wrong key.
+      - name: The key-proof check mark needs the proof
+        run: npm run prova:visto
       # `src-tauri/binaries/` is gitignored on purpose: the `anna` sidecar depends on the
       # build machine (ADR-021), so it is staged by `scripts/stage-anna.mjs` and never
       # committed. But `externalBin` in `tauri.conf.json` makes the Tauri build script

@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.6.3 - the key-proof check mark only prints when the proof happened
+
+`verify_updater_key` in `build-local.sh` protects the one act this product cannot undo:
+publishing a release signed with the wrong key makes every installed client refuse the update,
+and the updater cannot repair itself afterwards (`docs/build.md`).
+
+🔴 **It failed open.** Both keyID readers return an empty string on any error, and the
+comparison only fired when both ids were non-empty. An unreadable id skipped the comparison
+and the success line printed ✔ anyway, with `(?)` where the id should be.
+
+The decision now lives in `veredito_da_chave()`, with the third outcome the house already uses
+elsewhere — passed, failed, **could not measure** — and the distinction that matters: a local
+build warns, a build that will `--publish` aborts.
+
+**The ruler is wired, not just written.** `scripts/prova-visto-da-chave-nao-falha-aberto.mjs`
+drives the function through real bash with nine cases; it now runs as `npm run prova:visto`
+and as a step of the CI *Provas* job. Reversal measured: turning the empty-id branch off makes
+five of the nine cases fail.
+
+⚠️ **The first push of this version was half a bump.** It moved `version.md` and left the six
+version carriers (`package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`,
+`tauri.conf.json`, `claude-runner/package.json`) uncommitted, so `prova:bump` turned the PR red.
+Third occurrence (1.1.19, 1.4.21, 1.6.3); where a guard should catch it before the commit is an
+open owner decision.
+
 ## 1.6.2 - the bundled anna goes to 0.11.22, and the dialog was right all along
 
 **The 1.6.1 build shipped `anna` 0.11.18 while `SHVIA-CODE` was already at 0.11.22.** The owner
