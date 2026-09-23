@@ -105,22 +105,155 @@ export function dentroDoProjeto(projectDir, p) {
  * "sempre confirma" vale mesmo com o atalho ligado (lá a regra se chama "`t` não vale").
  * Sem isto, `--aprovacao auto` liberava `rm -rf` e `git push --force` sem cartão enquanto o
  * outro motor da mesma casca recusava.
+ *
+ * ## By tokens, not by spelling (1.6.14) — a port of `anna`'s F-05 fix (SHVIA-CODE 0.11.9)
+ *
+ * The version before searched substrings (`c.includes("git push")`, `/rm\s+-(rf|fr|r\s+-f)/`).
+ * The shell has many spellings for one act, and measured with this policy on 23/09 these were
+ * `allow` at the `auto` level: `rm -rvf ~`, `git -C . push --force`, `git  push -f` (two
+ * spaces), `git clean -xdf`, `sudo rm -rf /`. Now the command line is split into segments
+ * (`;` `|` `&&` `||` newline, and the inside of `$(…)`, backticks and parentheses), quotes are
+ * resolved, transparent prefixes (`sudo`, `env`, `xargs`, `FOO=1`…) are skipped, and each
+ * segment is judged by its command and its flags. `rm -r` without `-f` counts, as in `anna`: it
+ * removes a whole tree just the same. `find -delete` does not, as in `anna` — that is a
+ * recorded decision there, not an omission here.
  */
 export function comandoDestrutivo(cmd) {
-  const c = String(cmd ?? "").toLowerCase();
-  return /rm\s+-(rf|fr|r\s+-f)/.test(c)
-    || c.includes("git push")
-    || c.includes("git reset --hard")
-    || c.includes("git clean -fd")
-    || c.includes("git clean -df")
-    || c.includes("mkfs")
-    || /(^|\s)dd\s/.test(c)
-    || /chmod\s+-r\s+777/.test(c)
-    || c.includes("chmod 777 -r")
-    || /\|\s*(sh|bash)\b/.test(c)
-    || c.includes("drop table")
-    || c.includes("truncate table")
+  const baixo = String(cmd ?? "").toLowerCase();
+  if (padraoDeLinhaDestrutivo(baixo)) return true;
+  return segmentosDeComando(String(cmd ?? "")).some(segmentoDestrutivo);
+}
+
+/** Patterns of the whole LINE, not of one command: pipe to a shell, fork bomb, SQL. */
+function padraoDeLinhaDestrutivo(c) {
+  return /\|\s*(sh|bash)\b/.test(c)
+    || c.includes("drop table") || c.includes("truncate table") || c.includes("drop database")
     || c.includes(":(){");
+}
+
+/**
+ * The command line split into the commands it runs. Quotes are kept (the tokenizer resolves
+ * them); `$(…)`, backticks and parentheses open segments of their own, so `echo $(rm -rf /)`
+ * cannot hide `rm` as an argument. Redirection stays in the segment, with its target.
+ */
+export function segmentosDeComando(cmd) {
+  const segs = [];
+  let atual = "";
+  let aspa = null;
+  for (let i = 0; i < cmd.length; i++) {
+    const ch = cmd[i];
+    if (aspa) {
+      if (ch === aspa) aspa = null;
+      atual += ch;
+      continue;
+    }
+    if (ch === "'" || ch === '"') { aspa = ch; atual += ch; continue; }
+    if (ch === ";" || ch === "\n" || ch === "|" || ch === "&") {
+      if (cmd[i + 1] === ch) i++;
+      segs.push(atual); atual = "";
+      continue;
+    }
+    if (ch === "`" || ch === "(" || ch === ")") { segs.push(atual); atual = ""; continue; }
+    if (ch === "$" && cmd[i + 1] === "(") { i++; segs.push(atual); atual = ""; continue; }
+    atual += ch;
+  }
+  segs.push(atual);
+  return segs.filter((s) => s.trim() !== "");
+}
+
+/** Tokens of a segment with quotes resolved: `cat '.env'` and `cat ".env"` are `cat .env`. */
+export function tokensDoSegmento(seg) {
+  const out = [];
+  let atual = "";
+  let aspa = null;
+  let tem = false;
+  for (const ch of seg) {
+    if (aspa) {
+      if (ch === aspa) aspa = null; else atual += ch;
+      continue;
+    }
+    if (ch === "'" || ch === '"') { aspa = ch; tem = true; continue; }
+    if (/\s/.test(ch)) {
+      if (tem || atual !== "") { out.push(atual); atual = ""; tem = false; }
+      continue;
+    }
+    atual += ch;
+  }
+  if (tem || atual !== "") out.push(atual);
+  return out;
+}
+
+/** Prefixes that are not the real command — `sudo rm -rf /` is `rm -rf /`. */
+const PREFIXOS_TRANSPARENTES = new Set(["sudo", "doas", "env", "command", "nohup", "time", "exec", "xargs"]);
+/** Options of THOSE prefixes that take a value in the next token (`sudo -u root rm …`). */
+const OPCOES_COM_VALOR = new Set(["-u", "-g", "-p", "-t", "-c", "-r", "-h", "-n", "-i", "-d", "-a", "-s", "-e", "-l"]);
+
+/** The command (basename, lowercase) and its arguments, past prefixes and `KEY=value`. */
+export function comandoEArgs(seg) {
+  const toks = tokensDoSegmento(seg);
+  let i = 0;
+  while (i < toks.length) {
+    const t = toks[i].toLowerCase();
+    const eq = t.indexOf("=");
+    if (eq > 0 && /^[a-z0-9_]+$/.test(t.slice(0, eq))) { i++; continue; }
+    if (PREFIXOS_TRANSPARENTES.has(t)) {
+      i++;
+      while (i < toks.length && toks[i].startsWith("-")) {
+        const opc = toks[i].toLowerCase();
+        i++;
+        if (OPCOES_COM_VALOR.has(opc) && i < toks.length) i++;
+      }
+      continue;
+    }
+    break;
+  }
+  if (i >= toks.length) return null;
+  const cmd = toks[i].toLowerCase();
+  const nome = cmd.split(/[\\/]/).pop();
+  return { cmd: nome, args: toks.slice(i + 1) };
+}
+
+/** Does any grouped short flag (`-rvf`) or long flag (`--recursive`) carry this one? */
+function temFlag(args, curta, longas) {
+  return args.some((a0) => {
+    const a = a0.toLowerCase();
+    if (a.startsWith("--")) return longas.includes(a.slice(2).split("=")[0]);
+    if (a.startsWith("-")) {
+      const curtas = a.slice(1);
+      return curtas !== "" && /^[a-z0-9]+$/.test(curtas) && curtas.includes(curta);
+    }
+    return false;
+  });
+}
+
+/** git's subcommand, past the global options — `-C <dir>`, `-c k=v`, `--git-dir <x>` take a value. */
+function gitSubcomando(args) {
+  let i = 0;
+  while (i < args.length) {
+    const a = args[i].toLowerCase();
+    if (["-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"].includes(a)) { i += 2; continue; }
+    if (a.startsWith("-")) { i++; continue; }
+    return { sub: a, resto: args.slice(i + 1) };
+  }
+  return null;
+}
+
+function segmentoDestrutivo(seg) {
+  const ca = comandoEArgs(seg);
+  if (!ca) return false;
+  const { cmd, args } = ca;
+  if (cmd === "rm") return temFlag(args, "r", ["recursive", "dir"]);
+  if (cmd.startsWith("mkfs")) return true;
+  if (cmd === "dd") return true;
+  if (cmd === "chmod") return temFlag(args, "r", ["recursive"]) && args.some((a) => a.includes("777"));
+  if (cmd === "git") {
+    const g = gitSubcomando(args);
+    if (!g) return false;
+    if (g.sub === "push") return true;
+    if (g.sub === "reset") return g.resto.some((a) => a.toLowerCase() === "--hard");
+    if (g.sub === "clean") return temFlag(g.resto, "f", ["force"]);
+  }
+  return false;
 }
 
 /**

@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.6.14 - destructive commands are recognized by what they do, not how they are spelled
+
+🔴 **The Claude engine's destructive denylist matched spellings.** `comandoDestrutivo` looked
+for substrings (`"git push"`, `/rm\s+-(rf|fr|r\s+-f)/`), and the shell has many spellings for one
+act. Measured with the policy on 23/09, these were `allow` at the `auto` level, with no card:
+`rm -rvf ~`, `git -C . push --force`, `git  push -f` (two spaces), `git clean -xdf`,
+`sudo rm -rf /`. ADR-032 says a destructive command asks even at `auto`.
+
+A port of `anna`'s own fix for the same finding (F-05, SHVIA-CODE 0.11.9), so the two engines
+agree: the line is split into the commands it runs (`;` `|` `&&` `||`, and the inside of
+`$(…)`, backticks, parentheses), quotes are resolved, transparent prefixes (`sudo`, `env`,
+`xargs`, `FOO=1`…) are skipped, and each command is judged by name and flags — grouped short
+flags (`-rvf`), long ones (`--recursive`), git's global options (`-C <dir>`). `rm -r` without
+`-f` counts, as in `anna`; `find -delete` does not, as in `anna`, where that is a recorded
+decision. And the other direction holds: `echo "git push"` and `git clean -n` are not
+destructive.
+
+One test with 21 destructive spellings and 8 ordinary commands. Reversal measured: the old
+substring version fails it on the first spelling. Runner suites: 46 = 46 passed.
+
 ## 1.6.13 - the Claude engine's read fence sees `~` and follows symlinks
 
 🔴 **`~` walked through the read fence.** `dentroDoProjeto` resolved `path.resolve(projectDir,
