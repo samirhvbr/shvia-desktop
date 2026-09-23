@@ -86,7 +86,12 @@ chmod +x "$BIN/claude-runner"
 # e quem descobria era o usuário, com uma mensagem que culpava o binário. Importar
 # o módulo instalado exercita a cadeia inteira de imports locais: se faltar
 # arquivo, falha aqui, com o nome do que falta.
-if ! ERRO="$("$NODE_ABS" --input-type=module -e "import('file://$DEST/claude-runner.mjs')" 2>&1 >/dev/null)"; then
+#
+# `</dev/null` (1.6.25): importing the runner RUNS it, and its top level opens `readline` on
+# stdin, exiting only on EOF. From the app that is fine (`output()` gives a null stdin), but the
+# error message tells people to run this script in a TERMINAL, where stdin never ends: the
+# install finished and then hung on its own proof until Ctrl-D.
+if ! ERRO="$("$NODE_ABS" --input-type=module -e "import('file://$DEST/claude-runner.mjs')" </dev/null 2>&1 >/dev/null)"; then
   echo "🔴 a instalação ficou incompleta — o runner não carrega:" >&2
   printf '%s\n' "$ERRO" | head -5 >&2
   echo "   (falta copiar algum arquivo do runner? veja o \`cp\` acima)" >&2

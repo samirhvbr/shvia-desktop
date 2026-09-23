@@ -1,7 +1,7 @@
 {
   "name": "shvia-desktop",
   "private": true,
-  "version": "1.6.24",
+  "version": "1.6.25",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -19,7 +19,7 @@
     "prova:runner-version": "node claude-runner/claude-runner.mjs --version",
     "runner:sdk-bump": "node scripts/bump-sdk-do-runner.mjs",
     "prova:doc": "node scripts/prova-frescor-da-doc.mjs",
-    "prova:instalador": "node scripts/prova-instalador-copia-os-imports.mjs",
+    "prova:instalador": "node scripts/prova-instalador-copia-os-imports.mjs && node scripts/prova-sonda-do-instalador.mjs",
     "prova:visto": "node scripts/prova-visto-da-chave-nao-falha-aberto.mjs",
     "prova:anexa": "node scripts/prova-anexa-na-release.mjs",
     "prova:manifesto": "node scripts/prova-manifesto-remoto.mjs",

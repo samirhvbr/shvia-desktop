@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6.25 - installing the Claude runner from a terminal no longer hangs at the end
+
+`claude-runner/install.sh` ends by importing the installed runner, to prove every local import
+was copied. Importing RUNS the runner, and its top level opens `readline` on stdin, exiting only
+on EOF. From the app that never showed — the bridge runs the script with a null stdin — but the
+runner's own "not installed" message tells people to run the script in a terminal, where stdin
+never ends: the install finished and then hung on its own proof until Ctrl-D. (Measured by the
+review with a pty: exit 124 with a terminal, 0.18 s with `/dev/null`.)
+
+- The probe reads from `/dev/null`.
+- `scripts/prova-sonda-do-instalador.mjs`, now part of `prova:instalador` (already a CI step),
+  runs the REAL probe block against a stand-in runner that does exactly what the real one does
+  with stdin, with a stdin that never closes. A hang fails it in 5 s. Reversal measured.
+
 ## 1.6.24 - building without anna ships no stale engine, and `--no-anna` builds at all
 
 🔴 **"O app sai SEM o motor" was never true.** `tauri.conf.json` declares `anna` as an
