@@ -97,7 +97,10 @@ const OUTRO_REPO = /\b(?:SHVIA|shvia)[-\s](?:WEB|CODE|MOBILE|ROTA|SITE|WORKSPACE
 const JANELA_DE_ATRIBUICAO = 60;
 
 const DOCS = [
-  { file: '.continue/estado-atual.md', modo: 'declarada', re: /vers[ãa]o\s+(\d+\.\d+\.\d+)\)/i },
+  // "versão" or "version": the header moves to English when the note is next touched (the
+  // repository language rule), and 1.6.7 measured what a Portuguese-only pattern does then —
+  // the check fails with "declares no version" on a note that is up to date.
+  { file: '.continue/estado-atual.md', modo: 'declarada', re: /(?:vers[ãa]o|version)\s+(\d+\.\d+\.\d+)\)/i },
   { file: 'docs/funcionalidades.md', modo: 'maior-citada', re: /\b(\d+\.\d+\.\d+)\b/g },
 ];
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.6.7 - the state note stops calling two landed screens open
+
+`.continue/estado-atual.md` still said, six days after the fact, that the login and accounts
+screens were "in PR" in SHVIA-WEB and that `claudeAccountsDetect`/`claudeAccountAdd` had no
+caller. Both landed there on 16/09 (2.110.308 and 2.110.310); measured on SHVIA-WEB's
+`origin/master`, `public/js/app.js` calls both. Gate 2 is still open for the reason the note
+gives: the main login path has never run end to end on a real install.
+
+The note also stops being where the owner's open decisions are tracked: they are answered on
+the *Fila aberta do ShvIA-Desktop* panel, and the note links it. This is the same rot the F-22
+ruler cannot catch — a claim about another repository's PRs — so it was fixed by rereading.
+
+**And the ruler learned English.** Moving the note's header to English (the repository language
+rule) made `prova:doc` fail with *"declares no version"* on a note that was up to date: its
+pattern only knew `versão`. It now accepts `version` too — measured both ways.
+
 ## 1.6.6 - a published version leaves its installers on its GitHub Release
 
 **Every Release of this repository had 0 assets** (1.6.2, 1.6.1, 1.6.0 and 1.5.17 checked one by

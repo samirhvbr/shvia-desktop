@@ -3,7 +3,7 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Última atualização: **17/09/2026** (versão 1.6.0).
+> Last updated: **23/09/2026** (version 1.6.7).
 
 > ⚠️ **Saneado em 02/09/2026** (achado F-22): descrevia a **1.1.34** com o repo em 1.4.3.
 > Foi o **terceiro** saneamento manual deste arquivo pelo mesmo motivo — daí a régua
@@ -24,6 +24,15 @@
 
 ## Onde estamos
 
+**23/09/2026 — 1.6.3 to 1.6.7, and where the open questions live now.** 1.6.3 finally left the
+disk (its first push was half a bump — the third time; the guard is an open owner decision).
+1.6.4–1.6.5 made `cargo deny` agree with `cargo audit` and check licenses, bans and sources, not
+only advisories; 1.6.6 attaches the installers to the GitHub Release on `--publish` (f121).
+**The owner's open decisions are no longer kept here:** they are answered on the panel
+[Fila aberta do ShvIA-Desktop](https://claude.ai/artifact/GsGYV37Y4YB5sEU8GoNYLB), and the
+executable queue is `.loop/QUEUE.md` (local to the working copy, not versioned). The section
+*Decisões em aberto* below is kept only as the reason each one exists.
+
 > ⚠️ **Saneado em 09/09/2026, quarta vez.** O cabeçalho dizia 1.4.3 e este parágrafo dizia
 > **1.1.19** — dezoito versões atrás do cabeçalho que já estava atrasado. Quem passou a
 > acusar foi a régua do F-22, ao cruzar a tolerância de 25 patches no bump da 1.4.29: ela
@@ -33,8 +42,9 @@
 **1.6.0 — os três portões de quem instala.** Medido em 16/09: quem instala o ShvIA e escolhe
 o motor Claude atravessa **runner ausente → sem login → sem conta**, nessa ordem, e até esta
 semana só o terceiro tinha resposta na tela. O runner passou a viajar no instalador (1.5.16) e
-o login ganhou URL e campo de código (1.5.17 → 1.6.0). **As metades de tela estão em PR no
-`SHVIA-WEB` e o portão 2 não fechou**: o caminho principal do login nunca rodou ponta a ponta.
+o login ganhou URL e campo de código (1.5.17 → 1.6.0). **The screen halves landed in
+`SHVIA-WEB` on 16/09** (2.110.308 login on the screen, 2.110.310 accounts from Settings), **but
+gate 2 has not closed**: the main login path has never run end to end on a real install.
 
 🔴 **Dois defeitos estavam embaixo do portão 1, calados.** O `install.sh` não copiava o
 `parada.mjs` desde a 1.5.0, então **a Run não existia em nenhuma máquina que não reinstalou** —
@@ -55,10 +65,10 @@ instalador do runner passou a conferir a própria instalação antes de dizer qu
 (1.4.22). O que mudou em cada versão está no [`../CHANGELOG.md`](../CHANGELOG.md) — não é
 copiado para cá.
 
-**Em aberto, e é a próxima peça:** a tela de Configurações que substitui o
-`npm run contas`. A ponte já tem `claudeAccountsDetect` e `claudeAccountAdd`, testadas e sem
-chamador. A decisão de desenho está em
-[`contas-claude-macos.md`](contas-claude-macos.md).
+~~**Em aberto, e é a próxima peça:** a tela de Configurações que substitui o
+`npm run contas`.~~ **Landed in SHVIA-WEB 2.110.310 (16/09)** — `public/js/app.js` calls
+`claudeAccountsDetect` and `claudeAccountAdd` (measured on its `origin/master`, 23/09). The
+design decision is in [`contas-claude-macos.md`](contas-claude-macos.md).
 
 **Em aberto desde 10/09/2026, e é a frente seguinte: a Run.** O Modo Code passa a
 continuar os turnos sozinho e a parar só onde um humano é necessário — uma pill
