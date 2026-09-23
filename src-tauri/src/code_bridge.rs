@@ -1990,6 +1990,51 @@ fn sanitize_filename(nome: &str) -> String {
 }
 
 #[cfg(test)]
+mod tests_leitura_com_teto {
+    use super::{ler_escolhido, ler_no_maximo, read_file, READ_FILE_MAX};
+
+    fn pasta(nome: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("shvia-teto-{nome}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// 🔴 1.6.28. The whole file was read and the limit applied after. A sparse 64 MB file uses
+    /// no disk; reading it whole would allocate 64 MB — the cap stops at limit + 1.
+    #[test]
+    fn arquivo_enorme_para_no_limite() {
+        let d = pasta("enorme");
+        let p = d.join("video.bin");
+        std::fs::File::create(&p).unwrap().set_len(64 << 20).unwrap();
+        assert_eq!(ler_no_maximo(&p, 1024).unwrap().len(), 1025, "the read did not stop at the cap");
+        assert_eq!(ler_escolhido(&p, 10 << 20).unwrap_err(), "acima de 10 MB");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn arquivo_pequeno_passa_inteiro() {
+        let d = pasta("pequeno");
+        let p = d.join("nota.txt");
+        std::fs::write(&p, b"12345").unwrap();
+        assert_eq!(ler_escolhido(&p, 10 << 20).unwrap(), b"12345");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn previa_corta_no_limite_e_diz_que_cortou() {
+        let d = pasta("previa");
+        std::fs::write(d.join("log.txt"), vec![b'a'; READ_FILE_MAX + 1000]).unwrap();
+        // `file` is absolute, like every caller passes it (see the readFile tests).
+        let r = read_file(&d.to_string_lossy(), &d.join("log.txt").to_string_lossy());
+        assert_eq!(r["truncated"], true);
+        assert_eq!(r["content"].as_str().unwrap().len(), READ_FILE_MAX);
+        assert_eq!(r["bytes"], (READ_FILE_MAX + 1000) as u64);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+#[cfg(test)]
 mod tests_login_geracao {
     #[cfg(unix)]
     use super::{liberar_slot_do_login, login_slot, LoginEmCurso};
@@ -2590,16 +2635,13 @@ fn pick_files(window: &WebviewWindow, req: String) {
                     pasta_lembrada = true;
                 }
             }
-            match std::fs::read(&path) {
-                Ok(bytes) if bytes.len() > MAX_PICK_BYTES => {
-                    skipped.push(format!("{nome}: acima de 10 MB"));
-                }
+            match ler_escolhido(&path, MAX_PICK_BYTES) {
                 Ok(bytes) => arquivos.push(serde_json::json!({
                     "name": nome,
                     "size": bytes.len(),
                     "dataBase64": base64::engine::general_purpose::STANDARD.encode(&bytes),
                 })),
-                Err(e) => skipped.push(format!("{nome}: {e}")),
+                Err(motivo) => skipped.push(format!("{nome}: {motivo}")),
             }
         }
 
@@ -2948,7 +2990,7 @@ fn read_file(path: &str, file: &str) -> serde_json::Value {
     }
     let bytes_total = meta.len() as usize;
 
-    let dados = match std::fs::read(&alvo) {
+    let dados = match ler_no_maximo(&alvo, READ_FILE_MAX) {
         Ok(d) => d,
         Err(_) => return serde_json::json!({ "ok": false, "erro": "não consegui ler o arquivo" }),
     };
@@ -2970,6 +3012,31 @@ fn read_file(path: &str, file: &str) -> serde_json::Value {
     serde_json::json!({
         "ok": true, "content": texto, "truncated": truncated, "binary": false, "bytes": bytes_total,
     })
+}
+
+/// Reads at most `max + 1` bytes: enough to know a file is over the limit without holding it
+/// (1.6.28). Before, `fs::read` pulled the WHOLE file into memory and the limit was applied
+/// after — a multi-GB log in the project, or a video picked by mistake, allocated its full
+/// size (an allocation failure aborts the process) just to be cut or skipped.
+fn ler_no_maximo(path: &std::path::Path, max: usize) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let mut buf = Vec::new();
+    std::fs::File::open(path)?.take(max as u64 + 1).read_to_end(&mut buf)?;
+    Ok(buf)
+}
+
+/// A picked file, or why it was skipped. The size comes from metadata BEFORE any read, and the
+/// read is capped too (a file can grow between the two).
+fn ler_escolhido(path: &std::path::Path, max: usize) -> Result<Vec<u8>, String> {
+    let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
+    if meta.len() > max as u64 {
+        return Err("acima de 10 MB".to_string());
+    }
+    let bytes = ler_no_maximo(path, max).map_err(|e| e.to_string())?;
+    if bytes.len() > max {
+        return Err("acima de 10 MB".to_string());
+    }
+    Ok(bytes)
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────

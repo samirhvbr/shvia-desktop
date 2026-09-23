@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.6.28 - picking or previewing a huge file no longer loads it whole into memory
+
+`pickFiles` read each chosen file with `fs::read` and only then compared it with the 10 MB limit;
+`readFile` (the Files tab preview) read the whole file and then cut it at 512 KB. A multi-GB log
+in the project, or a video picked by mistake, allocated its full size just to be skipped or cut —
+and an allocation failure aborts the process.
+
+- `ler_no_maximo` reads at most limit + 1 bytes, enough to know a file is over it. The preview
+  uses it; the picker checks the size from metadata BEFORE opening the file, and caps the read
+  too, since a file can grow between the two.
+- Three tests: a sparse 64 MB file (no disk used) where the read stops at the cap and the picker
+  skips it; a small file passing whole; a preview larger than 512 KB cut at the limit with
+  `truncated` and the real size. Reversal measured: without the cap the read takes the whole file.
+- 🔬 The preview test's first version passed a relative path, `read_file` answered "arquivo não
+  encontrado", and the assertion read that as a broken fix. `read_file` takes an absolute path —
+  every caller and the existing tests pass one — so the test was corrected, not the function.
+
+Suite: 132 = 131 passed + 1 ignored; clippy clean on Linux and `x86_64-pc-windows-gnu`.
+
 ## 1.6.27 - an update check that stalls no longer blocks every later one
 
 **The updater had no deadline.** `tauri-plugin-updater`'s default timeout is none, and the app

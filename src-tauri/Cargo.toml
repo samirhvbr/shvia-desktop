@@ -1,6 +1,6 @@
 [package]
 name = "shvia-desktop"
-version = "1.6.27"
+version = "1.6.28"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
