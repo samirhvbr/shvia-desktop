@@ -913,6 +913,35 @@ confere_chaves_do_manifesto() {
   esac
 }
 
+# 🔴 The Apple signature of what is about to ship, checked at PUBLISH time (1.6.22).
+# Build-time checks do not cover it: a missing identity only printed "BUILD SAI SEM ASSINAR"
+# and went on, a failed `codesign --verify` only printed, and the reuse path skips signing
+# and its verification entirely. This is the one point every publish passes through.
+confere_assinatura_apple() {
+  [ "${_BUILD_OS:-}" = macOS ] || return 0
+  local app dmg falhou=0
+  app="$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' 2>/dev/null | head -1 || true)"
+  dmg="$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' 2>/dev/null | head -1 || true)"
+  if [ -z "$app" ] && [ -z "$dmg" ]; then
+    echo "  ✗ nenhum .app nem .dmg no bundle para conferir a assinatura — nada foi enviado." >&2
+    return 1
+  fi
+  if [ -n "$app" ] && ! codesign --verify --deep --strict "$app" >/dev/null 2>&1; then
+    echo "  ✗ $(basename "$app"): sem assinatura Apple válida (codesign --verify --deep --strict)." >&2
+    falhou=1
+  fi
+  if [ -n "$dmg" ] && ! xcrun stapler validate "$dmg" >/dev/null 2>&1; then
+    echo "  ✗ $(basename "$dmg"): sem notarização grampeada (stapler validate)." >&2
+    falhou=1
+  fi
+  if [ "$falhou" -ne 0 ]; then
+    echo "    Nada foi enviado. Um build sem assinatura abre como 'danificado' para quem baixa" >&2
+    echo "    e troca o app de quem atualiza. Refaça o build com a identidade no keychain." >&2
+    return 1
+  fi
+  echo "    ✔ assinatura Apple conferida no que vai subir"
+}
+
 # Sobe os artefatos DESTA plataforma + o release.json, e verifica pela URL pública.
 publish_release() {
   if [ ! -f release.json ]; then
@@ -964,6 +993,7 @@ publish_release() {
     if [ -n "$_achado_db" ]; then arquivos+=("$_achado_db"); fi
   done
 
+  confere_assinatura_apple || return 1
   confere_chaves_do_manifesto || return 1
 
   echo "    destino: $PUBLISH_DEST"
@@ -1074,6 +1104,18 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+# 🔴 A test build cannot be published (1.6.22). `--no-sign` skips the Apple signature and
+# notarization, and until 1.6.22 nothing stopped `--publish` from shipping it — directly, or
+# through the reuse path, which checks version, sha256 and freshness but never the signature.
+# New Mac users then got a DMG macOS calls "damaged", and existing ones auto-updated to it.
+if [ "$PUBLISH" -eq 1 ] && [ "$NO_SIGN" -eq 1 ]; then
+  echo "" >&2
+  echo "  ✗ --publish com --no-sign: um build de teste, sem assinatura, não é publicável." >&2
+  echo "    Rode sem --no-sign (e com a identidade no keychain) para publicar." >&2
+  echo "" >&2
+  exit 2
+fi
 
 echo "==> ShvIA Desktop — build local ($_BUILD_OS)"
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.6.22 - an unsigned Mac build can no longer be published, by any path
+
+🔴 **A test build could ship to every Mac.** `--no-sign` skips the Apple signature and
+notarization, and nothing stopped `--publish` from sending it: directly, or later through the
+reuse path — `can_reuse_build` checks version, sha256 and source freshness, never the signature,
+and reuse skips both signing and its verification. The build-time checks only printed: a
+missing identity said "BUILD SAI SEM ASSINAR" and went on; a failed `codesign --verify` printed
+and went on. New users would get a DMG macOS calls "damaged"; existing users auto-update to an
+unsigned app, which resets their macOS permission grants.
+
+- `--publish` together with `--no-sign` is refused right after the arguments are read, before
+  anything runs (exit 2).
+- `confere_assinatura_apple`, at publish time on macOS: the `.app` must pass `codesign --verify
+  --deep --strict` and the `.dmg` `stapler validate` (a DMG-only build has no loose `.app`, and
+  that is accepted). It sits in `publish_release`, the one point every publish passes through.
+- `scripts/prova-assinatura-apple.mjs` (`npm run prova:apple`, a CI step) cuts both guards out
+  of the script and runs them alone, with fake `codesign`/`xcrun` on `PATH` — never the whole
+  script, because a reversal would then start a real build and publish. 9 cases; reversal
+  measured on both guards.
+
+⚠️ Measured on Linux with fakes. The first real run of `confere_assinatura_apple` is the next
+publish from the Mac.
+
 ## 1.6.21 - no release ships signed by a key the clients reject, and the key proof no longer skips a fresh clone
 
 🔴 **The 1.6.3 guard had two ways around it.** The key proof — does the private key belong to the

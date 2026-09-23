@@ -240,6 +240,11 @@ Três coisas que o passo manual não fazia, e cada uma corresponde a um erro rea
    responde, e só os usuários de Windows param de receber update. Isso substitui o
    passo manual de "copiar o `release.json` de uma máquina para a outra".
 
+   **Since 1.6.22 an unsigned Mac build cannot be published.** `--publish` with `--no-sign` is
+   refused before anything runs, and at publish time on macOS the `.app` must pass
+   `codesign --verify --deep --strict` and the `.dmg` `stapler validate` — the reuse path, which
+   never re-signs, passes through this check too. `npm run prova:apple`.
+
    **Since 1.6.21 the key of every signature is checked before the upload.** The keyid of each
    `signature` in `release.json` must match the pubkey compiled into the clients; a mismatch
    or an unreadable one aborts, and nothing is sent. The build-time key proof never ran on the
