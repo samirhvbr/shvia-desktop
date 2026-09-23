@@ -295,6 +295,8 @@ readline.createInterface({ input: process.stdin })
     if (!s) return;
     let msg;
     try { msg = JSON.parse(s); } catch { return; }
+    // `null` is valid JSON and not a message: reading `.type` of it threw here (1.6.18).
+    if (!msg || typeof msg !== "object") return;
 
     if (ehDecisao(msg)) {
       const resolve = gatesPendentes.get(String(msg.id));

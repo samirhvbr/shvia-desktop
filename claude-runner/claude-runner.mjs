@@ -501,6 +501,12 @@ rl.on("line", (raw) => {
     emit({ type: "warn", message: "linha stdin não-JSON ignorada" });
     return;
   }
+  // `null`, a number, a string: valid JSON, not a message. Until 1.6.18 reading `.type` of
+  // `null` threw inside this handler and killed the runner mid-session.
+  if (!msg || typeof msg !== "object") {
+    emit({ type: "warn", message: "linha stdin que não é objeto ignorada" });
+    return;
+  }
   if (msg.type === "exit") {
     rl.close();
     process.exit(0);

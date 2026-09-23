@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.6.18 - a `null` line from the host no longer kills either runner
+
+Both runners parsed each host line in a `try` and then read `msg.type` outside it. `null` is
+valid JSON: `JSON.parse("null")` returns `null`, and reading `.type` of it threw inside the
+readline handler — an uncaught exception that ended the runner mid-session. Measured here with
+the Claude runner: master's file answers a `null` line with `TypeError: Cannot read properties
+of null (reading 'type')` and exit 1; with the guard, a `warn` and a clean exit 0.
+
+- Both host readers reject a line that is not an object before touching it (the Claude runner
+  says so with a `warn`, as it already did for non-JSON lines).
+- `claude-runner/entrada.test.mjs`, a SOURCE check and declared as one: both runners act on
+  import (the Claude one imports the SDK, which CI does not install; the Codex one wires its host
+  reader only after the sandbox probe), so a unit test cannot feed them a line. It asserts the
+  object check sits between `JSON.parse` and the first use of `msg` in each reader. Reversal
+  measured in each runner. Its first version failed on the fix itself: the comment explaining
+  the defect quoted `msg.type` — text that does not run, matched as if it did. The comment was
+  reworded; the ruler kept.
+
+`prova:politica`: 51 = 51 passed.
+
 ## 1.6.17 - a Codex app-server that dies ends the turn instead of hanging it
 
 **The Codex engine waited forever on a dead process.** `codex-runner.mjs` listened only for the
