@@ -21,6 +21,10 @@ A test puts a real process in the slot and checks that an old generation's clean
 alone and its own clears it. Reversal measured. Suite: 127 = 126 passed + 1 ignored; clippy
 clean on Linux and `x86_64-pc-windows-gnu`.
 
+**Second commit of this version: `docs/funcionalidades.md` catches up.** It still described
+1.6.0, and at 1.6.26 the doc-freshness ruler failed (26 patches behind, tolerance 25) — its job.
+A "Phase 6" section lists what 1.6.1 → 1.6.26 changed for someone who uses or builds the app.
+
 ## 1.6.25 - installing the Claude runner from a terminal no longer hangs at the end
 
 `claude-runner/install.sh` ends by importing the installed runner, to prove every local import

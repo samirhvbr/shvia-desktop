@@ -188,6 +188,34 @@ a self-contained Mach-O binary; the runner is a shell wrapper that `exec`s `node
 `.mjs` because it carries the Agent SDK. Whether the runner should speak to the native binary
 instead is open, and it is the honest form of "gate 1 still needs Node".
 
+## Phase 6 — hardening after the 23/09 review (1.6.1 → 1.6.26)
+
+A four-front review on 23/09/2026 (bridge, Rust, runners, build/release) found defects that
+were shipping silently; each fix below has a proof that fails without it. What changed for
+someone who uses or builds the app:
+
+- **Releases carry their installers** (`1.6.6`): `--publish` attaches what it sent to the
+  server to the GitHub Release of the same version — the record of what went out, per OS.
+- **Windows compiles again** (`1.6.8`): no Windows build was possible from 0.9.0; it is
+  compile-checked now, still never run on a real Windows machine.
+- **Linux can quit** (`1.6.9`): `Sair` and `Fechar janela` exist in the menu and the tray
+  (the predefined items were silently dropped on GTK).
+- **The Changes tab works with accents and spaces** (`1.6.10`).
+- **Reloading or leaving the page ends that window's agent** (`1.6.11`).
+- **The Claude engine's approval boundary holds in Auto mode** (`1.6.12` → `1.6.15`):
+  network egress, protected paths and destructive commands always ask — through tools and
+  through the shell; `~` and symlinks cannot walk out of the read fence; destructive commands
+  are recognized by what they do, not how they are spelled.
+- **The Codex engine ends a turn whose app-server died** (`1.6.17`), and a malformed host line
+  no longer kills either runner (`1.6.18`).
+- **Slow bridge work no longer freezes the windows** (`1.6.19`): installs, the login, account
+  discovery and `git status` run off the UI thread, and every external call has a deadline.
+- **Publishing refuses what it cannot vouch for** (`1.6.20` → `1.6.24`): a failed read of the
+  published manifest, a signature from another key, an unsigned Mac build, a stale reused
+  bundle, a stale bundled engine; and building without `anna` works.
+- **Installing the runner from a terminal finishes** (`1.6.25`); **restarting the login keeps
+  it** (`1.6.26`).
+
 ## Limitações conhecidas
 
 - ⚠️ **Mic e Ctrl+V de imagem no Linux** (`0.4.4`, **ADR-008**): o shell habilita
