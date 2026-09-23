@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.6.10 - the Changes tab has a diff for files with accents and spaces
+
+**Every changed file whose name had a space or a non-ASCII letter showed "no changes".** The
+bridge ran `git status --porcelain=v1` without `-z`, and without `-z` git QUOTES such paths
+with octal escapes: ` M "a\303\247\303\243o.txt"`. The parser kept that string as the path, the
+page passed it back to `gitDiff`, and git found no such file. Measured on 23/09 in a scratch
+repo: `git diff -- "a\303\247\303\243o.txt"` = **0 bytes**, `git diff -- ação.txt` = 181. In a
+Portuguese-speaking team's repositories, accented file names are not an edge case.
+
+- `git status --porcelain=v1 -z -b`: paths verbatim, NUL-terminated.
+- The parser splits on NUL. A rename or copy is two fields (`RM new\0old\0`); the old path is
+  skipped and the entry keeps the new one, which is the path `gitDiff` can open. (Before, a
+  rename was listed as the literal `old -> new`, which never had a diff either.)
+- Two tests: the parser against a `-z` fixture (accent, space, rename, untracked), and the user's
+  path end to end against a real git — list, then ask for the diff by the listed name. The second
+  fails without git on purpose, instead of skipping into green. Reversal measured: dropping `-z`
+  makes it fail with `status listed []`.
+
+Suite: 119 = 118 passed + 1 ignored; clippy clean.
+
 ## 1.6.9 - Linux gets a Quit that exists, in the menu and in the tray
 
 🔴 **On Linux there was no way to quit the app except killing it.** Both `Sair` items — the

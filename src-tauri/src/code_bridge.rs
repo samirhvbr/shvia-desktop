@@ -1852,8 +1852,67 @@ fn sanitize_filename(nome: &str) -> String {
 
 #[cfg(test)]
 mod tests_git_diff {
-    use super::{git_diff, GIT_DIFF_MAX};
+    use super::{git_diff, git_status, parse_git_status, GIT_DIFF_MAX};
     use std::process::Command;
+
+    /// The `-z` format, entry by entry — including the rename, whose second field is the
+    /// OLD path and must not become a file of its own.
+    #[test]
+    fn status_z_traz_nomes_crus_e_renomeacao_vira_uma_entrada() {
+        let saida = "## master...origin/master [ahead 1]\0 M a b.txt\0 M a\u{e7}\u{e3}o.txt\0\
+                     RM novo nome.txt\0velho.txt\0?? n\u{e3}o rastreado.txt\0";
+        let v = parse_git_status(saida);
+        assert_eq!(v["branch"], "master");
+        let arquivos: Vec<(String, String)> = v["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| (f["status"].as_str().unwrap().to_string(), f["path"].as_str().unwrap().to_string()))
+            .collect();
+        assert_eq!(
+            arquivos,
+            vec![
+                ("M".to_string(), "a b.txt".to_string()),
+                ("M".to_string(), "a\u{e7}\u{e3}o.txt".to_string()),
+                ("RM".to_string(), "novo nome.txt".to_string()),
+                ("??".to_string(), "n\u{e3}o rastreado.txt".to_string()),
+            ]
+        );
+    }
+
+    /// 🔴 The user's path, end to end, against a real git: the Changes tab lists the file,
+    /// then asks for ITS diff by the name it was given. Until 1.6.10 the listed name was
+    /// quoted and escaped, and the diff came back empty for every accented or spaced file.
+    /// Fails loudly without git on purpose: a skipped test here would read as green.
+    #[test]
+    fn arquivo_com_acento_ou_espaco_tem_diff_pelo_nome_que_o_status_lista() {
+        let dir = repo_temporario("acentos").expect("this test needs git");
+        let p = dir.to_string_lossy().into_owned();
+        let git = |args: &[&str]| Command::new("git").args(["-C", &p]).args(args).output().unwrap();
+        for nome in ["a\u{e7}\u{e3}o.txt", "a b.txt"] {
+            std::fs::write(dir.join(nome), "antes\n").unwrap();
+        }
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "nomes"]);
+        for nome in ["a\u{e7}\u{e3}o.txt", "a b.txt"] {
+            std::fs::write(dir.join(nome), "depois\n").unwrap();
+        }
+
+        let st = git_status(&p);
+        let listados: Vec<String> = st["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["path"].as_str().unwrap().to_string())
+            .collect();
+        for nome in ["a\u{e7}\u{e3}o.txt", "a b.txt"] {
+            assert!(listados.iter().any(|l| l == nome), "status listed {listados:?}, not {nome:?}");
+            let d = git_diff(&p, nome);
+            let diff = d["diff"].as_str().unwrap_or("");
+            assert!(diff.contains("+depois"), "empty diff for {nome:?} listed as changed: {d}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// Repo de verdade num diretório temporário — e não um mock do `Command`.
     /// O que esta função faz é FALAR COM O GIT: um mock provaria que sabemos
@@ -2417,21 +2476,40 @@ fn git_status(path: &str) -> serde_json::Value {
     if path.is_empty() {
         return serde_json::json!({ "repo": false });
     }
-    match Command::new("git").args(["-C", path, "status", "--porcelain=v1", "-b"]).output() {
+    // `-z`: without it git QUOTES any path with a space or a non-ASCII byte
+    // (` M "a\303\247\303\243o.txt"`), the page passed that quoted string back to
+    // `gitDiff`, and git answered 0 bytes — every accented or spaced file showed "no
+    // changes" until 1.6.10. With `-z` paths come verbatim, NUL-terminated.
+    match Command::new("git").args(["-C", path, "status", "--porcelain=v1", "-z", "-b"]).output() {
         Ok(o) if o.status.success() => parse_git_status(&String::from_utf8_lossy(&o.stdout)),
         _ => serde_json::json!({ "repo": false }), // não é repo git
     }
 }
 
+/// Parses `git status --porcelain=v1 -z -b`: NUL-terminated entries, paths verbatim.
+///
+/// A rename or copy is TWO entries — `RM new\0old\0` — and the second (the old path) is
+/// not a file of its own: it is skipped, and the entry keeps the NEW path, which is the
+/// one `gitDiff` can open.
 fn parse_git_status(text: &str) -> serde_json::Value {
     let mut branch = String::new();
     let mut files = Vec::new();
-    for line in text.lines() {
-        if let Some(rest) = line.strip_prefix("## ") {
+    let mut campos = text.split('\0');
+    while let Some(campo) = campos.next() {
+        if let Some(rest) = campo.strip_prefix("## ") {
             branch = rest.split("...").next().unwrap_or("").split(' ').next().unwrap_or("").to_string();
-        } else if line.len() > 3 {
-            files.push(serde_json::json!({ "status": line[..2].trim(), "path": &line[3..] }));
+            continue;
         }
+        let (Some(status), Some(path)) = (campo.get(..2), campo.get(3..)) else {
+            continue;
+        };
+        if path.is_empty() {
+            continue;
+        }
+        if status.contains('R') || status.contains('C') {
+            campos.next();
+        }
+        files.push(serde_json::json!({ "status": status.trim(), "path": path }));
     }
     serde_json::json!({ "repo": true, "branch": branch, "files": files })
 }
