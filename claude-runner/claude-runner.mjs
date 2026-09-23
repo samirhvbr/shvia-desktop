@@ -40,7 +40,7 @@
 import * as readline from "node:readline";
 // A política de permissão (cerca de leitura, rede e destrutivo) mora em módulo próprio —
 // é a única forma de ela ter teste, já que este arquivo roda ao ser importado (F-13/F-29).
-import { EDICAO, LEITURA, PATH_ARG, decidir } from "./politica.mjs";
+import { EDICAO, LEITURA, PATH_ARG, decidir, previa } from "./politica.mjs";
 // The stop handshake of the Run (RUN-20260910, B2) lives in its own pure module for the
 // same reason: it is proved by `parada.test.mjs`, and this file cannot be imported by a test.
 import { encerrarPendentes, esperarDecisao, montarStopRequest, opcoesDaRun, saidaDoHook } from "./parada.mjs";
@@ -212,40 +212,7 @@ async function stopHook(input) {
   return saidaDoHook(decisao);
 }
 
-// (toolName, input) → preview do gate_request (diff | command | commit)
-function toPreview(toolName, input) {
-  const inp = input || {};
-  if (toolName === "Bash") {
-    return {
-      kind: "command",
-      command: String(inp.command ?? ""),
-      why: String(inp.description ?? ""),
-    };
-  }
-  if (toolName === "Write") {
-    const path = String(inp.file_path ?? inp.path ?? "");
-    const body = String(inp.content ?? "");
-    const diff = body.split("\n").map((l) => "+ " + l).join("\n");
-    return { kind: "diff", path, diff };
-  }
-  if (toolName === "Edit" || toolName === "MultiEdit") {
-    const path = String(inp.file_path ?? "");
-    const edits =
-      toolName === "MultiEdit"
-        ? inp.edits ?? []
-        : [{ old_string: inp.old_string, new_string: inp.new_string }];
-    const diff = edits
-      .map((e) => {
-        const oldL = String(e?.old_string ?? "").split("\n").map((l) => "- " + l).join("\n");
-        const newL = String(e?.new_string ?? "").split("\n").map((l) => "+ " + l).join("\n");
-        return [oldL, newL].filter(Boolean).join("\n");
-      })
-      .join("\n");
-    return { kind: "diff", path, diff };
-  }
-  // fallback: descreve a chamada como comando (visível no card)
-  return { kind: "command", command: `${toolName} ${JSON.stringify(inp)}`, why: "" };
-}
+// The gate preview is `previa` in politica.mjs: it lives beside the verdict it must agree with.
 
 function allowDecision(reason) {
   return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", permissionDecisionReason: reason } };
@@ -270,7 +237,7 @@ async function preToolUse(input /* PreToolUseHookInput */) {
   // projeto" — descrevia uma cerca que **não existia**: `Read` de caminho absoluto e
   // `WebFetch` de qualquer URL eram automáticos, e os dois juntos são a cadeia de
   // exfiltração inteira (F-13). Agora a frase é verdade, e tem teste.
-  const { acao, motivo } = decidir({
+  const { acao, motivo, politica } = decidir({
     projectDir: PROJECT_DIR,
     toolName,
     toolInput,
@@ -281,18 +248,20 @@ async function preToolUse(input /* PreToolUseHookInput */) {
   if (acao === "allow") {
     return allowDecision(motivo);
   }
-  return gate(id, toolName, toolInput, motivo);
+  return gate(id, toolName, toolInput, motivo, politica);
 }
 
 /** Emite o cartão e BLOQUEIA até o usuário decidir. `motivo` aparece no log do runner. */
-async function gate(id, toolName, toolInput, motivo) {
+async function gate(id, toolName, toolInput, motivo, politica = "confirm") {
   if (motivo) process.stderr.write(`[gate] ${toolName}: ${motivo}\n`);
   emit({
     type: "gate_request",
     id,
     scope: toolName,
-    policy: "confirm",
-    preview: toPreview(toolName, toolInput),
+    // `always` for what ADR-032 asks at any level — the page never auto-approves it (see
+    // `decidir` in politica.mjs for the measurement that made this necessary).
+    policy: politica,
+    preview: previa(toolName, toolInput),
   });
   const decision = await new Promise((resolve) => pendingGates.set(id, resolve));
   if (decision === "approve" || decision === "always") {

