@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.6.11 - reloading or leaving the page ends that window's agent
+
+**An agent kept running after its page was gone.** The sidecar of a window was killed only when
+the window closed, was destroyed, or the app exited (`lib.rs` 940, 1469, 1480). A reload — the
+`Recarregar` menu, the offline bar, a link, a redirect — started a new document and left the
+agent running with no owner: with auto approval it kept editing files, a Run went on to its
+caps, and its stdout kept being `eval`'d into whatever page loaded next. Nothing re-attaches to
+a running sidecar, and the Run plan already says an armed run is never restored on reload
+(`docs/code/RUN-20260910.md`, Q1) — the code just did not follow.
+
+- `on_page_load` now handles `PageLoadEvent::Started`: the window's sidecar is killed before the
+  new document loads. `pushState`/hash navigation does not start a document and is unaffected;
+  other windows are unaffected.
+- A source ruler, declared as such (a unit test cannot drive a webview's page load): the hook
+  must handle the start of a document by killing that window's sidecar, before the `Finished`
+  branch. Reversal measured: removing the branch fails it.
+
+Suite: 120 = 119 passed + 1 ignored; clippy clean on Linux and on `x86_64-pc-windows-gnu`.
+
 ## 1.6.10 - the Changes tab has a diff for files with accents and spaces
 
 **Every changed file whose name had a space or a non-ASCII letter showed "no changes".** The
