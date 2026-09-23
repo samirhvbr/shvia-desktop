@@ -240,6 +240,12 @@ Três coisas que o passo manual não fazia, e cada uma corresponde a um erro rea
    responde, e só os usuários de Windows param de receber update. Isso substitui o
    passo manual de "copiar o `release.json` de uma máquina para a outra".
 
+   **Since 1.6.21 the key of every signature is checked before the upload.** The keyid of each
+   `signature` in `release.json` must match the pubkey compiled into the clients; a mismatch
+   or an unreadable one aborts, and nothing is sent. The build-time key proof never ran on the
+   reuse path, and on a fresh clone it was "deferred" before `npm ci` and never ran again —
+   it now runs right after `npm ci`. `npm run prova:chaves`.
+
    **Since 1.6.20 a failed download aborts the publish.** Before, a timeout, a 5xx, a refused
    connection or unreadable JSON all counted as "nothing published", and the upload replaced
    the server's manifest with one holding only this platform — the loss above, triggered by

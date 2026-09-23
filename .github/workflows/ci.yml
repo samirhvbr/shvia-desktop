@@ -83,6 +83,10 @@ jobs:
       # server's manifest with one holding only this platform (1.6.20).
       - name: A failed manifest read never drops the other platforms
         run: npm run prova:manifesto
+      # Every signature that ships is from the key the clients trust, and the key proof
+      # deferred on a fresh clone runs after npm ci instead of never (1.6.21).
+      - name: Every shipped signature is from the published key
+        run: npm run prova:chaves
       # `src-tauri/binaries/` is gitignored on purpose: the `anna` sidecar depends on the
       # build machine (ADR-021), so it is staged by `scripts/stage-anna.mjs` and never
       # committed. But `externalBin` in `tauri.conf.json` makes the Tauri build script

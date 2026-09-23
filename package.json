@@ -1,7 +1,7 @@
 {
   "name": "shvia-desktop",
   "private": true,
-  "version": "1.6.20",
+  "version": "1.6.21",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -23,6 +23,7 @@
     "prova:visto": "node scripts/prova-visto-da-chave-nao-falha-aberto.mjs",
     "prova:anexa": "node scripts/prova-anexa-na-release.mjs",
     "prova:manifesto": "node scripts/prova-manifesto-remoto.mjs",
+    "prova:chaves": "node scripts/prova-chave-das-assinaturas.mjs",
     "contas": "node scripts/contas-claude.mjs"
   },
   "devDependencies": {

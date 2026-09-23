@@ -536,7 +536,24 @@ verify_updater_key() {
   # a prova. Avisar e seguir é melhor que baixar a CLI aqui — a alternativa seria
   # rede no meio de um preflight que se vende como instantâneo.
   if [ ! -x "$cli" ]; then
-    echo "    ⚠️ chave presente; prova de assinatura adiada (node_modules ainda não existe)."
+    # 🔴 Until 1.6.21 "adiada" meant "never": this ran before `npm ci`, returned 0, and nothing
+    # ran it again — so on a fresh clone the proof, and 1.6.3's abort of an unmeasured
+    # publish, were skipped entirely. Now the build calls this again right after `npm ci`
+    # ("depois-do-npm-ci"); a CLI still missing then is "could not measure", which aborts a
+    # publish like any other unmeasured proof.
+    if [ "${1:-}" = "depois-do-npm-ci" ]; then
+      if [ "${PUBLISH:-0}" -eq 1 ]; then
+        echo "" >&2
+        echo "  ✗ NÃO CONSEGUI PROVAR o par da chave (sem a CLI do Tauri mesmo depois do npm ci)," >&2
+        echo "    e este build vai PUBLICAR. Rode \`npm ci\` e tente de novo." >&2
+        echo "" >&2
+        return 1
+      fi
+      echo "    ⚠️ prova da chave não rodou: sem a CLI do Tauri mesmo depois do npm ci."
+      return 0
+    fi
+    echo "    ⚠️ chave presente; prova de assinatura adiada até o npm ci (node_modules ainda não existe)."
+    PROVA_DA_CHAVE_ADIADA=1
     return 0
   fi
 
@@ -842,6 +859,60 @@ fetch_remote_manifest() {
   echo "    publicado hoje: $plats — o manifesto novo mescla em cima disto"
 }
 
+# The decision alone, measured by scripts/prova-chave-das-assinaturas.mjs (1.6.21).
+# $1 = keyid of the pubkey compiled into the clients; $2 = one "file<TAB>keyid" line per
+# SIGNED artifact about to ship (an unreadable signature has an empty keyid).
+veredito_das_assinaturas() {
+  local pubid="${1:-}" linhas="${2:-}" nome id
+  [ -z "$linhas" ] && { echo "ok"; return 0; }
+  [ -z "$pubid" ] && { echo "nao-medi"; return 0; }
+  while IFS=$'\t' read -r nome id; do
+    [ -z "$nome" ] && continue
+    [ -z "$id" ] && { echo "nao-medi"; return 0; }
+    [ "$id" != "$pubid" ] && { echo "errada"; return 0; }
+  done <<< "$linhas"
+  echo "ok"
+}
+
+# 🔴 Every signature about to ship must be from the pair whose public half is compiled into the
+# clients (1.6.21). The key proof runs at BUILD time, and the reuse path never runs it: this
+# reads the signatures in release.json — the ones the upload actually carries. Same keyid
+# comparison as the proof, no new cryptography: a signature from another pair has another id.
+confere_chaves_do_manifesto() {
+  local pubid linhas
+  pubid="$(updater_pubkey_id)"
+  # shellcheck disable=SC2016  # `${...}` aqui é template literal de JS, não de bash
+  linhas="$(node -e '
+    const m = JSON.parse(require("fs").readFileSync("release.json", "utf8"));
+    const p = {darwin: "macos", linux: "linux", win32: "windows"}[process.platform];
+    const out = [];
+    for (const a of (m.platforms?.[p]?.artifacts ?? [])) {
+      if (!a.signature) continue;
+      let id = "";
+      try {
+        const txt = Buffer.from(String(a.signature).trim(), "base64").toString();
+        id = Buffer.from(txt.trim().split("\n")[1], "base64").slice(2, 10).toString("hex").toUpperCase();
+      } catch {}
+      out.push(`${a.file}\t${id}`);
+    }
+    process.stdout.write(out.join("\n"));
+  ' 2>/dev/null || true)"
+  case "$(veredito_das_assinaturas "$pubid" "$linhas")" in
+    ok) return 0 ;;
+    errada)
+      echo "" >&2
+      echo "  ✗ há artefato assinado com OUTRA chave (pubkey publicada: $pubid):" >&2
+      printf '%s\n' "$linhas" | sed 's/^/      /' >&2
+      echo "    Nenhum cliente instalado aceitaria este release. Nada foi enviado." >&2
+      return 1 ;;
+    *)
+      echo "" >&2
+      echo "  ✗ NÃO CONSEGUI LER a chave das assinaturas deste release — nada foi enviado." >&2
+      printf '%s\n' "$linhas" | sed 's/^/      /' >&2
+      return 1 ;;
+  esac
+}
+
 # Sobe os artefatos DESTA plataforma + o release.json, e verifica pela URL pública.
 publish_release() {
   if [ ! -f release.json ]; then
@@ -892,6 +963,8 @@ publish_release() {
     _achado_db="$(find src-tauri/target/release/bundle/pacman -maxdepth 1 -name "$_nome_db" -print -quit 2>/dev/null || true)"
     if [ -n "$_achado_db" ]; then arquivos+=("$_achado_db"); fi
   done
+
+  confere_chaves_do_manifesto || return 1
 
   echo "    destino: $PUBLISH_DEST"
   for f in "${arquivos[@]}"; do echo "      $(basename "$f")"; done
@@ -1123,6 +1196,11 @@ if [ "$REUSE" -eq 0 ]; then
     npm ci
   else
     echo "    (pulado: --skip-npm-ci)"
+  fi
+  if [ "${PROVA_DA_CHAVE_ADIADA:-0}" = "1" ]; then
+    step "[1b] prova da chave do updater (estava adiada até o npm ci)"
+    PROVA_DA_CHAVE_ADIADA=0
+    verify_updater_key depois-do-npm-ci
   fi
 
   step "[2/3] sincroniza versão (version.md -> manifests)"

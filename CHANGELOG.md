@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.6.21 - no release ships signed by a key the clients reject, and the key proof no longer skips a fresh clone
+
+🔴 **The 1.6.3 guard had two ways around it.** The key proof — does the private key belong to the
+pair whose public half every installed client trusts? — is what stops a release that no client
+will accept, which the updater cannot repair afterwards.
+
+1. **A fresh clone skipped it.** The proof ran before `npm ci`; with no Tauri CLI yet it printed
+   "prova de assinatura adiada" and returned 0, and nothing ran it again. 1.6.3's abort of an
+   unmeasured publish never got the chance to fire. Now the build runs it right after `npm ci`,
+   and a CLI still missing then aborts a publish (a local build only warns).
+2. **The reuse path never ran it** — reuse skips the whole build block. Now, before any upload,
+   the keyid inside EVERY `signature` of this platform in `release.json` — the signatures the
+   upload actually carries — is compared with the pubkey compiled into the clients. A mismatch or
+   an unreadable signature aborts, and nothing is sent. It is the proof's own keyid comparison,
+   applied to what ships; no new cryptography.
+
+`scripts/prova-chave-das-assinaturas.mjs` (`npm run prova:chaves`, a CI step) runs the real
+functions in a temp dir with a crafted `tauri.conf.json` and `release.json`: matching keys, a
+signature from another pair, unreadable signature, unreadable pubkey, nothing signed, and the
+deferred proof before and after `npm ci`, publishing or not. Two reversals measured.
+
 ## 1.6.20 - a failed read of the published manifest aborts the publish instead of dropping platforms
 
 🔴 **A flaky network could silently cut a whole platform off updates.** `build-local.sh
