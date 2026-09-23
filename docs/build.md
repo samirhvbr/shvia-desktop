@@ -137,9 +137,15 @@ Sem `repo-add` no PATH (no Debian ele vem em `pacman-package-manager`), o `.pkg`
 
 ## Distribuição
 
-Como no SHVTERM, a entrega é **local-first**: o repo é privado, então os
-instaladores são distribuídos pelo canal do time (upload manual / site), não por
-GitHub Releases.
+Delivery is **local-first**, as in SHVTERM: users get the installers from the server
+(`ai.shvia.org/storage/desktop/`, through `--publish` and the updater), never from GitHub.
+
+**Since 1.6.6 the GitHub Release is the record of what went out.** `--publish` attaches the
+files it just sent to the server — installers, their `.sha256`, and `release.json` — to the
+Release of the same version (`gh release upload <version> … --clobber`). Before that, every
+Release had 0 assets (finding f121), and nothing recorded which installers were published for
+which OS: the server's `release.json` is overwritten by each publish. The repository is
+private, so the assets are too; the cost is the storage, accepted by the owner on 23/09/2026.
 
 ## Assinatura / notarização
 
@@ -248,6 +254,12 @@ Três coisas que o passo manual não fazia, e cada uma corresponde a um erro rea
    sintoma seria falha de assinatura sem explicação.
 
 O `.sig` **não** sobe: o conteúdo dele já está embutido no `release.json`.
+
+4. **Then the same files go to the GitHub Release** of the version (see *Distribution*). This
+   step **never fails the build**: the server copy is what users download, the Release copy is
+   the record. With no `gh`, no Release yet (it is created by `release.yml` when `version.md`
+   reaches `master`), or a failed upload, it warns and prints the `gh release upload` command
+   to finish by hand. Proven by `npm run prova:anexa`, also in CI.
 
 ### `signing.env`: opcional (as credenciais já são resolvidas sozinhas)
 

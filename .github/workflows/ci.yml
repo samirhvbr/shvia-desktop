@@ -75,6 +75,10 @@ jobs:
       # go unseen until the one act this product cannot undo: a release with the wrong key.
       - name: The key-proof check mark needs the proof
         run: npm run prova:visto
+      # A published version attaches its installers to its GitHub Release (f121), and a
+      # failure there never breaks a publish that already reached the server.
+      - name: The installers go to the Release, without breaking the publish
+        run: npm run prova:anexa
       # `src-tauri/binaries/` is gitignored on purpose: the `anna` sidecar depends on the
       # build machine (ADR-021), so it is staged by `scripts/stage-anna.mjs` and never
       # committed. But `externalBin` in `tauri.conf.json` makes the Tauri build script

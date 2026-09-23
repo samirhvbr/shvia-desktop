@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.6.6 - a published version leaves its installers on its GitHub Release
+
+**Every Release of this repository had 0 assets** (1.6.2, 1.6.1, 1.6.0 and 1.5.17 checked one by
+one, finding f121). `release.yml` creates the tag and the notes; building, signing and
+publishing live in `build-local.sh`, on another machine, at another moment. The only record of
+what went out was the server's `release.json`, which each publish overwrites. The owner chose to
+attach the installers to the Release (23/09/2026), accepting the storage it costs.
+
+`build-local.sh --publish` now ends with `anexa_na_release_do_github`: the files that just
+reached the server — installers, their `.sha256`, and `release.json` — go to the Release of the
+same version with `gh release upload … --clobber` (`--clobber` because each platform's publish
+re-uploads the merged `release.json`).
+
+🔴 **It never fails the build.** The server copy is what users download; the Release copy is the
+record. No `gh`, no Release yet (it appears when `version.md` reaches `master`), or a failed
+upload each end in a warning that prints the command to finish by hand.
+
+**Proven, not assumed:** `scripts/prova-anexa-na-release.mjs` (`npm run prova:anexa`, also a CI
+step) drives the function through real bash with a fake `gh` that records its calls — four
+cases. Two reversals measured: dropping the "does the Release exist?" check makes it upload
+anyway, and swallowing an upload failure makes it claim `anexado`; each fails one case.
+
+⚠️ **Not exercised end to end here.** `--publish` runs on the release machines, so the first real
+attach happens on the next publish. `docs/build.md` §Distribution and §Publish describe it.
+
 ## 1.6.5 - the dependency check covers licenses, bans and sources, not only advisories
 
 The CI ran `cargo deny check advisories` and nothing else, and the reason was measured on

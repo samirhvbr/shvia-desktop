@@ -869,6 +869,8 @@ publish_release() {
 
   # UM scp: uma conexão, um prompt de senha.
   scp "${arquivos[@]}" release.json "$PUBLISH_DEST"
+  # What reached the server, for anexa_na_release_do_github (f121) to attach afterwards.
+  PUBLICADOS=("${arquivos[@]}" release.json)
 
   # ── Verificação PELA URL PÚBLICA ────────────────────────────────────────────
   # Não basta o arquivo estar no diretório: tem de ser servido, e chegar inteiro.
@@ -903,6 +905,44 @@ publish_release() {
   fi
 }
 
+# Attaches what was just published to the GitHub Release of the same version (f121).
+#
+# Every Release used to have 0 assets: release.yml creates tag and notes, and building,
+# signing and publishing happen here, on another machine. The server's release.json is
+# overwritten by each publish, so nothing recorded which installers went out for which OS.
+# The owner chose to attach them to the Release (23/09/2026).
+#
+# It NEVER fails the build. The server copy is what users download; the Release copy is the
+# record. So every problem is a warning with the command to finish by hand, and the last line
+# on stdout is the verdict the ruler reads: anexado | sem-gh | sem-release | falhou.
+# `--clobber` because release.json is re-uploaded by each platform's publish, merged.
+# Measured by scripts/prova-anexa-na-release.mjs (npm run prova:anexa).
+anexa_na_release_do_github() {
+  local versao="$1"; shift
+  local gh="${GH_BIN:-gh}"
+  if ! command -v "$gh" >/dev/null 2>&1; then
+    echo "    ⚠️ gh não encontrado — os instaladores NÃO foram anexados à Release $versao." >&2
+    echo "       Para completar: gh release upload $versao $* --clobber" >&2
+    echo "sem-gh"; return 0
+  fi
+  if ! "$gh" release view "$versao" >/dev/null 2>&1; then
+    echo "    ⚠️ a Release $versao ainda não existe no GitHub (o release.yml a cria quando o" >&2
+    echo "       version.md chega ao master). Nada foi anexado. Depois que ela existir:" >&2
+    echo "       gh release upload $versao $* --clobber" >&2
+    echo "sem-release"; return 0
+  fi
+  if "$gh" release upload "$versao" "$@" --clobber >/dev/null 2>&1; then
+    echo "    ✅ $# arquivo(s) anexado(s) à Release $versao no GitHub" >&2
+    echo "anexado"
+  else
+    echo "    ⚠️ falhou anexar à Release $versao (a publicação no servidor já valeu)." >&2
+    echo "       Para completar: gh release upload $versao $* --clobber" >&2
+    echo "falhou"
+  fi
+  return 0
+}
+
+PUBLICADOS=()
 SKIP_NPM_CI=0
 NO_SIGN=0
 SKIP_GIT_PULL=0
@@ -1340,6 +1380,8 @@ node scripts/release-manifest.mjs || echo "  (manifesto não gerado — build se
 if [ "$PUBLISH" -eq 1 ]; then
   step "[D1] publica no servidor (scp)"
   publish_release
+  step "[f121] anexa os instaladores à Release do GitHub"
+  anexa_na_release_do_github "$(tr -d '[:space:]' < version.md)" "${PUBLICADOS[@]}" >/dev/null
 fi
 
 _summary
