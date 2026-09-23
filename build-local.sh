@@ -502,6 +502,32 @@ updater_sig_id() {
 #      igualmente válida aos olhos do bundler.
 #
 # Assinar um arquivo descartável custa ~1s e elimina as duas.
+# Veredito da prova de chave, isolado para poder ser MEDIDO.
+#
+# 🔴 Até 21/09/2026 a decisão morava embutida no `verify_updater_key`, e falhava aberto: os dois
+# leitores de keyid (`updater_pubkey_id`, `updater_sig_id`) devolvem string VAZIA em qualquer
+# erro — `catch { write("") }` mais `|| true` —, e a comparação só dispara com os DOIS
+# não-vazios. Id ilegível pulava a comparação e a linha de sucesso imprimia o ✔ do mesmo jeito,
+# com `(?)` no lugar do id. Um par de parênteses separava "provado" de "não consegui medir", no
+# fim de uma linha verde, no guarda que protege o único ato que este produto não desfaz.
+#
+# ⚠️ O `|| true` dos leitores FICA. O comentário deles está certo: um preflight não pode ser mais
+# frágil que aquilo que ele protege. O que faltava era o terceiro desfecho que a casa já usa em
+# outros lugares — **0 passou, 1 falhou, 2 não consegui medir**.
+#
+# $1 = keyid da pubkey · $2 = keyid da assinatura · $3 = 1 se este build vai PUBLICAR
+veredito_da_chave() {
+  local pubid="${1:-}" sigid="${2:-}" publicando="${3:-0}"
+
+  if [ -z "$pubid" ] || [ -z "$sigid" ]; then
+    # Publicar sem ter conferido é o caso em que "não medi" custa caro: o release sai e nenhum
+    # cliente instalado o aceita. Num build local, avisar basta.
+    [ "$publicando" = "1" ] && echo "nao-medi-e-vai-publicar" || echo "nao-medi"
+    return 0
+  fi
+  [ "$pubid" != "$sigid" ] && echo "errada" || echo "ok"
+}
+
 verify_updater_key() {
   local cli tmpd sigfile sigid pubid
   cli="./node_modules/.bin/tauri"
@@ -560,7 +586,29 @@ verify_updater_key() {
   if [ -n "$sigfile" ]; then sigid="$(updater_sig_id "$sigfile")"; fi
   rm -rf "$tmpd"
 
-  if [ -n "$pubid" ] && [ -n "$sigid" ] && [ "$pubid" != "$sigid" ]; then
+  case "$(veredito_da_chave "$pubid" "$sigid" "$PUBLISH")" in
+    ok) : ;;
+    nao-medi)
+      echo "    ⚠️ NÃO CONSEGUI CONFERIR o par da chave (keyid ilegível: pub='${pubid:-?}' sig='${sigid:-?}')." >&2
+      echo "       A chave ABRIU com a senha — o que não deu para provar é que ela é a do par" >&2
+      echo "       publicado. Build local segue; com --publish isto aborta." >&2
+      return 0
+      ;;
+    nao-medi-e-vai-publicar)
+      echo "" >&2
+      echo "  ✗ NÃO CONSEGUI CONFERIR o par da chave, e este build vai PUBLICAR." >&2
+      echo "      keyid lido da pubkey    : ${pubid:-<ilegível>}" >&2
+      echo "      keyid lido da assinatura: ${sigid:-<ilegível>}" >&2
+      echo "" >&2
+      echo "    Publicar sem esta prova é o caso que ela existe para impedir: se a chave for" >&2
+      echo "    de outro par, NENHUM cliente instalado aceita o release, e o updater não" >&2
+      echo "    conserta a si mesmo depois. Rode sem --publish para ver o erro do leitor." >&2
+      echo "" >&2
+      return 1
+      ;;
+  esac
+
+  if [ "$pubid" != "$sigid" ]; then
     echo "" >&2
     echo "  ✗ chave do updater ERRADA — é de outro par de chaves." >&2
     echo "      assina com: $sigid" >&2
@@ -574,7 +622,9 @@ verify_updater_key() {
     return 1
   fi
 
-  echo "    ✔ chave do updater: abre com a senha e confere com a pubkey (${sigid:-?})"
+  # O ✔ só chega aqui pelo ramo `ok` do veredito — ou seja, com os DOIS keyids lidos e iguais.
+  # Nada de `${sigid:-?}`: um `(?)` numa linha de sucesso era exatamente o disfarce.
+  echo "    ✔ chave do updater: abre com a senha e confere com a pubkey ($sigid)"
   return 0
 }
 
