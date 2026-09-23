@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import {
   EDICAO,
   LEITURA,
@@ -142,4 +145,48 @@ test("a read's preview shows its path as a token of its own, so the page can see
   assert.equal(previa("Grep", { pattern: "x", path: "/etc" }).command, "Grep /etc");
   assert.equal(previa("Bash", { command: "ls" }).command, "ls");
   assert.equal(previa("Write", { file_path: "a.txt", content: "x" }).kind, "diff");
+});
+
+// 🔴 1.6.13. The SDK's CLI expands `~`; the fence did not, so `~/…` resolved INSIDE the project
+// (`<project>/~/.ssh`) and was an automatic read at every level.
+test("`~` is the home directory for the fence too, as it is for the CLI", () => {
+  const r = decide("Grep", { pattern: "BEGIN", path: "~/.ssh" }, "manual");
+  assert.equal(r.acao, "gate");
+  assert.equal(r.politica, "always", "the .ssh directory itself is a protected path");
+  for (const p of ["~/.config/gh/hosts.yml", "~", "~/projeto-vizinho/src"]) {
+    assert.equal(decide("Read", { file_path: p }, "auto").acao, "gate", `must not be automatic: ${p}`);
+  }
+  assert.equal(caminhoProibido("~/.ssh"), true);
+  assert.equal(caminhoProibido(".aws"), true);
+  assert.equal(caminhoProibido(".github/workflows/ci.yml"), false, ".github is not .git");
+});
+
+// A symlink committed in a repository is what a malicious clone would bring. The fence judges
+// where the path really LEADS.
+test("a symlink out of the project is outside, and one into .ssh is protected", () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "shvia-cerca-"));
+  try {
+    const projeto = path.join(base, "projeto");
+    const fora = path.join(base, "fora");
+    fs.mkdirSync(path.join(fora, ".ssh"), { recursive: true });
+    fs.mkdirSync(projeto);
+    fs.writeFileSync(path.join(fora, "segredo.txt"), "x");
+    fs.writeFileSync(path.join(fora, ".ssh", "config"), "x");
+    fs.writeFileSync(path.join(projeto, "normal.txt"), "x");
+    fs.symlinkSync(fora, path.join(projeto, "dados"));
+    fs.symlinkSync(path.join(fora, ".ssh"), path.join(projeto, "chaves"));
+    const v = (p) => decidir({ projectDir: projeto, toolName: "Read", toolInput: { file_path: p },
+      nivel: "auto", leitura: LEITURA, edicao: EDICAO });
+
+    assert.equal(v("normal.txt").acao, "allow");
+    const escape = v("dados/segredo.txt");
+    assert.equal(escape.acao, "gate", "a symlink leading out of the project is outside it");
+    const chave = v("chaves/config");
+    assert.equal(chave.acao, "gate");
+    assert.equal(chave.politica, "always", "its real path is under .ssh");
+    // A file that does not exist yet resolves through its nearest existing parent.
+    assert.equal(v("dados/ainda-nao-existe.txt").acao, "gate");
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
 });

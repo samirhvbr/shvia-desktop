@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.6.13 - the Claude engine's read fence sees `~` and follows symlinks
+
+🔴 **`~` walked through the read fence.** `dentroDoProjeto` resolved `path.resolve(projectDir,
+"~/.ssh")` to `<projectDir>/~/.ssh` — inside the project — while the SDK's bundled CLI expands
+`~` to the home directory (17 places in the `claude-agent-sdk-linux-x64` binary, e.g.
+`if(e==="~"||e.startsWith("~/"))return homedir()+e.slice(1)`). Measured with the real policy:
+`Grep {path: "~/.ssh"}` and `Read ~/.config/gh/hosts.yml` → `allow`, at every level, since reads
+are automatic in all of them. A prompt injection in a project file could read the GitHub token.
+
+- `~` and `~/…` are expanded like the CLI does before the fence decides.
+- Symlinks are followed (`realpath`, or of the nearest existing ancestor for a path that does
+  not exist yet). A symlink committed in a repository — `dados -> ~/.ssh` — is exactly what a
+  malicious clone would bring, and the lexical check read `dados/config` as inside.
+- The denylist is checked on what was asked AND on where it really leads (relative to the root
+  when inside, so a project folder named `credentials-…` does not protect every file).
+- `.ssh`, `.aws` and `.git` are matched by path SEGMENT. `"/.ssh/"` needed a slash on both
+  sides, so the directory itself was never protected, only files under it.
+
+Two tests, one with real symlinks in a temp dir (out of the project → card; into `.ssh` →
+`always`). Two reversals measured — no expansion, no symlink resolution — each failing its test.
+Runner suites: 45 = 45 passed.
+
 ## 1.6.12 - the Claude engine's must-ask cards survive the page's Auto mode
 
 🔴 **In the default mode, the ADR-032 boundary of the Claude engine was off.** The runner emitted

@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 /**
@@ -31,12 +33,53 @@ import * as path from "node:path";
 export function caminhoProibido(p) {
   const alvo = String(p ?? "").replace(/\\/g, "/").toLowerCase();
   if (alvo === "") return false;
-  const base = alvo.split("/").filter(Boolean).pop() ?? alvo;
-  if (base === ".git" || alvo.includes("/.git/") || alvo.startsWith(".git/")) return true;
+  const segmentos = alvo.split("/").filter(Boolean);
+  const base = segmentos[segmentos.length - 1] ?? alvo;
+  // By SEGMENT, not by "/.ssh/" (1.6.13): the substring needed a slash on both sides, so the
+  // directory itself — `~/.ssh`, `.aws` — was not protected; only files under it were.
+  if (segmentos.some((s) => s === ".git" || s === ".ssh" || s === ".aws")) return true;
   if (base === ".env" || (base.startsWith(".env.") && base !== ".env.example")) return true;
   if (/\.(pem|key|p8|p12|pfx)$/.test(base)) return true;
   if (base.startsWith("id_rsa") || base.startsWith("id_ed25519")) return true;
-  return alvo.includes("credentials") || alvo.includes("/.ssh/") || alvo.includes("/.aws/");
+  return alvo.includes("credentials");
+}
+
+/**
+ * `~` and `~/…` expanded to the home directory — the way the SDK's CLI does it.
+ *
+ * 🔴 Until 1.6.13 the fence did not, and the CLI does: `path.resolve(projectDir, "~/.ssh")` is
+ * `<projectDir>/~/.ssh`, INSIDE the project, so `Grep {path: "~/.ssh"}` and `Read
+ * ~/.config/gh/hosts.yml` were automatic reads at every level — while the bundled `claude`
+ * binary (claude-agent-sdk-linux-x64, 17 places, e.g. `if(e==="~"||e.startsWith("~/"))return
+ * homedir()+e.slice(1)`) read the real home. `~user` is not expanded by the CLI either.
+ */
+export function expandirHome(p) {
+  const s = String(p ?? "");
+  if (s === "~") return os.homedir();
+  if (s.startsWith("~/")) return path.join(os.homedir(), s.slice(2));
+  return s;
+}
+
+/**
+ * The real path, following symlinks. A path that does not exist yet (a file about to be
+ * written) resolves through its nearest existing ancestor.
+ *
+ * A symlink committed in a repository — `dados -> ~/.ssh` — is exactly what a malicious clone
+ * would bring, and the lexical check reads `dados/config` as inside the project.
+ */
+export function caminhoReal(abs) {
+  const resto = [];
+  let atual = abs;
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync(atual), ...resto);
+    } catch {
+      const pai = path.dirname(atual);
+      if (pai === atual) return abs;
+      resto.unshift(path.basename(atual));
+      atual = pai;
+    }
+  }
 }
 
 /**
@@ -52,8 +95,8 @@ export function caminhoProibido(p) {
  */
 export function dentroDoProjeto(projectDir, p) {
   if (p === undefined || p === null || p === "") return true;
-  const raiz = path.resolve(projectDir);
-  const abs = path.resolve(projectDir, String(p));
+  const raiz = caminhoReal(path.resolve(projectDir));
+  const abs = caminhoReal(path.resolve(projectDir, expandirHome(p)));
   return abs === raiz || abs.startsWith(raiz + path.sep);
 }
 
@@ -146,7 +189,16 @@ export const PATH_ARG = {
 export function decidir({ projectDir, toolName, toolInput = {}, nivel = "manual", leitura, edicao }) {
   if (leitura.has(toolName)) {
     const alvo = toolInput[PATH_ARG[toolName]];
-    if (caminhoProibido(alvo)) {
+    // The denylist is checked on what was ASKED and on where it really LEADS — `~` expanded,
+    // symlinks followed. Inside the project the real path is judged relative to the root, so
+    // a project folder named `credentials-service` does not make every file protected.
+    let real = "";
+    if (alvo !== undefined && alvo !== null && alvo !== "") {
+      const raiz = caminhoReal(path.resolve(projectDir));
+      const abs = caminhoReal(path.resolve(projectDir, expandirHome(alvo)));
+      real = abs.startsWith(raiz + path.sep) ? path.relative(raiz, abs) : abs;
+    }
+    if (caminhoProibido(alvo) || caminhoProibido(real)) {
       return { acao: "gate", motivo: `leitura de caminho protegido (${alvo})`, politica: "always" };
     }
     if (!dentroDoProjeto(projectDir, alvo)) {
