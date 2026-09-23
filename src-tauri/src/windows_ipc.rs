@@ -65,10 +65,16 @@ pub fn install(window: &WebviewWindow) {
 
                 // Origem do postMessage: URI do frame remetente. Sem esta
                 // checagem, um <iframe> externo chama a ponte (ADR-001).
-                let source = unsafe { args.Source() }
-                    .ok()
-                    .map(|s| take_pwstr(s));
-                let origin = source.as_deref().unwrap_or("").to_string();
+                // `Source` fills an out-pointer, like `TryGetWebMessageAsString`
+                // below. The old `args.Source()` call (0.9.0) never compiled
+                // against webview2-com-sys 0.38 — no Windows build was possible
+                // from 19/07 to 1.6.8. A failed read leaves "" → rejected.
+                let mut src = PWSTR::null();
+                let origin = if unsafe { args.Source(&mut src) }.is_ok() {
+                    take_pwstr(src)
+                } else {
+                    String::new()
+                };
 
                 if !origin_allowed(&origin) {
                     // Silenciosamente descarta: sem retorno de erro à página

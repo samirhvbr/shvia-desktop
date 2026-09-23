@@ -570,9 +570,10 @@ pub fn verificar_agora(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
+    // `existe_no_path` is not imported here: its only test is `#[cfg(unix)]`, and an
+    // unconditional import is an unused-import error under `-D warnings` on Windows.
     use super::{
-        endpoint_para, existe_no_path, impedimento, instrucao, marcador_diz_pacman, BundleType,
-        Impedimento,
+        endpoint_para, impedimento, instrucao, marcador_diz_pacman, BundleType, Impedimento,
     };
 
     /// Fingem o PATH nos testes de decisão. `fn` e não closure porque
@@ -671,6 +672,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn existe_no_path_acha_binario_de_verdade() {
+        use super::existe_no_path;
         assert!(existe_no_path("sh"), "/bin/sh existe em qualquer Unix");
         assert!(
             !existe_no_path("shvia-comando-que-nao-existe"),

@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.6.8 - the Windows build compiles again, two months after it stopped
+
+🔴 **No Windows build was possible from 0.9.0 (19/07) to this version.** The origin check of the
+Windows bridge called `args.Source()` with no argument; the `webview2-com-sys` 0.38.2 locked
+since then declares `Source(&self, *mut PWSTR)`, an out-pointer. Compiled for
+`x86_64-pc-windows-gnu` on 23/09: `E0061` + `E0308` in `windows_ipc.rs`. Nothing noticed for two
+reasons that add up: CI runs only on Linux, so `cfg(target_os = "windows")` code is never
+compiled there, and no Windows build was attempted — the published manifest never had a
+Windows entry. `.continue/estado-atual.md` said "o `cargo check` cruzado passa"; ADR-010 was
+right when written and stopped being right at 0.9.0. Both now say so, dated.
+
+- `windows_ipc.rs`: `Source` fills an out-pointer, the same pattern the file already used four
+  lines below for `TryGetWebMessageAsString`. A failed read leaves `""`, which the allowlist
+  rejects — failing closed, as before.
+- `updater.rs` tests: `existe_no_path` was imported for a `#[cfg(unix)]`-only test, which is an
+  unused-import error under `-D warnings` on Windows. The same blind spot, one layer down.
+
+**Measured, both ways:** `cargo clippy --locked --target x86_64-pc-windows-gnu --all-targets --
+-D warnings` is clean with the change and fails with `E0061`/`E0308` with master's
+`windows_ipc.rs`. On Linux the suite is unchanged (116 = 115 passed + 1 ignored), clippy clean.
+
+⚠️ **Compiling is not running.** The bridge on Windows has never been exercised on a real machine
+(open item "Windows — validação ao vivo"). A CI job that compiles the Windows code on every
+change to `src-tauri/` is ready to add, and waits on the owner's answer about the GitHub plan
+(Actions minutes).
+
 ## 1.6.7 - the state note stops calling two landed screens open
 
 `.continue/estado-atual.md` still said, six days after the fact, that the login and accounts

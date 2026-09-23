@@ -221,6 +221,11 @@ how-to; linkar o ADR.
   passo — hoje basta o `anna.exe` no PATH. **Validação:** `cargo check`/`clippy`
   **cruzados** para `x86_64-pc-windows-msvc` passam (tipos do WebView2 conferem);
   o **teste ao vivo é no Windows do Samir** (o build final não roda daqui).
+  > **23/09/2026:** this validation stopped being true at 0.9.0 (`faf1846`, 19/07), when the
+  > origin check added `args.Source()` with a signature webview2-com-sys 0.38 never had. No
+  > Windows build compiled from then until 1.6.8. It is re-measured with the `-gnu` target
+  > (`cargo clippy --target x86_64-pc-windows-gnu`); `-msvc` needs `llvm-rc`/`lib.exe` and
+  > cannot be checked from Linux.
 
 ## ADR-011 — Notificações nativas dos alertas de preço (ponte via canal do Modo Code)
 

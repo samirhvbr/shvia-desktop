@@ -3,7 +3,7 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Last updated: **23/09/2026** (version 1.6.7).
+> Last updated: **23/09/2026** (version 1.6.8).
 
 > ⚠️ **Saneado em 02/09/2026** (achado F-22): descrevia a **1.1.34** com o repo em 1.4.3.
 > Foi o **terceiro** saneamento manual deste arquivo pelo mesmo motivo — daí a régua
@@ -227,8 +227,14 @@ Decisão de produto, não de engenharia.
 
 ### 4. Windows — validação ao vivo
 
-A ponte do Modo Code no Windows (WebView2) entrou na ADR-010 e o `cargo check`
-cruzado passa, mas **o loop nunca foi validado numa máquina Windows real**. O
+A ponte do Modo Code no Windows (WebView2) entrou na ADR-010. 🔴 **The claim that the
+cross `cargo check` passes stopped being true at 0.9.0 (19/07)**: the origin check called
+`args.Source()` with a signature webview2-com-sys 0.38 never had, so **no Windows build was
+possible until 1.6.8** — and nothing noticed, because CI runs only on Linux and no Windows
+build was attempted. Fixed in 1.6.8 and measured with
+`cargo clippy --target x86_64-pc-windows-gnu --all-targets -- -D warnings` (MSVC cannot be
+checked from Linux: `llvm-rc`/`lib.exe`). **O loop nunca foi validado numa máquina Windows
+real.** O
 sub-item "colocar o `anna.exe` no PATH" **caiu**: desde a 0.18.0 o `anna` vai
 dentro do instalador.
 
