@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.6.26 - restarting the Claude login no longer lets the old one erase the new one
+
+**The waiter of an old login cleared the login slot without looking whose it was.** Starting a
+login kills the pending one (`cancelar_login`), spawns a new `claude auth login` and stores it
+in the slot; the OLD login's waiter thread polls every 250 ms and, on seeing its process dead,
+set the slot to `None` — unconditionally. Restart quickly enough (a reload, a second Settings
+window) and the new login was dropped: its stdin closed, the pasted code answered `sem_login`,
+and `cancelar_login` at app exit could no longer reach the new process.
+
+- Each login gets a generation; its waiter clears the slot only if it still holds THAT login.
+  The slot is filled before the waiter starts, so even a CLI that exits at once only clears its
+  own entry.
+- The generation travels in the `claudeAuthLoginStart` reply (`login`) and in the
+  `claude_login_fim` event, so the page can ignore a late end from an older login. The page does
+  not use it yet (SHVIA-WEB); today a late end still hides the new code step there.
+- A killed login that never produced a URL is now reaped (`wait`) instead of left a zombie.
+
+A test puts a real process in the slot and checks that an old generation's cleanup leaves it
+alone and its own clears it. Reversal measured. Suite: 127 = 126 passed + 1 ignored; clippy
+clean on Linux and `x86_64-pc-windows-gnu`.
+
 ## 1.6.25 - installing the Claude runner from a terminal no longer hangs at the end
 
 `claude-runner/install.sh` ends by importing the installed runner, to prove every local import

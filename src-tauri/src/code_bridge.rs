@@ -638,6 +638,23 @@ struct LoginEmCurso {
     stdin: ChildStdin,
     /// Só para matar. A espera vive na thread que drena.
     filho: std::sync::Arc<Mutex<Child>>,
+    /// Which login this is (1.6.26). The waiter of an OLD login cleared the slot without
+    /// looking whose it was: restart a login quickly enough and the new one was dropped —
+    /// its stdin closed, the pasted code answered `sem_login`, and `cancelar_login` at exit
+    /// could no longer reach its process.
+    geracao: u64,
+}
+
+/// Source of `LoginEmCurso::geracao`.
+static PROXIMO_LOGIN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// Clears the slot only if it still holds THIS login (1.6.26).
+fn liberar_slot_do_login(geracao: u64) {
+    if let Ok(mut g) = login_slot().lock() {
+        if g.as_ref().is_some_and(|l| l.geracao == geracao) {
+            *g = None;
+        }
+    }
 }
 
 fn login_slot() -> &'static Mutex<Option<LoginEmCurso>> {
@@ -791,6 +808,7 @@ fn drenar_e_esperar(
     filho: std::sync::Arc<Mutex<Child>>,
     saida: std::process::ChildStdout,
     erro: std::process::ChildStderr,
+    geracao: u64,
 ) {
     // Os dois canos, para nenhum encher. O conteúdo é descartado de propósito.
     for cano in [
@@ -826,13 +844,15 @@ fn drenar_e_esperar(
             std::thread::sleep(std::time::Duration::from_millis(250));
         };
         // Some do registro: quem saiu não é mais cancelável, e deixar o `Some` aqui faria
-        // o próximo `iniciar_login` matar um processo que já morreu.
-        if let Ok(mut g) = login_slot().lock() {
-            *g = None;
-        }
+        // o próximo `iniciar_login` matar um processo que já morreu. Only if the slot is
+        // still OURS: a newer login may already be there (1.6.26).
+        liberar_slot_do_login(geracao);
+        // `login` lets the page tell this end from a newer login's (the reply of
+        // `claudeAuthLoginStart` carries the same number).
         let js = format!(
-            "window.__shviaCode&&window.__shviaCode._emit({{type:'claude_login_fim',code:{}}})",
+            "window.__shviaCode&&window.__shviaCode._emit({{type:'claude_login_fim',code:{},login:{}}})",
             codigo.map_or("null".to_string(), |c| c.to_string()),
+            geracao,
         );
         let app = win.app_handle().clone();
         let w = win.clone();
@@ -929,7 +949,7 @@ fn ler_url_com_prazo(
 fn iniciar_login(
     window: &WebviewWindow,
     conta: Option<&crate::contas_claude::Alvo>,
-) -> Result<String, (&'static str, String)> {
+) -> Result<(String, u64), (&'static str, String)> {
     cancelar_login();
     let bin = resolve_bin("claude")
         .ok_or(("cli_ausente", "claude não encontrado no PATH".to_string()))?;
@@ -949,6 +969,8 @@ fn iniciar_login(
 
     let Some((url, saida)) = ler_url_com_prazo(saida, PRAZO_URL_DO_LOGIN) else {
         let _ = filho.kill();
+        // Reap it: a killed child that is never waited on stays a zombie until the app exits.
+        let _ = filho.wait();
         return Err((
             "sem_url",
             "não reconheci a saída do `claude auth login` — rode `claude auth login` no \
@@ -957,11 +979,14 @@ fn iniciar_login(
     };
 
     let filho = std::sync::Arc::new(Mutex::new(filho));
-    drenar_e_esperar(window, filho.clone(), saida, erro);
+    let geracao = PROXIMO_LOGIN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    // The slot is filled BEFORE the waiter starts, so even a CLI that exits at once can
+    // only ever clear its own entry.
     if let Ok(mut g) = login_slot().lock() {
-        *g = Some(LoginEmCurso { stdin, filho });
+        *g = Some(LoginEmCurso { stdin, filho: filho.clone(), geracao });
     }
-    Ok(url)
+    drenar_e_esperar(window, filho, saida, erro, geracao);
+    Ok((url, geracao))
 }
 
 /// Entrega o código colado. **Só escreve** — não espera nada.
@@ -1356,7 +1381,7 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
                 let (contas, _) = crate::contas_claude::registro(w.app_handle());
                 match crate::contas_claude::resolver(&contas, &id) {
                     Ok(dir) => match iniciar_login(w, dir.as_ref()) {
-                        Ok(url) => (true, serde_json::json!({ "url": url })),
+                        Ok((url, login)) => (true, serde_json::json!({ "url": url, "login": login })),
                         Err((c, m)) => (false, serde_json::json!({ "erro": m, "codigo": c })),
                     },
                     Err(e) => (false, serde_json::json!({ "erro": e.mensagem(), "codigo": e.codigo() })),
@@ -1961,6 +1986,37 @@ fn sanitize_filename(nome: &str) -> String {
         "arquivo".to_string()
     } else {
         limpo
+    }
+}
+
+#[cfg(test)]
+mod tests_login_geracao {
+    #[cfg(unix)]
+    use super::{liberar_slot_do_login, login_slot, LoginEmCurso};
+    #[cfg(unix)]
+    use std::process::{Command, Stdio};
+
+    /// 🔴 1.6.26. The waiter of an OLD login cleared the slot unconditionally, so a restarted
+    /// login could be dropped by the previous one's exit. Only the owner clears it now.
+    #[cfg(unix)]
+    #[test]
+    fn o_fim_de_um_login_velho_nao_apaga_o_login_novo() {
+        let mut filho = Command::new("cat").stdin(Stdio::piped()).stdout(Stdio::null()).spawn().unwrap();
+        let stdin = filho.stdin.take().unwrap();
+        let filho = std::sync::Arc::new(std::sync::Mutex::new(filho));
+        *login_slot().lock().unwrap() = Some(LoginEmCurso { stdin, filho: filho.clone(), geracao: 7 });
+
+        liberar_slot_do_login(6); // the previous login's waiter finishing late
+        assert!(
+            login_slot().lock().unwrap().as_ref().is_some_and(|l| l.geracao == 7),
+            "the old login's end dropped the new login"
+        );
+        liberar_slot_do_login(7); // its own waiter
+        assert!(login_slot().lock().unwrap().is_none());
+
+        let mut f = filho.lock().unwrap();
+        let _ = f.kill();
+        let _ = f.wait();
     }
 }
 
