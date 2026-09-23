@@ -1,9 +1,12 @@
 [package]
 name = "shvia-desktop"
-version = "1.6.4"
+version = "1.6.5"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
+# Never published to crates.io. It also tells cargo-deny this crate is private, so its
+# missing license field is not a finding (see deny.toml [licenses.private]).
+publish = false
 
 # A versão acima é mantida em sincronia com version.md por scripts/sync-version.mjs.
 # Demais chaves: https://doc.rust-lang.org/cargo/reference/manifest.html

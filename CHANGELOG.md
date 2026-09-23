@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.6.5 - the dependency check covers licenses, bans and sources, not only advisories
+
+The CI ran `cargo deny check advisories` and nothing else, and the reason was measured on
+23/09/2026: `cargo deny check licenses` failed on **the app crate itself** —
+`shvia-desktop = 1.6.4 is unlicensed`. The repository is private and ships no LICENSE, so the
+check could only ever be red, and a check that is always red is a check nobody turns on.
+
+- `publish = false` in `Cargo.toml` (it is never published) plus `[licenses.private]
+  ignore = true` in `deny.toml`: the license check is now about the dependencies, which is the
+  question it exists to answer. Choosing a license for the app is not part of this change.
+- The allow list loses BSL-1.0, OpenSSL and Unicode-DFS-2016: no dependency uses them
+  (`license-not-encountered`). A new dependency under one of them now fails and gets looked at.
+- `[bans] multiple-versions = "allow"`: 34 crates come in two to five versions, all through
+  Tauri and the `windows-*` family. As warnings they were 34 lines of CI log nobody can act on.
+- The CI step runs `check` (advisories, bans, licenses, sources) instead of `check advisories`.
+
+Result: `advisories ok, bans ok, licenses ok, sources ok`, with zero warnings.
+
 ## 1.6.4 - cargo deny and cargo audit agree again, and three advisories close
 
 Measured on 23/09/2026, the two advisory tools disagreed about this tree, and the CI only runs

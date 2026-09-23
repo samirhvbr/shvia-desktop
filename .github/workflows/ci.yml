@@ -110,7 +110,9 @@ jobs:
       # `src-tauri/deny.toml` carries a written reason per entry — the same doctrine as
       # `scripts/prova-auditoria.mjs` in SHVIA-WORKSPACE. It found a real one on day zero:
       # the `time = "=0.3.41"` pin had RUSTSEC-2026-0009, exactly where F-31 predicted.
+      # Since 1.6.5 it runs every check (advisories, bans, licenses, sources): licenses used
+      # to fail on the app crate itself, which is private (`publish = false`).
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           manifest-path: src-tauri/Cargo.toml
-          command: check advisories
+          command: check
