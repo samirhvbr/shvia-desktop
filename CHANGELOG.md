@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.6.24 - building without anna ships no stale engine, and `--no-anna` builds at all
+
+🔴 **"O app sai SEM o motor" was never true.** `tauri.conf.json` declares `anna` as an
+`externalBin`, and Tauri REQUIRES every external binary to exist — measured on 23/09, without it
+the build script stops: ``resource path `binaries/anna-<triple>` doesn't exist``. So:
+
+- `--no-anna`, which deletes `src-tauri/binaries`, **failed the build**;
+- with no anna found, `stage-anna` printed "o app sai SEM o motor empacotado" and exited 0, while
+  `src-tauri/binaries/` — gitignored, persistent — still held the anna staged by an earlier build.
+  That stale engine was bundled, never checked against `ANNA_MINIMO`; with a clean folder, the
+  build failed instead.
+
+The fix:
+
+- `stage-anna`, finding no anna, removes the stale file for this target before exiting 0.
+- `build-local.sh` checks what was staged; with no sidecar it passes `externalBin: []` to Tauri,
+  merged into the one `--config` that already carried `createUpdaterArtifacts: false`. The
+  installed app then finds anna on `PATH`, which `resolve_bin` always did.
+- `scripts/prova-empacota-sem-anna.mjs` (`npm run prova:sem-anna`): stage-anna run from a COPY in a
+  temp tree (never the repo's own binaries) with no anna and with a fake one, and the real
+  override block composing the four `--config` cases. Reversal measured on both halves.
+- A CI step moves the stand-in away and runs `cargo check` with `TAURI_CONFIG` externalBin=[] —
+  the Tauri side of the override. Measured here both ways: without the override the build script
+  refuses, with it the crate compiles.
+
 ## 1.6.23 - reusing the last bundle notices a change to anything the bundle carries
 
 **The reuse check looked at a hand-written list of sources, and the bundle carries more.**

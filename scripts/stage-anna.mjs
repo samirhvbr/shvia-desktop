@@ -33,7 +33,7 @@
 // é que não tem leitor. **Aviso perde para gesto** — por isso agora existe um
 // PISO DE VERSÃO que derruba o build (ver `ANNA_MINIMO`, mais abaixo), e a
 // impressão da versão virou conferência, não proteção.
-import { chmodSync, copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -96,6 +96,15 @@ const origem = acharAnna();
 // comportamento de antes deste item. Derrubar o build aqui transformaria "não
 // consegui melhorar a adoção" em "não consegui empacotar o app".
 if (!origem || !existsSync(origem)) {
+  // 🔴 (1.6.24) The destination is gitignored and PERSISTS between builds: an `anna` staged by
+  // an earlier build stayed in src-tauri/binaries/, and `externalBin` bundled it while the line
+  // below said the app shipped WITHOUT the engine — an old engine, never checked against
+  // ANNA_MINIMO. It is removed; build-local.sh then tells Tauri there is no sidecar.
+  const velho = join(DESTINO_DIR, `anna-${triple}${process.platform === "win32" ? ".exe" : ""}`);
+  if (existsSync(velho)) {
+    rmSync(velho);
+    console.warn(`[stage-anna] removido o anna de um build anterior: ${velho}`);
+  }
   console.warn("[stage-anna] `anna` não encontrado — o app sai SEM o motor empacotado.");
   console.warn("            Quem instalar precisará instalá-lo à mão (o Modo Code fica indisponível até lá).");
   console.warn("            Para empacotar: ./build-local.sh --anna /caminho/para/anna");

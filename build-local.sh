@@ -1304,16 +1304,33 @@ if [ "$REUSE" -eq 0 ]; then
   fi
 
   step "[3/3] Tauri build"
+  # ── bundle overrides (1.6.24) ──
+  # Tauri REQUIRES every `externalBin` to exist — measured: "resource path
+  # `binaries/anna-<triple>` doesn't exist" stops the build script. So "the app ships
+  # without the engine" (--no-anna, or no anna found) was never true: --no-anna failed the
+  # build, and a missing anna either failed it or bundled a stale one. With no sidecar
+  # staged, Tauri is told so (`externalBin: []`); the installed app then finds anna on PATH.
+  # Both overrides live under "bundle", so they are merged into ONE --config.
+  SEM_ANNA=0
+  if ! ls src-tauri/binaries/anna-* >/dev/null 2>&1; then
+    SEM_ANNA=1
+    echo "    (sem anna em src-tauri/binaries — o bundle sai SEM o motor; o app usa o do PATH)"
+  fi
+  _BUNDLE_CFG=""
+  if [ "$UPDATER_ARTIFACTS" -eq 0 ]; then _BUNDLE_CFG='"createUpdaterArtifacts":false'; fi
+  if [ "$SEM_ANNA" -eq 1 ]; then _BUNDLE_CFG="${_BUNDLE_CFG:+$_BUNDLE_CFG,}\"externalBin\":[]"; fi
+  _CFG=""
+  if [ -n "$_BUNDLE_CFG" ]; then _CFG="{\"bundle\":{$_BUNDLE_CFG}}"; fi
+  # ── end bundle overrides ──
   # Quatro braços explícitos em vez de montar array de argumentos: o bash do macOS
   # é 3.2, e ali `"${arr[@]}"` de array VAZIO com `set -u` aborta com "unbound
   # variable" (testado). Verboso, mas roda nos três SOs.
-  _CFG_SEM_UPDATER='{"bundle":{"createUpdaterArtifacts":false}}'
-  if [ -n "$BUNDLES" ] && [ "$UPDATER_ARTIFACTS" -eq 0 ]; then
-    npx tauri build --bundles "$BUNDLES" --config "$_CFG_SEM_UPDATER"
+  if [ -n "$BUNDLES" ] && [ -n "$_CFG" ]; then
+    npx tauri build --bundles "$BUNDLES" --config "$_CFG"
   elif [ -n "$BUNDLES" ]; then
     npx tauri build --bundles "$BUNDLES"
-  elif [ "$UPDATER_ARTIFACTS" -eq 0 ]; then
-    npx tauri build --config "$_CFG_SEM_UPDATER"
+  elif [ -n "$_CFG" ]; then
+    npx tauri build --config "$_CFG"
   else
     npx tauri build
   fi

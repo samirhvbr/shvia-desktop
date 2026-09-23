@@ -93,6 +93,10 @@ jobs:
       # Reusing the last bundle requires that nothing it carries changed (1.6.23).
       - name: The bundle reuse sees every bundled input
         run: npm run prova:reuso
+      # With no anna staged, the stale one is removed and Tauri is told there is no
+      # sidecar, instead of bundling an old engine or failing the build (1.6.24).
+      - name: Packaging without anna ships no stale engine
+        run: npm run prova:sem-anna
       # `src-tauri/binaries/` is gitignored on purpose: the `anna` sidecar depends on the
       # build machine (ADR-021), so it is staged by `scripts/stage-anna.mjs` and never
       # committed. But `externalBin` in `tauri.conf.json` makes the Tauri build script
@@ -124,6 +128,15 @@ jobs:
       - name: clippy
         working-directory: src-tauri
         run: cargo clippy --locked --all-targets -- -D warnings
+      # Tauri requires every externalBin to exist unless told there is none; this is the
+      # override build-local.sh passes when no anna is staged (1.6.24). Without it,
+      # --no-anna and "no anna on the build machine" could not build at all.
+      - name: The app builds without the anna sidecar
+        working-directory: src-tauri
+        run: |
+          mv binaries "$RUNNER_TEMP/binaries-stand-in"
+          TAURI_CONFIG='{"bundle":{"externalBin":[]}}' cargo check --locked
+          mv "$RUNNER_TEMP/binaries-stand-in" binaries
       # RustSec advisories (findings DEP-3 / F-31). The `ignore` list in
       # `src-tauri/deny.toml` carries a written reason per entry — the same doctrine as
       # `scripts/prova-auditoria.mjs` in SHVIA-WORKSPACE. It found a real one on day zero:
