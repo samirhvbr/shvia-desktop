@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.6.4 - cargo deny and cargo audit agree again, and three advisories close
+
+Measured on 23/09/2026, the two advisory tools disagreed about this tree, and the CI only runs
+one of them. `cargo audit` reported two quick-xml vulnerabilities and two `unsound` advisories;
+`cargo deny check advisories` — the CI step — passed, and warned ten times
+`advisory-not-detected`. Every difference had a reason, and none of them was a decision:
+
+| What | Why deny was quiet | Now |
+|---|---|---|
+| quick-xml 0.38.4 (RUSTSEC-2026-0194/0195, DoS) | ignored with "cannot be fixed here: plist 1.8 requires ^0.38" — true when written | `cargo update -p plist` → plist 1.10.1 accepts quick-xml **0.42.0** (patched ≥ 0.41); ignore removed |
+| event-listener 5.4.1 (RUSTSEC-2026-0221, unsound) | deny's default `unsound` scope covers only direct dependencies | patched 5.4.2 locked; `unsound = "all"` |
+| glib 0.18.5 (RUSTSEC-2024-0429, unsound) | same scope | seen now; ignored with the reason: GTK3 tree via Tauri, fix is glib ≥ 0.20, we never iterate a Variant |
+| RUSTSEC-2024-0411..0420 (GTK3 unmaintained) | RustSec **withdrew** them on 2026-08-14; the ten ignores matched nothing | removed |
+
+**Reversals measured, not assumed.** With the new `deny.toml` and the old lockfile, deny fails
+on both quick-xml advisories; with event-listener put back at 5.4.1, it fails on that one.
+Before this change neither case failed.
+
+Not in this entry: `cargo deny check licenses` fails because the app crate itself declares no
+license. It predates this change and the CI does not run that check; it is queued separately.
+
 ## 1.6.3 - the key-proof check mark only prints when the proof happened
 
 `verify_updater_key` in `build-local.sh` protects the one act this product cannot undo:

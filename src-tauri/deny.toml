@@ -25,25 +25,14 @@ feature-depth = 1
 
 [advisories]
 version = 2
+# cargo-deny's default scope for `unsound` covers only the workspace's direct dependencies,
+# so a transitive one passed in silence while `cargo audit` reported it (measured 23/09/2026:
+# glib and event-listener). "all" makes the two tools agree.
+unsound = "all"
 ignore = [
-    # ── Tauri's GTK3 tree on Linux: unmaintained, no safe upgrade ───────────
-    #
-    # All ten come from `tauri` → `tray-icon`/`libappindicator` → `gtk 0.18`, and every
-    # advisory says "No safe upgrade is available!". They leave when Tauri moves to gtk4,
-    # which is not a decision this repository can take on its own.
-    #
-    # They are `unmaintained`, not `vulnerability`: nobody has reported a flaw, the crates
-    # simply stopped being updated.
-    { id = "RUSTSEC-2024-0411", reason = "gdkwayland-sys — Tauri's GTK3 tree; no safe upgrade" },
-    { id = "RUSTSEC-2024-0412", reason = "gdk — Tauri's GTK3 tree; no safe upgrade" },
-    { id = "RUSTSEC-2024-0413", reason = "atk — Tauri's GTK3 tree; no safe upgrade" },
-    { id = "RUSTSEC-2024-0414", reason = "gdkx11-sys — Tauri's GTK3 tree; no safe upgrade" },
-    { id = "RUSTSEC-2024-0415", reason = "gtk — Tauri's GTK3 tree; no safe upgrade" },
-    { id = "RUSTSEC-2024-0416", reason = "atk-sys — Tauri's GTK3 tree; no safe upgrade" },
-    { id = "RUSTSEC-2024-0417", reason = "gdkx11 — Tauri's GTK3 tree; no safe upgrade" },
-    { id = "RUSTSEC-2024-0418", reason = "gdk-sys — Tauri's GTK3 tree; no safe upgrade" },
-    { id = "RUSTSEC-2024-0419", reason = "gtk3-macros — Tauri's GTK3 tree; no safe upgrade" },
-    { id = "RUSTSEC-2024-0420", reason = "gtk-sys — Tauri's GTK3 tree; no safe upgrade" },
+    # The ten GTK3 entries (RUSTSEC-2024-0411..0420) left in 1.6.4: RustSec WITHDREW those
+    # advisories on 2026-08-14, and cargo-deny reported each ignore as advisory-not-detected.
+    # An ignore that matches nothing reads as a decision and guards nothing.
 
     # ── Compile-time only ──────────────────────────────────────────────────
     # `proc-macro-error` runs during compilation and ships no runtime code.
@@ -57,20 +46,15 @@ ignore = [
     { id = "RUSTSEC-2025-0098", reason = "unic-ucd-version — unmaintained, via Tauri" },
     { id = "RUSTSEC-2025-0100", reason = "unic-ucd-ident — unmaintained, via Tauri" },
 
-    # ── A real vulnerability we cannot close alone, with the measurement ────
-    #
-    # 🔴 quick-xml 0.38.4 — two DoS advisories in the XML parser. It DOES ship in the binary
-    # (tauri → plist → quick-xml, a normal dependency, not build-only — checked with
-    # `cargo tree -i quick-xml -e normal`).
-    #
-    # It cannot be fixed here: the fix is >= 0.41, and `plist 1.8.0` requires `^0.38`, so
-    # `cargo update -p quick-xml` locks zero packages. It leaves when Tauri bumps plist.
-    #
-    # What bounds it: `plist` parses Apple property lists, and in Tauri that is the app's own
-    # bundle metadata. No code in this repository feeds it XML from a user, a document or the
-    # network. Re-check with `cargo tree -i quick-xml` if that ever changes.
-    { id = "RUSTSEC-2026-0194", reason = "quick-xml — DoS; fix needs plist>=? via Tauri; only parses our own bundle plist" },
-    { id = "RUSTSEC-2026-0195", reason = "quick-xml — DoS; same tree, same bound" },
+    # `glib` 0.18 is Tauri's GTK3 tree again (tray-icon → libappindicator → gtk). The fix is
+    # glib >= 0.20, which only arrives with Tauri's move to gtk4. The unsound impl is
+    # `VariantStrIter`. Our only glib use is `glib::prelude::*` for the Linux WebView signal
+    # handlers in lib.rs (configure_linux_webview); no Variant is built or iterated here.
+    { id = "RUSTSEC-2024-0429", reason = "glib VariantStrIter unsound — GTK3 tree via Tauri; fix is glib>=0.20; we never iterate a Variant" },
+
+    # quick-xml (RUSTSEC-2026-0194/0195) left in 1.6.4 as well: plist 1.10.1 accepts the
+    # patched quick-xml 0.42, so `cargo update -p plist` closed it — the "cannot be fixed
+    # here" measured earlier had gone stale.
 ]
 
 [licenses]
