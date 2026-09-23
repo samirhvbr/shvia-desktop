@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.6.19 - slow bridge work leaves the UI thread, and every external call has a deadline
+
+🔴 **Several bridge actions froze every window, and one could freeze them for good.**
+`handle_message` runs on the event loop — the WebKitGTK signal on Linux, the main thread on
+macOS, `WebMessageReceived` on Windows — which paints every window. The arms that start a
+process or walk the disk ran right there, with `.output()` and no bound:
+
+- `claudeRunnerInstall` → `bash install.sh` → `npm ci` (the button every new user is sent to);
+- `claudeAuthLoginStart` → `ler_url`, which reads byte by byte until it sees an authorization
+  URL. Its comment spoke of a ceiling, but `TETO_DO_LOGIN` only starts AFTER the URL: a CLI that
+  printed an unrecognized URL and then its prompt — no newline, waiting for the code — blocked
+  the read, the UI thread and every window forever, and the designed `sem_url` fallback never ran;
+- `claudeAccountsDetect`/`Add` → `bash -ic` (reads rc files, which may prompt);
+- `gitStatus`, fired by the page on every window focus (`code-mode.js:5152`);
+- `engineStatus`, the About dialog's `anna --version`, the catalogues, `claude auth status`.
+
+The fix, in three parts:
+
+- `fora_da_ui`: those 12 arms run their work on a thread of their own and reply from there
+  (`reply` already hopped back to the main thread to `eval`). A second install while one runs
+  is refused instead of racing it over the same directories.
+- `saida_com_prazo` replaces the 11 runtime `.output()` calls: both pipes drained on threads,
+  the child killed at the deadline (`TimedOut`), and a grandchild holding a pipe open after the
+  child exits — a daemon an rc file started — cannot hold the call past it. Deadlines: 10 s
+  (`--version`, probes, the interactive shell), 30 s (git, `auth status`), 60 s (catalogues and
+  the login URL), 10 min (install). The same pattern `user_env.rs` already used for the login
+  shell, now everywhere.
+- `ler_url_com_prazo`: the URL is read on a helper thread; past 60 s the caller kills the CLI
+  and the page gets `sem_url`, the fallback that was designed for exactly this.
+
+Six tests: a process that never ends becomes `TimedOut` in the deadline; a finishing one returns
+both outputs; a grandchild holding the pipe does not hold the call; the login case that froze
+the app (unrecognized URL + prompt without newline) gives up in time; an authorization URL still
+arrives; and a source ruler (declared) that the 12 arms go through `fora_da_ui`. Reversals
+measured: without the URL deadline the test sat for the full 30 s of its stand-in CLI; without
+the helper's deadline, 30 s and `Ok`; an arm moved back fails the ruler.
+
+Suite: 126 = 125 passed + 1 ignored; clippy clean on Linux and `x86_64-pc-windows-gnu` (the
+cross-check caught unix-only test imports on its first run — the 1.6.8 blind spot, on new code).
+
 ## 1.6.18 - a `null` line from the host no longer kills either runner
 
 Both runners parsed each host line in a `try` and then read `msg.type` outside it. `null` is

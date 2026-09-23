@@ -405,7 +405,11 @@ pub fn descobrir(home: &Path, existe: &dyn Fn(&Path) -> bool) -> Vec<Candidato> 
     } else {
         ("zsh", SCRIPT_ZSH)
     };
-    let saida = std::process::Command::new(bin).arg("-ic").arg(script).output();
+    // Interactive (`-i`), so it reads rc files — which may prompt or start daemons. Bounded
+    // since 1.6.19: unbounded, a prompting rc froze the Settings screen for good.
+    let mut shell = std::process::Command::new(bin);
+    shell.arg("-ic").arg(script);
+    let saida = crate::code_bridge::saida_com_prazo(shell, crate::code_bridge::PRAZO_SHELL_INTERATIVO);
     match saida {
         Ok(o) => candidatos_de(&String::from_utf8_lossy(&o.stdout), home, existe),
         Err(_) => Vec::new(),

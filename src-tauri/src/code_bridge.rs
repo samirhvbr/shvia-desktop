@@ -412,7 +412,7 @@ fn claude_models(conta: Option<&crate::contas_claude::Alvo>) -> serde_json::Valu
         cmd.env("PATH", p);
     }
     crate::contas_claude::aplicar(&mut cmd, conta);
-    match cmd.output() {
+    match saida_com_prazo(cmd, PRAZO_CATALOGO) {
         Ok(o) => String::from_utf8_lossy(&o.stdout)
             .lines()
             .find_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
@@ -432,7 +432,7 @@ fn codex_models() -> serde_json::Value {
     if let Some(p) = crate::user_env::sidecar_path() {
         cmd.env("PATH", p);
     }
-    match cmd.output() {
+    match saida_com_prazo(cmd, PRAZO_CATALOGO) {
         Ok(o) => String::from_utf8_lossy(&o.stdout)
             .lines()
             .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
@@ -468,9 +468,9 @@ pub(crate) fn versao_do_anna() -> String {
         .unwrap_or(false);
     let origem = if empacotado { "empacotado" } else { "externo" };
 
-    let bruto = std::process::Command::new(&bin)
-        .arg("--version")
-        .output()
+    let mut sonda = std::process::Command::new(&bin);
+    sonda.arg("--version");
+    let bruto = saida_com_prazo(sonda, PRAZO_VERSAO)
         .ok()
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
@@ -680,7 +680,7 @@ fn claude_auth_status(conta: Option<&crate::contas_claude::Alvo>) -> serde_json:
         cmd.env("PATH", p);
     }
     crate::contas_claude::aplicar(&mut cmd, conta);
-    match cmd.output() {
+    match saida_com_prazo(cmd, PRAZO_AUTH_STATUS) {
         Ok(o) => {
             let txt = String::from_utf8_lossy(&o.stdout);
             match serde_json::from_str::<serde_json::Value>(txt.trim()) {
@@ -901,6 +901,30 @@ fn url_de(linha: &str) -> Option<String> {
     }
 }
 
+/// `ler_url` with a deadline (1.6.19).
+///
+/// 🔴 `ler_url` reads byte by byte until a URL line, 12 lines, 4096 bytes without a newline, or
+/// EOF. Its comment spoke of a ceiling ("presa nele até o teto"), but `TETO_DO_LOGIN` only
+/// starts in `drenar_e_esperar`, AFTER the URL. A CLI that printed an unrecognized URL and then
+/// its prompt — no newline, waiting for the code — blocked the read forever; and since this ran
+/// on the UI thread, every window froze, and the designed `sem_url` fallback never fired. On
+/// timeout the caller kills the child, which ends the read with EOF.
+fn ler_url_com_prazo(
+    saida: std::process::ChildStdout,
+    prazo: std::time::Duration,
+) -> Option<(String, std::process::ChildStdout)> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut saida = saida;
+        let url = ler_url(&mut saida);
+        let _ = tx.send((url, saida));
+    });
+    match rx.recv_timeout(prazo) {
+        Ok((Some(url), saida)) => Some((url, saida)),
+        _ => None,
+    }
+}
+
 /// Começa o login e devolve a URL que o cliente imprimiu.
 fn iniciar_login(
     window: &WebviewWindow,
@@ -920,11 +944,10 @@ fn iniciar_login(
         ("spawn_falhou", format!("não consegui iniciar o login: {e}"))
     })?;
     let stdin = filho.stdin.take().ok_or(("spawn_falhou", "sem stdin".to_string()))?;
-    let mut saida = filho.stdout.take().ok_or(("spawn_falhou", "sem stdout".to_string()))?;
+    let saida = filho.stdout.take().ok_or(("spawn_falhou", "sem stdout".to_string()))?;
     let erro = filho.stderr.take().ok_or(("spawn_falhou", "sem stderr".to_string()))?;
 
-    let url = ler_url(&mut saida);
-    let Some(url) = url else {
+    let Some((url, saida)) = ler_url_com_prazo(saida, PRAZO_URL_DO_LOGIN) else {
         let _ = filho.kill();
         return Err((
             "sem_url",
@@ -1006,8 +1029,12 @@ fn instalar_claude_runner(app: &tauri::AppHandle) -> Result<String, (&'static st
     if let Some(p) = crate::user_env::sidecar_path() {
         cmd.env("PATH", p);
     }
-    let saida = cmd.output().map_err(|e| {
-        ("bash_ausente", format!("não consegui executar o instalador: {e}"))
+    let saida = saida_com_prazo(cmd, PRAZO_INSTALACAO).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::TimedOut {
+            ("instalacao_sem_resposta", format!("o instalador não terminou: {e}"))
+        } else {
+            ("bash_ausente", format!("não consegui executar o instalador: {e}"))
+        }
     })?;
     let texto = format!(
         "{}{}",
@@ -1022,6 +1049,67 @@ fn instalar_claude_runner(app: &tauri::AppHandle) -> Result<String, (&'static st
         // explicação que envelhece separado da primeira.
         Err(("instalacao_falhou", texto))
     }
+}
+
+/// How long each external call may take before the bridge gives up on it (1.6.19).
+///
+/// Until 1.6.19 every one of these ran with `.output()` and no bound, most of them on the UI
+/// thread: a `--version` that waited on stdin, an interactive shell whose rc file prompted, a
+/// `git status` in a huge tree, `npm ci` on a slow network — each froze every window, and one
+/// that never returned froze them for good. The numbers are generous on purpose: a bound exists
+/// to turn "forever" into an error the page can show, not to race a slow machine.
+const PRAZO_VERSAO: std::time::Duration = std::time::Duration::from_secs(10);
+const PRAZO_CATALOGO: std::time::Duration = std::time::Duration::from_secs(60);
+const PRAZO_AUTH_STATUS: std::time::Duration = std::time::Duration::from_secs(30);
+const PRAZO_GIT: std::time::Duration = std::time::Duration::from_secs(30);
+const PRAZO_INSTALACAO: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+const PRAZO_URL_DO_LOGIN: std::time::Duration = std::time::Duration::from_secs(60);
+pub(crate) const PRAZO_SHELL_INTERATIVO: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// `Command::output()` with a deadline: past it the child is killed and the call returns
+/// `ErrorKind::TimedOut`. Both pipes are drained on their own threads (a full pipe would block
+/// the child), and a grandchild that keeps a pipe open after the child exits — a daemon started
+/// by an rc file — cannot hold the call past the deadline: whatever arrived is returned.
+pub(crate) fn saida_com_prazo(
+    mut cmd: Command,
+    prazo: std::time::Duration,
+) -> std::io::Result<std::process::Output> {
+    use std::io::Read;
+    use std::sync::mpsc;
+    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut filho = cmd.spawn()?;
+    let drenar = |cano: Option<Box<dyn Read + Send>>| {
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut b = Vec::new();
+            if let Some(mut c) = cano {
+                let _ = c.read_to_end(&mut b);
+            }
+            let _ = tx.send(b);
+        });
+        rx
+    };
+    let rx_out = drenar(filho.stdout.take().map(|c| Box::new(c) as Box<dyn Read + Send>));
+    let rx_err = drenar(filho.stderr.take().map(|c| Box::new(c) as Box<dyn Read + Send>));
+    let inicio = std::time::Instant::now();
+    let status = loop {
+        if let Some(st) = filho.try_wait()? {
+            break st;
+        }
+        if inicio.elapsed() >= prazo {
+            let _ = filho.kill();
+            let _ = filho.wait();
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("sem resposta em {} s", prazo.as_secs()),
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let resto = prazo.saturating_sub(inicio.elapsed()).max(std::time::Duration::from_secs(1));
+    let stdout = rx_out.recv_timeout(resto).unwrap_or_default();
+    let stderr = rx_err.recv_timeout(std::time::Duration::from_secs(1)).unwrap_or_default();
+    Ok(std::process::Output { status, stdout, stderr })
 }
 
 fn resolve_bin(base: &str) -> Option<PathBuf> {
@@ -1040,7 +1128,9 @@ fn resolve_bin(base: &str) -> Option<PathBuf> {
     // (2)+(3) por SO.
     #[cfg(windows)]
     {
-        if let Ok(out) = Command::new("where").arg(base).output() {
+        let mut onde = Command::new("where");
+        onde.arg(base);
+        if let Ok(out) = saida_com_prazo(onde, PRAZO_VERSAO) {
             if out.status.success() {
                 // `where` pode listar vários — pega a 1ª linha.
                 if let Some(line) = String::from_utf8_lossy(&out.stdout).lines().next() {
@@ -1066,7 +1156,7 @@ fn resolve_bin(base: &str) -> Option<PathBuf> {
         if let Some(p) = crate::user_env::sidecar_path() {
             probe.env("PATH", p);
         }
-        if let Ok(out) = probe.output() {
+        if let Ok(out) = saida_com_prazo(probe, PRAZO_VERSAO) {
             if out.status.success() {
                 let p = String::from_utf8_lossy(&out.stdout).trim().to_string();
                 if !p.is_empty() {
@@ -1112,9 +1202,9 @@ pub fn engine_status(base: &str) -> serde_json::Value {
         .and_then(|e| e.parent().map(|d| d.to_path_buf()))
         .is_some_and(|dir| bin.parent() == Some(dir.as_path()));
 
-    let versao = Command::new(&bin)
-        .arg("--version")
-        .output()
+    let mut sonda = Command::new(&bin);
+    sonda.arg("--version");
+    let versao = saida_com_prazo(sonda, PRAZO_VERSAO)
         .ok()
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
@@ -1130,6 +1220,29 @@ pub fn engine_status(base: &str) -> serde_json::Value {
         "path": bin.to_string_lossy(),
     })
 }
+
+/// Runs a bridge action off the UI thread and replies from there (1.6.19).
+///
+/// `handle_message` is called on the event loop — the WebKitGTK signal on Linux, the main thread
+/// on macOS, `WebMessageReceived` on Windows — which paints EVERY window. Until 1.6.19 the arms
+/// that start a process or walk the disk ran right there: the runner install (`npm ci`), the
+/// login's URL read, the interactive shell of account discovery, `git status` on every window
+/// focus. `reply` already hops back to the main thread to `eval`, so the work can run anywhere.
+fn fora_da_ui(
+    window: &WebviewWindow,
+    req: &str,
+    trabalho: impl FnOnce(&WebviewWindow) -> (bool, serde_json::Value) + Send + 'static,
+) {
+    let w = window.clone();
+    let req = req.to_string();
+    std::thread::spawn(move || {
+        let (ok, dados) = trabalho(&w);
+        reply(&w, &req, ok, dados);
+    });
+}
+
+/// One runner install at a time: two would overwrite the same directories concurrently.
+static INSTALANDO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Ponto de entrada do handler nativo: recebe uma mensagem JSON da página.
 pub fn handle_message(window: &WebviewWindow, payload: &str) {
@@ -1183,14 +1296,16 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             if !pasta_autorizada(window, path) {
                 return reply(window, &req, false, fora_da_cerca());
             }
-            reply(window, &req, true, git_status(path));
+            let path = path.to_string();
+            fora_da_ui(window, &req, move |_| (true, git_status(&path)));
         }
         "listTree" => {
             let path = v.get("path").and_then(|x| x.as_str()).unwrap_or_default();
             if !pasta_autorizada(window, path) {
                 return reply(window, &req, false, fora_da_cerca());
             }
-            reply(window, &req, true, list_tree(path));
+            let path = path.to_string();
+            fora_da_ui(window, &req, move |_| (true, list_tree(&path)));
         }
         "gitDiff" => {
             let path = v.get("path").and_then(|x| x.as_str()).unwrap_or_default();
@@ -1198,7 +1313,8 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             if !pasta_autorizada(window, path) {
                 return reply(window, &req, false, fora_da_cerca());
             }
-            reply(window, &req, true, git_diff(path, file));
+            let (path, file) = (path.to_string(), file.to_string());
+            fora_da_ui(window, &req, move |_| (true, git_diff(&path, &file)));
         }
         "readFile" => {
             let path = v.get("path").and_then(|x| x.as_str()).unwrap_or_default();
@@ -1206,12 +1322,13 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             if !pasta_autorizada(window, path) {
                 return reply(window, &req, false, fora_da_cerca());
             }
-            reply(window, &req, true, read_file(path, file));
+            let (path, file) = (path.to_string(), file.to_string());
+            fora_da_ui(window, &req, move |_| (true, read_file(&path, &file)));
         }
-        "codexModels" => {
+        "codexModels" => fora_da_ui(window, &req, |_| {
             let out = codex_models();
-            reply(window, &req, out.get("modelos").is_some(), out);
-        }
+            (out.get("modelos").is_some(), out)
+        }),
         /* Portão 2: o login, conduzido pela tela (1.5.17).
          *
          * `claudeAuthStatus` é leitura pura e sem cota — o `claude auth status --json` é
@@ -1221,30 +1338,30 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
          * `...LoginCode` entrega o código colado. O processo fica vivo entre os dois porque o
          * código só vale para o `code_challenge` da sessão que o gerou. */
         "claudeAuthStatus" => {
-            let (contas, _) = crate::contas_claude::registro(window.app_handle());
-            let id = v.get("accountId").and_then(|x| x.as_str()).unwrap_or_default();
-            match crate::contas_claude::resolver(&contas, id) {
-                Ok(dir) => {
-                    let out = claude_auth_status(dir.as_ref());
-                    let ok = out.get("erro").is_none();
-                    reply(window, &req, ok, out);
+            let id = v.get("accountId").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+            fora_da_ui(window, &req, move |w| {
+                let (contas, _) = crate::contas_claude::registro(w.app_handle());
+                match crate::contas_claude::resolver(&contas, &id) {
+                    Ok(dir) => {
+                        let out = claude_auth_status(dir.as_ref());
+                        (out.get("erro").is_none(), out)
+                    }
+                    Err(e) => (false, serde_json::json!({ "erro": e.mensagem(), "codigo": e.codigo() })),
                 }
-                Err(e) => reply(window, &req, false,
-                    serde_json::json!({ "erro": e.mensagem(), "codigo": e.codigo() })),
-            }
+            });
         }
         "claudeAuthLoginStart" => {
-            let (contas, _) = crate::contas_claude::registro(window.app_handle());
-            let id = v.get("accountId").and_then(|x| x.as_str()).unwrap_or_default();
-            match crate::contas_claude::resolver(&contas, id) {
-                Ok(dir) => match iniciar_login(window, dir.as_ref()) {
-                    Ok(url) => reply(window, &req, true, serde_json::json!({ "url": url })),
-                    Err((c, m)) => reply(window, &req, false,
-                        serde_json::json!({ "erro": m, "codigo": c })),
-                },
-                Err(e) => reply(window, &req, false,
-                    serde_json::json!({ "erro": e.mensagem(), "codigo": e.codigo() })),
-            }
+            let id = v.get("accountId").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+            fora_da_ui(window, &req, move |w| {
+                let (contas, _) = crate::contas_claude::registro(w.app_handle());
+                match crate::contas_claude::resolver(&contas, &id) {
+                    Ok(dir) => match iniciar_login(w, dir.as_ref()) {
+                        Ok(url) => (true, serde_json::json!({ "url": url })),
+                        Err((c, m)) => (false, serde_json::json!({ "erro": m, "codigo": c })),
+                    },
+                    Err(e) => (false, serde_json::json!({ "erro": e.mensagem(), "codigo": e.codigo() })),
+                }
+            });
         }
         "claudeAuthLoginCode" => {
             let codigo = v.get("codigo").and_then(|x| x.as_str()).unwrap_or_default().trim().to_string();
@@ -1270,21 +1387,17 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             // A conta é resolvida ANTES de rodar o binário: id desconhecido ou pasta que
             // sumiu não spawnam nada. Falhar aqui é mais barato e mais honesto que subir um
             // processo que vai autenticar na conta errada e devolver um catálogo plausível.
-            let (contas, _) = crate::contas_claude::registro(window.app_handle());
-            let id = v.get("accountId").and_then(|x| x.as_str()).unwrap_or_default();
-            match crate::contas_claude::resolver(&contas, id) {
-                Ok(dir) => {
-                    let out = claude_models(dir.as_ref());
-                    let ok = out.get("modelos").is_some();
-                    reply(window, &req, ok, out);
+            let id = v.get("accountId").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+            fora_da_ui(window, &req, move |w| {
+                let (contas, _) = crate::contas_claude::registro(w.app_handle());
+                match crate::contas_claude::resolver(&contas, &id) {
+                    Ok(dir) => {
+                        let out = claude_models(dir.as_ref());
+                        (out.get("modelos").is_some(), out)
+                    }
+                    Err(e) => (false, serde_json::json!({ "erro": e.mensagem(), "codigo": e.codigo() })),
                 }
-                Err(e) => reply(
-                    window,
-                    &req,
-                    false,
-                    serde_json::json!({ "erro": e.mensagem(), "codigo": e.codigo() }),
-                ),
-            }
+            });
         }
         // Perfis de conta do Claude Code (ADR-033). Só ids e rótulos saem daqui — nunca o
         // caminho do diretório de configuração, que a página não usa e não pode devolver.
@@ -1317,15 +1430,23 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
          * criaria duas definições do que é uma instalação, e a que o desenvolvedor testa
          * no terminal deixaria de ser a que o usuário recebe. */
         "claudeRunnerInstall" => {
-            match instalar_claude_runner(window.app_handle()) {
-                Ok(saida) => reply(window, &req, true, serde_json::json!({ "saida": saida })),
-                Err((codigo, msg)) => reply(
-                    window, &req, false,
-                    serde_json::json!({ "erro": msg, "codigo": codigo }),
-                ),
+            use std::sync::atomic::Ordering;
+            if INSTALANDO.swap(true, Ordering::SeqCst) {
+                return reply(window, &req, false, serde_json::json!({
+                    "erro": "já há uma instalação do claude-runner em andamento",
+                    "codigo": "instalacao_em_andamento",
+                }));
             }
+            fora_da_ui(window, &req, |w| {
+                let r = instalar_claude_runner(w.app_handle());
+                INSTALANDO.store(false, Ordering::SeqCst);
+                match r {
+                    Ok(saida) => (true, serde_json::json!({ "saida": saida })),
+                    Err((codigo, msg)) => (false, serde_json::json!({ "erro": msg, "codigo": codigo })),
+                }
+            });
         }
-        "claudeAccountsDetect" => {
+        "claudeAccountsDetect" => fora_da_ui(window, &req, |_| {
             let home = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default());
             let achados = crate::contas_claude::descobrir(&home, &|p| p.is_dir());
             let lista: Vec<_> = achados
@@ -1339,23 +1460,17 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
                     })
                 })
                 .collect();
-            reply(window, &req, true, serde_json::json!({ "candidatos": lista }));
-        }
+            (true, serde_json::json!({ "candidatos": lista }))
+        }),
         "claudeAccountAdd" => {
-            let alias = v.get("alias").and_then(|x| x.as_str()).unwrap_or_default();
-            let rotulo = v.get("rotulo").and_then(|x| x.as_str()).unwrap_or_default();
-            match crate::contas_claude::registrar_por_alias(window.app_handle(), alias, rotulo) {
-                Ok(_) => {
-                    let out = crate::contas_claude::como_json(window.app_handle());
-                    reply(window, &req, true, out);
+            let alias = v.get("alias").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+            let rotulo = v.get("rotulo").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+            fora_da_ui(window, &req, move |w| {
+                match crate::contas_claude::registrar_por_alias(w.app_handle(), &alias, &rotulo) {
+                    Ok(_) => (true, crate::contas_claude::como_json(w.app_handle())),
+                    Err(e) => (false, serde_json::json!({ "erro": e.mensagem(), "codigo": e.codigo() })),
                 }
-                Err(e) => reply(
-                    window,
-                    &req,
-                    false,
-                    serde_json::json!({ "erro": e.mensagem(), "codigo": e.codigo() }),
-                ),
-            }
+            });
         }
         "claudeAccountSelect" => {
             let id = v.get("accountId").and_then(|x| x.as_str()).unwrap_or_default();
@@ -1396,8 +1511,7 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
         "engineStatus" => {
             let base = v.get("engine").and_then(|x| x.as_str()).unwrap_or("gateway");
             let (exe, _, _) = motor_do_engine(base);
-            let st = engine_status(exe);
-            reply(window, &req, true, st);
+            fora_da_ui(window, &req, move |_| (true, engine_status(exe)));
         }
         _ => reply(window, &req, false, serde_json::json!({ "error": "ação desconhecida" })),
     }
@@ -1847,6 +1961,110 @@ fn sanitize_filename(nome: &str) -> String {
         "arquivo".to_string()
     } else {
         limpo
+    }
+}
+
+#[cfg(test)]
+mod tests_fora_da_ui {
+    // The process tests are unix-only (`sh`); unconditional imports would be unused-import
+    // errors under `-D warnings` on Windows — the blind spot 1.6.8 measured.
+    #[cfg(unix)]
+    use super::{ler_url_com_prazo, saida_com_prazo};
+    #[cfg(unix)]
+    use std::process::{Command, Stdio};
+    #[cfg(unix)]
+    use std::time::{Duration, Instant};
+
+    #[cfg(unix)]
+    #[test]
+    fn processo_que_nao_termina_vira_erro_no_prazo() {
+        let mut c = Command::new("sh");
+        c.args(["-c", "sleep 30"]);
+        let t = Instant::now();
+        let r = saida_com_prazo(c, Duration::from_millis(300));
+        assert_eq!(r.expect_err("must time out").kind(), std::io::ErrorKind::TimedOut);
+        assert!(t.elapsed() < Duration::from_secs(5), "took {:?}", t.elapsed());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn processo_que_termina_devolve_as_duas_saidas() {
+        let mut c = Command::new("sh");
+        c.args(["-c", "echo ok; echo err >&2"]);
+        let o = saida_com_prazo(c, Duration::from_secs(10)).unwrap();
+        assert!(o.status.success());
+        assert_eq!(String::from_utf8_lossy(&o.stdout), "ok\n");
+        assert_eq!(String::from_utf8_lossy(&o.stderr), "err\n");
+    }
+
+    /// A grandchild that inherits the pipe (a daemon started by an rc file) outlives the child:
+    /// reading to EOF would wait for IT. The call must still come back.
+    #[cfg(unix)]
+    #[test]
+    fn neto_que_segura_o_cano_nao_segura_a_chamada() {
+        let mut c = Command::new("sh");
+        c.args(["-c", "echo ok; sleep 8 &"]);
+        let t = Instant::now();
+        assert!(saida_com_prazo(c, Duration::from_secs(2)).is_ok());
+        assert!(t.elapsed() < Duration::from_secs(6), "took {:?}", t.elapsed());
+    }
+
+    /// 🔴 The case that froze the app for good: a URL the extractor does not recognize, then the
+    /// CLI's prompt with no newline, waiting for a code. `ler_url` alone blocks on it forever.
+    #[cfg(unix)]
+    #[test]
+    fn url_nao_reconhecida_e_prompt_sem_quebra_desistem_no_prazo() {
+        let mut filho = Command::new("sh")
+            .args(["-c", "echo 'visit https://example.com/login'; printf 'Paste code here: '; sleep 30"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let saida = filho.stdout.take().unwrap();
+        let t = Instant::now();
+        let r = ler_url_com_prazo(saida, Duration::from_millis(500));
+        let _ = filho.kill();
+        let _ = filho.wait();
+        assert!(r.is_none());
+        assert!(t.elapsed() < Duration::from_secs(5), "took {:?}", t.elapsed());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn url_de_autorizacao_chega_dentro_do_prazo() {
+        let mut filho = Command::new("sh")
+            .args(["-c", "echo 'Open https://claude.ai/oauth/authorize?code=x'; sleep 30"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let saida = filho.stdout.take().unwrap();
+        let r = ler_url_com_prazo(saida, Duration::from_secs(5));
+        let _ = filho.kill();
+        let _ = filho.wait();
+        assert_eq!(r.map(|(u, _)| u).as_deref(), Some("https://claude.ai/oauth/authorize?code=x"));
+    }
+
+    /// SOURCE check, declared as such: a unit test cannot drive the WebKit signal that calls
+    /// `handle_message`. It guards the decision — every arm that starts a process or walks the
+    /// disk goes through `fora_da_ui` — so moving one back onto the UI thread fails here.
+    #[test]
+    fn bracos_lentos_saem_da_thread_da_interface() {
+        let fonte = include_str!("code_bridge.rs");
+        let ini = fonte.find(&["pub fn handle", "_message("].concat()).expect("handle_message moved");
+        let corpo = &fonte[ini..];
+        let despacho = ["fora_da", "_ui("].concat();
+        for acao in [
+            "gitStatus", "listTree", "gitDiff", "readFile", "codexModels", "claudeAuthStatus",
+            "claudeAuthLoginStart", "claudeModels", "claudeRunnerInstall", "claudeAccountsDetect",
+            "claudeAccountAdd", "engineStatus",
+        ] {
+            let chave = format!("\"{acao}\" =>");
+            let a = corpo.find(&chave).unwrap_or_else(|| panic!("{acao}: arm not found"));
+            let resto = &corpo[a + chave.len()..];
+            let fim = resto.find("\n        \"").unwrap_or(resto.len());
+            assert!(resto[..fim].contains(&despacho), "{acao} runs on the UI thread");
+        }
     }
 }
 
@@ -2480,7 +2698,9 @@ fn git_status(path: &str) -> serde_json::Value {
     // (` M "a\303\247\303\243o.txt"`), the page passed that quoted string back to
     // `gitDiff`, and git answered 0 bytes — every accented or spaced file showed "no
     // changes" until 1.6.10. With `-z` paths come verbatim, NUL-terminated.
-    match Command::new("git").args(["-C", path, "status", "--porcelain=v1", "-z", "-b"]).output() {
+    let mut st = Command::new("git");
+    st.args(["-C", path, "status", "--porcelain=v1", "-z", "-b"]);
+    match saida_com_prazo(st, PRAZO_GIT) {
         Ok(o) if o.status.success() => parse_git_status(&String::from_utf8_lossy(&o.stdout)),
         _ => serde_json::json!({ "repo": false }), // não é repo git
     }
@@ -2562,7 +2782,9 @@ fn git_diff(path: &str, file: &str) -> serde_json::Value {
             args.push("--staged");
         }
         args.extend_from_slice(&["--no-color", "--", file]);
-        match Command::new("git").args(&args).output() {
+        let mut diff = Command::new("git");
+        diff.args(&args);
+        match saida_com_prazo(diff, PRAZO_GIT) {
             Ok(o) if o.status.success() => Some(String::from_utf8_lossy(&o.stdout).into_owned()),
             _ => None,
         }
