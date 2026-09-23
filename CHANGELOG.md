@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.6.27 - an update check that stalls no longer blocks every later one
+
+**The updater had no deadline.** `tauri-plugin-updater`'s default timeout is none, and the app
+set none: a check or a download that stalled — the laptop slept mid-download, a proxy held the
+connection — never returned, `EM_ANDAMENTO` stayed set, and every later check (the automatic one
+every 6 h, or the menu's) answered "Já existe uma verificação de atualização em andamento" until
+the app was restarted. A panic inside the check had the same effect.
+
+- The check has 30 s. The plugin's timeout is total for a request, body included, so the ~80 MB
+  download gets its own 15 min, set on the update before downloading.
+- `EM_ANDAMENTO` is released by a guard on drop — on return and on a panic.
+- Two tests: the guard releases the flag across a panic (behavior), and a declared source check
+  that both deadlines are set where the plugin needs them (it cannot run without an app).
+  Reversal measured on the guard.
+
+Suite: 129 = 128 passed + 1 ignored; clippy clean on Linux and `x86_64-pc-windows-gnu`.
+
 ## 1.6.26 - restarting the Claude login no longer lets the old one erase the new one
 
 **The waiter of an old login cleared the login slot without looking whose it was.** Starting a

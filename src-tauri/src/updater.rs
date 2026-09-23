@@ -59,6 +59,24 @@ const INTERVALO: Duration = Duration::from_secs(6 * 60 * 60);
 /// verdade — o timer periódico e o clique no menu são independentes.
 static EM_ANDAMENTO: AtomicBool = AtomicBool::new(false);
 
+/// Deadlines for the update (1.6.27). The plugin's default is NONE: a check or a download that
+/// stalled — the laptop slept mid-download, a proxy held the connection — never returned, so
+/// `EM_ANDAMENTO` stayed set and every later check (automatic every 6 h, or from the menu)
+/// answered "Já existe uma verificação de atualização em andamento" until the app restarted.
+/// The plugin's timeout is TOTAL for a request, body included: the download of ~80 MB gets
+/// its own, generous one.
+const PRAZO_DA_VERIFICACAO: Duration = Duration::from_secs(30);
+const PRAZO_DO_DOWNLOAD: Duration = Duration::from_secs(15 * 60);
+
+/// Releases `EM_ANDAMENTO` when dropped — on return AND on a panic inside the check, which
+/// would otherwise leave the flag set for the rest of the session (1.6.27).
+struct LiberaAVerificacao;
+impl Drop for LiberaAVerificacao {
+    fn drop(&mut self) {
+        EM_ANDAMENTO.store(false, Ordering::SeqCst);
+    }
+}
+
 /// Onde fica a versão que o usuário dispensou (ao lado do `server.json`).
 const CONFIG_FILE: &str = "updater.json";
 
@@ -383,7 +401,7 @@ async fn executar(app: &AppHandle, manual: bool) {
         return;
     };
 
-    let updater = match app.updater_builder().endpoints(vec![url]) {
+    let updater = match app.updater_builder().timeout(PRAZO_DA_VERIFICACAO).endpoints(vec![url]) {
         Ok(b) => match b.build() {
             Ok(u) => u,
             Err(e) => {
@@ -409,7 +427,7 @@ async fn executar(app: &AppHandle, manual: bool) {
 
     let atual = app.package_info().version.to_string();
 
-    let update = match updater.check().await {
+    let mut update = match updater.check().await {
         Ok(Some(u)) => u,
         // 204 do servidor (em dia, plataforma não empacotada, artefato sem
         // assinatura, recurso desligado) cai todo aqui — e é o caminho comum.
@@ -507,6 +525,8 @@ async fn executar(app: &AppHandle, manual: bool) {
         &format!("ShvIA Desktop {} — o app reinicia ao terminar.", update.version),
     );
 
+    // The check's 30 s would cut an 80 MB download; the download gets its own deadline.
+    update.timeout = Some(PRAZO_DO_DOWNLOAD);
     match update.download_and_install(|_, _| {}, || {}).await {
         Ok(()) => {
             // `restart` já trata ser chamado fora da main thread.
@@ -540,8 +560,8 @@ async fn ciclo(app: AppHandle, manual: bool) {
         }
         return;
     }
+    let _libera = LiberaAVerificacao;
     executar(&app, manual).await;
-    EM_ANDAMENTO.store(false, Ordering::SeqCst);
 }
 
 /// Agenda a checagem automática: uma depois do boot, e a cada 6 h.
@@ -570,6 +590,36 @@ pub fn verificar_agora(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
+    /// 🔴 1.6.27. A check that panicked (or never returned) left `EM_ANDAMENTO` set, and every
+    /// later check answered "already in progress" until a restart. The guard releases it on
+    /// the way out, panic included.
+    #[test]
+    fn a_verificacao_solta_a_trava_mesmo_em_panico() {
+        use super::{LiberaAVerificacao, EM_ANDAMENTO};
+        use std::sync::atomic::Ordering;
+        EM_ANDAMENTO.store(true, Ordering::SeqCst);
+        let r = std::panic::catch_unwind(|| {
+            let _libera = LiberaAVerificacao;
+            panic!("a check that blew up");
+        });
+        assert!(r.is_err());
+        assert!(!EM_ANDAMENTO.load(Ordering::SeqCst), "the in-progress flag stayed set after a panic");
+    }
+
+    /// SOURCE check, declared: the plugin needs a running app, so the deadlines are guarded
+    /// where they are set. Without them a stalled request never returns (the plugin's
+    /// default timeout is none).
+    #[test]
+    fn verificacao_e_download_tem_prazo() {
+        let fonte = include_str!("updater.rs");
+        let corpo = &fonte[..fonte.find("#[cfg(test)]").unwrap_or(fonte.len())];
+        assert!(corpo.contains(&[".timeout(PRAZO_DA", "_VERIFICACAO)"].concat()), "the check has no deadline");
+        let prazo = corpo.find(&["update.timeout = Some(PRAZO_DO", "_DOWNLOAD)"].concat()).expect("the download has no deadline");
+        let baixa = corpo.find(&["update.download_and", "_install("].concat()).expect("download call moved");
+        assert!(prazo < baixa, "the download deadline must be set before downloading");
+        assert!(corpo.contains(&["let _libera = LiberaA", "Verificacao;"].concat()), "ciclo no longer uses the guard");
+    }
+
     // `existe_no_path` is not imported here: its only test is `#[cfg(unix)]`, and an
     // unconditional import is an unused-import error under `-D warnings` on Windows.
     use super::{
