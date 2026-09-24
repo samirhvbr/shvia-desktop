@@ -173,7 +173,16 @@ try {
   }
 } finally {
   server.close();
-  rmSync(base, { recursive: true, force: true });
+  // Cleanup is not the measurement, and must never be the verdict. In CI on 24/09/2026 (#71)
+  // this rmSync threw ENOTEMPTY — an entry appeared in `base` while it was being removed — and
+  // the proof died before printing anything. The cause is NOT known: 10 measured local runs
+  // passed, and no process with `base` in its environment was alive after the runner exited
+  // (probed at 0, 50, 200 and 1000 ms). So it retries, and a leftover directory is reported.
+  try {
+    rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch (e) {
+    console.warn(`[cd] temporary directory left behind: ${base} (${e.code ?? e.message})`);
+  }
 }
 if (falhas.length) {
   for (const f of falhas) console.error(`🔴 ${f}`);
