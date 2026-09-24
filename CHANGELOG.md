@@ -37,6 +37,13 @@ the engines still do not appear in the app yet.
 - **`prova:instalador`** now also reads the `$Files` line of each `install.ps1`. That makes
   three hand-written lists guarded by one ruler. Reversal: `protocolo.mjs` dropped from the
   Codex list turns it red.
+- **`prova:cd` no longer fails on its own cleanup.** The first CI run of #71 (this work, opened
+  at 1.6.55) died in the proof's `finally`: `rmSync` threw ENOTEMPTY, because an entry appeared in
+  the temporary directory while it was being removed, and the verdict was never printed. The
+  cause is not known. Ten measured local runs passed, and no process carrying that directory in
+  its environment was alive after the runner exited (probed at 0, 50, 200 and 1000 ms). The
+  cleanup now retries, and a leftover directory is a warning. What the proof measures did not
+  change.
 
 ## 1.6.55 - the permission lists follow repodocs: five commands move to ask, seven rules leave deny
 
