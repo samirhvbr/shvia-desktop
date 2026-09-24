@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.6.47 - the patch and minor updates Dependabot proposed land as versioned commits
+
+The owner asked to resolve the open branches and PRs. Dependabot's patch/minor proposals are
+dependency hygiene, which this repository's loop may land without asking. Each lands as one
+versioned commit per ecosystem, never as a merge of the PR (the rule from 1.6.35).
+
+- **Cargo, 10 crates (`#49`):** `tauri` 2.11.6, `tauri-plugin-opener` 2.5.5, `tauri-plugin-dialog`
+  2.7.3, `tauri-plugin-notification` 2.4.0, `tauri-plugin-single-instance` 2.4.5,
+  `tauri-plugin-updater` 2.12.0, `serde` 1.0.229, `serde_json` 1.0.151, `uuid` 1.26.1, `time`
+  0.3.55. They were applied with `cargo update --precise` on today's lock, not taken from the PR
+  branch, which was cut before 1.6.36's `serde_with` fix. The updater's changelog was read
+  first, because the updater is the one thing this product cannot undo. 2.12.0's breaking change
+  removes `allowDowngrades` from the **JS** `check` command, a hardening. This app never uses
+  the JS updater API, and its capabilities grant none. The exact `time` pin moves to `=0.3.55`,
+  measured compatible with `cookie` 0.18.1. Measured: `cargo test` (137 passed), clippy
+  `-D warnings` on Linux and `x86_64-pc-windows-gnu`, `cargo deny check` (all four ok).
+
 ## 1.6.46 - the model pin leaves .claude/settings.json
 
 `"model": "opus[1m]"` and the `ANTHROPIC_DEFAULT_OPUS_MODEL` env pin are gone.
