@@ -26,6 +26,9 @@ the Windows job: both predate 1.6.37.
   and `docs/build.md`'s prerequisite now says so. Measured: `npm ci`, `npm run build` (the bundle
   still carries the shell's four server commands), and the dev server that `tauri dev` uses
   answers HTTP 200 and serves `src/main.ts`.
+- **`typescript` 7.0.2 (#48)**, the native compiler, with the `~7.0.2` range the PR proposed.
+  Measured: `tsc --noEmit` is clean, and a control run with an injected type error is refused
+  (TS2322). `npm run build` (`tsc && vite build`) passes.
 
 ## 1.6.48 - the patch and minor updates Dependabot proposed land as versioned commits
 
