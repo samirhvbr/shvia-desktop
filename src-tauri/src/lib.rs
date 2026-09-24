@@ -708,6 +708,19 @@ fn open_window_counter() -> u64 {
 /// bloqueia a navegação inicial do app empacotado e a janela abre BRANCA
 /// (0.9.0 no macOS): em dev o `devUrl` é `http://localhost:1420`, então o bug
 /// só aparece no build. Ver docs/decisoes.md (ADR-013).
+/// May a frame at this origin post to the Windows bridge? (1.6.30)
+///
+/// The SAME rule that keeps a navigation in-app and decides where the bridge is injected.
+/// `windows_ipc.rs` used to keep its own fixed list, which never learned the configured
+/// server (on-prem, D4): the bridge was injected there, and every message it posted was
+/// dropped — Code mode, notifications and the badge dead on Windows on-prem. Here, so it is
+/// tested on every platform; the Windows module only calls it.
+// Called only by windows_ipc.rs; compiled everywhere so its test runs on every platform.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub(crate) fn origem_da_mensagem_permitida(origem: &str) -> bool {
+    tauri::Url::parse(origem).is_ok_and(|u| is_internal(&u))
+}
+
 fn is_internal(url: &tauri::Url) -> bool {
     let host = match url.host_str() {
         Some(h) => h,
@@ -1694,6 +1707,13 @@ mod tests {
 
         // Os embutidos seguem valendo junto com o configurado.
         assert!(internal("https://ai.shvia.org/chat"));
+
+        // 1.6.30: the Windows bridge accepts messages from the configured server by the same
+        // rule — its old fixed list dropped them — and still refuses an embedded stranger.
+        assert!(super::origem_da_mensagem_permitida("https://onprem.cliente.example:8443/code"));
+        assert!(!super::origem_da_mensagem_permitida("https://outro.cliente.example/iframe"));
+        assert!(!super::origem_da_mensagem_permitida("about:blank"));
+        assert!(!super::origem_da_mensagem_permitida(""));
 
         // Limpa: outros testes deste módulo assumem só a lista embutida.
         super::server::set_configured_host_para_teste(super::server::DEFAULT_URL);

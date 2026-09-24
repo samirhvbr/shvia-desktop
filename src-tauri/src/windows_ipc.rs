@@ -22,27 +22,12 @@ use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2WebMessageReceiv
 use webview2_com::WebMessageReceivedEventHandler;
 use windows::core::PWSTR;
 
-/// Origens autorizadas a postar mensagens na ponte do Modo Code.
-/// Mantém em sincronia com `is_internal` em lib.rs — só o servidor do ShvIA
-/// e a casca local (dev). Aceita path/querystring após a origem.
-const ALLOWED_MESSAGE_ORIGINS: &[&str] = &[
-    // Espelha SERVER_HOSTS de lib.rs — as três faces do servidor durante a
-    // migração de domínio (26/07). O ápex shvia.org NÃO entra: é a landing, em
-    // outro IP. Ao desligar o domínio legado, remover a linha dele nos DOIS
-    // arquivos.
-    "https://ai.shvia.org",
-    "https://ia.shvia.org",
-    "https://ia.blue3.com.br",
-    "http://localhost",
-    "http://tauri.localhost",
-];
-
+/// Origem autorizada a postar na ponte do Modo Code: a MESMA regra do resto do perímetro
+/// (`crate::origem_da_mensagem_permitida` → `is_internal`). Até 1.6.30 havia aqui uma lista
+/// fixa que não conhecia o servidor configurado (on-prem): a ponte era injetada lá e toda
+/// mensagem era descartada.
 fn origin_allowed(source: &str) -> bool {
-    let trimmed = source.split('?').next().unwrap_or("");
-    ALLOWED_MESSAGE_ORIGINS.iter().any(|allowed| {
-        trimmed == *allowed
-            || (trimmed.starts_with(allowed) && trimmed.as_bytes().get(allowed.len()) == Some(&b'/'))
-    })
+    crate::origem_da_mensagem_permitida(source)
 }
 
 /// Registra o receptor `WebMessageReceived` no WebView2 da janela (chamado no

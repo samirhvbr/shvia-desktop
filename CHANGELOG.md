@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.6.30 - the Windows bridge answers the configured (on-prem) server too
+
+On Windows the Code-mode bridge checks which frame posted each message against
+`ALLOWED_MESSAGE_ORIGINS`, a fixed list in `windows_ipc.rs` that mirrored `SERVER_HOSTS` by hand.
+It never learned the server a machine's owner configures (D4, on-prem): `is_server_host` accepts
+the configured host, so the bridge WAS injected into those pages — and every message they posted
+was dropped. On Windows on-prem, Code mode, notifications and the badge were dead.
+
+- The Windows bridge now uses the same rule as the rest of the perimeter:
+  `origem_da_mensagem_permitida` parses the origin and asks `is_internal`, the function that
+  keeps a navigation in-app and decides where the bridge is injected. The duplicated list is gone.
+- The rule lives in `lib.rs` so its test runs on every platform: the existing configured-server
+  test now also asserts the on-prem origin is accepted and an embedded stranger, `about:blank`
+  and an empty origin are refused. Reversal measured: the old fixed list fails on the on-prem
+  origin.
+
+Compile-checked for `x86_64-pc-windows-gnu`; like all Windows code here, never run on a real
+Windows machine.
+
 ## 1.6.29 - stopping an engine asks it to leave before killing it
 
 **"Parar", closing a window, a reload and a new session all ended the engine with SIGKILL**
