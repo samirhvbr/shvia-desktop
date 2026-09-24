@@ -27,20 +27,87 @@ fi
 remote="${1:-origin}"
 version_file="version.md"
 
-if [ ! -f "$version_file" ]; then
-  echo "pre-push: WARNING — no $version_file at repo root; nothing to check." >&2
-  exit 0
+# git feeds the refs being pushed on stdin, one line per ref:
+#   <local ref> <local sha> <remote ref> <remote sha>
+#
+# Reading it is what tells a version bump apart from a branch deletion, a tag,
+# or a topic branch. Not reading it is how this hook refused
+# `git push origin --delete main` on 07/09/2026: there was no version in that
+# push at all, and it asked the version question anyway — and a guard that
+# refuses an operation it was never about is a guard that gets bypassed.
+refs_in="$(cat || true)"
+
+default_branch="$(git symbolic-ref --quiet --short "refs/remotes/$remote/HEAD" 2>/dev/null | sed "s|^$remote/||")"
+default_branch="${default_branch:-master}"
+
+pushed_sha=""
+if [ -n "$refs_in" ]; then
+  touches_default=0
+  while read -r local_ref local_sha remote_ref remote_sha; do
+    [ -n "${remote_ref:-}" ] || continue
+    [ "$remote_ref" = "refs/heads/$default_branch" ] || continue
+    # An all-zero local sha is a deletion: nothing is being published.
+    case "${local_sha:-}" in *[!0]*) touches_default=1; pushed_sha="$local_sha" ;; esac
+  done <<<"$refs_in"
+
+  if [ "$touches_default" -eq 0 ]; then
+    echo "pre-push: nothing here updates $default_branch — version check skipped." >&2
+    exit 0
+  fi
+fi
+
+# The queue's whole recovery story — "it is git-tracked on purpose, so
+# `git checkout HEAD~1 -- .continue/` brings it back" — assumes the file is in
+# git. In a new project it is not: the drafts sit untracked while the first
+# commits are about structure, and a queue emptied at that moment is gone. This
+# was measured on 07/09/2026 in a repository whose 1,338-line brief had never
+# been committed; it survived because the owner had a copy elsewhere.
+#
+# A warning and never a refusal: an untracked draft is a normal state of work in
+# progress, and a guard that fires on normal work is a guard that gets bypassed.
+if [ -d .continue ]; then
+  untracked_queue="$(git ls-files --others --exclude-standard -- .continue 2>/dev/null || true)"
+  if [ -n "$untracked_queue" ]; then
+    echo "" >&2
+    echo "pre-push: WARNING — these queue files are not in git:" >&2
+    printf '%s\n' "$untracked_queue" | sed 's/^/    /' >&2
+    echo "  Recovering a queue item depends on it being versioned. Deleting an" >&2
+    echo "  untracked one does not come back. Commit them, or know that." >&2
+    echo "" >&2
+  fi
+fi
+
+# The version is read from the COMMIT BEING PUSHED, not from the working tree.
+# The tree is whatever this checkout has on disk, and a push publishes a commit:
+# pushing 1.6.5 to master from a checkout sitting at 1.6.3 was refused on
+# 23/09/2026 (SHVIA-DESKTOP) although the commit it published carried the right,
+# higher number — and the same reading lets a duplicate through the other way
+# round, when the tree holds an uncommitted bump. With no stdin (the hook run by
+# hand) there is no pushed commit to read, and the working tree is the answer.
+if [ -n "$pushed_sha" ]; then
+  version_source="$version_file at ${pushed_sha:0:12} (the commit being pushed)"
+  if ! version_text="$(git show "$pushed_sha:$version_file" 2>/dev/null)"; then
+    echo "pre-push: WARNING — no $version_file in the commit being pushed; nothing to check." >&2
+    exit 0
+  fi
+else
+  version_source="$version_file in the working tree"
+  if [ ! -f "$version_file" ]; then
+    echo "pre-push: WARNING — no $version_file at repo root; nothing to check." >&2
+    exit 0
+  fi
+  version_text="$(cat "$version_file")"
 fi
 
 # The version is the FIRST semver in the file, whatever shape the file has:
 # a bare "1.0.0" and a markdown document both satisfy the rule (ADR-012). This
 # is the same reading tools/release.sh does, deliberately — two implementations
 # of one rule is how a rule ends up with two versions, one of them wrong.
-local_version="$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' "$version_file" | head -n 1)"
+local_version="$(printf '%s\n' "$version_text" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
 
 if [ -z "$local_version" ]; then
   echo "" >&2
-  echo "pre-push: REJECTED — no X.Y.Z version found in $version_file." >&2
+  echo "pre-push: REJECTED — no X.Y.Z version found in $version_source." >&2
   echo "  The file must contain a semver; the first one in it is the version." >&2
   echo "  See docs/versioning.md." >&2
   echo "" >&2
@@ -54,6 +121,8 @@ if ! git fetch --quiet "$remote" 2>/dev/null; then
   exit 0
 fi
 
+# Recomputed after the fetch: a repository cloned before its default branch was
+# renamed has a stale refs/remotes/<remote>/HEAD until then.
 default_branch="$(git symbolic-ref --quiet --short "refs/remotes/$remote/HEAD" 2>/dev/null | sed "s|^$remote/||")"
 default_branch="${default_branch:-master}"
 ref="refs/remotes/$remote/$default_branch"
@@ -73,6 +142,7 @@ fi
 if [ "$local_version" = "$remote_version" ]; then
   echo "" >&2
   echo "pre-push: REJECTED — version $local_version is already on $default_branch." >&2
+  echo "  (read from $version_source)" >&2
   echo "  Bump $version_file in the same commit as the change." >&2
   echo "  Z = docs/adjustment · Y = new locked ADR or milestone · X = manual." >&2
   echo "  Rules: docs/versioning.md · bypass: $HOOK_ESCAPE_VAR=1" >&2
@@ -85,7 +155,7 @@ lower="$(printf '%s\n%s\n' "$local_version" "$remote_version" | sort -t. -k1,1n 
 if [ "$lower" = "$local_version" ]; then
   echo "" >&2
   echo "pre-push: REJECTED — version goes BACKWARD." >&2
-  echo "  local:  $local_version" >&2
+  echo "  pushed: $local_version   ($version_source)" >&2
   echo "  $default_branch: $remote_version" >&2
   echo "  Rebase onto $default_branch and bump above the remote version." >&2
   echo "  Rules: docs/versioning.md · bypass: $HOOK_ESCAPE_VAR=1" >&2

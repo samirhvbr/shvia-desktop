@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.6.42 - pre-push is regenerated from repodocs 1.14.17, and a push is judged by the commit it publishes
+
+`tools/git-hooks/pre-push` was a copy from before repodocs `1.9.2`: it never read what git
+sends on stdin and always took the version from the **working tree**. It refused twice on
+23/09. Pushing `1.6.5` to `master` from a checkout at `1.6.3` was refused although the commit
+was right, and a push that only **deleted** a branch was refused with "1.6.7 is already on
+master". The owner chose "fix it in repodocs, for the fleet" (`samirhvbr/repodocs#2`, released
+as `1.14.17`). The template there now reads the version with `git show <pushed sha>:version.md`
+and skips a push that does not update `master`.
+
+- The hook is regenerated the way `tools/fleet.sh hooks` does it: the template with
+  `HOOK_ESCAPE_VAR` set to this repository's (`REPODOCS_NO_HOOK`, kept). It is identical to the
+  template except for that line.
+- Measured with real pushes against a local bare remote, one fresh repository per case: the new
+  hook gets all 7 cases right. The copy it replaces refused a push from a checkout at another
+  version, a branch deletion, a tag and a topic branch, and let through a duplicate version
+  when the tree held an uncommitted bump.
+- Still different from the standard in `fleet.sh check` (fleet rollouts the owner schedules, not
+  this item): `tools/release.sh`, and the `QUEUE-RULE`/`LANGUAGE-RULE` echo blocks.
+
 ## 1.6.41 - the bridge starts its split by subject: the folder panel moves to its own module
 
 `src-tauri/src/code_bridge.rs` had grown to 3,760 lines (1,915 on 07/09): dispatch, the page shim,
