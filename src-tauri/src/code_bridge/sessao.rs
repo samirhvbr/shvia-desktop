@@ -502,13 +502,13 @@ mod tests_encerrar {
     #[cfg(unix)]
     use super::{encerrar_com_prazo, Sidecar};
     #[cfg(unix)]
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
     #[cfg(unix)]
     use std::time::{Duration, Instant};
 
     #[cfg(unix)]
     fn sidecar(script: &str, arg: &str) -> Sidecar {
-        let mut child = Command::new("sh")
+        let mut child = crate::processo::comando("sh")
             .args(["-c", script, "sh", arg])
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
@@ -629,7 +629,7 @@ mod tests_colher {
         use std::process::Stdio;
         let sc = Sidecars::default();
 
-        let mut filho = Command::new("/bin/sh")
+        let mut filho = crate::processo::comando("/bin/sh")
             .args(["-c", "exit 3"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -647,11 +647,11 @@ mod tests_colher {
     fn colher_de_geracao_velha_nao_sinaliza() {
         use std::process::Stdio;
         let sc = Sidecars::default();
-        let mut f1 = Command::new("/bin/sh").args(["-c", "exit 0"]).stdin(Stdio::piped()).spawn().unwrap();
+        let mut f1 = crate::processo::comando("/bin/sh").args(["-c", "exit 0"]).stdin(Stdio::piped()).spawn().unwrap();
         let s1 = f1.stdin.take().unwrap();
         let gen_velha = sc.insert("janela".into(), f1, s1);
 
-        let mut f2 = Command::new("/bin/sh").args(["-c", "exit 0"]).stdin(Stdio::piped()).spawn().unwrap();
+        let mut f2 = crate::processo::comando("/bin/sh").args(["-c", "exit 0"]).stdin(Stdio::piped()).spawn().unwrap();
         let s2 = f2.stdin.take().unwrap();
         let gen_nova = sc.insert("janela".into(), f2, s2);
 

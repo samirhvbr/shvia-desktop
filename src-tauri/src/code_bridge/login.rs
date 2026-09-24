@@ -140,7 +140,7 @@ pub(super) fn claude_auth_status(conta: Option<&crate::contas_claude::Alvo>) -> 
     let Some(bin) = resolve_bin("claude") else {
         return serde_json::json!({ "erro": "claude não encontrado no PATH", "codigo": "cli_ausente" });
     };
-    let mut cmd = Command::new(bin);
+    let mut cmd = crate::processo::comando(bin);
     cmd.arg("auth").arg("status").arg("--json");
     if let Some(p) = crate::user_env::sidecar_path() {
         cmd.env("PATH", p);
@@ -441,7 +441,7 @@ pub(super) fn iniciar_login(
     cancelar_login();
     let bin = resolve_bin("claude")
         .ok_or(("cli_ausente", "claude não encontrado no PATH".to_string()))?;
-    let mut cmd = Command::new(bin);
+    let mut cmd = crate::processo::comando(bin);
     cmd.arg("auth").arg("login").arg("--claudeai");
     if let Some(p) = crate::user_env::sidecar_path() {
         cmd.env("PATH", p);
@@ -549,14 +549,14 @@ mod tests_login_geracao {
     #[cfg(unix)]
     use super::{liberar_slot_do_login, login_slot, LoginEmCurso};
     #[cfg(unix)]
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
 
     /// 🔴 1.6.26. The waiter of an OLD login cleared the slot unconditionally, so a restarted
     /// login could be dropped by the previous one's exit. Only the owner clears it now.
     #[cfg(unix)]
     #[test]
     fn o_fim_de_um_login_velho_nao_apaga_o_login_novo() {
-        let mut filho = Command::new("cat").stdin(Stdio::piped()).stdout(Stdio::null()).spawn().unwrap();
+        let mut filho = crate::processo::comando("cat").stdin(Stdio::piped()).stdout(Stdio::null()).spawn().unwrap();
         let stdin = filho.stdin.take().unwrap();
         let filho = std::sync::Arc::new(std::sync::Mutex::new(filho));
         *login_slot().lock().unwrap() = Some(LoginEmCurso { stdin, filho: filho.clone(), geracao: 7 });

@@ -18,6 +18,7 @@
 
 mod cli_config;
 mod user_env;
+mod processo;
 mod code_bridge;
 mod contas_claude;
 /// Endereço do servidor: config persistida, validação e probe (item D4; ADR-019).
@@ -1226,11 +1227,10 @@ fn tts_speak(window: &WebviewWindow, generation: u64, text: &str) {
     let text: String = text.chars().take(16_000).collect();
     let window = window.clone();
     std::thread::spawn(move || {
-        use std::process::Command;
         // Troca imediata: cancela qualquer fala em curso antes de começar a nova.
-        let _ = Command::new("spd-say").arg("-C").status();
+        let _ = crate::processo::comando("spd-say").arg("-C").status();
         // Fala e ESPERA (`-w`) terminar ou ser descartada.
-        let spoke = Command::new("spd-say")
+        let spoke = crate::processo::comando("spd-say")
             .args(["-w", "-o", "espeak-ng", "-l", "pt-BR", "--"])
             .arg(&text)
             .status();
@@ -1255,7 +1255,7 @@ fn tts_speak(window: &WebviewWindow, generation: u64, text: &str) {
 #[cfg(target_os = "linux")]
 fn tts_cancel() {
     std::thread::spawn(|| {
-        let _ = std::process::Command::new("spd-say").arg("-C").status();
+        let _ = crate::processo::comando("spd-say").arg("-C").status();
     });
 }
 

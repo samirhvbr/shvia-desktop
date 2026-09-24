@@ -506,14 +506,14 @@ mod tests_fora_da_ui {
     #[cfg(unix)]
     use super::{ler_url_com_prazo, saida_com_prazo};
     #[cfg(unix)]
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
     #[cfg(unix)]
     use std::time::{Duration, Instant};
 
     #[cfg(unix)]
     #[test]
     fn processo_que_nao_termina_vira_erro_no_prazo() {
-        let mut c = Command::new("sh");
+        let mut c = crate::processo::comando("sh");
         c.args(["-c", "sleep 30"]);
         let t = Instant::now();
         let r = saida_com_prazo(c, Duration::from_millis(300));
@@ -524,7 +524,7 @@ mod tests_fora_da_ui {
     #[cfg(unix)]
     #[test]
     fn processo_que_termina_devolve_as_duas_saidas() {
-        let mut c = Command::new("sh");
+        let mut c = crate::processo::comando("sh");
         c.args(["-c", "echo ok; echo err >&2"]);
         let o = saida_com_prazo(c, Duration::from_secs(10)).unwrap();
         assert!(o.status.success());
@@ -537,7 +537,7 @@ mod tests_fora_da_ui {
     #[cfg(unix)]
     #[test]
     fn neto_que_segura_o_cano_nao_segura_a_chamada() {
-        let mut c = Command::new("sh");
+        let mut c = crate::processo::comando("sh");
         c.args(["-c", "echo ok; sleep 8 &"]);
         let t = Instant::now();
         assert!(saida_com_prazo(c, Duration::from_secs(2)).is_ok());
@@ -549,7 +549,7 @@ mod tests_fora_da_ui {
     #[cfg(unix)]
     #[test]
     fn url_nao_reconhecida_e_prompt_sem_quebra_desistem_no_prazo() {
-        let mut filho = Command::new("sh")
+        let mut filho = crate::processo::comando("sh")
             .args(["-c", "echo 'visit https://example.com/login'; printf 'Paste code here: '; sleep 30"])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -567,7 +567,7 @@ mod tests_fora_da_ui {
     #[cfg(unix)]
     #[test]
     fn url_de_autorizacao_chega_dentro_do_prazo() {
-        let mut filho = Command::new("sh")
+        let mut filho = crate::processo::comando("sh")
             .args(["-c", "echo 'Open https://claude.ai/oauth/authorize?code=x'; sleep 30"])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())

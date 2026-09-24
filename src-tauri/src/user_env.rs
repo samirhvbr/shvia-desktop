@@ -110,7 +110,7 @@ fn do_shell_de_login() -> Option<String> {
 
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let out = std::process::Command::new(&shell).arg("-ilc").arg(&script).output();
+        let out = crate::processo::comando(&shell).arg("-ilc").arg(&script).output();
         let _ = tx.send(out);
     });
     // 3s cobre um shell de login pesado com folga; estourou, a thread fica com o

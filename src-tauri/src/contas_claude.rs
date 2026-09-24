@@ -411,7 +411,7 @@ pub fn descobrir(home: &Path, existe: &dyn Fn(&Path) -> bool) -> Vec<Candidato> 
     };
     // Interactive (`-i`), so it reads rc files — which may prompt or start daemons. Bounded
     // since 1.6.19: unbounded, a prompting rc froze the Settings screen for good.
-    let mut shell = std::process::Command::new(bin);
+    let mut shell = crate::processo::comando(bin);
     shell.arg("-ic").arg(script);
     let saida = crate::code_bridge::saida_com_prazo(shell, crate::code_bridge::PRAZO_SHELL_INTERATIVO);
     match saida {
@@ -732,11 +732,11 @@ mod tests {
 
     #[test]
     fn aplicar_so_seta_a_variavel_quando_ha_diretorio() {
-        let mut cmd = std::process::Command::new("true");
+        let mut cmd = crate::processo::comando("true");
         aplicar(&mut cmd, None);
         assert!(cmd.get_envs().next().is_none(), "o padrão não pode setar CLAUDE_CONFIG_DIR");
 
-        let mut cmd = std::process::Command::new("true");
+        let mut cmd = crate::processo::comando("true");
         let alvo = Alvo { var: Var::ConfigDir, dir: PathBuf::from("/home/dev/.claude-blue3") };
         aplicar(&mut cmd, Some(&alvo));
         let envs: Vec<_> = cmd.get_envs().collect();
@@ -812,7 +812,7 @@ mod tests {
 
     #[test]
     fn cada_perfil_seta_a_variavel_que_ele_declara() {
-        let mut cmd = std::process::Command::new("true");
+        let mut cmd = crate::processo::comando("true");
         let alvo = Alvo { var: Var::SecureStorage, dir: PathBuf::from("/home/dev/.claude-cred-blue3") };
         aplicar(&mut cmd, Some(&alvo));
         let envs: Vec<_> = cmd.get_envs().collect();

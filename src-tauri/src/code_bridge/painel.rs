@@ -53,7 +53,6 @@ mod tests_leitura_com_teto {
 #[cfg(test)]
 mod tests_git_diff {
     use super::{git_diff, git_status, parse_git_status, GIT_DIFF_MAX};
-    use std::process::Command;
 
     /// The `-z` format, entry by entry — including the rename, whose second field is the
     /// OLD path and must not become a file of its own.
@@ -88,7 +87,7 @@ mod tests_git_diff {
     fn arquivo_com_acento_ou_espaco_tem_diff_pelo_nome_que_o_status_lista() {
         let dir = repo_temporario("acentos").expect("this test needs git");
         let p = dir.to_string_lossy().into_owned();
-        let git = |args: &[&str]| Command::new("git").args(["-C", &p]).args(args).output().unwrap();
+        let git = |args: &[&str]| crate::processo::comando("git").args(["-C", &p]).args(args).output().unwrap();
         for nome in ["a\u{e7}\u{e3}o.txt", "a b.txt"] {
             std::fs::write(dir.join(nome), "antes\n").unwrap();
         }
@@ -122,7 +121,7 @@ mod tests_git_diff {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).ok()?;
         let p = dir.to_string_lossy().into_owned();
-        let git = |args: &[&str]| Command::new("git").args(["-C", &p]).args(args).output().ok();
+        let git = |args: &[&str]| crate::processo::comando("git").args(["-C", &p]).args(args).output().ok();
         git(&["init", "-q"])?;
         git(&["config", "user.email", "t@t.tld"])?;
         git(&["config", "user.name", "t"])?;
@@ -159,7 +158,7 @@ mod tests_git_diff {
         let Some(dir) = repo_temporario("staged") else { return };
         std::fs::write(dir.join("a.txt"), "linha 1\nlinha TRES\n").unwrap();
         let p = dir.to_string_lossy().into_owned();
-        Command::new("git").args(["-C", &p, "add", "a.txt"]).output().unwrap();
+        crate::processo::comando("git").args(["-C", &p, "add", "a.txt"]).output().unwrap();
 
         let r = git_diff(&p, "a.txt");
 
@@ -230,8 +229,8 @@ mod tests_git_diff {
         let Some(dir) = repo_temporario("dash") else { return };
         let p = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("-p"), "antes\n").unwrap();
-        Command::new("git").args(["-C", &p, "add", "-A"]).output().unwrap();
-        Command::new("git").args(["-C", &p, "commit", "-qm", "add -p"]).output().unwrap();
+        crate::processo::comando("git").args(["-C", &p, "add", "-A"]).output().unwrap();
+        crate::processo::comando("git").args(["-C", &p, "commit", "-qm", "add -p"]).output().unwrap();
         std::fs::write(dir.join("-p"), "depois\n").unwrap();
 
         let r = git_diff(&p, "-p");
@@ -340,7 +339,7 @@ pub(super) fn git_status(path: &str) -> serde_json::Value {
     // (` M "a\303\247\303\243o.txt"`), the page passed that quoted string back to
     // `gitDiff`, and git answered 0 bytes — every accented or spaced file showed "no
     // changes" until 1.6.10. With `-z` paths come verbatim, NUL-terminated.
-    let mut st = Command::new("git");
+    let mut st = crate::processo::comando("git");
     st.args(["-C", path, "status", "--porcelain=v1", "-z", "-b"]);
     match saida_com_prazo(st, PRAZO_GIT) {
         Ok(o) if o.status.success() => parse_git_status(&String::from_utf8_lossy(&o.stdout)),
@@ -425,7 +424,7 @@ pub(super) fn git_diff(path: &str, file: &str) -> serde_json::Value {
             args.push("--staged");
         }
         args.extend_from_slice(&["--no-color", "--", file]);
-        let mut diff = Command::new("git");
+        let mut diff = crate::processo::comando("git");
         diff.args(&args);
         match saida_com_prazo(diff, PRAZO_GIT) {
             Ok(o) if o.status.success() => Some(String::from_utf8_lossy(&o.stdout).into_owned()),

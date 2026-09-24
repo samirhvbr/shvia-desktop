@@ -94,7 +94,7 @@ pub(crate) fn versao_do_anna() -> String {
         .unwrap_or(false);
     let origem = if empacotado { "empacotado" } else { "externo" };
 
-    let mut sonda = std::process::Command::new(&bin);
+    let mut sonda = crate::processo::comando(&bin);
     sonda.arg("--version");
     let bruto = saida_com_prazo(sonda, PRAZO_VERSAO)
         .ok()
@@ -241,11 +241,11 @@ pub(super) fn instalar_claude_runner(app: &tauri::AppHandle) -> Result<String, (
     // `-ExecutionPolicy Bypass` applies to THIS run only: a machine on the default
     // (Restricted) policy would refuse the script, and the button is the user's consent.
     let (mut cmd, sem_interprete) = if cfg!(windows) {
-        let mut c = Command::new("powershell");
+        let mut c = crate::processo::comando("powershell");
         c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"]).arg(&script);
         (c, "powershell_ausente")
     } else {
-        let mut c = Command::new("bash");
+        let mut c = crate::processo::comando("bash");
         c.arg(&script);
         (c, "bash_ausente")
     };
@@ -291,7 +291,7 @@ pub(crate) struct Lancamento {
 
 impl Lancamento {
     pub(crate) fn comando(&self) -> Command {
-        let mut c = Command::new(&self.programa);
+        let mut c = crate::processo::comando(&self.programa);
         c.args(&self.antes);
         c
     }
@@ -364,7 +364,7 @@ pub(super) fn resolve_bin(base: &str) -> Option<PathBuf> {
     // (2)+(3) por SO.
     #[cfg(windows)]
     {
-        let mut onde = Command::new("where");
+        let mut onde = crate::processo::comando("where");
         onde.arg(base);
         if let Ok(out) = saida_com_prazo(onde, PRAZO_VERSAO) {
             if out.status.success() {
@@ -387,7 +387,7 @@ pub(super) fn resolve_bin(base: &str) -> Option<PathBuf> {
 
     #[cfg(not(windows))]
     {
-        let mut probe = Command::new("sh");
+        let mut probe = crate::processo::comando("sh");
         probe.arg("-c").arg(format!("command -v {base}"));
         if let Some(p) = crate::user_env::sidecar_path() {
             probe.env("PATH", p);
@@ -686,7 +686,7 @@ mod smoke_codex_ao_vivo {
         // exatamente o estado que a ponte agora sabe nomear.
         use std::io::Write;
         use std::process::Stdio;
-        let mut filho = Command::new(&bin)
+        let mut filho = crate::processo::comando(&bin)
             .args(["--cwd", std::env::temp_dir().to_str().unwrap_or("/tmp")])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

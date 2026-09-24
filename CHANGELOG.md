@@ -28,6 +28,20 @@ runners, and this version makes the app use them. Nothing changes on Linux or ma
   `prova:instalador` requires it there. A missing PowerShell answers `powershell_ausente`, beside
   `bash_ausente`. The source ruler that guards the two candidate paths now counts
   `.join(INSTALADOR)`, and checks that the constant names both installers.
+- **No process the app starts opens a console window on Windows.** The release build is a GUI
+  app (`windows_subsystem = "windows"`). On Windows, a console program started by a GUI app gets
+  a console window of its own unless it is created with `CREATE_NO_WINDOW`, and none of the
+  app's process starts set it:
+  - each `git status` of the Changes tab would flash a black window;
+  - an engine session (`anna`, or `node` running a runner) would keep one open for its whole
+    life.
+
+  Nobody had seen it, because the app has never run on a Windows machine; it was found by
+  reading, while making the runners work there. Every `Command` now comes from
+  `processo::comando()`: 34 call sites, tests included, because the flag only exists on
+  Windows. A ruler holds that `Command::new(` appears nowhere else. Reversal measured: a raw
+  spawn planted in `painel.rs` fails it, with the file and line. `cargo test` passes 140 tests,
+  and clippy `-D warnings` passes on Linux (all targets) and `x86_64-pc-windows-gnu`.
 
 ## 1.6.56 - the two runners get a Windows installer, proved under PowerShell
 
