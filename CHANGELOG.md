@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6.46 - the model pin leaves .claude/settings.json
+
+`"model": "opus[1m]"` and the `ANTHROPIC_DEFAULT_OPUS_MODEL` env pin are gone.
+The window suffix was a version pin in disguise — the 1M variant existed only for the
+previous Opus, so every session was born on it while the catalog already offered the
+newer one. The env var is worse than a pin: it redefines what `opus` means for
+everything that reads it, the model picker included.
+
+It unblocks nothing on its own: the deciding layer is the account's server-managed
+settings, which outrank every local file. Rule, measurement and what to write instead
+(`"model": "opus55"`, the version named): repodocs ADR-026.
+
+No test: two JSON keys and a comment. Checked that the file still parses.
+
 ## 1.6.45 - microphone and image paste on Linux are re-measured, and the rest is a two-minute check
 
 ADR-008 (30/06) recorded that on WebKitGTK the microphone does not capture and an image does not
