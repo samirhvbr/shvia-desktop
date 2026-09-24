@@ -15,8 +15,11 @@ decision panel on 23/09/2026. They are recorded where each one applies:
   rewrite the installer, so a signed installer would carry an updater signature over bytes
   that no longer exist. The fix (`bundle.windows.signCommand`) waits for a certificate and a
   Windows machine.
-- **Screens of its own** and **the DEV URL** are recorded by the next two commits of this
-  version (ADR-035; `dev.shvia.org`).
+- **Screens of its own** ("Pode ter telas próprias"): **ADR-035**. The desktop may have screens
+  in its local shell (`src/`). The default: a screen about this machine is a candidate for the
+  desktop, and a screen about the account's server data stays in SHVIA-WEB. Nothing that exists
+  moves because of it. ADR-002, which left "Forma B" open for desktop-only screens, points to it.
+- **The DEV URL** (`dev.shvia.org`): recorded by the last commit of this version.
 - **The directory case** (`SHVIA-DESKTOP` here, `shvia-desktop` on GitHub): no action, by the
   owner's choice.
 - Both notes keep the questions as they were asked, answered in place. The state note's header

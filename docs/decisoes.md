@@ -36,6 +36,7 @@ how-to; linkar o ADR.
 - **Consequências:** F1 entrega tudo sem código de UI. Camada nativa fica fina
   (janela/tray/deep-link/notificações/updater). Risco: streaming SSE no WebKitGTK
   (ADR-006). Forma B fica como evolução opcional (F2+) para telas desktop-only.
+  → Desktop-only screens are allowed since [ADR-035](#adr-035--the-desktop-may-have-screens-of-its-own) (23/09/2026).
 - **Alternativas:** Forma B / React-on-API (rejeitada na F1: exige paridade de API
   + reescrever telas; mantém duas UIs). Híbrido (a forma A já é o primeiro passo
   natural de um híbrido).
@@ -2030,3 +2031,55 @@ narrated by the agent.
   zeros, and the session keeps counting every turn.
 - **Not validated:** a real run on a real engine (B9), and B8 onwards. Each block adds its
   line here as it ships, as ADR-033 did.
+
+---
+
+## ADR-035 — The desktop may have screens of its own
+
+- **Date:** 23/09/2026 · **Status:** **Accepted**, by the owner's answer on the decision panel
+  ("Pode ter telas próprias")
+
+### Context
+
+ADR-002 made the desktop a thin shell: the window navigates the server, and the UI is
+SHVIA-WEB's. It left "Forma B" as an optional evolution *for desktop-only screens*. Since then
+the desktop grew things only it can do: the engines and their runners, the Claude Code
+accounts, the tray, the diagnostics. Every one of them that needed a screen got it **in
+SHVIA-WEB**, behind feature detection (`Ponte.tem(...)`). The Code mode panel, the Claude login
+and the accounts screen all live there. The desktop's own UI is the local shell (the splash,
+the offline state, the server form in `src/` and `index.html`) plus native dialogs.
+
+That costs twice. A desktop-only screen needs a web release to change. And it cannot work when
+the server cannot be reached, which is exactly when a screen about diagnostics or the server
+address is needed. The question put to the owner was "identical to the web, extras only in what
+is local" or "screens of its own".
+
+### Decision
+
+**The desktop may have screens of its own**, in its local shell: `src/`, served by the app
+itself, never by the server. The default for where a new screen goes:
+
+- About **this machine** (the engines and runners, the accounts' directories, the server
+  address, diagnostics, logs, anything that must work offline): a candidate for the desktop.
+- About **the account's data on the server**: SHVIA-WEB, still the one UI for that data.
+
+It is a default, not a ban. A screen that needs the server can still live here when there is a
+reason, and the reason is written down with it.
+
+### Consequences
+
+- **Nothing that exists moves because of this ADR.** The Code mode panel, the login and the
+  accounts screen stay in SHVIA-WEB. Moving one is a decision of its own, because two UIs for
+  one thing have to be kept in step.
+- A local screen talks to Rust through Tauri commands from the local origin
+  (`tauri://localhost`), which a remote page cannot reach. Its CSP and capabilities are the local
+  shell's (`tauri.conf.json`). `window.__shviaCode` stays the contract for what the web draws.
+- A local screen ships with the desktop's release cycle. Its text is product copy, in
+  Portuguese, like the rest of the interface.
+
+### Alternatives
+
+- **Identical to the web, extras only in what is local** (the other option on the panel): one
+  UI, but every desktop-only screen then waits for a web release and for the server to answer.
+- **Forma B for everything** (the alternative ADR-002 rejected): a full client over `/api/v1`,
+  with two UIs for all of it. Not what was asked.
