@@ -18,6 +18,11 @@ reading the code. The owner answered "Enterprise (org)": minutes are not the lim
 - Verification: the workflow runs on its own PR (the path filter includes the file). The Windows
   job is the command that confirmed E1 (E0061/E0308 on 1.6.7), and it has passed locally since
   1.6.8. The macOS job has no local counterpart. Its first run is on this PR.
+- **The first macOS run: clippy clean, 131 of 132 tests green.** The one red test,
+  `o_codex_runner_esta_instalado_e_responde`, checks the *installed* Codex runner, and `ci.yml`
+  runs `codex-runner/install.sh` before `cargo test` while this job did not. A second 1.6.37
+  commit adds Node 22 and that install step to the macOS job. The installer only uses `cp`,
+  `mkdir` and `cat` plus Node, all available on macOS.
 - `docs/build.md`, "Platforms".
 
 ## 1.6.36 - serde_with moves to 3.21.0, closing an advisory that only GitHub knew about
