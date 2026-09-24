@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.6.52 - the glib advisory's ignore is measured again: nothing uses the flaw, and webkit2gtk holds the fix
+
+GitHub's Dependabot alert #1 (GHSA-wrw7-89jp-8q8g, `RUSTSEC-2024-0429`, moderate) is the glib
+advisory that `deny.toml` ignores. Its two claims were read again, against the code and the
+registry.
+
+- **"We never iterate a Variant" holds, now measured wider.** The unsound impl is
+  `VariantStrIter`, and `Variant::array_iter_str` builds it. Neither name appears in our code or
+  in any of the 392 packages of the Linux tree. The control: the same search finds it in three
+  files of glib itself. Our only glib use is still `glib::prelude::*` for the WebView signal
+  handlers.
+- **"The fix only arrives with Tauri's move to gtk4" went stale.** gtk3-rs published gtk 0.19.0
+  on 2026-09-08, on glib 0.22, which is patched. What still holds glib at 0.18 is webkit2gtk-rs.
+  Its newest release is 2.0.2, on glib ^0.18, and wry pins it exactly (`=2.0.2`, still so in wry
+  0.57). Tauri's newest is 2.11.6, the one here. So there is still no bump to make, but what to
+  watch for is now a webkit2gtk release on gtk 0.19, not gtk4.
+
+The comment says both, with the date. Whether the GitHub alert is dismissed or left open as the
+reminder is the owner's question in the panel (`glib-alerta`). `cargo deny check`: all four ok,
+and the ignore still matches (no `advisory-not-detected`).
+
 ## 1.6.51 - a cd out of the project does not reach the next command, proved with the real SDK
 
 1.6.48 read a line of the Agent SDK's changelog as a gap: "a `cd` made by the agent now persists

@@ -46,11 +46,20 @@ ignore = [
     { id = "RUSTSEC-2025-0098", reason = "unic-ucd-version — unmaintained, via Tauri" },
     { id = "RUSTSEC-2025-0100", reason = "unic-ucd-ident — unmaintained, via Tauri" },
 
-    # `glib` 0.18 is Tauri's GTK3 tree again (tray-icon → libappindicator → gtk). The fix is
-    # glib >= 0.20, which only arrives with Tauri's move to gtk4. The unsound impl is
-    # `VariantStrIter`. Our only glib use is `glib::prelude::*` for the Linux WebView signal
-    # handlers in lib.rs (configure_linux_webview); no Variant is built or iterated here.
-    { id = "RUSTSEC-2024-0429", reason = "glib VariantStrIter unsound — GTK3 tree via Tauri; fix is glib>=0.20; we never iterate a Variant" },
+    # `glib` 0.18 is Tauri's GTK3 tree again (gtk 0.18 → tauri, wry, tao, muda, webkit2gtk,
+    # libappindicator). The unsound impl is `VariantStrIter`, which `Variant::array_iter_str`
+    # builds. Measured 24/09/2026: neither of them is named by our code or by any of the 392
+    # packages of the Linux tree (the same search finds it in three files of glib itself).
+    # Our only glib use is `glib::prelude::*` for the Linux WebView signal handlers in lib.rs
+    # (configure_linux_webview).
+    #
+    # The fix is glib >= 0.20, and until 1.6.52 this said it "only arrives with Tauri's move to
+    # gtk4". Not anymore: gtk3-rs published gtk 0.19.0 on 2026-09-08, on glib 0.22. What still
+    # holds glib at 0.18 is webkit2gtk-rs: 2.0.2, on glib ^0.18, pinned `=2.0.2` by wry (still
+    # so in wry 0.57). When a webkit2gtk on gtk 0.19 reaches wry and tauri, this ignore goes,
+    # and GitHub's Dependabot alert #1 closes as fixed. The WebView crates move with tauri/wry
+    # (.github/dependabot.yml), so the bump arrives as a tauri/wry proposal.
+    { id = "RUSTSEC-2024-0429", reason = "glib VariantStrIter unsound — nothing in the tree uses it (measured 24/09/2026); fix is glib>=0.20, held at 0.18 by webkit2gtk-rs 2.0.2" },
 
     # quick-xml (RUSTSEC-2026-0194/0195) left in 1.6.4 as well: plist 1.10.1 accepts the
     # patched quick-xml 0.42, so `cargo update -p plist` closed it — the "cannot be fixed
