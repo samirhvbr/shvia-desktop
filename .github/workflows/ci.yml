@@ -103,6 +103,9 @@ jobs:
       # `--publish` ships only what is committed: a dirty or untracked build input refuses it (1.6.34).
       - name: A publish refuses a dirty build input
         run: npm run prova:arvore
+      # Every tracked package.json and Cargo.toml has a Dependabot entry, and no entry is stale (1.6.35).
+      - name: Dependabot watches every manifest
+        run: npm run prova:dependabot
       # `src-tauri/binaries/` is gitignored on purpose: the `anna` sidecar depends on the
       # build machine (ADR-021), so it is staged by `scripts/stage-anna.mjs` and never
       # committed. But `externalBin` in `tauri.conf.json` makes the Tauri build script

@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.6.35 - Dependabot watches every manifest, and the repository's alerts are on
+
+There was no `.github/dependabot.yml` (finding M6 of the 08/09 review), and the repository's
+vulnerability alerts were off (the API answered 404). The owner chose "complete" over "security
++ patch/minor only" and over "cargo audit in CI is enough".
+
+- `.github/dependabot.yml` covers `cargo` (`src-tauri/`), `npm` (root, `claude-runner/`,
+  `codex-runner/`) and `github-actions`, weekly. Patch and minor updates come grouped, one PR per
+  directory; a major comes alone. `dtolnay/rust-toolchain` is ignored with the reason: it is
+  pinned to a commit of its `stable` branch, and the action on its default branch requires a
+  `toolchain` input that `ci.yml` does not pass.
+- Vulnerability alerts and Dependabot security updates were switched on in the repository settings
+  (`PUT /vulnerability-alerts` and `PUT /automated-security-fixes`, both 204; read back enabled).
+- The landing rule is written in the file's header and in `docs/build.md`, "Dependabot": a
+  Dependabot PR is a proposal. Its `Bump x` commit has no version and no CHANGELOG entry, so it
+  lands as one `X.Y.Z - ...` commit with the bump, never as it is.
+- `scripts/prova-dependabot-cobre-os-manifestos.mjs` (`npm run prova:dependabot`, a CI step)
+  fails when a tracked `package.json` or `Cargo.toml` has no entry, or an entry has no manifest.
+  Reversal measured: removing the `codex-runner` entry, or misspelling a directory, goes red.
+
 ## 1.6.34 - a publish refuses a build input that is not committed
 
 **Nothing tied a publish to the repository.** `./build-local.sh --publish` bundled whatever was on

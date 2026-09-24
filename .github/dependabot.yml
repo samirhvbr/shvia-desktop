@@ -1,0 +1,83 @@
+# Dependabot: version updates for every manifest in this repository (1.6.35). Security updates
+# and vulnerability alerts are repository settings, switched on the same day.
+#
+# The owner chose "complete" on 23/09/2026: every ecosystem, majors included. Patch and minor
+# updates come grouped (one PR per directory, weekly); a major comes alone, because a major is a
+# decision of its own. In SHVIA-WEB the majors sat waiting next to everything else.
+#
+# ⚠️ A Dependabot PR is a PROPOSAL, never a merge. Its commit is "Bump x from a to b": it has no
+# version and no CHANGELOG entry, so merging it as it is breaks the repository's commit rule and
+# publishes no Release. To land one, take its change into ONE commit `X.Y.Z - ...` with the
+# CHANGELOG entry and the bump (`echo X.Y.Z > version.md && node scripts/sync-version.mjs`), and
+# close the PR. docs/build.md, "Dependabot".
+#
+# `npm run prova:dependabot` (a CI step) fails when a tracked package.json or Cargo.toml has no
+# entry here, or when an entry points at a directory without a manifest. A new runner directory
+# must not fall out of the updates without anyone noticing.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    groups:
+      cargo-patch-minor:
+        update-types: [patch, minor]
+
+  # The web shell and the build tools (Vite, TypeScript, the Tauri CLI).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    groups:
+      npm-root-patch-minor:
+        update-types: [patch, minor]
+
+  # The Claude engine's runner. It ships inside the installer, so an update here reaches users.
+  - package-ecosystem: npm
+    directory: /claude-runner
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    groups:
+      npm-claude-runner-patch-minor:
+        update-types: [patch, minor]
+
+  # The Codex engine's runner. It has no dependencies today (it drives the `codex` binary);
+  # the entry is here so the first dependency it gains is watched.
+  - package-ecosystem: npm
+    directory: /codex-runner
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    groups:
+      npm-codex-runner-patch-minor:
+        update-types: [patch, minor]
+
+  # The workflows' actions, pinned by commit SHA with the version in a comment.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    groups:
+      actions-patch-minor:
+        update-types: [patch, minor]
+    ignore:
+      # Pinned to a commit of its `stable` BRANCH: this action is versioned by branch, not by
+      # release tag (its one tag is an old `v1`), and the action on its default branch requires
+      # a `toolchain` input that ci.yml does not pass (checked 23/09/2026). Updated by hand: the
+      # SHA of `stable` and the date in the comment.
+      - dependency-name: dtolnay/rust-toolchain

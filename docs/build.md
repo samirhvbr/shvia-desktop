@@ -401,3 +401,25 @@ referência pronta (`.github/workflows/main.yml`: matriz mac/win/linux via `taur
 Release + updater). Se compensar trazer essa matriz de volta (releases assinados/auto-update
 centralizados via CI), é decisão de arquitetura a tomar separadamente — não consequência
 automática do upgrade de plano.
+
+### Dependabot (1.6.35)
+
+`.github/dependabot.yml` watches every manifest: `cargo` in `src-tauri/`, `npm` at the root and
+in `claude-runner/` and `codex-runner/`, and the workflows' `github-actions`, weekly on Monday
+morning (São Paulo time). Patch and minor updates come grouped, one PR per directory; each major comes
+alone. Vulnerability alerts and Dependabot security updates are switched on in the repository
+settings (23/09/2026). The owner chose "complete" over "security + patch/minor only".
+
+**A Dependabot PR is a proposal, never a merge.** Its commit is `Bump x from a to b`, with no
+version and no CHANGELOG entry. Merging it as it is breaks the commit rule and publishes no
+Release. To land one, take its change into one `X.Y.Z - ...` commit with the CHANGELOG entry
+and the bump (`echo X.Y.Z > version.md && node scripts/sync-version.mjs`), then close the PR.
+
+`dtolnay/rust-toolchain` is ignored on purpose. It is pinned to a commit of its `stable`
+branch, and Dependabot would move it to the default branch, whose action needs a `toolchain`
+input that `ci.yml` does not pass. Update it by hand: the SHA of `stable` and the date in the
+comment.
+
+`npm run prova:dependabot` (in CI) fails when a tracked `package.json` or `Cargo.toml` has no
+entry, or when an entry points at a directory without one. A new runner directory cannot fall
+out of the updates without anyone noticing.
