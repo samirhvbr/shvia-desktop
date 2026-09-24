@@ -40,6 +40,13 @@ from outside (`code_bridge::reply`, `::Sidecars`, `::engine_status`, …) do not
   become `tests_colher`. The last two stay in `code_bridge.rs` until their code moves.
   `engine_status` and `versao_do_anna` are re-exported. The runner-source ruler reads
   `motores.rs` and `../../tauri.conf.json`.
+- `code_bridge/login.rs`: the Claude Code login (the slot and its generation, `claude auth
+  status`, the URL reader with its deadline, the native confirmation, starting, the code
+  hand-off, cancelling) with `tests_confirmacao_do_login`, `tests_login_geracao` and
+  `tests_login`. 757 lines. `cancelar_login` is re-exported. The four login rulers read
+  `login.rs`. The dialog-order ruler reads `../code_bridge.rs`, where `handle_message` stays.
+  Re-measured after the move: removing `cancelar_login()` from `iniciar_login`, or the dialog
+  from the arm, turns them red.
 
 ## 1.6.40 - the updater key rotation is prepared: one declared transition release, signed with the old key
 
