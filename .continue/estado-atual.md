@@ -3,7 +3,7 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Last updated: **23/09/2026** (version 1.6.8).
+> Last updated: **23/09/2026** (version 1.6.34).
 
 > ⚠️ **Saneado em 02/09/2026** (achado F-22): descrevia a **1.1.34** com o repo em 1.4.3.
 > Foi o **terceiro** saneamento manual deste arquivo pelo mesmo motivo — daí a régua
@@ -23,6 +23,22 @@
 > pendente.
 
 ## Onde estamos
+
+**23/09/2026 — 1.6.8 to 1.6.34: the robustness sweep (block E), then the owner's answers
+(block F).** 1.6.8 made the Windows build compile again; 1.6.9–1.6.11 gave Linux a working Quit,
+fixed the Changes tab for paths with accents and spaces, and ended a window's agent when its page
+reloads. 1.6.12–1.6.16 closed the Claude engine's side of the Code-mode approval boundary —
+must-ask cards go out as `policy: "always"` and survive the page's Auto mode, the read fence
+resolves `~` and symlinks, destructive commands and the shell's network/secret paths always ask;
+the page's side landed in SHVIA-WEB 2.110.452. 1.6.17–1.6.19 hardened both runners and moved slow
+bridge work off the UI thread with deadlines; 1.6.20–1.6.25 hardened `build-local.sh --publish`
+(manifest read, signing keys, the Apple signature, bundle reuse, packaging without `anna`, the
+runner installer); 1.6.26–1.6.31 fixed the Claude login generation, stalled update checks, huge
+file reads, engine shutdown and the IPC origin checks (on-prem server on Windows, loopback only
+by port). **All 19 open owner decisions were answered on the panel on 23/09**, and block F carries
+them out: 1.6.32 (the Claude Code profile follows the latest Opus), 1.6.33 (a pre-commit hook
+refuses a half-bumped commit — the 1.6.3 guard), 1.6.34 (`--publish` refuses a build input that
+is not committed). Each version's detail is in [`../CHANGELOG.md`](../CHANGELOG.md).
 
 **23/09/2026 — 1.6.3 to 1.6.7, and where the open questions live now.** 1.6.3 finally left the
 disk (its first push was half a bump — the third time; the guard is an open owner decision).
