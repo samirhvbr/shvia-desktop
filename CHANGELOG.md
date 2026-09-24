@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.6.57 - on Windows the app runs the runners that install.ps1 installed, as node with the .mjs
+
+This is the second half of the owner's "Sim, precisa dos dois no Windows". 1.6.56 installs the
+runners, and this version makes the app use them. Nothing changes on Linux or macOS.
+
+- **An engine is a launch now, not a binary** (`Lancamento`, in `code_bridge/motores.rs`): the
+  program, and what goes before the engine's own arguments.
+  - On Windows, a runner installed by `install.ps1` is
+    `node %LOCALAPPDATA%\shvia-<runner>\<runner>.mjs`, run directly.
+  - The app never spawns the `.cmd` the installer leaves for terminals. "Parar" kills the child
+    the bridge started; with a `.cmd` that child is `cmd.exe`, and `node` would keep the session
+    running.
+  - The install folder wins over the `where` search for the same reason: `where` would find
+    that `.cmd` if its folder were on PATH.
+- **The session `spawn`, `engineStatus` and both model catalogues go through the launch**, so
+  they cannot pick different programs. `engineStatus` shows the runner's path, never node's.
+- **The absence messages say what to do on Windows**: `install.ps1`, its folder and the Node
+  requirement, instead of `install.sh` and `~/.local/bin`.
+- **The choice is a pure function, with the machine passed in**, because CI never runs the tests
+  on Windows. Its cases are the only place the Windows choice executes before the owner's
+  runbook. Reversal measured: with the Windows branch off, the test fails. `cargo test` passes
+  139 tests, and clippy `-D warnings` passes on Linux (all targets) and `x86_64-pc-windows-gnu`.
+
 ## 1.6.56 - the two runners get a Windows installer, proved under PowerShell
 
 The owner answered "Sim, precisa dos dois no Windows" to the panel's `windows-motores` question.

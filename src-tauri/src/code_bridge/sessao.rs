@@ -269,12 +269,13 @@ pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     let engine = s("engine");
     let is_claude = engine == "claude";
     let (exe_base, erro_ausente, cod_ausente) = motor_do_engine(&engine);
-    let Some(bin) = resolve_bin(exe_base) else {
+    let Some(lancamento) = resolve_runner(exe_base) else {
         return reply(window, req, false,
             serde_json::json!({ "error": erro_ausente, "codigo": cod_ausente }));
     };
 
-    let mut cmd = Command::new(bin);
+    // On Windows a runner is `node <runner>.mjs` (see `Lancamento`); the rest is unchanged.
+    let mut cmd = lancamento.comando();
     cmd.current_dir(&dir);
     // App de GUI não herda o PATH do shell (ADR-029): sem isto o agente não
     // encontra npx/node/cargo/php e fica insistindo em comando que não existe.

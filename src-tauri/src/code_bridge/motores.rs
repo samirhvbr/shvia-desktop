@@ -29,10 +29,10 @@ use super::*;
 /// sobre qual conta estava valendo. O catálogo é por assinatura, então discordar aqui
 /// significa oferecer na tela um modelo que o turno vai recusar.
 pub(super) fn claude_models(conta: Option<&crate::contas_claude::Alvo>) -> serde_json::Value {
-    let Some(bin) = resolve_bin("claude-runner") else {
-        return serde_json::json!({ "erro": ERRO_RUNNER_AUSENTE, "codigo": COD_RUNNER_AUSENTE });
+    let Some(lancamento) = resolve_runner("claude-runner") else {
+        return serde_json::json!({ "erro": erro_runner_ausente(), "codigo": COD_RUNNER_AUSENTE });
     };
-    let mut cmd = Command::new(bin);
+    let mut cmd = lancamento.comando();
     cmd.arg("--modelos");
     if let Some(p) = crate::user_env::sidecar_path() {
         cmd.env("PATH", p);
@@ -50,10 +50,10 @@ pub(super) fn claude_models(conta: Option<&crate::contas_claude::Alvo>) -> serde
 
 /// Query the same runner and PATH used for Codex turns. The runner bounds the request.
 pub(super) fn codex_models() -> serde_json::Value {
-    let Some(bin) = resolve_bin("codex-runner") else {
-        return serde_json::json!({ "erro": ERRO_CODEX_AUSENTE, "codigo": COD_CODEX_AUSENTE });
+    let Some(lancamento) = resolve_runner("codex-runner") else {
+        return serde_json::json!({ "erro": erro_codex_ausente(), "codigo": COD_CODEX_AUSENTE });
     };
-    let mut cmd = Command::new(bin);
+    let mut cmd = lancamento.comando();
     cmd.arg("--modelos");
     if let Some(p) = crate::user_env::sidecar_path() {
         cmd.env("PATH", p);
@@ -133,6 +133,21 @@ pub(super) const ERRO_RUNNER_AUSENTE: &str = "claude-runner não encontrado — 
 /// Ausência do `codex-runner`, no mesmo molde: diz o que fazer, não só o que falta.
 pub(super) const ERRO_CODEX_AUSENTE: &str = "codex-runner não encontrado — rode codex-runner/install.sh (deixa em ~/.local/bin) e faça `codex login` (usa a assinatura ChatGPT; sem API key).";
 
+/// The Windows variants (1.6.57): there the runners come from `install.ps1`, into
+/// `%LOCALAPPDATA%\shvia-<runner>`, and the app also installs the Claude one from its button.
+/// Screen strings, so Portuguese; picked by `erro_runner_ausente`/`erro_codex_ausente`.
+pub(super) const ERRO_RUNNER_AUSENTE_WINDOWS: &str = "claude-runner não encontrado — use o botão Instalar runner ou rode claude-runner\\install.ps1 (instala em %LOCALAPPDATA%\\shvia-claude-runner; precisa do Node 18+) e faça `claude login` (usa a assinatura; sem API key).";
+pub(super) const ERRO_CODEX_AUSENTE_WINDOWS: &str = "codex-runner não encontrado — rode codex-runner\\install.ps1 (instala em %LOCALAPPDATA%\\shvia-codex-runner; precisa do Node 18+) e faça `codex login` (usa a assinatura ChatGPT; sem API key).";
+
+/// The absence sentence of this OS. One function per runner, so the catalogue and the
+/// `spawn` cannot pick different texts (the reason the constants exist at all).
+pub(super) fn erro_runner_ausente() -> &'static str {
+    if cfg!(windows) { ERRO_RUNNER_AUSENTE_WINDOWS } else { ERRO_RUNNER_AUSENTE }
+}
+pub(super) fn erro_codex_ausente() -> &'static str {
+    if cfg!(windows) { ERRO_CODEX_AUSENTE_WINDOWS } else { ERRO_CODEX_AUSENTE }
+}
+
 /// Ausência do `anna`, que até aqui era uma string solta dentro do `spawn`.
 pub(super) const ERRO_ANNA_AUSENTE: &str = "anna não encontrado. Este build saiu SEM o motor empacotado — instale o anna (SHVIA-CODE) e deixe no PATH (Unix: install.sh; Windows: anna.exe no PATH ou %LOCALAPPDATA%\\Programs\\anna)";
 
@@ -169,8 +184,8 @@ pub(super) const COD_ANNA_AUSENTE: &str = "anna_ausente";
 /// gateway. Mudar isso quebraria a página velha que não manda `engine`.
 pub(super) fn motor_do_engine(engine: &str) -> (&'static str, &'static str, &'static str) {
     match engine {
-        "claude" => ("claude-runner", ERRO_RUNNER_AUSENTE, COD_RUNNER_AUSENTE),
-        "codex" => ("codex-runner", ERRO_CODEX_AUSENTE, COD_CODEX_AUSENTE),
+        "claude" => ("claude-runner", erro_runner_ausente(), COD_RUNNER_AUSENTE),
+        "codex" => ("codex-runner", erro_codex_ausente(), COD_CODEX_AUSENTE),
         _ => ("anna", ERRO_ANNA_AUSENTE, COD_ANNA_AUSENTE),
     }
 }
@@ -248,6 +263,78 @@ pub(super) fn instalar_claude_runner(app: &tauri::AppHandle) -> Result<String, (
     }
 }
 
+/// How an engine is started: the program, and what goes before the engine's own arguments.
+///
+/// On Linux and macOS a runner is the wrapper `install.sh` leaves in `~/.local/bin`, and `antes`
+/// is empty. On Windows (1.6.57) a runner installed by `install.ps1` is `node <runner>.mjs`, run
+/// DIRECTLY, not through the `.cmd` the installer also leaves for terminals: "Parar" kills the
+/// child the bridge spawned, and with a `.cmd` that child is `cmd.exe` — `node` would keep the
+/// session running after the user stopped it.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Lancamento {
+    pub(crate) programa: PathBuf,
+    pub(crate) antes: Vec<PathBuf>,
+}
+
+impl Lancamento {
+    pub(crate) fn comando(&self) -> Command {
+        let mut c = Command::new(&self.programa);
+        c.args(&self.antes);
+        c
+    }
+
+    /// What `engineStatus` reports as the path: the runner itself, never `node`.
+    pub(crate) fn caminho(&self) -> &std::path::Path {
+        self.antes.first().map(|p| p.as_path()).unwrap_or(&self.programa)
+    }
+}
+
+/// Where `install.ps1` leaves a runner: `%LOCALAPPDATA%\shvia-<runner>\<runner>.mjs`.
+pub(crate) fn runner_do_install_ps1(local_app_data: &std::path::Path, base: &str) -> PathBuf {
+    local_app_data.join(format!("shvia-{base}")).join(format!("{base}.mjs"))
+}
+
+/// The choice itself, with the machine passed in, so it is tested on any OS: CI runs the
+/// tests on Linux and macOS, and clippy only on Windows.
+///
+/// The `install.ps1` folder wins over the binary search on Windows. `where` would find the
+/// terminal `.cmd` too, if someone put its folder on PATH, and that `.cmd` is exactly what the
+/// bridge must not spawn. Without `node` the install is useless, and the binary search decides.
+pub(crate) fn escolher_lancamento(
+    base: &str,
+    windows: bool,
+    local_app_data: Option<&std::path::Path>,
+    existe: &dyn Fn(&std::path::Path) -> bool,
+    node: &dyn Fn() -> Option<PathBuf>,
+    binario: &dyn Fn() -> Option<PathBuf>,
+) -> Option<Lancamento> {
+    if windows && matches!(base, "claude-runner" | "codex-runner") {
+        if let Some(lad) = local_app_data {
+            let mjs = runner_do_install_ps1(lad, base);
+            if existe(&mjs) {
+                if let Some(programa) = node() {
+                    return Some(Lancamento { programa, antes: vec![mjs] });
+                }
+            }
+        }
+    }
+    binario().map(|programa| Lancamento { programa, antes: Vec::new() })
+}
+
+/// The launch of an engine on this machine. Every place that starts one goes through here:
+/// the session `spawn`, `engineStatus` and the two model catalogues.
+pub(super) fn resolve_runner(base: &str) -> Option<Lancamento> {
+    let lad = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+    escolher_lancamento(
+        base,
+        cfg!(windows),
+        lad.as_deref(),
+        &|p| p.is_file(),
+        &|| resolve_bin("node"),
+        &|| resolve_bin(base),
+    )
+}
+
 pub(super) fn resolve_bin(base: &str) -> Option<PathBuf> {
     let exe_name = if cfg!(windows) { format!("{base}.exe") } else { base.to_string() };
 
@@ -321,7 +408,7 @@ pub(super) fn resolve_bin(base: &str) -> Option<PathBuf> {
 /// `--version` com timeout curto: isto é chamado da UI, e um binário travado não
 /// pode segurar a tela.
 pub fn engine_status(base: &str) -> serde_json::Value {
-    let Some(bin) = resolve_bin(base) else {
+    let Some(lancamento) = resolve_runner(base) else {
         return serde_json::json!({
             "found": false,
             "bundled": false,
@@ -336,9 +423,9 @@ pub fn engine_status(base: &str) -> serde_json::Value {
     let bundled = std::env::current_exe()
         .ok()
         .and_then(|e| e.parent().map(|d| d.to_path_buf()))
-        .is_some_and(|dir| bin.parent() == Some(dir.as_path()));
+        .is_some_and(|dir| lancamento.programa.parent() == Some(dir.as_path()));
 
-    let mut sonda = Command::new(&bin);
+    let mut sonda = lancamento.comando();
     sonda.arg("--version");
     let versao = saida_com_prazo(sonda, PRAZO_VERSAO)
         .ok()
@@ -353,7 +440,7 @@ pub fn engine_status(base: &str) -> serde_json::Value {
         "found": true,
         "bundled": bundled,
         "version": versao,
-        "path": bin.to_string_lossy(),
+        "path": lancamento.caminho().to_string_lossy(),
     })
 }
 
@@ -415,6 +502,64 @@ mod tests_motor {
             3,
             "dois candidatos mais a mensagem que os nomeia: procurar num lugar só quebra em silêncio",
         );
+    }
+
+    /// 🔴 On Windows a runner is `node <runner>.mjs`, from the `install.ps1` folder, and never
+    /// the `.cmd` (1.6.57). Tested with the machine passed in, because CI never runs the tests
+    /// on Windows: these cases are the only place the Windows choice is executed before the
+    /// owner's runbook.
+    #[test]
+    fn no_windows_o_runner_e_o_node_com_o_mjs_da_instalacao() {
+        use std::path::{Path, PathBuf};
+        let lad = Path::new("C:/Users/joão/AppData/Local");
+        let mjs = runner_do_install_ps1(lad, "claude-runner");
+        assert!(mjs.ends_with("shvia-claude-runner/claude-runner.mjs"), "{mjs:?}");
+        let node = || Some(PathBuf::from("C:/Program Files/nodejs/node.exe"));
+        let cmd_no_path = || Some(PathBuf::from("C:/Users/joão/AppData/Local/shvia/bin/claude-runner.cmd"));
+        let instalado = |p: &Path| p == mjs.as_path();
+
+        // Installed + node: node with the .mjs, even with the terminal .cmd on PATH.
+        let l = escolher_lancamento("claude-runner", true, Some(lad), &instalado, &node, &cmd_no_path).unwrap();
+        assert_eq!(l.programa, PathBuf::from("C:/Program Files/nodejs/node.exe"));
+        assert_eq!(l.antes, vec![mjs.clone()]);
+        assert_eq!(l.caminho(), mjs.as_path(), "engineStatus shows the runner, not node");
+        let c = l.comando();
+        assert_eq!(c.get_program(), std::ffi::OsStr::new("C:/Program Files/nodejs/node.exe"));
+        assert_eq!(c.get_args().collect::<Vec<_>>(), vec![mjs.as_os_str()]);
+
+        // Installed, no node: the binary search decides (and finds nothing here).
+        let nada = || None;
+        assert_eq!(escolher_lancamento("claude-runner", true, Some(lad), &instalado, &nada, &nada), None);
+        // Not installed: the binary search decides.
+        let ausente = |_: &Path| false;
+        let exe = || Some(PathBuf::from("C:/tools/claude-runner.exe"));
+        assert_eq!(
+            escolher_lancamento("claude-runner", true, Some(lad), &ausente, &node, &exe).unwrap().programa,
+            PathBuf::from("C:/tools/claude-runner.exe"),
+        );
+        // Outside Windows the install.ps1 folder is never looked at.
+        let wrapper = || Some(PathBuf::from("/home/x/.local/bin/claude-runner"));
+        let l = escolher_lancamento("claude-runner", false, Some(lad), &instalado, &node, &wrapper).unwrap();
+        assert!(l.antes.is_empty() && l.programa.as_path() == Path::new("/home/x/.local/bin/claude-runner"));
+        // anna is a binary everywhere, installed runner folder or not.
+        let anna = || Some(PathBuf::from("C:/app/anna.exe"));
+        let tudo = |_: &Path| true;
+        assert!(escolher_lancamento("anna", true, Some(lad), &tudo, &node, &anna).unwrap().antes.is_empty());
+        // Codex has its own folder.
+        assert!(runner_do_install_ps1(lad, "codex-runner").ends_with("shvia-codex-runner/codex-runner.mjs"));
+    }
+
+    /// The Windows absence sentences point at install.ps1 and its folder, each with its own login.
+    #[test]
+    fn no_windows_a_ausencia_ensina_o_install_ps1() {
+        assert!(ERRO_RUNNER_AUSENTE_WINDOWS.contains("install.ps1"));
+        assert!(ERRO_RUNNER_AUSENTE_WINDOWS.contains("%LOCALAPPDATA%\\shvia-claude-runner"));
+        assert!(ERRO_RUNNER_AUSENTE_WINDOWS.contains("claude login") && !ERRO_RUNNER_AUSENTE_WINDOWS.contains("install.sh"));
+        assert!(ERRO_CODEX_AUSENTE_WINDOWS.contains("%LOCALAPPDATA%\\shvia-codex-runner"));
+        assert!(ERRO_CODEX_AUSENTE_WINDOWS.contains("codex login") && !ERRO_CODEX_AUSENTE_WINDOWS.contains("claude login"));
+        // And the picker is what motor_do_engine hands out, on this OS.
+        assert_eq!(motor_do_engine("claude").1, erro_runner_ausente());
+        assert_eq!(motor_do_engine("codex").1, erro_codex_ausente());
     }
 
     /// 🔴 O código da ausência é o que a TELA usa para escolher a língua, então ele tem de
