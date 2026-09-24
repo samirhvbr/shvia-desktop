@@ -23,6 +23,20 @@ versioned commit per ecosystem, never as a merge of the PR (the rule from 1.6.35
 - **`@tauri-apps/cli` 2.11.5 (`#46`)**, lock only. The `^2` range is kept, as Dependabot's PR did.
   The lock diff is the same 94 lines as the PR's. Measured: `npm ci`, `tauri --version` answers
   2.11.5, and `npm run build` passes.
+- **`@anthropic-ai/claude-agent-sdk` 0.3.278 in the runner (`#45`)**, exactly the version the PR
+  proposed and tested. npm would have picked 0.3.281, which is left for next week's proposal. Its
+  changelog (0.3.259–0.3.278) has nothing that breaks the runner's calls. Two changes touch
+  things of ours:
+  - A `Stop` hook that times out now counts as "no decision" instead of a failure. That is what
+    the Run's D7 already assumes.
+  - **A `cd` made by the agent now persists across turns.** Before, the shell went back to the
+    project at each new user message; within one turn it already persisted.
+  Measured with the policy: at the `auto` level Bash was already allowed wholesale (only network,
+  destructive and protected paths are `always`), so nothing new opens there. At `manual`/`edit`
+  with the page in Auto, a relative path in a later turn can now refer to where an approved
+  `cd` went while reading as "inside the project". That is queued to be measured end to end with
+  the page. Measured: the SDK loads (`query` is exported), and `prova:politica`, `prova:runner`,
+  `prova:runner-version` and `prova:instalador` pass.
 
 ## 1.6.46 - the model pin leaves .claude/settings.json
 
