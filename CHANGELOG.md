@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.32 - the project's Claude Code profile follows the latest Opus instead of pinning one
+
+The owner's change to `.claude/settings.json`, committed on its own (it sat uncommitted in the
+working tree since 22/09): `ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-5"` is removed, so the
+`opus[1m]` alias follows the newest Opus instead of a pinned version, and the profile comment says
+so. The comment keeps the owner's wording. Nothing in the app reads this file — it configures
+Claude Code sessions opened in this repository.
+
 ## 1.6.31 - a local dev server is no longer "the app", and a loopback server is matched by port
 
 **Any `http://localhost:*` counted as internal, in release builds too.** `is_internal` kept every
