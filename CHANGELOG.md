@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.53 - dev.shvia.org is live, and the doc says what it is before anyone tests against it
+
+`docs/arquitetura.md` said the owner was creating `dev.shvia.org` and that it did not resolve
+yet (23/09). It has been live since 24/09/2026, so "Pointing the app at DEV" now says what a
+tester needs to know first. It is a copy of production data, with every encrypted credential
+cleared, so BYOK keys are entered again there. The integrations that act outside are off,
+registration is closed, and no scheduler runs. It runs `master` unless a branch was put there
+with `shvia-dev-atualizar <branch>` on the host. How to point the app at it did not change.
+
 ## 1.6.52 - the glib advisory's ignore is measured again: nothing uses the flaw, and webkit2gtk holds the fix
 
 GitHub's Dependabot alert #1 (GHSA-wrw7-89jp-8q8g, `RUSTSEC-2024-0429`, moderate) is the glib

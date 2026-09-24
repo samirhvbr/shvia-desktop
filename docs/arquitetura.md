@@ -117,7 +117,18 @@ persistência), [`src/main.ts`](../src/main.ts) (estados da casca),
 
 ### Pointing the app at DEV (`dev.shvia.org`)
 
-The owner is creating `dev.shvia.org` as the DEV server (it did not resolve yet on 23/09/2026).
+`https://dev.shvia.org` has been live since 24/09/2026. It is a DEV copy of SHVIA-WEB on the
+production host, with a database of its own. Before testing against it:
+
+- **Its data is a copy of production** (taken 24/09/2026), with every credential the app
+  encrypts cleared: BYOK provider keys, OAuth, GitHub and bot tokens, and the CPF. Log in with
+  your production account, and enter provider keys again there. On-prem inference (Ollama)
+  works without one.
+- **The integrations that act outside are off:** WhatsApp, IXC, Apple push, the shared memory,
+  the workspace, Telegram alerts. Registration is closed, and no scheduler runs.
+- **It runs `master`** unless someone put a branch there with `shvia-dev-atualizar <branch>` on
+  the host. That is how a SHVIA-WEB change is tested with the desktop before production.
+
 No DEV build is needed: the address is configuration, the mechanism above.
 
 - **From the app.** The splash and the offline screen show the server's address with a
