@@ -3,7 +3,7 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Last updated: **23/09/2026** (version 1.6.34).
+> Last updated: **23/09/2026** (version 1.6.43).
 
 > ⚠️ **Saneado em 02/09/2026** (achado F-22): descrevia a **1.1.34** com o repo em 1.4.3.
 > Foi o **terceiro** saneamento manual deste arquivo pelo mesmo motivo — daí a régua
@@ -38,7 +38,12 @@ file reads, engine shutdown and the IPC origin checks (on-prem server on Windows
 by port). **All 19 open owner decisions were answered on the panel on 23/09**, and block F carries
 them out: 1.6.32 (the Claude Code profile follows the latest Opus), 1.6.33 (a pre-commit hook
 refuses a half-bumped commit — the 1.6.3 guard), 1.6.34 (`--publish` refuses a build input that
-is not committed). Each version's detail is in [`../CHANGELOG.md`](../CHANGELOG.md).
+is not committed), 1.6.35–1.6.36 (Dependabot on every manifest, the repository's alerts on, and
+the first alert closed), 1.6.37 (Windows and macOS compiled in CI), 1.6.38 (a native dialog
+before the Claude login), 1.6.39 (notarization by an App Store Connect API key), 1.6.40 (the
+updater key rotation prepared), 1.6.41 (`code_bridge.rs` split into seven modules), 1.6.42
+(`pre-push` regenerated from repodocs), 1.6.43 (the product answers recorded — see *Decisões em
+aberto* below). Each version's detail is in [`../CHANGELOG.md`](../CHANGELOG.md).
 
 **23/09/2026 — 1.6.3 to 1.6.7, and where the open questions live now.** 1.6.3 finally left the
 disk (its first push was half a bump — the third time; the guard is an open owner decision).
@@ -259,14 +264,24 @@ staple no `build-local.sh`).
 
 ## Decisões em aberto (confirmar com o time)
 
-- [ ] **Online-only é aceitável** como propriedade de produto? Toda a arquitetura
-      de casca fina depende disso. Ver [escopo](escopo-projeto.md#7-decisões-em-aberto).
-- [ ] **Verba + dono** do cert EV Windows (~US$300–600/ano) e Apple Developer
-      (US$99/ano). A **rotação da chave do updater** ganhou custo real na 1.0.0:
-      a pubkey fica compilada no binário, então rotacionar exige que todo install
-      existente seja reinstalado à mão. Definir dono e periodicidade.
-- [ ] **Funções idênticas ao web** ou haverá telas desktop-only?
-- [ ] **URL de DEV** do ShvIA, além da produção `ai.shvia.org`.
+**Answered by the owner on the panel on 23/09/2026.** Kept here as the record of what was
+asked, with where each answer now lives:
+
+- [x] **Online-only is acceptable** — "Aceitável — documenta". The README's signed trade-off
+      now says it is confirmed.
+- [x] **Certificates** — "Só Apple": Apple Developer stays; there is **no Windows code-signing
+      certificate**, so Windows installers keep the SmartScreen warning. What to do the day one
+      exists (E14) is in [`../docs/build.md`](../docs/build.md), "Windows". The **updater key
+      rotation** was answered separately: "rotate — prepare the transition" (1.6.40, the runbook
+      in `docs/build.md`); generating the key and publishing it is the owner's act.
+- [x] **Screens of its own** — "Pode ter telas próprias":
+      [ADR-035](../docs/decisoes.md#adr-035--the-desktop-may-have-screens-of-its-own).
+- [x] **DEV URL** — `dev.shvia.org`, which the owner is creating (it did not resolve on
+      23/09). How to point the app at it: [`../docs/arquitetura.md`](../docs/arquitetura.md),
+      "Pointing the app at DEV".
+- [x] **Directory case** (`SHVIA-DESKTOP` on this disk, `shvia-desktop` on GitHub) — no action:
+      the repository's name is the lowercase one, and the uppercase directory is this machine's
+      leftover, left as it is by the owner's choice.
 
 ## Ponteiros
 

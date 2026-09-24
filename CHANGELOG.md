@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.6.43 - the owner's product answers close the open decisions in the state note
+
+Four questions sat in `.continue/estado-atual.md` as "Decisões em aberto" since the first weeks,
+three of them also in `.continue/escopo-projeto.md` §7. The owner answered all of them on the
+decision panel on 23/09/2026. They are recorded where each one applies:
+
+- **Online-only is acceptable** ("Aceitável — documenta"): the README's signed trade-off, in
+  both languages, says it is confirmed and that no offline mode is planned.
+- **Only the Apple certificate** ("Só Apple"): `docs/build.md` replaces "Pendente: Windows
+  Authenticode EV" with the decision (Windows ships unsigned, and SmartScreen's warning is the
+  known cost) and documents **E14**, the trap waiting for the day a certificate exists.
+  `build-local.ps1` makes the updater `.sig` in `tauri build` and only then lets `signtool`
+  rewrite the installer, so a signed installer would carry an updater signature over bytes
+  that no longer exist. The fix (`bundle.windows.signCommand`) waits for a certificate and a
+  Windows machine.
+- **Screens of its own** and **the DEV URL** are recorded by the next two commits of this
+  version (ADR-035; `dev.shvia.org`).
+- **The directory case** (`SHVIA-DESKTOP` here, `shvia-desktop` on GitHub): no action, by the
+  owner's choice.
+- Both notes keep the questions as they were asked, answered in place. The state note's header
+  and "Onde estamos" move to 1.6.43.
+
 ## 1.6.42 - pre-push is regenerated from repodocs 1.14.17, and a push is judged by the commit it publishes
 
 `tools/git-hooks/pre-push` was a copy from before repodocs `1.9.2`: it never read what git

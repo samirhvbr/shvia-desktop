@@ -200,6 +200,13 @@ nos 3 SOs (1 dev confortável em Rust/Tauri + CI).
 ## 7. Decisões em aberto
 
 > Confirmar com o time antes de avançar além da F1.
+>
+> **Answered on 23/09/2026** (the owner, on the decision panel): 1 — online-only is acceptable;
+> 2 — only the Apple certificate, and the updater key rotation is prepared (1.6.40); 3 — the
+> desktop may have screens of its own ([ADR-035](../docs/decisoes.md#adr-035--the-desktop-may-have-screens-of-its-own));
+> 5 — the app id is `cloud.blue3.shvia` and DEV is `dev.shvia.org`. Item 4 was settled by the
+> build itself: no Python sidecar was ever added (the bundled sidecar is `anna`, and the engine
+> runners are Node). The list below is kept as asked.
 
 1. **Online-only é aceitável** como propriedade assinada do produto? Toda a
    arquitetura fina depende disso. Requisito futuro de **offline genuíno** ou

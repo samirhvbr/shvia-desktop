@@ -74,8 +74,9 @@ reescreve o backend nem o frontend.
 **Trade-off assinado:** a arquitetura é **online-first / efetivamente
 online-only**. Aceitável para um app de chat de IA (a inferência é server-side de
 qualquer forma), endereçado com uma **tela offline** com a marca ShvIA + retry.
-Operação genuinamente offline é um *killer* desta arquitetura — ver
-[decisões em aberto](.continue/escopo-projeto.md#decisões-em-aberto).
+Operação genuinamente offline é um *killer* desta arquitetura. **Confirmado pelo
+dono em 23/09/2026** ("aceitável — documenta"): não há modo offline planejado. O que
+funciona sem o servidor é o que roda na máquina (os motores, a casca local).
 
 ---
 

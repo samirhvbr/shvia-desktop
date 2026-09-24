@@ -486,9 +486,22 @@ Para forçar: `--force`, ou apague `src-tauri/target/release/bundle`.
 > lá, mandando o `-setup.exe`/`.msi` **e** o `release.json`, e confira o `sha256`
 > pela URL pública antes de confiar.
 
-### Pendente
+### Windows — no code-signing certificate, by decision
 
-- **Windows** — Authenticode **EV** (Azure Trusted Signing preferível).
+The owner answered "only Apple" on 23/09/2026: Apple Developer stays, and there is **no
+Windows certificate**. Windows installers go out unsigned, and SmartScreen shows its
+"unknown publisher" warning. That warning is the known cost, not a defect to chase.
+`build-local.ps1` still signs when `SHVIA_WIN_CERT_THUMBPRINT` or `SHVIA_WIN_PFX` is set,
+and without either it builds unsigned and says so.
+
+⚠️ **E14: the trap waiting for the day a certificate exists.** Found in the 23/09 review and
+not fixable blind. In `build-local.ps1`, `tauri build` writes the updater's `.sig` first, and
+**then** `Invoke-Signing` runs `signtool`, which rewrites the installer's bytes. The manifest
+then carries the new sha256 with the **old** `.sig`, and every installed Windows client would
+reject that update. The fix is to let Tauri sign during the bundle
+(`bundle.windows.signCommand`), so the updater signature is made over the signed bytes. It is
+only verifiable with a certificate and a Windows machine building (E1, 1.6.8), so it waits for
+both. Until then the ordering is harmless, because nothing is signed.
 
 ## CI (GitHub Actions) — testes sim, matriz de release ainda não
 

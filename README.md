@@ -74,8 +74,9 @@ rewrite the backend or the frontend.
 **Signed trade-off:** the architecture is **online-first / effectively
 online-only**. Acceptable for an AI chat app (inference is server-side
 anyway), addressed with an **offline screen** carrying the ShvIA brand + retry.
-Genuinely offline operation is a *killer* of this architecture — see
-[open decisions](.continue/escopo-projeto.md#decisões-em-aberto).
+Genuinely offline operation is a *killer* of this architecture. **Confirmed by the
+owner on 23/09/2026** ("acceptable — document it"): no offline mode is planned. What
+works without the server is what runs on the machine (the engines, the local shell).
 
 ---
 
