@@ -19,7 +19,11 @@ decision panel on 23/09/2026. They are recorded where each one applies:
   in its local shell (`src/`). The default: a screen about this machine is a candidate for the
   desktop, and a screen about the account's server data stays in SHVIA-WEB. Nothing that exists
   moves because of it. ADR-002, which left "Forma B" open for desktop-only screens, points to it.
-- **The DEV URL** (`dev.shvia.org`): recorded by the last commit of this version.
+- **The DEV URL** (`dev.shvia.org`, which the owner is creating; it did not resolve on 23/09):
+  `docs/arquitetura.md`, "Pointing the app at DEV". There are two routes, the server form's
+  **trocar** or `server.json` in the config directory (per-OS paths), and the way back to
+  production. It also says what changes while DEV is set: both hosts internal, DEV's own login,
+  and updates still from production.
 - **The directory case** (`SHVIA-DESKTOP` here, `shvia-desktop` on GitHub): no action, by the
   owner's choice.
 - Both notes keep the questions as they were asked, answered in place. The state note's header

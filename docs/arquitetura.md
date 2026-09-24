@@ -115,6 +115,38 @@ tela. Ver [ADR-019](decisoes.md#adr-019--servidor-configurável-probe-no-rust-e-
 persistência), [`src/main.ts`](../src/main.ts) (estados da casca),
 [`index.html`](../index.html) (formulário).
 
+### Pointing the app at DEV (`dev.shvia.org`)
+
+The owner is creating `dev.shvia.org` as the DEV server (it did not resolve yet on 23/09/2026).
+No DEV build is needed: the address is configuration, the mechanism above.
+
+- **From the app.** The splash and the offline screen show the server's address with a
+  **trocar** button. Type `https://dev.shvia.org`, then **Salvar e conectar**: the app probes it
+  (4 s) and opens it. With production reachable the splash is short, so the offline screen is
+  the easy moment to catch.
+- **By file**, with the app closed. Write the address to `server.json` in the app's config
+  directory (identifier `cloud.blue3.shvia`):
+
+  | OS | file |
+  |---|---|
+  | Linux | `~/.config/cloud.blue3.shvia/server.json` |
+  | macOS | `~/Library/Application Support/cloud.blue3.shvia/server.json` |
+  | Windows | `%APPDATA%\cloud.blue3.shvia\server.json` |
+
+  ```json
+  {"url": "https://dev.shvia.org"}
+  ```
+
+  A file the app cannot use (not JSON, not `https`, credentials in the URL) falls back to
+  production, so a typo opens production, never a blank window.
+- **Back to production:** **trocar** → **Voltar ao padrão**, or delete `server.json`.
+
+What changes while DEV is configured: DEV becomes an internal host and gets the native bridges
+(Code mode, notifications, badge), and `ai.shvia.org` stays internal too (`SERVER_HOSTS`). The
+login is DEV's own, because the session cookie belongs to each origin. **Updates keep coming
+from production**, because the updater's endpoint is compiled in (`tauri.conf.json`,
+`plugins.updater.endpoints`).
+
 ---
 
 ## IPC / bridge
