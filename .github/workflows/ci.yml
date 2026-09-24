@@ -93,6 +93,10 @@ jobs:
       # A Mac build without the Apple signature is never published, by any path (1.6.22).
       - name: An unsigned Mac build is never published
         run: npm run prova:apple
+      # Notarization prefers the App Store Connect API key, and in that mode no password is
+      # exported or passed to notarytool (1.6.39).
+      - name: Notarization keeps the password off the command line
+        run: npm run prova:notarizacao
       # Reusing the last bundle requires that nothing it carries changed (1.6.23).
       - name: The bundle reuse sees every bundled input
         run: npm run prova:reuso

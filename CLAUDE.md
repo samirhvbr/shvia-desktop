@@ -71,8 +71,9 @@ Formato: `X.Y.Z - description in English (US)`
   trazer a matriz de volta é uma escolha de arquitetura à parte, não consequência automática do
   upgrade. Testes (Rust/lint) já rodam via `.github/workflows/ci.yml` desde 01–02/09/2026.
   Enquanto o build de release for local, **não há "secrets de CI"** onde guardar credencial de
-  assinatura. Onde elas vivem hoje: no macOS, a senha de notarização no **keychain**
-  (serviço `shvia-notarize`); no Windows, o certificado no **repositório de
+  assinatura. Onde elas vivem hoje: no macOS, the notarization credential is an App Store
+  Connect API key in `~/.shvia/` since 1.6.39 (the app-specific password in the **keychain**,
+  service `shvia-notarize`, is the fallback — see `docs/build.md`); no Windows, o certificado no **repositório de
   certificados do SO** (ou um `.pfx` fora da árvore do repo), apontado por
   `SHVIA_WIN_CERT_THUMBPRINT` / `SHVIA_WIN_PFX` em variável de ambiente da sessão.
   Nunca versionadas (ver `.gitignore`).

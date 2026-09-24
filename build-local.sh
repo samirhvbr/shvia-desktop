@@ -89,15 +89,15 @@
 # cria merge) e NÃO trava o build se falhar (offline, mudanças locais ou branch
 # divergente) — só avisa e segue com o que está local. Pule com --skip-git-pull.
 #
-# ASSINATURA (macOS): sem assinar, o macOS trata o app como "danificado" e oferece
-# MOVER PARA A LIXEIRA quando ele é aberto depois de baixado/enviado (atributo de
-# quarentena). Este script, no macOS, assina o app com o cert **Developer ID
-# Application** do keychain e o `tauri build` **notariza + staple** sozinho quando
-# há credencial de notarização. A senha de app (Apple ID) fica no **keychain**
-# (serviço "shvia-notarize"), NUNCA no repo. Guardar uma vez:
-#   security add-generic-password -U -s shvia-notarize -a SEU_APPLE_ID -w
-# (pede a senha de app escondida — gere em appleid.apple.com › Senhas de app).
-# Sem cert -> build sai sem assinar; sem credencial -> assina mas não notariza.
+# SIGNING (macOS): an unsigned app is "damaged" to macOS, which offers to MOVE IT TO THE
+# TRASH when it is opened after a download (the quarantine attribute). On macOS this script
+# signs with the keychain's **Developer ID Application** cert, and `tauri build` **notarizes +
+# staples** by itself when there is a notarization credential. Since 1.6.39 the credential is
+# an **App Store Connect API key**: `~/.shvia/AuthKey_<KEYID>.p8` plus the issuer ID in
+# `~/.shvia/apple-api-issuer` (or APPLE_API_KEY / APPLE_API_ISSUER / APPLE_API_KEY_PATH). The
+# old app-specific password in the keychain (service "shvia-notarize") still works, with a
+# warning: it travels in notarytool's command line. Never in the repo. docs/build.md, "macOS".
+# No cert -> unsigned build; no credential -> signed but not notarized.
 #
 # VM/SEM GPU: o app empacotado pode abrir com **janela em branco** se o WebKitGTK
 # não tiver acesso à GPU (DRM). Para ABRIR aqui, rode com
@@ -299,18 +299,120 @@ preflight() {
   fi
 }
 
-# ── macOS: assinatura (Developer ID) + notarização (senha de app) ────────────
-# Sem isto, um app baixado/enviado (com quarentena) é rejeitado pelo Gatekeeper e
-# o macOS oferece MOVER PARA A LIXEIRA. Fluxo:
-#   1) acha o cert "Developer ID Application" no keychain e exporta
-#      APPLE_SIGNING_IDENTITY — o `tauri build` assina o .app (hardened runtime).
-#   2) se houver credencial de notarização (senha de app no keychain, serviço
-#      "shvia-notarize"), exporta APPLE_ID/APPLE_PASSWORD/APPLE_TEAM_ID — aí o
-#      `tauri build` NOTARIZA e faz STAPLE do .app automaticamente.
-# Segredo NUNCA entra no repo: a senha de app mora só no keychain deste Mac.
+# ── macOS: signing (Developer ID) + notarization ─────────────────────────────
+# Without this, a downloaded app (quarantined) is rejected by Gatekeeper and macOS offers
+# to MOVE IT TO THE TRASH. Flow:
+#   1) finds the "Developer ID Application" cert in the keychain and exports
+#      APPLE_SIGNING_IDENTITY — `tauri build` signs the .app (hardened runtime).
+#   2) picks the notarization credential (escolhe_credencial_de_notarizacao) and exports it —
+#      `tauri build` then NOTARIZES and STAPLES the .app by itself.
+# No secret ever enters the repo.
 NOTARY_SERVICE="shvia-notarize"
 SIGN_ENABLED=0
 NOTARIZE_ENABLED=0
+NOTARIZE_MODE=""   # "api" (App Store Connect key) or "senha" (app-specific password)
+
+# 🔴 Which credential notarizes (1.6.39, E20). The app-specific password went to notarytool as
+# `--password`, on the command line of a process that runs for minutes while Apple answers:
+# readable in `ps` by anything on this Mac for that long. Changing only OUR call (the .dmg)
+# closed nothing — Tauri's bundler notarizes the .app with APPLE_ID/APPLE_PASSWORD the same way.
+# An App Store Connect API key has no secret in argv: notarytool gets the PATH of the .p8.
+#
+# Order: an API key complete in the environment; else one ~/.shvia/AuthKey_<KEYID>.p8 plus the
+# issuer ID (APPLE_API_ISSUER or ~/.shvia/apple-api-issuer); else the keychain password, with a
+# warning; else nothing (signed, not notarized — and 1.6.22 refuses to publish that).
+# In API mode APPLE_ID/APPLE_PASSWORD are UNSET: Tauri must not be left to choose between two
+# credentials, and the password is exactly what this exists to keep out of argv.
+escolhe_credencial_de_notarizacao() {
+  local chaves n issuer_arq="$HOME/.shvia/apple-api-issuer" falta="" nome_do_arq
+  chaves="$(find "$HOME/.shvia" -maxdepth 1 -name 'AuthKey_*.p8' 2>/dev/null | sort || true)"
+  n="$(printf '%s' "$chaves" | grep -c . || true)"
+  # Any sign of an API key is intent: from here on, what is missing is said out loud instead
+  # of the build quietly going back to the password.
+  if [ -n "${APPLE_API_KEY_PATH:-}${APPLE_API_KEY:-}${APPLE_API_ISSUER:-}" ] || [ "$n" -gt 0 ] \
+     || [ -f "$issuer_arq" ]; then
+    if [ -z "${APPLE_API_KEY_PATH:-}" ]; then
+      if [ -n "${APPLE_API_KEY:-}" ]; then
+        # The Key ID names its file; another key file is never a stand-in for it.
+        [ -f "$HOME/.shvia/AuthKey_${APPLE_API_KEY}.p8" ] \
+          && APPLE_API_KEY_PATH="$HOME/.shvia/AuthKey_${APPLE_API_KEY}.p8"
+      elif [ "$n" -eq 1 ]; then
+        APPLE_API_KEY_PATH="$chaves"
+      elif [ "$n" -gt 1 ]; then
+        echo "  ✗ mais de uma chave da App Store Connect em ~/.shvia — não escolho por você:" >&2
+        printf '%s\n' "$chaves" | sed 's/^/      /' >&2
+        echo "    Apague a revogada, ou diga qual: export APPLE_API_KEY=<KEYID>" >&2
+        return 1
+      fi
+    fi
+    nome_do_arq="$(basename "${APPLE_API_KEY_PATH:-}" | sed -n 's/^AuthKey_\([A-Z0-9]\{1,\}\)\.p8$/\1/p')"
+    if [ -z "${APPLE_API_KEY:-}" ]; then
+      APPLE_API_KEY="$nome_do_arq"
+    fi
+    if [ -z "${APPLE_API_ISSUER:-}" ] && [ -f "$issuer_arq" ]; then
+      APPLE_API_ISSUER="$(tr -d ' \t\r\n' < "$issuer_arq")"
+    fi
+    if [ -z "${APPLE_API_KEY_PATH:-}" ]; then
+      falta="o arquivo .p8 (~/.shvia/AuthKey_${APPLE_API_KEY:-<KEYID>}.p8, ou APPLE_API_KEY_PATH)"
+    elif [ ! -f "$APPLE_API_KEY_PATH" ]; then
+      falta="o arquivo $APPLE_API_KEY_PATH"
+    fi
+    [ -n "${APPLE_API_KEY:-}" ] || falta="${falta:+$falta, }o Key ID (APPLE_API_KEY)"
+    if [ -n "$nome_do_arq" ] && [ -n "${APPLE_API_KEY:-}" ] && [ "$nome_do_arq" != "$APPLE_API_KEY" ]; then
+      falta="${falta:+$falta, }um Key ID que bata com o arquivo ($APPLE_API_KEY ≠ $nome_do_arq)"
+    fi
+    [ -n "${APPLE_API_ISSUER:-}" ] || falta="${falta:+$falta, }o Issuer ID (APPLE_API_ISSUER ou $issuer_arq)"
+    if [ -z "$falta" ]; then
+      case "$(ls -l "$APPLE_API_KEY_PATH" 2>/dev/null | cut -c5-10)" in
+        ------) ;;
+        *) echo "    ⚠️  $APPLE_API_KEY_PATH pode ser lido por outros usuários — chmod 600 nele." ;;
+      esac
+      export APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH
+      unset APPLE_ID APPLE_PASSWORD
+      NOTARIZE_ENABLED=1
+      NOTARIZE_MODE=api
+      echo "    ✔ notarização: chave de API $APPLE_API_KEY (App Store Connect) — nada secreto na linha de comando"
+      echo "      (a notarização sobe o app p/ a Apple e ESPERA — pode levar alguns minutos)"
+      return 0
+    fi
+    echo "    ⚠️  chave de API da App Store Connect incompleta — falta $falta."
+    echo "        Sigo pela senha de app do keychain, se houver. Roteiro: docs/build.md, \"macOS\"."
+    unset APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH
+  fi
+
+  # Fallback: the app-specific password (the path before 1.6.39).
+  if [ -z "${APPLE_PASSWORD:-}" ]; then
+    APPLE_PASSWORD="$(security find-generic-password -s "$NOTARY_SERVICE" -w 2>/dev/null || true)"
+  fi
+  if [ -z "${APPLE_ID:-}" ]; then
+    APPLE_ID="$(security find-generic-password -s "$NOTARY_SERVICE" 2>/dev/null \
+      | awk -F'"' '/"acct"/{print $4}' || true)"
+  fi
+  if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+    export APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+    NOTARIZE_ENABLED=1
+    NOTARIZE_MODE=senha
+    echo "    ✔ notarização: $APPLE_ID (team $APPLE_TEAM_ID) — tauri build vai notarizar+staple"
+    echo "    ⚠️  pela SENHA DE APP: ela vai na linha de comando do notarytool (visível no \`ps\`"
+    echo "        enquanto a Apple responde). Troque pela chave de API: docs/build.md, \"macOS\"."
+  else
+    echo "    ⚠️  vou ASSINAR mas NÃO notarizar (falta credencial). Crie a chave de API da App"
+    echo "        Store Connect: docs/build.md, \"macOS\". (Sem notarizar, o app pede liberação"
+    echo "        em Ajustes → Privacidade, e o --publish recusa o build.)"
+  fi
+  return 0
+}
+
+# Notarizes one file (the .dmg) with the credential escolhe_credencial_de_notarizacao picked.
+notariza_arquivo() {
+  if [ "$NOTARIZE_MODE" = api ]; then
+    xcrun notarytool submit "$1" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" \
+      --issuer "$APPLE_API_ISSUER" --wait
+  else
+    xcrun notarytool submit "$1" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" \
+      --team-id "$APPLE_TEAM_ID" --wait
+  fi
+}
 
 setup_macos_signing() {
   [ "$_BUILD_OS" = macOS ] || return 0
@@ -340,25 +442,8 @@ setup_macos_signing() {
       | sed -n 's/.*(\([A-Z0-9]\{10\}\))$/\1/p')"
   fi
 
-  # 2) Credencial de notarização (senha de app) do keychain, salvo se já vier do ambiente.
-  if [ -z "${APPLE_PASSWORD:-}" ]; then
-    APPLE_PASSWORD="$(security find-generic-password -s "$NOTARY_SERVICE" -w 2>/dev/null || true)"
-  fi
-  if [ -z "${APPLE_ID:-}" ]; then
-    APPLE_ID="$(security find-generic-password -s "$NOTARY_SERVICE" 2>/dev/null \
-      | awk -F'"' '/"acct"/{print $4}' || true)"
-  fi
-
-  if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
-    export APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
-    NOTARIZE_ENABLED=1
-    echo "    ✔ notarização: $APPLE_ID (team $APPLE_TEAM_ID) — tauri build vai notarizar+staple"
-    echo "      (a notarização sobe o app p/ a Apple e ESPERA — pode levar alguns minutos)"
-  else
-    echo "    ⚠️  vou ASSINAR mas NÃO notarizar (falta credencial). Guarde a senha de app:"
-    echo "        security add-generic-password -U -s \"$NOTARY_SERVICE\" -a \"SEU_APPLE_ID\" -w"
-    echo "        (sem notarizar, o app abre mas ainda pede liberação em Ajustes → Privacidade)"
-  fi
+  # 2) Notarization credential: the API key first, the keychain password as the fallback.
+  escolhe_credencial_de_notarizacao || exit 1
 }
 
 # Verificação pós-build: prova que o .app/.dmg ficaram aceitáveis ao Gatekeeper.
@@ -404,8 +489,7 @@ verify_macos_signature() {
       echo "      ✔ .dmg com staple"
     elif [ "$NOTARIZE_ENABLED" -eq 1 ]; then
       echo "      • .dmg ainda sem staple — notarizando o próprio .dmg (submit + staple)…"
-      if xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" \
-             --team-id "$APPLE_TEAM_ID" --wait 2>&1 | sed 's/^/        /' \
+      if notariza_arquivo "$dmg" 2>&1 | sed 's/^/        /' \
          && xcrun stapler staple "$dmg" 2>&1 | sed 's/^/        /'; then
         echo "      ✔ .dmg notarizado + stapled"
       else

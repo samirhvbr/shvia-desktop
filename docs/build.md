@@ -149,34 +149,80 @@ private, so the assets are too; the cost is the storage, accepted by the owner o
 
 ## Assinatura / notarização
 
-### macOS — ✅ implementado no `build-local.sh`
+### macOS — ✅ in `build-local.sh`
 
-**Por que importa:** sem assinar, o macOS trata o app como *"danificado"* e oferece
-**mover para a lixeira** quando ele é aberto depois de **baixado/enviado** (o app
-ganha o atributo de *quarentena*). A correção é **assinar (Developer ID) + notarizar
-+ staple**.
+**Why it matters:** an unsigned app is *"damaged"* to macOS, which offers to **move it to the
+trash** when it is opened after a **download or transfer** (the app carries the *quarantine*
+attribute). The fix is **sign (Developer ID) + notarize + staple**.
 
-O `build-local.sh`, no macOS, faz isso sozinho:
+On macOS, `build-local.sh` does it by itself:
 
-1. **Assina** — acha o cert `Developer ID Application` no keychain e exporta
-   `APPLE_SIGNING_IDENTITY`; o `tauri build` assina o `.app` com *hardened runtime*.
-2. **Notariza + staple** — se houver credencial de notarização, exporta
-   `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` e o `tauri build` sobe o app p/ a
-   Apple, espera o veredito e faz o *staple* do `.app` (e o script tenta o `.dmg`).
-3. **Verifica** — ao final roda `codesign --verify`, `spctl` (Gatekeeper) e
-   `stapler validate` e imprime o veredito.
+1. **Signs.** It finds the `Developer ID Application` cert in the keychain and exports
+   `APPLE_SIGNING_IDENTITY`; `tauri build` signs the `.app` with the *hardened runtime*.
+2. **Notarizes + staples.** It picks the notarization credential (below) and exports it;
+   `tauri build` uploads the app to Apple, waits for the verdict and staples the `.app`, and
+   the script does the same for the `.dmg`.
+3. **Verifies.** At the end it runs `codesign --verify`, `spctl` (Gatekeeper) and
+   `stapler validate`. `--publish` refuses a build that fails them (1.6.22).
 
-**Configurar a credencial (uma vez por Mac).** A senha de app **mora só no keychain**,
-nunca no repo. Gere em `appleid.apple.com › Login e segurança › Senhas de app` e guarde:
+**The credential: an App Store Connect API key (since 1.6.39).** Until 1.6.38 it was the
+app-specific password of the Apple ID. That password went to `notarytool` as `--password`, on
+the command line of a process that waits minutes for Apple, and anything on the Mac could read
+it in `ps` for that long. Tauri's bundler notarizes the `.app` the same way, so changing only
+the script's own call would not have closed it. With the API key, `notarytool` gets
+`--key <path to .p8> --key-id --issuer`, and nothing secret goes on the command line.
 
-```bash
-security add-generic-password -U -s shvia-notarize -a SEU_APPLE_ID -w
-# (pede a senha de app escondida; o Team ID sai do próprio cert — S65UBCTPN5)
-```
+The order `build-local.sh` follows (`escolhe_credencial_de_notarizacao`):
 
-Depois é só `./build-local.sh` (ou `--bundles dmg`). Sem cert → sai **sem assinar**;
-com cert mas sem credencial → **assina mas não notariza** (`--no-sign` força build de
-teste). Detalhes da mecânica do Tauri: <https://v2.tauri.app/distribute/sign/macos/>.
+1. `APPLE_API_KEY` + `APPLE_API_ISSUER` + `APPLE_API_KEY_PATH` from the environment.
+2. Otherwise, the one `~/.shvia/AuthKey_<KEYID>.p8` (the Key ID comes from the file name)
+   with the issuer ID in `~/.shvia/apple-api-issuer`. If there are two keys, it refuses to
+   guess: set `APPLE_API_KEY`.
+3. Otherwise, the old app-specific password in the keychain (service `shvia-notarize`),
+   with a warning each build.
+4. Otherwise, the build is signed but not notarized, and `--publish` refuses it.
+
+When the key is used, `APPLE_ID`/`APPLE_PASSWORD` are **unset**, even if `signing.env`
+exported them, so Tauri is never left to choose between two credentials. A half-configured
+key (the file without the issuer, or a Key ID naming a file that is not there) is reported by
+name before the build goes back to the password. `npm run prova:notarizacao` runs the real
+functions against fakes and reads the argv `notarytool` would have received.
+
+#### Creating the key: once, about 5 minutes (the owner's step)
+
+You need the **Account Holder** or **Admin** role in the Apple Developer team (S65UBCTPN5).
+
+1. Open App Store Connect › Users and Access › Integrations › App Store Connect API
+   (<https://appstoreconnect.apple.com/access/integrations/api>), tab **Team Keys**. If the page
+   first asks to request access to the API, the Account Holder does that once.
+2. Click **+** (Generate API Key). Name: `shvia-notarize`. Access: **Developer**, which is
+   what Tauri's guide asks for and is enough for notarization. Click **Generate**.
+3. Copy the **Issuer ID** shown above the table (a UUID) and save it:
+   ```bash
+   mkdir -p ~/.shvia && printf '%s\n' 'PASTE-THE-ISSUER-ID' > ~/.shvia/apple-api-issuer
+   ```
+4. In the new key's row, click **Download**. **Apple lets you download it only once.** It
+   saves `AuthKey_<KEYID>.p8`, where `<KEYID>` is the Key ID column. Move it into place:
+   ```bash
+   mv ~/Downloads/AuthKey_*.p8 ~/.shvia/ && chmod 600 ~/.shvia/AuthKey_*.p8
+   ```
+   Keep a copy in the password manager, as you do with `updater.key`. If it is lost, revoke
+   it on the same page and generate another; nothing already notarized is affected.
+5. Check that Apple accepts it (it lists the past submissions, or an empty list):
+   ```bash
+   xcrun notarytool history --key ~/.shvia/AuthKey_<KEYID>.p8 --key-id <KEYID> \
+     --issuer "$(cat ~/.shvia/apple-api-issuer)"
+   ```
+6. `./build-local.sh` should now print
+   `✔ notarização: chave de API <KEYID> (App Store Connect) — nada secreto na linha de comando`.
+7. After one notarized build with the key, retire the password. Remove it from the keychain
+   (`security delete-generic-password -s shvia-notarize`) and revoke it at
+   [account.apple.com](https://account.apple.com) › Sign-In and Security › App-Specific
+   Passwords.
+
+On another Mac that builds releases, repeat steps 3–4 with the same `.p8` from the password
+manager: one key serves every machine. It never goes in the repo, in `signing.env`, or in chat.
+Tauri's own reference: <https://v2.tauri.app/distribute/sign/macos/>.
 
 ### Assinatura do updater (obrigatória a partir da 1.0.0)
 

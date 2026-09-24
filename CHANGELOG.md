@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.6.39 - notarization uses an App Store Connect API key, and the password leaves the command line
+
+**The Apple ID's app-specific password went to `notarytool` as `--password` (E20).** It sat on
+the command line of a process that waits minutes for Apple, readable in `ps` by anything on the
+Mac for that long. Changing only the script's own call (the `.dmg`) would have closed nothing:
+Tauri's bundler notarizes the `.app` with `APPLE_ID`/`APPLE_PASSWORD` the same way. The owner
+answered "I will create the API key" and asked how, and the how-to is part of this version.
+
+- `escolhe_credencial_de_notarizacao` (build-local.sh) picks the credential. The order is:
+  - an API key complete in the environment (`APPLE_API_KEY`, `APPLE_API_ISSUER`,
+    `APPLE_API_KEY_PATH`);
+  - else the one `~/.shvia/AuthKey_<KEYID>.p8`, with the issuer in `~/.shvia/apple-api-issuer`;
+  - else the keychain password, with a warning on every build;
+  - else signed but not notarized, which `--publish` refuses (1.6.22).
+- In API mode `APPLE_ID`/`APPLE_PASSWORD` are unset, even when `signing.env` exported them, so
+  Tauri never chooses between two credentials. `notarytool` gets `--key <path> --key-id
+  --issuer`, and nothing secret goes in argv.
+- Two keys with no `APPLE_API_KEY` refuse to guess. A Key ID naming a missing file never pairs
+  with another key. A half-configured key is reported by name before the fallback. A `.p8`
+  readable by others is flagged.
+- `notariza_arquivo` notarizes the `.dmg` with the same credential.
+- `docs/build.md`, "macOS": the credential order, and **the owner's 7 steps to create the key**
+  (App Store Connect › Integrations › Team Keys, Developer access; the issuer file, the `.p8` in
+  `~/.shvia` with `chmod 600`, a `notarytool history` check, and retiring the password).
+  `signing.env.example`, `CLAUDE.md` and `AGENTS.md` say where the credential lives now.
+- `scripts/prova-notarizacao-sem-senha.mjs` (`npm run prova:notarizacao`, a CI step) runs the
+  real functions with a temp HOME, a fake `security`, and a fake `xcrun` that records its argv.
+  It covers 10 cases. Reversals measured: without the `unset`, the `signing.env` case fails;
+  with the `.dmg` always going by password, three cases fail.
+
 ## 1.6.38 - the Claude Code login asks in a native dialog before it starts
 
 **`claudeAuthLoginStart` spawned `claude auth login` on the page's word alone.** Unlike
