@@ -61,6 +61,15 @@ jobs:
       # two days.
       - name: The claude-runner links (1.4.7 regression)
         run: npm run prova:runner-version
+      # The page approves by itself a Bash card it reads as "inside the project", and a relative
+      # path reads as inside. That is only right while the SDK sends the shell back to the project
+      # after a `cd` out of it. Measured here end to end, with the real runner and SDK against a
+      # local stand-in for the API (1.6.51). The only step that installs the runner's SDK, so an
+      # SDK bump from Dependabot is measured by it.
+      - name: A cd out of the project does not reach the next command
+        run: |
+          npm ci --prefix claude-runner --no-audit --no-fund
+          npm run prova:cd
       - name: Portadores de versão alinhados
         run: npm run prova:bump
       # The pre-commit hook checks the carriers in the INDEX, where 1.6.3 went wrong (1.6.33).

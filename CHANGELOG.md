@@ -1,5 +1,57 @@
 # Changelog
 
+## 1.6.51 - a cd out of the project does not reach the next command, proved with the real SDK
+
+1.6.48 read a line of the Agent SDK's changelog as a gap: "a `cd` made by the agent now persists
+across turns". The page decides a Bash card by its text. In its default Auto mode it approves by
+itself a `confirm` card it judges "inside the project", and a relative path reads as inside. So
+at the `manual`/`edit` levels, `cd /etc` (approved) and then `cat hosts` would read /etc/hosts
+while the page read it as inside the project.
+
+Measured end to end, it does not happen, for two reasons of the SDK's:
+
+- **After a command that leaves the allowed directories, the SDK puts the shell back in the
+  project, and says so**: "Shell cwd was reset to <project>". The next command runs in the
+  project, even in the same turn. The code is in the 0.3.278 binary
+  (`tengu_bash_tool_reset_to_original_dir`), beside the switch that turns it into "always go
+  back" (`CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR`).
+- **The runner opens each turn with `resume`, and the cwd starts from `cwd` again.** The SDK's
+  change is about the turns of one streaming session, which the runner does not use. Inside the
+  project, `cd sub` reaches the next command of its turn and not the next turn.
+
+The page's side was measured with its own functions: `approvalPlan` and what it calls, sliced
+from SHVIA-WEB's `code-mode.js` as of 2.110.452. It asks for the `cd` out of the project, and
+approves the `pwd` after it by itself. That `pwd` ran in the project.
+
+**`prova:cd` holds it** (`scripts/prova-cd-volta-para-o-projeto.mjs`, a new CI step). It runs
+the real runner at `manual` and the real SDK binary against a local stand-in for the Messages
+API that scripts the model. Nothing leaves 127.0.0.1 and no tokens are spent. It approves every
+card and reads where each `pwd` ran. It fails when:
+
+- the `cd` card does not show its target to the page;
+- the command after an approved `cd` out of the project runs outside it;
+- the SDK stops saying it reset the shell;
+- a turn starts outside the project.
+
+A control rules out the vacuous pass: `cd sub` must reach the next command. Otherwise an SDK that
+kept no `cd` at all would pass everything for the wrong reason. It is the first CI step that
+installs the runner's SDK, so the weekly Dependabot bump of the SDK is measured by it. It takes
+under 2 s after the `npm ci`. Locally, without `claude-runner/node_modules`, it prints NOT
+MEASURED and exits 0; in CI it exits 1.
+
+Reversals, measured:
+
+- `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1` (the SDK resets after every command) fails on the
+  control. `cd sub` did not reach the next command, and the reset notice is gone.
+- Giving the runner the project's parent in `additionalDirectories` lets the `cd` out persist.
+  `pwd` ran in the outside folder, and the proof failed on that line. The next turn still
+  started in the project, so that check stands on its own.
+- Not reversed: a turn that starts outside the project. Producing one would take changing how
+  the runner opens turns.
+
+`politica.mjs` says it where the Bash preview is built, in the comment on `previa`. The 1.6.48
+entry now points here.
+
 ## 1.6.50 - the Windows build script decides before building what the bundler would only say at the end
 
 The Windows validation runbook (1.6.44) named two gaps in `build-local.ps1` and worked around both
@@ -99,7 +151,9 @@ this was in CI, so it lands as 1.6.48 (PR #63 closed, rebuilt on the new master)
   destructive and protected paths are `always`), so nothing new opens there. At `manual`/`edit`
   with the page in Auto, a relative path in a later turn can now refer to where an approved
   `cd` went while reading as "inside the project". That is queued to be measured end to end with
-  the page. Measured: the SDK loads (`query` is exported), and `prova:politica`, `prova:runner`,
+  the page. **Measured in 1.6.51: it does not happen** — the shell goes back to the project after
+  a command that leaves it, and the runner's turns are `resume`s. See 1.6.51.
+  Measured: the SDK loads (`query` is exported), and `prova:politica`, `prova:runner`,
   `prova:runner-version` and `prova:instalador` pass.
 
 ## 1.6.47 - the repository stops choosing the model

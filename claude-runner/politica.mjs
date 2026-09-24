@@ -436,6 +436,13 @@ export function decidir({ projectDir, toolName, toolInput = {}, nivel = "manual"
  * The page's check looks for an absolute path, `~` or `..` as a whitespace-separated token;
  * inside JSON the path follows a `"`, so `Read /etc/passwd` read as "inside" and was
  * auto-approved. A read shows its path as its own token now; the full input goes in `why`.
+ *
+ * A Bash preview is the command as written, and the page reads a relative path in it against
+ * the project root. That holds only while the command runs there. It does, for two reasons of
+ * the SDK's (measured on 0.3.278, 1.6.51): after a command that leaves the project the shell
+ * goes back ("Shell cwd was reset to <project>"), and each turn is a `resume` that starts at
+ * `cwd`. So an approved `cd /etc` does not make the next `cat hosts` read /etc/hosts.
+ * `prova:cd` runs the real runner and SDK to hold that; an SDK bump that changes either fails there.
  */
 export function previa(toolName, input) {
   const inp = input || {};
