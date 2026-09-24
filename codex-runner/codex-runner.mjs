@@ -42,8 +42,12 @@
 //     {"type":"turn_done"} | {"type":"error"|"warn","message"}
 
 import { spawn } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
 import * as readline from "node:readline";
 import { validarPayload } from "./esquema.mjs";
+// What differs per OS (1.6.58): the commands of the sandbox proof.
+import { comandosDaProva } from "./plataforma.mjs";
 // 🔴 IMPORTADO do motor vizinho, nunca copiado. A lista de segredos é a mesma nos dois
 // motores porque é a MESMA lista — duas cópias divergem no dia em que alguém acrescenta
 // um padrão a uma delas, e a que fica para trás segue verde sem proteger nada.
@@ -394,15 +398,52 @@ async function provarQueOSandboxSegura() {
   // and a failure there can only be the sandbox. Measured both ways on 09/09/2026 —
   // `workspaceWrite` → exit 2, "Read-only file system"; `dangerFullAccess` → exit 0
   // and the file appears.
-  const alvo = `${process.env.HOME || "/root"}/.shvia-sandbox-probe-${process.pid}`;
+  //
+  // `os.homedir()`, not `$HOME`: on Windows the home is `USERPROFILE` and `$HOME` is unset, and
+  // the old fallback, `/root`, is not a home anywhere a user runs this.
+  const alvo = path.join(os.homedir(), `.shvia-sandbox-probe-${process.pid}`);
+  const { controle, prova } = comandosDaProva({
+    fora: alvo,
+    dentro: path.join(PROJECT_DIR, `.shvia-sandbox-controle-${process.pid}`),
+  });
+  const executar = (command) => pedir("command/exec", {
+    command,
+    cwd: PROJECT_DIR,
+    sandboxPolicy: { type: "workspaceWrite", networkAccess: false },
+    timeoutMs: 15000,
+  });
+
+  // 🔴 The CONTROL first (1.6.58): a write INSIDE the project, which the sandbox allows, must
+  // exit 0. Without it, a refused write outside cannot be told apart from a command that never
+  // ran — measured: a probe pointed at a missing program came back `exitCode: 101` and the
+  // runner started with the sandbox "confirmed". That is `/bin/sh` on Windows (plataforma.mjs).
+  let c;
+  try {
+    c = await executar(controle);
+  } catch (e) {
+    emit({ type: "error", message: `não consegui provar o sandbox: ${e?.message ?? e}` });
+    return false;
+  }
+  if (!c || typeof c.exitCode !== "number") {
+    emit({
+      type: "error",
+      message: "o app-server não respondeu à prova de sandbox — este Codex é velho demais para este motor.",
+    });
+    return false;
+  }
+  if (c.exitCode !== 0) {
+    emit({
+      type: "error",
+      message:
+        `não consegui provar o sandbox: o comando de controle (uma escrita DENTRO do projeto) não rodou `
+        + `(saída ${c.exitCode}) — sem ele, uma escrita recusada fora do projeto não prova nada, então o motor não sobe.`,
+    });
+    return false;
+  }
+
   let r;
   try {
-    r = await pedir("command/exec", {
-      command: ["/bin/sh", "-c", `printf x > '${alvo}' && rm -f '${alvo}'`],
-      cwd: PROJECT_DIR,
-      sandboxPolicy: { type: "workspaceWrite", networkAccess: false },
-      timeoutMs: 15000,
-    });
+    r = await executar(prova);
   } catch (e) {
     emit({ type: "error", message: `não consegui provar o sandbox: ${e?.message ?? e}` });
     return false;

@@ -16,7 +16,7 @@ command -v node >/dev/null 2>&1 || { echo "erro: Node 18+ não encontrado no PAT
 mkdir -p "$DEST" "$BIN"
 # Every file the runner imports. The Claude runner shipped broken once because
 # this list missed a module, so the load proof below exists to catch exactly that.
-cp "$DIR/codex-runner.mjs" "$DIR/protocolo.mjs" "$DIR/esquema.mjs" "$DIR/package.json" "$DEST/"
+cp "$DIR/codex-runner.mjs" "$DIR/protocolo.mjs" "$DIR/esquema.mjs" "$DIR/plataforma.mjs" "$DIR/package.json" "$DEST/"
 # 🔴 A lista de segredos vem do motor vizinho por IMPORT, então o arquivo dele viaja
 # junto — no layout que o import espera (`../claude-runner/politica.mjs`). Esquecer
 # esta linha entrega um runner que não carrega, e foi exatamente assim que o

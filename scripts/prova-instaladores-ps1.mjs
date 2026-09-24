@@ -88,7 +88,7 @@ try {
   const c3 = instalar(src, "codex-runner");
   const d3 = join(c3.lad, "shvia-codex-runner");
   caso("codex-runner installs", c3.code === 0 && /✓ codex-runner \S+ instalado/.test(c3.out)
-    && ["codex-runner.mjs", "protocolo.mjs", "esquema.mjs", "package.json"].every((f) => tem(join(d3, f)))
+    && ["codex-runner.mjs", "protocolo.mjs", "esquema.mjs", "plataforma.mjs", "package.json"].every((f) => tem(join(d3, f)))
     && tem(join(c3.lad, "claude-runner", "politica.mjs"))
     && tem(join(d3, "schemas", "codex_app_server_protocol.v2.schemas.json"))
     && tem(join(c3.lad, "shvia", "bin", "codex-runner.cmd")),

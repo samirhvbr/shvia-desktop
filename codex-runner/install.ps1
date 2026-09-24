@@ -20,7 +20,7 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 # ⚠️ Every LOCAL module the runner imports from its own folder goes in this list, on this one
 # line — scripts/prova-instalador-copia-os-imports.mjs reads it, as it reads install.sh's `cp`.
-$Files = @('codex-runner.mjs', 'protocolo.mjs', 'esquema.mjs', 'package.json')
+$Files = @('codex-runner.mjs', 'protocolo.mjs', 'esquema.mjs', 'plataforma.mjs', 'package.json')
 
 $Dir = $PSScriptRoot
 if (-not $env:LOCALAPPDATA) { Write-Output 'erro: LOCALAPPDATA não está definido (isto roda no Windows).'; exit 1 }

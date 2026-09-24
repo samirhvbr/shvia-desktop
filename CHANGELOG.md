@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.6.58 - the Codex sandbox proof refuses a command that never ran
+
+The Codex runner refuses to start unless its sandbox holds. It asks the `codex` app-server to
+write outside the project under `workspaceWrite`, and a non-zero exit meant "held". That proof
+had no control, and so a command that never ran was read as a sandbox that works.
+
+- **Measured on 24/09/2026 with the real `codex` app-server:** the probe pointed at a program
+  that does not exist came back `exitCode: 101`, "Failed to execvp … No such file or directory",
+  and the runner started with its sandbox "confirmed". A program that does not exist is exactly
+  what `/bin/sh`, the probe's shell, is on Windows. Today that path is unreachable there, because
+  `codex` itself does not start on Windows. The next commit of this version makes it start, which
+  is why this one comes first.
+- **The proof now runs a control first:** a write INSIDE the project, which the sandbox allows,
+  must exit 0. Only then does a refused write outside mean the sandbox held. The commands come
+  from `codex-runner/plataforma.mjs`, per OS: `/bin/sh` as before, and `cmd.exe` on Windows. The
+  target outside is `os.homedir()` instead of `$HOME`, which Windows does not set; the old
+  fallback, `/root`, is nobody's home.
+- Measured end to end, with the real app-server:
+  - Normal: the runner starts, and the control leaves nothing in the project.
+  - The probe's shell missing: the runner refuses, with exit 3 and a message that names the
+    control. It used to start.
+  - The sandbox turned off (`dangerFullAccess`): it refuses, as before.
+- `plataforma.test.mjs` joins `prova:politica`. `plataforma.mjs` is a new local module, so it
+  joins the `cp` of `install.sh` and the `$Files` of `install.ps1`. `prova:instalador` flagged it
+  missing from both before the lists were updated.
+
 ## 1.6.57 - on Windows the app runs the runners that install.ps1 installed, as node with the .mjs
 
 This is the second half of the owner's "Sim, precisa dos dois no Windows". 1.6.56 installs the
