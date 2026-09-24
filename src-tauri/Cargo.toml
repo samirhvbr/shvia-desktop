@@ -104,5 +104,5 @@ objc2-web-kit = "0.3"
 # `windows::core::PWSTR` (take_pwstr do webview2-com espera o PWSTR da crate
 # `windows`), então nenhuma feature Win32 extra é necessária.
 [target.'cfg(target_os = "windows")'.dependencies]
-webview2-com = "0.38"
+webview2-com = "0.39"
 windows = "0.61"
