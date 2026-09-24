@@ -140,7 +140,7 @@ shvia-desktop/
 ├── sidecar/                    # (F2) serviços nativos/seguros em Python
 ├── scripts/packaging/          # appimage/deb/rpm adaptados do SHVTERM
 ├── .github/workflows/          # ci.yml (testes/lint); matriz de release ainda local
-├── .claude/                    # perfil de modelo + permissões
+├── .claude/                    # perfil do agente: permissões + effort (sem modelo)
 ├── .continue/                  # WIP: estado-atual + escopo do projeto
 └── docs/                       # documentação técnica estável
 ```

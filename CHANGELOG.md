@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.6.47 - the repository stops choosing the model
+
+`CLAUDE_CODE_SUBAGENT_MODEL` leaves `.claude/settings.json`. The model is now the user's
+choice, made with `/model`, and a subagent inherits it: by default Claude Code gives a
+subagent the session's model, and this variable was the only thing making it different —
+with the session on Opus 5.5, subagents were measured on Opus 5, because the variable names
+the `opus` alias and the alias still resolves through the organization's managed pin.
+
+`.codex/config.toml` stops exporting the pin into the shells Codex opens.
+
+`.claude/README.md`, `README.md`, `README_br.md` stop(s) describing a model profile.
+
+Rule and measurement: repodocs ADR-027.
+
+No test: configuration and documents. Checked that the file parses and that repodocs
+runbook §7's check is silent here.
+
 ## 1.6.46 - the model pin leaves .claude/settings.json
 
 `"model": "opus[1m]"` and the `ANTHROPIC_DEFAULT_OPUS_MODEL` env pin are gone.
