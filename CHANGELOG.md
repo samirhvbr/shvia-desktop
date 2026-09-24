@@ -22,6 +22,10 @@ the Windows job: both predate 1.6.37.
   0.23.1 was already in the tree through another crate, so the lock moves one line. Measured:
   `cargo test` (137), clippy `-D warnings` on Linux and `x86_64-pc-windows-gnu`, `cargo deny`
   (all four ok).
+- **`vite` 8.3.0 (#47)**, exactly as proposed. It needs Node `^20.19.0 || >=22.12.0`; CI runs 22,
+  and `docs/build.md`'s prerequisite now says so. Measured: `npm ci`, `npm run build` (the bundle
+  still carries the shell's four server commands), and the dev server that `tauri dev` uses
+  answers HTTP 200 and serves `src/main.ts`.
 
 ## 1.6.48 - the patch and minor updates Dependabot proposed land as versioned commits
 

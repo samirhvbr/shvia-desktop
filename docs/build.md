@@ -33,7 +33,7 @@ Saída em `src-tauri/target/release/bundle/`. Opções (Linux/macOS): `--skip-np
 
 ## Pré-requisitos
 
-- **Comum:** Node 20, Rust (`rustup default stable`).
+- **Comum:** Node 20.19+ or 22.12+ (what `vite` 8 requires, since 1.6.49), Rust (`rustup default stable`).
 - **Linux (Debian/Ubuntu):**
   `sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf`
 - **Linux (Arch):**
