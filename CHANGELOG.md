@@ -20,6 +20,9 @@ from outside (`code_bridge::reply`, `::Sidecars`, `::engine_status`, …) do not
 - `code_bridge/shim.rs`: the JS shim (`BRIDGE_JS`, what `window.__shviaCode` is) and the
   session's capability token. 207 lines. `bridge_token`, `inject_token` and `BRIDGE_JS` are
   re-exported (`pub use`), so `lib.rs` keeps its paths.
+- `code_bridge/dialogos.rs`: the native dialogs (pick a folder, pick files, save a file), the
+  last folder each one remembers, and `sanitize_filename` with its tests. 264 lines. The test
+  module now sits last in its file (clippy `items_after_test_module`); nothing else moved.
 
 ## 1.6.40 - the updater key rotation is prepared: one declared transition release, signed with the old key
 
