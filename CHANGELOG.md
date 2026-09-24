@@ -18,6 +18,9 @@ when serializing a `KeyValueMap` with an empty sequence or map entry. It has no 
   move to gtk4, and `src-tauri/deny.toml` already carries the reason (RUSTSEC-2024-0429).
   Dependabot's security job for it fails for the same reason; that red run on `master` is not
   the code.
+- The landing rule from 1.6.35 said "close the PR" once its change lands. It now says to leave
+  it: closing a Dependabot PR by hand works like `@dependabot close`, and Dependabot stops
+  proposing that update. PR #39 stays open until Dependabot sees `master` no longer needs it.
 
 ## 1.6.35 - Dependabot watches every manifest, and the repository's alerts are on
 

@@ -8,8 +8,10 @@
 # ⚠️ A Dependabot PR is a PROPOSAL, never a merge. Its commit is "Bump x from a to b": it has no
 # version and no CHANGELOG entry, so merging it as it is breaks the repository's commit rule and
 # publishes no Release. To land one, take its change into ONE commit `X.Y.Z - ...` with the
-# CHANGELOG entry and the bump (`echo X.Y.Z > version.md && node scripts/sync-version.mjs`), and
-# close the PR. docs/build.md, "Dependabot".
+# CHANGELOG entry and the bump (`echo X.Y.Z > version.md && node scripts/sync-version.mjs`).
+# Then leave the PR alone: closing it by hand works like `@dependabot close`, and Dependabot does
+# not propose that update again. It closes a PR that master no longer needs by itself.
+# docs/build.md, "Dependabot".
 #
 # `npm run prova:dependabot` (a CI step) fails when a tracked package.json or Cargo.toml has no
 # entry here, or when an entry points at a directory without a manifest. A new runner directory

@@ -413,7 +413,11 @@ settings (23/09/2026). The owner chose "complete" over "security + patch/minor o
 **A Dependabot PR is a proposal, never a merge.** Its commit is `Bump x from a to b`, with no
 version and no CHANGELOG entry. Merging it as it is breaks the commit rule and publishes no
 Release. To land one, take its change into one `X.Y.Z - ...` commit with the CHANGELOG entry
-and the bump (`echo X.Y.Z > version.md && node scripts/sync-version.mjs`), then close the PR.
+and the bump (`echo X.Y.Z > version.md && node scripts/sync-version.mjs`). **Then leave the PR
+alone.** Closing it by hand works like `@dependabot close`: Dependabot does not propose that
+update again. That is the wrong message when the commit took a different version, as 1.6.36
+did (3.21.0, the first patched `serde_with`, instead of the proposed 3.23.0). Dependabot closes
+a PR that `master` no longer needs by itself.
 
 `dtolnay/rust-toolchain` is ignored on purpose. It is pinned to a commit of its `stable`
 branch, and Dependabot would move it to the default branch, whose action needs a `toolchain`
