@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.6.41 - the bridge starts its split by subject: the folder panel moves to its own module
+
+`src-tauri/src/code_bridge.rs` had grown to 3,760 lines (1,915 on 07/09): dispatch, the page shim,
+the agent session, the engines, the Claude login, the fence, the native dialogs and the folder
+panel, with 17 test modules between them. The owner chose "split it now". The plan: one subject
+per commit, the suite green after each, and the source rulers (`include_str!`) moving with the
+code they check. `code_bridge.rs` stays the parent. It keeps the dispatch (`handle_message`) and
+what every part shares (`reply`, `fora_da_ui`, `saida_com_prazo` and its deadlines). Paths used
+from outside (`code_bridge::reply`, `::Sidecars`, `::engine_status`, …) do not change.
+
+- `code_bridge/painel.rs`: `git status`, the file tree, a file's diff and a file read, the capped
+  readers (`ler_no_maximo`, `ler_escolhido`), and their three test modules. 580 lines, moved
+  unchanged except for visibility (`pub(super)`). 137 tests before and after, and clippy
+  `-D warnings` clean on Linux and `x86_64-pc-windows-gnu`.
+
 ## 1.6.40 - the updater key rotation is prepared: one declared transition release, signed with the old key
 
 The owner chose "rotate, prepare the transition". The pubkey is compiled into every installed
