@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.6.56 - the two runners get a Windows installer, proved under PowerShell
+
+The owner answered "Sim, precisa dos dois no Windows" to the panel's `windows-motores` question.
+Until now there was no Windows path for the Claude and Codex engines: `install.sh` needs bash,
+and the app looks for a `claude-runner.exe` that nothing builds. This version is the first half:
+the installers. The app starts using them in the next version (H2b of the queue), so on Windows
+the engines still do not appear in the app yet.
+
+- **`claude-runner/install.ps1`** (PowerShell 5.1+) does what `install.sh` does. It copies the
+  runner to `%LOCALAPPDATA%\shvia-claude-runner`, runs `npm ci --omit=dev` from the versioned
+  lock, and leaves `%LOCALAPPDATA%\shvia\bin\claude-runner.cmd` for a terminal. It proves the
+  installed runner loads before it prints ✓. The app will not go through the `.cmd`: stopping a
+  `.cmd` stops `cmd.exe` and leaves `node` running.
+- **`codex-runner/install.ps1`** does the same for Codex, with `politica.mjs` next door (the
+  runner imports `../claude-runner/politica.mjs`) and the schema generated from the installed
+  `codex`, or the repository's copy, said out loud.
+- Four things were measured while writing them, and each is in the code with its reason:
+  - The files are UTF-8 **with** a BOM, or Windows PowerShell 5.1 reads every accent wrong.
+  - `[System.Uri]` on a Unix path gives an empty `AbsoluteUri`, so `node` builds the file URL
+    itself (`pathToFileURL`).
+  - `node` and `npm` are the first candidates that **exist**. A dangling `~/.local/bin/npm` on
+    the build machine was found first, and pwsh tried to "open" it. `Test-Path` answers for a
+    broken link itself, so a link is judged by its target (nvm-windows uses such links).
+  - The `.cmd` names its path through `%LOCALAPPDATA%`, because `cmd.exe` reads the file in
+    the OEM code page and a user folder with an accent would break it.
+- **`prova:instaladores-ps1`**, a new CI step, runs both installers under pwsh, in a temporary
+  `LOCALAPPDATA` whose path has a space and an accent. The cases:
+  - Both install.
+  - Each refuses a module it does not copy.
+  - Without `LOCALAPPDATA` it stops.
+  - A broken `node`/`npm` link ahead in PATH does not break it.
+
+  Reversals measured: an installer without its load proof fails the missing-module case, and
+  one without the link check fails the broken-PATH case.
+- **`prova:instalador`** now also reads the `$Files` line of each `install.ps1`. That makes
+  three hand-written lists guarded by one ruler. Reversal: `protocolo.mjs` dropped from the
+  Codex list turns it red.
+
 ## 1.6.55 - the permission lists follow repodocs: five commands move to ask, seven rules leave deny
 
 `rm -rf` and `curl`/`wget` piped into a shell leave `deny` and now ask for confirmation.

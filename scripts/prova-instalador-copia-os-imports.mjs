@@ -70,10 +70,21 @@ for (const runner of RUNNERS) {
   const linhaCp = (sh.split('\n').find((l) => /^\s*cp\s/.test(l)) || '');
   const faltando = [...precisa].filter((n) => !linhaCp.includes(n)).sort();
 
-  const ok = faltando.length === 0;
+  /* The THIRD list, since 1.6.56: `install.ps1`, the Windows installer, copies by its own
+   * `$Files = @(...)` line. Same class, same rule: a module the runner imports that is not on
+   * that line makes a Windows install that is born broken. Only that line counts, for the same
+   * reason as the `cp` above — the file's comments name modules too. */
+  const ps1 = join(ROOT, runner, 'install.ps1');
+  let faltandoPs1 = [];
+  if (existsSync(ps1)) {
+    const linhaFiles = readFileSync(ps1, 'utf8').split('\n').find((l) => /^\s*\$Files\s*=\s*@\(/.test(l)) || '';
+    faltandoPs1 = [...precisa].filter((n) => !linhaFiles.includes(`'${n}'`)).sort();
+  }
+  const ok = faltando.length === 0 && faltandoPs1.length === 0;
   if (!ok) falhas++;
   console.log(`  ${ok ? '✓' : '✗'} ${runner.padEnd(16)} importa ${precisa.size} módulo(s) local(is)`
-    + (ok ? '' : ` · FORA do cp: ${faltando.join(', ')}`));
+    + (faltando.length ? ` · FORA do cp: ${faltando.join(', ')}` : '')
+    + (faltandoPs1.length ? ` · FORA do $Files do install.ps1: ${faltandoPs1.join(', ')}` : ''));
 
   /* A SEGUNDA lista, criada em 1.5.16: o `bundle.resources` que faz a fonte do runner
    * viajar no instalador do app, para quem não tem o repositório clonado.
@@ -109,8 +120,9 @@ for (const runner of RUNNERS) {
 if (falhas) {
   console.error(
     `\n🔴 ${falhas} lista(s) não cobrem um arquivo que a instalação precisa.\n`
-      + '   São DUAS, e o conserto depende de qual reprovou:\n'
+      + '   São TRÊS, e o conserto depende de qual reprovou:\n'
       + '     · `cp` do install.sh ....... o arquivo não chega ao destino da instalação\n'
+      + '     · $Files do install.ps1 .... o mesmo, na instalação do Windows (1.6.56)\n'
       + '     · bundle.resources ......... o arquivo não viaja no instalador do app\n'
       + '   A guarda do próprio install.sh só acusa a primeira, e só DURANTE uma\n'
       + '   instalação — o CI não instala, e é por isso que esta régua lê texto.\n',

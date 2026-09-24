@@ -1,7 +1,7 @@
 {
   "name": "shvia-desktop",
   "private": true,
-  "version": "1.6.55",
+  "version": "1.6.56",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -34,6 +34,7 @@
     "prova:transicao": "node scripts/prova-transicao-de-chave.mjs",
     "prova:ps1": "node scripts/prova-build-local-ps1.mjs",
     "prova:cd": "node scripts/prova-cd-volta-para-o-projeto.mjs",
+    "prova:instaladores-ps1": "node scripts/prova-instaladores-ps1.mjs",
     "contas": "node scripts/contas-claude.mjs"
   },
   "devDependencies": {
