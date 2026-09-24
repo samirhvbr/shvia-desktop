@@ -265,6 +265,60 @@ não no arquivo de credenciais.
 O `release-manifest.mjs` avisa em amarelo quando **nada** foi assinado — se esse aviso
 aparecer, a chave não chegou ao bundler e o release não serve para auto-update.
 
+### Rotating the updater key (prepared in 1.6.40; publishing it is the owner's act)
+
+The pubkey is **compiled into every installed client**, so a rotation cannot be a swap. It
+takes **one transition release** that installed clients still accept (**signed with the OLD
+key**) and that already carries the **NEW pubkey**, which every client it installs checks from
+then on. Every release after it is signed with the new key.
+
+⚠️ **The cost, chosen with the rotation.** A client that skips the transition release (still on
+an older version when the next one is published) can no longer update itself: it rejects the
+new key's signature. It has to be reinstalled by hand, from the site or the GitHub Release.
+That is why the transition release stays the latest for a while before the next one goes out.
+
+The steps:
+
+1. **Generate the new pair** on the release Mac. `-w` writes `…key` and `…key.pub`, and the
+   command asks for the new password:
+   ```bash
+   npx tauri signer generate -w ~/.shvia/updater-next.key
+   printf '%s\n' 'THE-NEW-PASSWORD' > ~/.shvia/updater-next.pass && chmod 600 ~/.shvia/updater-next.*
+   ```
+   Put both (the key and the password) in the password manager now, next to the current ones.
+2. **The transition commit.** Put the content of `~/.shvia/updater-next.key.pub` in
+   `src-tauri/tauri.conf.json` → `plugins.updater.pubkey`, bump the version, and write the
+   CHANGELOG entry ("…carries the new updater pubkey (key rotation, transition release)").
+   Land it.
+3. **Build and publish the transition release with the OLD key**, which is still
+   `~/.shvia/updater.key`:
+   ```bash
+   ./build-local.sh --publish --transicao-de-chave     # macOS, then Linux
+   ```
+   `--transicao-de-chave` declares it. The build reads the previous release's pubkey from
+   the last version tag, refuses when it equals the one in `tauri.conf.json` (nothing rotated,
+   or the transition already shipped), and checks the signing key and every manifest signature
+   against the **previous** pubkey instead of the new one. Without the flag, the old key after a
+   pubkey change is refused, and the refusal points to the flag. On Windows, `build-local.ps1`
+   signs with whatever `TAURI_SIGNING_PRIVATE_KEY` holds. For this one release, that must be the
+   old key.
+4. **Hold.** Leave the transition release as the latest long enough for the installed base to
+   pass through it. How long is your call. Each client checks 20 s after it starts and every
+   6 h (`updater.rs`), so a machine that is used daily passes through within a day. Arch
+   installs update through pacman (ADR-028) and never check this key.
+5. **Swap the keys** on every release machine (and in the password manager):
+   ```bash
+   mv ~/.shvia/updater.key ~/.shvia/updater-retired.key && mv ~/.shvia/updater.pass ~/.shvia/updater-retired.pass
+   mv ~/.shvia/updater-next.key ~/.shvia/updater.key && mv ~/.shvia/updater-next.pass ~/.shvia/updater.pass
+   ```
+   Keep the retired key offline. It still signs updates that every pre-transition client
+   trusts, which makes it a secret to keep, not to throw away carelessly.
+6. **The next release is normal:** `./build-local.sh --publish`. The key proof now requires
+   the new key, which matches `tauri.conf.json`.
+
+`npm run prova:transicao` runs the real functions in temp git repositories, with the old
+pubkey on a tagged release and the new one on the transition commit.
+
 ### Publicar: `--publish` (macOS e Linux)
 
 `./build-local.sh --publish` sobe os artefatos desta plataforma + o `release.json` por

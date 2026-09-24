@@ -90,6 +90,9 @@ jobs:
       # deferred on a fresh clone runs after npm ci instead of never (1.6.21).
       - name: Every shipped signature is from the published key
         run: npm run prova:chaves
+      # A key rotation's transition release is declared, signed with the OLD key, and happens once (1.6.40).
+      - name: The updater key rotation has one declared transition release
+        run: npm run prova:transicao
       # A Mac build without the Apple signature is never published, by any path (1.6.22).
       - name: An unsigned Mac build is never published
         run: npm run prova:apple

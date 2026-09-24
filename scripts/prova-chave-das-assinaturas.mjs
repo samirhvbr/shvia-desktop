@@ -28,7 +28,12 @@ function funcao(nome) {
   if (i < 0) { console.error(`🔴 ${nome} moved out of build-local.sh`); process.exit(1); }
   return FONTE.slice(i, FONTE.indexOf("\n}\n", i) + 3);
 }
-const BLOCO = ["updater_pubkey_id", "veredito_das_assinaturas", "confere_chaves_do_manifesto"].map(funcao).join("\n");
+// 1.6.40: the manifest check asks `keyid_que_os_clientes_conferem`, which reads the pubkey
+// through `keyid_da_conf` (and, in a key-rotation transition, from the previous release).
+const BLOCO = [
+  "keyid_da_conf", "updater_pubkey_id", "updater_pubkey_id_anterior", "keyid_que_os_clientes_conferem",
+  "veredito_das_assinaturas", "confere_chaves_do_manifesto",
+].map(funcao).join("\n");
 const VERIFY = funcao("verify_updater_key");
 
 const b64 = (b) => Buffer.from(b).toString("base64");

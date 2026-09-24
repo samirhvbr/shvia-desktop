@@ -35,6 +35,9 @@
 #                                    # pronto — o usuário terá de instalar à mão)
 #   ./build-local.sh --publish       # publica no servidor por scp (item D1)
 #   ./build-local.sh --publish --dest usuario@HOST:/caminho/   # outro destino
+#   ./build-local.sh --publish --transicao-de-chave   # the ONE release of an updater key
+#                                    # rotation: signed with the OLD key, carrying the NEW
+#                                    # pubkey (docs/build.md, "Rotating the updater key")
 #   ./build-local.sh --force         # reconstrói mesmo já havendo build da versão
 #
 # REUSO DE BUILD: se já existe build DESTA versão no disco e nenhuma fonte mudou,
@@ -547,17 +550,75 @@ UPDATER_ARTIFACTS=1
 # que a citam, para não depender da ordem em que o corpo do script executa.
 UPDATER_PASS_FILE="${SHVIA_UPDATER_PASS_FILE:-$HOME/.shvia/updater.pass}"
 
-# O keyid (8 bytes) que mora DENTRO da pubkey declarada no tauri.conf.json — é
-# ele que todo cliente já instalado usa para aceitar ou recusar um update.
-updater_pubkey_id() {
+# The keyid (8 bytes) inside the pubkey of the tauri.conf.json read from stdin. One parser
+# for the current config and for a released one (1.6.40), so the two can never disagree on
+# how a pubkey is read.
+keyid_da_conf() {
   node -e '
     try {
-      const c = require("./src-tauri/tauri.conf.json");
+      const c = JSON.parse(require("fs").readFileSync(0, "utf8"));
       const pub = Buffer.from(c.plugins.updater.pubkey, "base64").toString();
       const raw = Buffer.from(pub.trim().split("\n").pop(), "base64");
       process.stdout.write(raw.slice(2, 10).toString("hex").toUpperCase());
     } catch { process.stdout.write(""); }
   ' 2>/dev/null || true
+}
+
+# O keyid (8 bytes) que mora DENTRO da pubkey declarada no tauri.conf.json — é
+# ele que todo cliente já instalado usa para aceitar ou recusar um update.
+updater_pubkey_id() {
+  { keyid_da_conf < src-tauri/tauri.conf.json; } 2>/dev/null || true
+}
+
+# ── Rotating the updater key: the transition release (1.6.40) ────────────────
+# The pubkey is compiled into every installed client, so a rotation takes ONE release that
+# the installed clients still accept (signed with the OLD key) and that already carries the
+# NEW pubkey, which the clients it installs check from then on. Every later release is signed
+# with the new key, and a client that skips the transition release cannot update itself any
+# more: it has to be reinstalled by hand. `--transicao-de-chave` declares that release on
+# purpose. Without it the key proofs compare with the pubkey in tauri.conf.json, as always, so
+# the old key after a pubkey change is refused, and the refusal points here.
+TRANSICAO_DE_CHAVE=0
+
+# The keyid of the previous RELEASED version: the tauri.conf.json at the newest version tag
+# reachable from HEAD other than this build's own version. Empty when it cannot be read (no
+# tags fetched, no git): "could not measure", which refuses the transition.
+updater_pubkey_id_anterior() {
+  local atual tag
+  atual="$(tr -d ' \t\n\r' < version.md 2>/dev/null || true)"
+  tag="$(git tag --merged HEAD --sort=-v:refname 2>/dev/null \
+    | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | grep -vxF "$atual" | head -1 || true)"
+  [ -n "$tag" ] || return 0
+  git show "$tag:src-tauri/tauri.conf.json" 2>/dev/null | keyid_da_conf
+}
+
+# The keyid that the clients which will DOWNLOAD this release check it against: the one in
+# tauri.conf.json, or during the transition, the previous release's.
+keyid_que_os_clientes_conferem() {
+  if [ "${TRANSICAO_DE_CHAVE:-0}" -eq 1 ]; then updater_pubkey_id_anterior; else updater_pubkey_id; fi
+}
+
+# In the transition the rotation must be real, and measured: the pubkey in tauri.conf.json
+# differs from the previous release's. Runs before anything is built, reuse path included.
+confere_transicao_de_chave() {
+  [ "${TRANSICAO_DE_CHAVE:-0}" -eq 1 ] || return 0
+  local anterior nova
+  anterior="$(updater_pubkey_id_anterior)"
+  nova="$(updater_pubkey_id)"
+  if [ -z "$anterior" ] || [ -z "$nova" ]; then
+    echo "  ✗ --transicao-de-chave: não consegui ler a pubkey da release anterior (${anterior:-?})" >&2
+    echo "    ou a do tauri.conf.json (${nova:-?}). A anterior vem da última tag de versão: git fetch --tags." >&2
+    return 1
+  fi
+  if [ "$anterior" = "$nova" ]; then
+    echo "  ✗ --transicao-de-chave, mas a pubkey do tauri.conf.json é a MESMA da release anterior ($nova)." >&2
+    echo "    Ou a pubkey nova ainda não foi commitada, ou a transição já saiu — aí assine com a" >&2
+    echo "    chave NOVA, sem --transicao-de-chave. docs/build.md, \"Rotating the updater key\"." >&2
+    return 1
+  fi
+  echo "    🔁 transição de chave: os clientes instalados conferem $anterior; este build embute $nova."
+  echo "       Assina com a chave VELHA. Depois desta release, só a chave nova."
+  return 0
 }
 
 # O mesmo keyid, lido de uma assinatura recém-gerada ($1 = arquivo .sig).
@@ -641,7 +702,7 @@ verify_updater_key() {
     return 0
   fi
 
-  pubid="$(updater_pubkey_id)"
+  pubid="$(keyid_que_os_clientes_conferem)"
   tmpd="$(mktemp -d)" || return 0
   printf 'shvia-updater-keycheck' > "$tmpd/probe"
 
@@ -713,7 +774,18 @@ verify_updater_key() {
     echo "" >&2
     echo "  ✗ chave do updater ERRADA — é de outro par de chaves." >&2
     echo "      assina com: $sigid" >&2
-    echo "      publicado : $pubid   (pubkey no src-tauri/tauri.conf.json)" >&2
+    if [ "${TRANSICAO_DE_CHAVE:-0}" -eq 1 ]; then
+      echo "      conferem  : $pubid   (pubkey da release anterior — na transição, assina a chave VELHA)" >&2
+    else
+      echo "      publicado : $pubid   (pubkey no src-tauri/tauri.conf.json)" >&2
+      # The old key after a pubkey change is the transition release, not an accident to fix.
+      if [ "$sigid" = "$(updater_pubkey_id_anterior)" ]; then
+        echo "" >&2
+        echo "    A chave que assina é a da release ANTERIOR, e a pubkey do tauri.conf.json mudou:" >&2
+        echo "    isto é a release de transição de uma rotação? Então rode com --transicao-de-chave" >&2
+        echo "    (docs/build.md, \"Rotating the updater key\")." >&2
+      fi
+    fi
     echo "" >&2
     echo "    Publicar assim entrega um release que NENHUM cliente instalado" >&2
     echo "    aceita, e o updater não conserta a si mesmo depois. Aponte" >&2
@@ -725,7 +797,11 @@ verify_updater_key() {
 
   # O ✔ só chega aqui pelo ramo `ok` do veredito — ou seja, com os DOIS keyids lidos e iguais.
   # Nada de `${sigid:-?}`: um `(?)` numa linha de sucesso era exatamente o disfarce.
-  echo "    ✔ chave do updater: abre com a senha e confere com a pubkey ($sigid)"
+  if [ "${TRANSICAO_DE_CHAVE:-0}" -eq 1 ]; then
+    echo "    ✔ chave do updater (transição): é a VELHA, que os clientes instalados aceitam ($sigid)"
+  else
+    echo "    ✔ chave do updater: abre com a senha e confere com a pubkey ($sigid)"
+  fi
   return 0
 }
 
@@ -973,7 +1049,7 @@ veredito_das_assinaturas() {
 # comparison as the proof, no new cryptography: a signature from another pair has another id.
 confere_chaves_do_manifesto() {
   local pubid linhas
-  pubid="$(updater_pubkey_id)"
+  pubid="$(keyid_que_os_clientes_conferem)"
   # shellcheck disable=SC2016  # `${...}` aqui é template literal de JS, não de bash
   linhas="$(node -e '
     const m = JSON.parse(require("fs").readFileSync("release.json", "utf8"));
@@ -1192,6 +1268,7 @@ while [ $# -gt 0 ]; do
     --bundles)      shift; BUNDLES="${1:-}" ;;
     --anna)         shift; ANNA_FROM="${1:-}" ;;
     --no-anna)      NO_ANNA=1 ;;
+    --transicao-de-chave) TRANSICAO_DE_CHAVE=1 ;;
     -h|--help)      usage; exit 0 ;;
     *) echo "opção desconhecida: $1 (use --help)" >&2; exit 2 ;;
   esac
@@ -1233,6 +1310,8 @@ confere_arvore_para_publicar() {
 if [ "$PUBLISH" -eq 1 ]; then
   confere_arvore_para_publicar || exit 2
 fi
+# The transition release of a key rotation is declared, and checked, before anything runs.
+confere_transicao_de_chave || exit 2
 
 # 🔴 A test build cannot be published (1.6.22). `--no-sign` skips the Apple signature and
 # notarization, and until 1.6.22 nothing stopped `--publish` from shipping it — directly, or

@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.6.40 - the updater key rotation is prepared: one declared transition release, signed with the old key
+
+The owner chose "rotate, prepare the transition". The pubkey is compiled into every installed
+client, so a rotation takes one release that installed clients still accept, signed with the
+**old** key, while it already carries the **new** pubkey. Until now the build could not produce
+that release: the key proof and the manifest check (1.6.3, 1.6.21) compare the signing key with
+the pubkey in `tauri.conf.json`, and in the transition those differ on purpose. Generating the
+key and publishing the transition release are the owner's acts. This version prepares both.
+
+- `--transicao-de-chave` declares the transition release. The key proof and the manifest check
+  then compare with `keyid_que_os_clientes_conferem`: the pubkey of the **previous released
+  version**, read from the newest version tag (`git show <tag>:src-tauri/tauri.conf.json`), this
+  build's own tag excluded. `confere_transicao_de_chave` refuses in three cases: the pubkey did
+  not change, the transition already shipped, or the previous pubkey cannot be read (no tags).
+- Without the flag nothing changes. An old key after a pubkey change is refused, and the refusal
+  now says that this looks like a transition release and names the flag.
+- `keyid_da_conf` is the one pubkey parser, for the current config and a released one.
+- `docs/build.md`, "Rotating the updater key": the six steps. Generate the pair, commit the new
+  pubkey, publish with `--transicao-de-chave`, hold, swap the keys, then publish normally. It also
+  states the cost the owner accepted: a client that skips the transition release must be
+  reinstalled by hand.
+- `scripts/prova-transicao-de-chave.mjs` (`npm run prova:transicao`, a CI step) runs the real
+  functions in temp git repositories with a fake Tauri CLI. It covers 12 cases. Reversals
+  measured: if the clients' keyid ignores the transition, three cases fail; if an unchanged
+  pubkey passes as a transition, two fail. `prova:chaves` now cuts the new helpers along with
+  the manifest check.
+
 ## 1.6.39 - notarization uses an App Store Connect API key, and the password leaves the command line
 
 **The Apple ID's app-specific password went to `notarytool` as `--password` (E20).** It sat on
