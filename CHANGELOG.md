@@ -19,6 +19,10 @@ three differences here, and each one is a commit of this version.
   language section was not missing: it lived *inside* the `RELEASES-RULE` markers, a copy from
   before the standard split it out. Stamping only `LANGUAGE-RULE` would have left the section
   twice. `RELEASES-RULE` was regenerated too, and each file has one language section.
+- **The local commit standard says English.** Its rule 3 still said "Mensagem em **português**",
+  against the language block and against every commit since 03/09/2026. It is rewritten in
+  English, with real subjects from this log as its examples.
+
 
 ## 1.6.53 - dev.shvia.org is live, and the doc says what it is before anyone tests against it
 

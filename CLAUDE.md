@@ -38,25 +38,27 @@ ShvIA (`/Users/samir/x/IA`) — aquele é o servidor, este é o cliente.
 
 ---
 
-## Padrão de Commits (obrigatório)
+## Commit standard (mandatory)
 
-Formato: `X.Y.Z - description in English (US)`
+Format: `X.Y.Z - description in English (US)`, the same sentence as the `CHANGELOG.md` heading.
 
 ```
-0.1.0 - Cria shell Tauri apontando para o ShvIA hospedado
-0.2.0 - Adiciona tray, deep-link shvia:// e tela offline
-0.3.0 - Pipeline de assinatura/notarização nos 3 SOs
+1.6.51 - a cd out of the project does not reach the next command, proved with the real SDK
+1.6.38 - the Claude Code login asks in a native dialog before it starts
+1.6.33 - a half-bumped commit is refused before it exists
 ```
 
-**Regras inegociáveis:**
-1. A versão **sempre** vem de `version.md` — bumpe o arquivo **no mesmo commit** da
-   mudança, nunca separado.
-2. Critério de bump:
-   - **Z**: mudança visível de UI/menu/janela, ajuste de empacotamento/build.
-   - **Y**: nova capacidade de runtime, redesenho de IPC, mudança de auth-handoff.
-   - **X**: versão estável — bump manual.
-3. Mensagem em **português**, descritiva o suficiente para `git log --grep`.
-4. Proibido `feat:`, `fix:`, `chore:` ou mensagens vagas ("ajuste", "fix", "update").
+**Non-negotiable rules:**
+1. The version **always** comes from `version.md`: bump the file **in the same commit** as the
+   change, never in a separate one.
+2. Bump criterion:
+   - **Z**: a visible UI/menu/window change, a packaging or build adjustment.
+   - **Y**: a new runtime capability, an IPC redesign, an auth-handoff change.
+   - **X**: a stable version, bumped by hand.
+3. The message is in **English (US)**, descriptive enough for `git log --grep` (the Language
+   block below says why). Portuguese messages already in the history stay as they are. Until
+   1.6.54 this line said Portuguese and contradicted that block.
+4. No `feat:`, `fix:`, `chore:`, and no vague messages ("adjust", "fix", "update").
 
 ---
 
