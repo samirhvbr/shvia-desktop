@@ -2236,7 +2236,7 @@ mod tests_motor {
         let corpo = fonte
             .split("fn entregar_codigo")
             .nth(1)
-            .and_then(|x| x.split("\nfn ").next())
+            .and_then(|x| x.split("\n}\n").next()) // to the function's own closing brace (1.6.41)
             .unwrap_or("");
         assert!(!corpo.is_empty(), "a função sumiu — esta régua mediria o nada");
         assert!(corpo.contains("writeln!(login.stdin"));
@@ -2300,7 +2300,7 @@ mod tests_motor {
         let corpo = fonte
             .split("fn entregar_codigo")
             .nth(1)
-            .and_then(|x| x.split("\nfn ").next())
+            .and_then(|x| x.split("\n}\n").next()) // to the function's own closing brace (1.6.41)
             .unwrap_or("");
         assert!(!corpo.is_empty(), "a função sumiu ou mudou de nome — esta régua mediria o nada");
         assert!(corpo.contains("writeln!(login.stdin"), "o código tem de ir para o stdin do cliente");
@@ -2323,7 +2323,7 @@ mod tests_motor {
         let corpo = fonte
             .split("fn iniciar_login")
             .nth(1)
-            .and_then(|x| x.split("fn concluir_login").next())
+            .and_then(|x| x.split("\n}\n").next()) // `concluir_login` no longer exists: the slice ran to EOF (1.6.41)
             .unwrap_or("");
         assert!(!corpo.is_empty());
         assert!(

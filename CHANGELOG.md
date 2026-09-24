@@ -23,6 +23,16 @@ from outside (`code_bridge::reply`, `::Sidecars`, `::engine_status`, …) do not
 - `code_bridge/dialogos.rs`: the native dialogs (pick a folder, pick files, save a file), the
   last folder each one remembers, and `sanitize_filename` with its tests. 264 lines. The test
   module now sits last in its file (clippy `items_after_test_module`); nothing else moved.
+- **Three login rulers now cut only the function they check, and one of them could never
+  fail.** `entregar_codigo_nao_espera_o_filho` and `o_codigo_de_login_nao_e_guardado_nem_devolvido`
+  sliced the source from `fn entregar_codigo` to the next line starting with `fn `. The split
+  moved that next function away, the slice ran into `saida_com_prazo` (which calls `.wait()`),
+  and the first ruler went red on code it does not check. `comecar_um_login_cancela_o_anterior`
+  sliced up to `fn concluir_login`, which no longer exists, so its slice was the rest of the
+  file. That includes the cancel arm of `handle_message`, which also calls `cancelar_login();`.
+  Measured: with `cancelar_login()` removed from `iniciar_login`, that ruler stayed green. All
+  three now end at the function's own closing brace. Reversal measured: removing
+  `cancelar_login()`, or adding `.wait()` to `entregar_codigo`, turns them red.
 
 ## 1.6.40 - the updater key rotation is prepared: one declared transition release, signed with the old key
 
