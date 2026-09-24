@@ -29,6 +29,11 @@ the Windows job: both predate 1.6.37.
 - **`typescript` 7.0.2 (#48)**, the native compiler, with the `~7.0.2` range the PR proposed.
   Measured: `tsc --noEmit` is clean, and a control run with an injected type error is refused
   (TS2322). `npm run build` (`tsc && vite build`) passes.
+- **`actions/checkout` v7.0.1 (#44)** in the three workflows, including `release.yml`, which was on
+  v5.1.0 (repodocs moved its own release workflow to v7 in 1.14.15). The SHA was verified against
+  the tag. The PR's own CI ran all three jobs green, and this PR's CI runs the new pins.
+- **`actions/setup-node` v7.0.0 (#43)** in `ci.yml` and `plataformas.yml`, SHA verified against the
+  tag, same measurement.
 
 ## 1.6.48 - the patch and minor updates Dependabot proposed land as versioned commits
 
