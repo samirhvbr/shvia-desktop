@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.6.33 - a half-bumped commit is refused before it exists
+
+**The version went out half-bumped three times** — 1.1.19, 1.4.21, 1.6.3: `version.md` committed, a
+carrier not. The guard was `npm run prova:bump` in CI, which catches it only after the push; and
+it reads the WORKING TREE, which is exactly where 1.6.3 was right — the carriers were bumped on
+disk and left out of the commit. The owner chose "hook pre-commit + CI".
+
+- `tools/git-hooks/pre-commit` — the repository's own hook, no repodocs marker, so it is never
+  regenerated over. When the commit includes `version.md` or a carrier, it runs
+  `sync-version.mjs --indice`, which reads every file from the git INDEX (`git show :<path>`)
+  and fails when they disagree. Escape hatch as in the other hooks: `REPODOCS_NO_HOOK=1`.
+- `scripts/prova-guarda-dos-portadores.mjs` (`npm run prova:guarda`, a CI step) makes REAL commits
+  in a temp repository with the real carriers: the 1.6.3 case is refused, the escape works, a full
+  bump passes, an unrelated commit passes, a carrier staged without `version.md` is refused.
+  Reversal measured: a hook reading the working tree lets the 1.6.3 case through.
+- `prova:bump` stays in CI for whoever commits without the hooks.
+
 ## 1.6.32 - the project's Claude Code profile follows the latest Opus instead of pinning one
 
 The owner's change to `.claude/settings.json`, committed on its own (it sat uncommitted in the

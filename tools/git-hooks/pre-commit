@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# pre-commit — the version carriers must agree IN THE INDEX (1.6.33).
+#
+# This is the repository's OWN hook (no repodocs marker, so it is never regenerated over).
+#
+# Why here, and why the index: the version went out half-bumped three times (1.1.19, 1.4.21,
+# 1.6.3). Each time version.md was committed and a carrier was not — in 1.6.3 the carriers were
+# bumped ON DISK and left out of the commit, so `npm run prova:bump`, which reads the working
+# tree, passed, and CI caught it only after the push. This runs the same proof against what is
+# about to be COMMITTED, and only when that includes version.md or a carrier.
+#
+# Escape hatch, as in the other hooks: REPODOCS_NO_HOOK=1.
+set -euo pipefail
+
+if [ "${REPODOCS_NO_HOOK:-0}" = "1" ]; then
+  echo "pre-commit: skipped (REPODOCS_NO_HOOK=1)" >&2
+  exit 0
+fi
+
+PORTADORES='^(version\.md|package\.json|package-lock\.json|claude-runner/package\.json|src-tauri/Cargo\.toml|src-tauri/Cargo\.lock|src-tauri/tauri\.conf\.json)$'
+if ! git diff --cached --name-only | grep -Eq "$PORTADORES"; then
+  exit 0
+fi
+
+if ! node scripts/sync-version.mjs --indice >&2; then
+  echo "" >&2
+  echo "pre-commit: REJECTED — the version carriers in the INDEX disagree with version.md." >&2
+  echo "  What the working tree says does not matter here; what you are committing does." >&2
+  echo "  Fix: npm run version:sync && git add -- version.md package.json package-lock.json \\" >&2
+  echo "       claude-runner/package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json" >&2
+  echo "  Bypass: REPODOCS_NO_HOOK=1" >&2
+  exit 1
+fi

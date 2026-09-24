@@ -17,15 +17,23 @@
 // Cargo.toml e os lock files. Idempotente (só escreve o que muda), sem
 // dependências (Node puro). Roda no `prebuild` (npm) e à mão via
 // `npm run version:sync`. Modelado no sync-version.mjs do SHVTERM.
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), ".."); // raiz do repo
-const read = (p) => readFileSync(resolve(ROOT, p), "utf8");
+// `--indice` (1.6.33) reads every file from the git INDEX (`git show :<path>`) instead of the
+// working tree, and only verifies. It is what tools/git-hooks/pre-commit runs: in 1.6.3 the
+// working tree was right and the commit was not — the carriers were bumped on disk and left
+// out of the index, so a check of the tree passed while the commit went out half-bumped.
+const LER_DO_INDICE = process.argv.includes("--indice");
+const read = LER_DO_INDICE
+  ? (p) => execFileSync("git", ["show", `:${p}`], { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] })
+  : (p) => readFileSync(resolve(ROOT, p), "utf8");
 // `--verificar` não escreve: só afirma. Serve para rodar antes do commit, onde a
 // deriva nasce — o build já sincroniza, e o que passava era a árvore COMMITADA.
-const APENAS_VERIFICAR = process.argv.includes("--verificar");
+const APENAS_VERIFICAR = process.argv.includes("--verificar") || LER_DO_INDICE;
 
 const version = read("version.md").trim();
 if (!/^\d+\.\d+\.\d+$/.test(version)) {

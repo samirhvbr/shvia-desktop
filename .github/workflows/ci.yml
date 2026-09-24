@@ -63,6 +63,9 @@ jobs:
         run: npm run prova:runner-version
       - name: Portadores de versão alinhados
         run: npm run prova:bump
+      # The pre-commit hook checks the carriers in the INDEX, where 1.6.3 went wrong (1.6.33).
+      - name: The pre-commit hook refuses a half-bumped commit
+        run: npm run prova:guarda
       # A doc de "o que está implementado" acompanha a versão? (achado F-22 — este
       # arquivo já tinha sido saneado à mão DUAS vezes pelo mesmo motivo.)
       - name: Frescor da doc de estado (F-22)
