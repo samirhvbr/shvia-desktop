@@ -93,6 +93,15 @@ invalidates the code the person just copied. One login at a time, and starting a
 cancels the previous — two live challenges would make a pasted code match by luck, and a bug
 that happens one time in two is worse than one that happens always.
 
+**Since 1.6.38 the app asks first, natively.** Before `claude auth login` starts, a system
+dialog names the profile ("Abrir o login do Claude Code no perfil “…”?") and, for the default
+profile, says that the terminal's `claude` shares it. "Cancelar" spawns nothing and does not
+touch a login already in progress; the page gets `{codigo: "cancelado"}`. The reason is the
+same actor `spawn` defends against: a script in the server's origin could otherwise start a
+login, send the URL out and bring a code back, and the profile would hold someone else's
+account. The page cannot answer a native dialog. The order (dialog, then spawn, off the UI
+thread) is held by a source check in `code_bridge.rs`, `tests_confirmacao_do_login`.
+
 🔴 **The code is written to the client's stdin and stored nowhere** — not in a struct, not
 returned to the screen, not logged. A test asserts that absence, because an absence cannot be
 proved by exercising the happy path.

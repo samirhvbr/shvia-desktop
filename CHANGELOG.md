@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.6.38 - the Claude Code login asks in a native dialog before it starts
+
+**`claudeAuthLoginStart` spawned `claude auth login` on the page's word alone.** Unlike
+`writeCliConfig`, which asks "Gravar/Cancelar", nothing native stood between a call from the
+page and a login. A script running in the server's origin (XSS, the actor `spawn` already
+defends against) could start one, send the URL out and bring a code back, and the profile's
+directory would then hold someone else's account. For the default profile, so would the
+`claude` in the terminal. This is plausible but not proven end to end. The owner chose
+"native dialog".
+
+- `confirmar_login` shows a system dialog, after the profile resolves and before anything is
+  spawned. It names the profile, and for the default profile it says the terminal shares it.
+  "Cancelar" returns `{erro, codigo: "cancelado"}`, spawns nothing, and leaves a login
+  already in progress alone (`iniciar_login`, which cancels the previous one, is never
+  reached). It blocks, so it runs where the arm already runs, off the UI thread
+  (`fora_da_ui`).
+- `contas_claude::achar` finds the profile with the same reading of the ID as `resolver`
+  (empty is the default), and `resolver` now uses it, so the label shown is the profile used.
+- Tests: the dialog text names the profile; `achar` reads IDs like `resolver`; and a source
+  check, declared as such (a dialog needs a display), holds the order inside the arm: off the
+  UI thread, then the dialog, then the refusal, then the spawn. Reversal measured: without the
+  dialog call, the check fails. 137 tests pass, and `clippy -D warnings` is clean on Linux and
+  `x86_64-pc-windows-gnu`.
+- The page (SHVIA-WEB) shows any refusal as a failure toast and reloads the login state, so
+  a cancel reads "falhou: login cancelado — nada foi aberto". Showing it as neutral is a
+  change on that side.
+- `docs/code/MOTOR-CLAUDE-DIAGNOSTICO.md` records the dialog and why.
+
 ## 1.6.37 - the Windows and macOS code is compiled in CI, not only on release day
 
 **The Windows build did not compile from 0.9.0 (19/07) to 1.6.8 (23/09), and nothing said so.**
