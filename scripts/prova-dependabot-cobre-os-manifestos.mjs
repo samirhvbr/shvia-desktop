@@ -49,9 +49,28 @@ for (const [par, f] of exigidos) {
 for (const par of vigiados) {
   if (!exigidos.has(par)) falhas.push(`the entry "${par}" points at a directory with no tracked manifest for that ecosystem`);
 }
+// 1.6.49: the per-OS dependency sections of src-tauri/Cargo.toml hold the WebView crates that
+// are matched to wry's versions; each one must be in the cargo entry's `ignore` list, or a
+// Dependabot proposal would move one alone and break that platform's build (#51, #52).
+const cargoToml = readFileSync(join(RAIZ, "src-tauri/Cargo.toml"), "utf8");
+const casados = [];
+for (const sec of cargoToml.split(/^\[/m)) {
+  if (!/^target\.'cfg\(target_os = "(linux|macos|windows)"\)'\.dependencies\]/.test(sec)) continue;
+  for (const linha of sec.split("\n").slice(1)) {
+    const m = linha.match(/^([A-Za-z0-9_-]+)\s*=/);
+    if (m) casados.push(m[1]);
+  }
+}
+const itemCargo = itens.find((it) => /^["']?cargo\b/.test(it)) ?? "";
+const ignorados = new Set([...itemCargo.matchAll(/-\s*dependency-name:\s*["']?([A-Za-z0-9_-]+)/g)].map((m) => m[1]));
+if (casados.length === 0) falhas.push("found no per-OS dependency section in src-tauri/Cargo.toml: the matched-crate check measures nothing");
+for (const c of casados) {
+  if (!ignorados.has(c)) falhas.push(`${c} is matched to wry (a per-OS section of Cargo.toml) but Dependabot does not ignore it`);
+}
+
 if (falhas.length) {
   for (const f of falhas) console.error(`🔴 ${f}`);
-  console.error(`\n${falhas.length} problem(s): Dependabot would skip a manifest, or fail on a stale entry.`);
+  console.error(`\n${falhas.length} problem(s): Dependabot would skip a manifest, fail on a stale entry, or move a wry-matched crate alone.`);
   process.exit(1);
 }
-console.log(`[dependabot] ${vigiados.size} entries · every tracked manifest and the workflows are watched`);
+console.log(`[dependabot] ${vigiados.size} entries · every tracked manifest and the workflows are watched · ${casados.length} crates matched to wry, all ignored`);

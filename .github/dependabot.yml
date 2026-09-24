@@ -28,6 +28,20 @@ updates:
     groups:
       cargo-patch-minor:
         update-types: [patch, minor]
+    ignore:
+      # The WebView crates are MATCHED to what tauri/wry resolve (src-tauri/Cargo.toml, the
+      # per-OS dependency sections): our bridge passes its objects to wry's, so the types only
+      # unify on the same version. Moved alone, they break the build. Measured 24/09/2026 on
+      # x86_64-pc-windows-gnu: `windows` 0.62 alone, 4 errors; `webview2-com` 0.39 alone, 8 (#51,
+      # #52). They move by hand, with tauri/wry. `prova:dependabot` fails when a crate in those
+      # sections is missing here.
+      - dependency-name: webkit2gtk
+      - dependency-name: javascriptcore-rs
+      - dependency-name: objc2
+      - dependency-name: objc2-foundation
+      - dependency-name: objc2-web-kit
+      - dependency-name: webview2-com
+      - dependency-name: windows
 
   # The web shell and the build tools (Vite, TypeScript, the Tauri CLI).
   - package-ecosystem: npm

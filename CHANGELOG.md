@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.6.49 - Dependabot stops proposing the WebView crates matched to wry, because moving one alone breaks the build
+
+The owner asked to resolve the open PRs. Measuring the seven majors Dependabot proposed found two
+that cannot land. `windows` 0.62 (#51) and `webview2-com` 0.39 (#52) are the crates the Windows
+bridge passes to wry, and `src-tauri/Cargo.toml` already says those versions are **matched to
+wry**: the types only unify on the version wry resolves. Measured on `x86_64-pc-windows-gnu`,
+`windows` 0.62 alone gives 4 errors, `webview2-com` 0.39 alone gives 8, and together the lock
+holds two `webview2-com` versions and `windows_ipc.rs:88` does not compile. Neither PR had run
+the Windows job: both predate 1.6.37.
+
+- `.github/dependabot.yml` ignores every crate of the three per-OS dependency sections
+  (`webkit2gtk`, `javascriptcore-rs`, the three `objc2*`, `webview2-com`, `windows`), with the
+  reason and the measurement. They move by hand, with tauri/wry. `Cargo.toml` says so above those
+  sections.
+- `prova:dependabot` now also fails when a crate of those sections is missing from the ignore
+  list, so the list cannot fall behind a new matched crate. Reversal measured: removing
+  `webview2-com` from the list turns it red.
+- #51 and #52 are closed with the measurement.
+
 ## 1.6.48 - the patch and minor updates Dependabot proposed land as versioned commits
 
 The owner asked to resolve the open branches and PRs. Dependabot's patch/minor proposals are
