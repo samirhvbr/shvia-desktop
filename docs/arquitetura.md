@@ -141,6 +141,25 @@ persistência), [`src/main.ts`](../src/main.ts) (estados da casca),
   outra coisa. Pré-requisito do auto-update (D1). Ver
   [ADR-018](decisoes.md#adr-018--gate-de-versão-clienteservidor-avisa-nunca-bloqueia).
 
+### Where the bridge code lives (since 1.6.41)
+
+The native side of `window.__shviaCode` was one 3,760-line file. It is split by subject; every
+path used from outside (`code_bridge::handle_message`, `::reply`, `::Sidecars`, …) is unchanged.
+
+| file (`src-tauri/src/`) | what it holds |
+|---|---|
+| `code_bridge.rs` | the dispatch (`handle_message`), `reply`, `fora_da_ui`, `saida_com_prazo` and the deadlines, `notify`/`badge` |
+| `code_bridge/shim.rs` | the JS shim (`BRIDGE_JS`) and the session's capability token |
+| `code_bridge/sessao.rs` | one engine process per window (`Sidecars`), `spawn`, `send`, ending it |
+| `code_bridge/motores.rs` | which binary each engine is, finding it, catalogues, exit codes, installing the runner |
+| `code_bridge/login.rs` | the Claude Code login driven from the screen, and its native confirmation |
+| `code_bridge/cerca.rs` | the fence (ADR-031) and the project→folder bindings |
+| `code_bridge/painel.rs` | the folder panel: `git status`, tree, diff, file read |
+| `code_bridge/dialogos.rs` | the native pick/save dialogs |
+
+Each file's tests sit at its end. The source rulers read the file that holds what they check:
+the dispatch rulers read `code_bridge.rs`, the login rulers read `login.rs`.
+
 ---
 
 ## Build & empacotamento

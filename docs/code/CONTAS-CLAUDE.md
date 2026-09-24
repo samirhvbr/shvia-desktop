@@ -116,7 +116,7 @@ Quem autentica é o `claude login` do cliente oficial, em cada diretório.
 
 ## O contrato da ponte
 
-Ações do `window.__shviaCode` (shim em `src-tauri/src/code_bridge.rs`):
+Ações do `window.__shviaCode` (shim in `src-tauri/src/code_bridge/shim.rs` since 1.6.41):
 
 | ação | entrada | resposta |
 |---|---|---|

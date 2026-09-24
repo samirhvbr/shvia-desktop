@@ -100,7 +100,7 @@ touch a login already in progress; the page gets `{codigo: "cancelado"}`. The re
 same actor `spawn` defends against: a script in the server's origin could otherwise start a
 login, send the URL out and bring a code back, and the profile would hold someone else's
 account. The page cannot answer a native dialog. The order (dialog, then spawn, off the UI
-thread) is held by a source check in `code_bridge.rs`, `tests_confirmacao_do_login`.
+thread) is held by a source check in `code_bridge/login.rs`, `tests_confirmacao_do_login`.
 
 🔴 **The code is written to the client's stdin and stored nowhere** — not in a struct, not
 returned to the screen, not logged. A test asserts that absence, because an absence cannot be

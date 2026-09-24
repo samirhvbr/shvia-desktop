@@ -47,6 +47,15 @@ from outside (`code_bridge::reply`, `::Sidecars`, `::engine_status`, …) do not
   `login.rs`. The dialog-order ruler reads `../code_bridge.rs`, where `handle_message` stays.
   Re-measured after the move: removing `cancelar_login()` from `iniciar_login`, or the dialog
   from the arm, turns them red.
+- `code_bridge/sessao.rs`: one engine process per window (`Sidecars`), `spawn` with its Run
+  flags and server check, `send`, and ending an engine politely, with `tests_encerrar`,
+  `tests_run`, `tests_url_servidor` and `tests_colher`. 656 lines. `Sidecars` is re-exported,
+  and `kill_label` is `pub(super)` for the dispatch. `notify` and `badge` stay in the parent:
+  they are OS hooks, not the session.
+- **Where it ended:** `code_bridge.rs` went from 3,760 to 604 lines, and 7 modules of 200 to 763
+  lines hold the rest. The test count is 137 before and after every step. `docs/arquitetura.md`
+  gains "Where the bridge code lives", and the living docs that pointed at `code_bridge.rs`
+  point at the new files.
 
 ## 1.6.40 - the updater key rotation is prepared: one declared transition release, signed with the old key
 
