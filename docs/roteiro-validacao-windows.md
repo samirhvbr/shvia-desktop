@@ -25,15 +25,15 @@ git clone https://github.com/samirhvbr/shvia-desktop ; cd shvia-desktop
 
 ```powershell
 git pull
-# This validation build needs neither the updater key nor the anna engine. This line tells
-# Tauri so (see "Known gaps" below):
-$env:TAURI_CONFIG = '{"bundle":{"externalBin":[],"createUpdaterArtifacts":false}}'
-.\build-local.ps1 -NoAnna
+.\build-local.ps1 -NoAnna -NoSign
 ```
 
-If you have `anna.exe` (SHVIA-CODE's Windows build), use `-Anna C:\path\anna.exe` instead of
-`-NoAnna`, and set `$env:TAURI_CONFIG = '{"bundle":{"createUpdaterArtifacts":false}}'`. That
-covers step 7's gateway engine.
+Since 1.6.50 the script decides this by itself. `-NoAnna` builds without the engine, and the
+script tells Tauri there is no sidecar. `-NoSign` skips Authenticode and, when this machine has no
+updater key, builds without updater artifacts, which is right for validation. If you have
+`anna.exe` (SHVIA-CODE's Windows build), use `-Anna C:\path\anna.exe` instead of `-NoAnna`: that
+covers step 7's gateway engine. If `~\.shvia\updater.key` and `updater.pass` are on this machine,
+the script reads them, as `build-local.sh` does.
 
 **Expected:** `src-tauri\target\release\bundle\nsis\ShvIA_<version>_x64-setup.exe` and
 `...\msi\ShvIA_<version>_x64_en-US.msi`. Note the build time. It is unsigned by decision
@@ -91,14 +91,11 @@ covers step 7's gateway engine.
 
 ## Known gaps (found while writing this runbook, 23/09/2026)
 
-- **`build-local.ps1` lacks the 1.6.24 fix.** Tauri refuses to build when a `bundle.externalBin`
-  file is missing. `build-local.sh` passes `externalBin: []` when no `anna` is staged, and the
-  PowerShell script does not, so `-NoAnna` (or no `anna` on PATH) fails at the end of the build.
-  The `TAURI_CONFIG` line in step 1 works around it. The real fix belongs in the script, measured
-  on this machine.
-- **`build-local.ps1` has no updater-key check.** Without `TAURI_SIGNING_PRIVATE_KEY` the release
-  build fails at the end. `createUpdaterArtifacts: false` in step 1 is fine for validation. A
-  release build needs the key, the same one as on the Mac (ADR-022).
+- ✅ **Fixed in 1.6.50: `build-local.ps1` now does what `build-local.sh` does.** With no `anna`
+  staged it tells Tauri there is no sidecar, instead of failing at the end of the build. It reads
+  or requires the updater key **before** `npm ci`, instead of failing at the end of the bundle.
+  Proven with PowerShell in CI (`npm run prova:ps1`); this machine is the first real run. A
+  release build still needs the key, the same one as on the Mac (ADR-022).
 - **The Claude and Codex engines have no Windows path.** Their runners install through
   `install.sh`, which is bash, and the app looks for `claude-runner.exe`/`codex-runner.exe` on
   Windows. So step 7.2/7.3 is expected to say the runner is missing. Whether Windows needs these

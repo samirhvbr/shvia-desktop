@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.6.50 - the Windows build script decides before building what the bundler would only say at the end
+
+The Windows validation runbook (1.6.44) named two gaps in `build-local.ps1` and worked around both
+with a hand-set `TAURI_CONFIG`. Tauri refuses a missing `bundle.externalBin`, so `-NoAnna`, or no
+`anna` on PATH, failed the build at its end. `build-local.sh` has handled that since 1.6.24. And
+without the updater key the bundler failed at the end of the bundle, where `build-local.sh`
+checks the key before compiling. There was no PowerShell here to prove a fix, so it waited.
+Now the portable PowerShell 7.6.6 (SHA256 checked against the release's `hashes.sha256`) runs
+the proof locally, and CI's ubuntu runner has `pwsh`.
+
+- `Resolve-UpdaterKey`: `TAURI_SIGNING_PRIVATE_KEY` from the environment, or
+  `~\.shvia\updater.key` + `updater.pass`, the files `build-local.sh` reads (the password is the
+  first line, as there). Checked **before** `npm ci`. Missing without `-NoSign`: refused in the
+  first second. Missing with `-NoSign`: a test build without updater artifacts, said out loud.
+- `Get-TauriConfigOverride`, after the anna step: no `anna-<triple>.exe` staged gives
+  `externalBin: []`, and no key with `-NoSign` gives `createUpdaterArtifacts: false`. A
+  `TAURI_CONFIG` the person set is respected as it is.
+- `scripts/prova-build-local-ps1.mjs` (`npm run prova:ps1`, a CI step) checks three things: the
+  script parses; no function is called at script level before its definition (the parser does not
+  catch that, and this version's first draft had exactly that); and 8 cases of the two functions
+  against temp dirs. Reversals measured: without the `externalBin` line two cases fail, and with
+  the functions defined after their first use the order check fails. Without `pwsh` it prints NOT
+  MEASURED locally and fails in CI.
+- The Windows runbook's step 1 is now `.\build-local.ps1 -NoAnna -NoSign`, and the two gaps are
+  marked fixed. This is still unmeasured on a real Windows machine: the owner's validation is the
+  first run.
+
 ## 1.6.49 - Dependabot stops proposing the WebView crates matched to wry, because moving one alone breaks the build
 
 The owner asked to resolve the open PRs. Measuring the seven majors Dependabot proposed found two

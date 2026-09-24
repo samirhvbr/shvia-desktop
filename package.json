@@ -1,7 +1,7 @@
 {
   "name": "shvia-desktop",
   "private": true,
-  "version": "1.6.49",
+  "version": "1.6.50",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -32,6 +32,7 @@
     "prova:dependabot": "node scripts/prova-dependabot-cobre-os-manifestos.mjs",
     "prova:notarizacao": "node scripts/prova-notarizacao-sem-senha.mjs",
     "prova:transicao": "node scripts/prova-transicao-de-chave.mjs",
+    "prova:ps1": "node scripts/prova-build-local-ps1.mjs",
     "contas": "node scripts/contas-claude.mjs"
   },
   "devDependencies": {

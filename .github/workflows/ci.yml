@@ -110,6 +110,11 @@ jobs:
       # `--publish` ships only what is committed: a dirty or untracked build input refuses it (1.6.34).
       - name: A publish refuses a dirty build input
         run: npm run prova:arvore
+      # build-local.ps1 parses, calls no function before defining it, and decides before building
+      # what the bundler would only say at the end: no anna, no updater key (1.6.50). The ubuntu
+      # runner has pwsh; the proof fails in CI if it does not.
+      - name: The Windows build script decides before building
+        run: npm run prova:ps1
       # Every tracked package.json and Cargo.toml has a Dependabot entry, and no entry is stale (1.6.35).
       - name: Dependabot watches every manifest
         run: npm run prova:dependabot

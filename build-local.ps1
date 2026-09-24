@@ -133,7 +133,64 @@ function Invoke-GitSync {
   try { node scripts/git-sync.mjs } finally { $ErrorActionPreference = $prev }
 }
 
+# ── What the bundler would only say at the END (1.6.50) ──────────────────────
+# Two failures build-local.sh stops early and this script did not:
+#   * Tauri requires every `bundle.externalBin` file to exist (measured for build-local.sh in
+#     1.6.24): with no anna staged, `-NoAnna` or no anna on PATH failed the build at its end.
+#   * With `bundle.createUpdaterArtifacts` on, the bundler needs TAURI_SIGNING_PRIVATE_KEY and
+#     only complains at the end of the bundle.
+# The Windows validation runbook (1.6.44) worked around both with a hand-set TAURI_CONFIG. Now
+# the key is checked before `npm ci`, and the externalBin decision is made after the anna step.
+# A TAURI_CONFIG the person set is respected as it is.
+
+# The updater key, from the environment or from the files build-local.sh reads (1.1.9):
+# $HOME\.shvia\updater.key and updater.pass. The same pair on the three OSes (ADR-022). The
+# password is the file's first line, as build-local.sh reads it.
+function Resolve-UpdaterKey {
+  param([string]$HomeDir = $HOME)
+  if ($env:TAURI_SIGNING_PRIVATE_KEY) { return $true }
+  $shvia = Join-Path $HomeDir '.shvia'
+  $keyFile = Join-Path $shvia 'updater.key'
+  if (-not (Test-Path $keyFile)) { return $false }
+  $env:TAURI_SIGNING_PRIVATE_KEY = (Get-Content -Raw $keyFile).Trim()
+  $passFile = Join-Path $shvia 'updater.pass'
+  if (-not $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -and (Test-Path $passFile)) {
+    $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = [string](Get-Content -TotalCount 1 $passFile)
+  }
+  return $true
+}
+
+# The TAURI_CONFIG this build needs, or $null when it needs none. $Triple is rustc's host
+# triple; stage-anna.mjs stages the sidecar as src-tauri\binaries\anna-<triple>.exe.
+function Get-TauriConfigOverride {
+  param([string]$Root, [string]$Triple, [bool]$HasKey, [bool]$NoSign, [bool]$UpdaterArtifacts = $true)
+  $bundle = [ordered]@{}
+  $sidecar = Join-Path (Join-Path (Join-Path $Root 'src-tauri') 'binaries') "anna-$Triple.exe"
+  if (-not (Test-Path $sidecar)) { $bundle['externalBin'] = @() }
+  if ($UpdaterArtifacts -and -not $HasKey) {
+    if (-not $NoSign) {
+      throw "falta a chave do updater (TAURI_SIGNING_PRIVATE_KEY, ou ~\.shvia\updater.key + updater.pass). Sem ela o bundler aborta no FIM do empacotamento. Build de teste, sem artefato de updater: -NoSign."
+    }
+    $bundle['createUpdaterArtifacts'] = $false
+  }
+  if ($bundle.Count -eq 0) { return $null }
+  return (@{ bundle = $bundle } | ConvertTo-Json -Depth 5 -Compress)
+}
+
 Write-Host "==> ShvIA Desktop — build local (Windows)"
+
+# The updater key is required BEFORE compiling, as in build-local.sh: a missing key used to
+# surface only at the end of the bundle (1.6.50).
+$script:ConfDoTauri = Get-Content -Raw (Join-Path (Join-Path $PSScriptRoot 'src-tauri') 'tauri.conf.json') | ConvertFrom-Json
+$script:ComUpdater = [bool]$script:ConfDoTauri.bundle.createUpdaterArtifacts
+$script:TemChave = Resolve-UpdaterKey
+if ($script:ComUpdater -and -not $script:TemChave) {
+  if ($NoSign) {
+    Write-Host "    ⚠️ sem a chave do updater e com -NoSign: build de TESTE, sem artefato de updater — NÃO publique." -ForegroundColor Yellow
+  } elseif (-not $env:TAURI_CONFIG) {
+    throw "falta a chave do updater (TAURI_SIGNING_PRIVATE_KEY, ou ~\.shvia\updater.key + updater.pass). Sem ela o bundler aborta no FIM do empacotamento. Build de teste, sem artefato de updater: -NoSign."
+  }
+}
 
 Step "[git] sincroniza com o remoto (git pull --ff-only)"
 Invoke-GitSync
@@ -229,6 +286,17 @@ if ($NoAnna) {
   Invoke-Native "stage-anna" { node scripts/stage-anna.mjs --from $Anna }
 } else {
   Invoke-Native "stage-anna" { node scripts/stage-anna.mjs }
+}
+
+if ($env:TAURI_CONFIG) {
+  Write-Host "    TAURI_CONFIG definido por você — respeitado como está: $env:TAURI_CONFIG" -ForegroundColor Yellow
+} else {
+  $triple = ((& rustc -vV) | Select-String '^host:').ToString().Split(' ')[1]
+  $override = Get-TauriConfigOverride -Root $PSScriptRoot -Triple $triple -HasKey $script:TemChave -NoSign ([bool]$NoSign) -UpdaterArtifacts $script:ComUpdater
+  if ($override) {
+    $env:TAURI_CONFIG = $override
+    Write-Host "    TAURI_CONFIG = $override" -ForegroundColor Yellow
+  }
 }
 
 Step "[3/4] Tauri build"
