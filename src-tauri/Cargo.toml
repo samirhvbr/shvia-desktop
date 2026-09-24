@@ -55,7 +55,7 @@ uuid = { version = "1", features = ["v4"] }
 # `time` novo mudou a assinatura (passou a exigir `defaults`), quebrando o
 # `cookie`. Fixamos `time` numa versão compatível. Remover quando wry/cookie
 # subirem para uma versão que aceite o `time` novo.
-time = "=0.3.47"
+time = "=0.3.55"
 tauri-plugin-autostart = "2"
 
 # Persiste tamanho/posição das janelas entre reinícios (F2). É **DESKTOP-only** —
