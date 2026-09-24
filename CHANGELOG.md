@@ -14,6 +14,11 @@ three differences here, and each one is a commit of this version.
   starts while `version.md` says N and finishes after a push moved it to N+1 no longer leaves the
   badge on N. The file now carries the `repodocs:tool` provenance line, so the next
   `fleet.sh hooks` knows it may rewrite it.
+- **The four echo blocks are regenerated in `CLAUDE.md` and `AGENTS.md`**, with `fleet.sh`'s own
+  `stamp_block` and in its order. `QUEUE-RULE` and `LANGUAGE-RULE` arrive for the first time. The
+  language section was not missing: it lived *inside* the `RELEASES-RULE` markers, a copy from
+  before the standard split it out. Stamping only `LANGUAGE-RULE` would have left the section
+  twice. `RELEASES-RULE` was regenerated too, and each file has one language section.
 
 ## 1.6.53 - dev.shvia.org is live, and the doc says what it is before anyone tests against it
 
