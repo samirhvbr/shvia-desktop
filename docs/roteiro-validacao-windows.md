@@ -5,7 +5,8 @@
 > **never run on a Windows machine**. CI checks the `x86_64-pc-windows-gnu` target, while the
 > real build is MSVC (`x86_64-pc-windows-msvc`). So this runbook is the first time the MSVC
 > build and the Windows-only code run at all: the WebView2 bridge (`windows_ipc.rs`), the tray,
-> engine lookup (`where`, `%LOCALAPPDATA%\Programs`), and the updater's installer hand-off.
+> engine lookup (`where`, `%LOCALAPPDATA%\Programs`), the runners installed by `install.ps1`
+> (1.6.56–1.6.58), and the updater's installer hand-off.
 > The owner answered "I'll do it — send the runbook" on 23/09/2026.
 
 About 45 minutes on Windows 11 x64 (Windows 10 works if WebView2 is installed). Mark each step
@@ -19,6 +20,9 @@ winget install OpenJS.NodeJS.LTS
 winget install Rustlang.Rustup ; rustup default stable
 # Visual Studio Build Tools with "Desktop development with C++" (the MSVC linker)
 git clone https://github.com/samirhvbr/shvia-desktop ; cd shvia-desktop
+# For step 7 (the Claude and Codex engines). Each login opens the browser once.
+npm install -g @anthropic-ai/claude-code ; claude login
+npm install -g @openai/codex ; codex login
 ```
 
 ## 1. Build
@@ -86,8 +90,11 @@ the script reads them, as `build-local.sh` does.
 | # | Do | Expected |
 |---|---|---|
 | 7.1 | Engine **gateway (anna)** — only if you built with `-Anna` | Found (*bundled*). A small task ("liste os arquivos da pasta") answers |
-| 7.2 | Engine **Claude (assinatura)** | **Expected to be unavailable**, see "Known gaps". Write down exactly what the screen says |
-| 7.3 | Engine **Codex** | **Expected to be unavailable**, same reason. Write down the screen |
+| 7.2 | Pick engine **Claude (assinatura)** with no runner installed | `claude-runner não encontrado — use o botão Instalar runner ou rode claude-runner\install.ps1 …` |
+| 7.3 | Press **Instalar runner** (or run `.\claude-runner\install.ps1` in PowerShell) | The output ends with `✓ claude-runner instalado em …\shvia-claude-runner (Agent SDK …)`. **No black console window** opens at any point |
+| 7.4 | Engine Claude: a small task ("liste os arquivos da pasta"), then a longer one, and press **Parar** mid-turn | The small one answers. *Parar* stops the turn, and Task Manager shows **no `node.exe` left behind** for it (1.6.57 runs `node` directly, not a `.cmd`) |
+| 7.5 | Run `.\codex-runner\install.ps1`, then pick engine **Codex** | Install ends with `✓ codex-runner … instalado`. Then **one of three, all informative** — write down which: **(a)** it starts and a small task answers; **(b)** "o sandbox do Codex NÃO segurou…": the sandbox does not hold on this Windows, and the engine refuses by design; **(c)** "o comando de controle … não rodou": the proof could not run even inside the project. (b) and (c) are the next item, not a failure of this runbook |
+| 7.6 | Keep the *Changes* tab open while an engine works | **No console window** flashes for `git status` or for the engine (1.6.57) |
 
 ## Known gaps (found while writing this runbook, 23/09/2026)
 
@@ -96,10 +103,17 @@ the script reads them, as `build-local.sh` does.
   or requires the updater key **before** `npm ci`, instead of failing at the end of the bundle.
   Proven with PowerShell in CI (`npm run prova:ps1`); this machine is the first real run. A
   release build still needs the key, the same one as on the Mac (ADR-022).
-- **The Claude and Codex engines have no Windows path.** Their runners install through
-  `install.sh`, which is bash, and the app looks for `claude-runner.exe`/`codex-runner.exe` on
-  Windows. So step 7.2/7.3 is expected to say the runner is missing. Whether Windows needs these
-  engines is a product question for the owner.
+- ✅ **Since 1.6.56–1.6.58 the Claude and Codex engines have a Windows path** (the owner:
+  "Sim, precisa dos dois no Windows"). `install.ps1` installs each runner (proved under pwsh in
+  CI). The app runs them as `node <runner>.mjs` and never through the terminal `.cmd`, the
+  install button runs the `.ps1`, and no process opens a console window. On the Codex side, the
+  npm `codex.cmd` is resolved to `node codex.js`, and the sandbox proof now has a control, so a
+  command that cannot run is no longer read as a sandbox that holds. Before 1.6.58 it was, and
+  `/bin/sh` cannot run on Windows.
+- **Unknown until this machine: does Codex's own sandbox hold on Windows?** It is experimental
+  there. The app-server protocol has a Windows sandbox check and setup (`windowsSandbox/readiness`,
+  `windowsSandbox/setupStart`, read from its schema) that the runner does not call yet. Step 7.5 says which case this
+  machine is, and (b) or (c) decides whether calling that setup is the next item.
 
 ## Report
 
@@ -111,4 +125,4 @@ the script reads them, as `build-local.sh` does.
 | 4.1–4.2 | | |
 | 5.1–5.2 | | *(paste the Diagnóstico text below)* |
 | 6.1–6.3 | | |
-| 7.1–7.3 | | |
+| 7.1–7.6 (7.5: a, b or c) | | |

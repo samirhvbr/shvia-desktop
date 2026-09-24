@@ -34,6 +34,16 @@ had no control, and so a command that never ran was read as a sandbox that works
   `plataforma.test.mjs` run the Windows branches on any OS. Whether Codex's own sandbox holds on
   Windows is measured only there, and the proof above now tells a refusal from a command that
   did not run.
+- **The Windows runbook gains the engines** (`docs/roteiro-validacao-windows.md`, step 7).
+  - Step 0 installs and logs in the Claude Code and Codex CLIs.
+  - Step 7 installs each runner, from the button or `install.ps1`, and runs a turn on each.
+  - It checks that *Parar* leaves no `node.exe` behind, and that no console window opens.
+  - Codex's result is one of three written-down cases: it runs; its sandbox does not hold; or
+    the proof cannot run.
+  - The "no Windows path" gap is closed, and the one unknown left is named: whether Codex's
+    sandbox holds on Windows. The app-server's `windowsSandbox/readiness` and
+    `windowsSandbox/setupStart`, read from its schema, are what the runner would call if it
+    does not.
 
 ## 1.6.57 - on Windows the app runs the runners that install.ps1 installed, as node with the .mjs
 
