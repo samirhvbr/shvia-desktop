@@ -715,6 +715,24 @@ fn open_window_counter() -> u64 {
 /// server (on-prem, D4): the bridge was injected there, and every message it posted was
 /// dropped — Code mode, notifications and the badge dead on Windows on-prem. Here, so it is
 /// tested on every platform; the Windows module only calls it.
+/// The Vite dev shell's port — `build.devUrl` in tauri.conf.json (a test keeps them equal).
+const PORTA_DO_DEV: u16 = 1420;
+
+fn eh_loopback(host: &str) -> bool {
+    matches!(host, "localhost" | "127.0.0.1" | "[::1]" | "::1")
+}
+
+/// Is this URL the configured server, when that server is on loopback? Same scheme, host and
+/// port (default ports resolved): on loopback a different port is a different service.
+fn e_o_servidor_loopback_configurado(url: &tauri::Url) -> bool {
+    server::configured_url().is_some_and(|c| {
+        c.host_str().is_some_and(eh_loopback)
+            && c.scheme() == url.scheme()
+            && c.host_str() == url.host_str()
+            && c.port_or_known_default() == url.port_or_known_default()
+    })
+}
+
 // Called only by windows_ipc.rs; compiled everywhere so its test runs on every platform.
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub(crate) fn origem_da_mensagem_permitida(origem: &str) -> bool {
@@ -728,10 +746,21 @@ fn is_internal(url: &tauri::Url) -> bool {
     };
     // Casca local: `http` (Vite dev + prod Windows/Android) e `tauri` (prod
     // macOS/Linux). O servidor exige https.
+    //
+    // 🔴 Loopback (1.6.31). Until then ANY `http://localhost:*` was internal, in release builds
+    // too: a dev server an agent printed (`http://localhost:5173`) opened in-app, and with a
+    // loopback server configured every localhost page counted as the server. A loopback page
+    // is internal only if it is the Vite dev shell (debug builds, the devUrl port) or the
+    // configured loopback server on its own scheme, host AND port.
+    // `tauri://localhost` (the packaged shell) is not a network origin and stays as it was.
     match url.scheme() {
-        "https" => is_server_host(host),
-        "http" => host == "localhost" || host == "tauri.localhost",
         "tauri" => host == "localhost",
+        "http" | "https" if eh_loopback(host) => {
+            (url.scheme() == "http" && cfg!(debug_assertions) && url.port() == Some(PORTA_DO_DEV))
+                || e_o_servidor_loopback_configurado(url)
+        }
+        "https" => is_server_host(host),
+        "http" => host == "tauri.localhost",
         _ => false,
     }
 }
@@ -1715,9 +1744,33 @@ mod tests {
         assert!(!super::origem_da_mensagem_permitida("about:blank"));
         assert!(!super::origem_da_mensagem_permitida(""));
 
+        // 🔴 1.6.31, loopback. A dev server an agent printed is NOT the app; the Vite dev shell
+        // is (tests are debug builds), and so is Windows' packaged shell.
+        super::server::set_configured_host_para_teste(super::server::DEFAULT_URL);
+        assert!(!internal("http://localhost:5173/"), "any localhost page opened in-app");
+        assert!(internal("http://localhost:1420/"));
+        assert!(internal("http://tauri.localhost/"));
+        // A loopback server matches on scheme, host AND port — a different port is another service.
+        super::server::set_configured_host_para_teste("http://localhost:8000");
+        assert!(internal("http://localhost:8000/chat"));
+        assert!(!internal("http://localhost:5173/"), "with a loopback server, every localhost page counted as it");
+        assert!(!internal("https://localhost:8000/"));
+        // 127.0.0.1 passed `normalize` but never opened in-app.
+        super::server::set_configured_host_para_teste("http://127.0.0.1:8000");
+        assert!(internal("http://127.0.0.1:8000/"));
+
         // Limpa: outros testes deste módulo assumem só a lista embutida.
         super::server::set_configured_host_para_teste(super::server::DEFAULT_URL);
         assert!(!internal("https://onprem.cliente.example/chat"));
+    }
+
+    /// `PORTA_DO_DEV` is `build.devUrl`'s port — if the dev server moves, the dev shell must
+    /// stay internal (and nothing else on loopback should become it).
+    #[test]
+    fn porta_do_dev_e_a_do_dev_url() {
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let dev = conf["build"]["devUrl"].as_str().unwrap();
+        assert_eq!(tauri::Url::parse(dev).unwrap().port(), Some(super::PORTA_DO_DEV));
     }
 
     /// O endurecimento do 0.9.0: nada além do host canônico entra no app (nem

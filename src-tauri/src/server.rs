@@ -53,6 +53,10 @@ const PROBE_TIMEOUT_MS: u64 = 4_000;
 ///
 /// `None` = nada configurado, vale só a lista embutida.
 static CONFIGURED_HOST: RwLock<Option<String>> = RwLock::new(None);
+/// The configured server's full URL — scheme, host AND port (1.6.31). The perimeter compares
+/// host only for ordinary hosts (a decision, tested), but on loopback a different port is a
+/// different local service, so a loopback server is matched on its whole origin.
+static CONFIGURED_URL: RwLock<Option<tauri::Url>> = RwLock::new(None);
 
 /// O que a casca precisa saber sobre o servidor atual.
 #[derive(Serialize, Clone, Debug)]
@@ -80,6 +84,11 @@ pub fn configured_host() -> Option<String> {
     CONFIGURED_HOST.read().ok().and_then(|g| g.clone())
 }
 
+/// The configured server's URL, if it is not the default (see `CONFIGURED_URL`).
+pub fn configured_url() -> Option<tauri::Url> {
+    CONFIGURED_URL.read().ok().and_then(|g| g.clone())
+}
+
 fn set_configured_host(url: &str) {
     let host = tauri::Url::parse(url)
         .ok()
@@ -92,8 +101,12 @@ fn set_configured_host(url: &str) {
         _ => None,
     };
 
+    let completa = if host.is_some() { tauri::Url::parse(url).ok() } else { None };
     if let Ok(mut g) = CONFIGURED_HOST.write() {
         *g = host;
+    }
+    if let Ok(mut g) = CONFIGURED_URL.write() {
+        *g = completa;
     }
 }
 

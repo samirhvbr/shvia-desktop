@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.6.31 - a local dev server is no longer "the app", and a loopback server is matched by port
+
+**Any `http://localhost:*` counted as internal, in release builds too.** `is_internal` kept every
+localhost page in-app — the rule exists for the Vite dev shell (`http://localhost:1420`) — so a
+dev server an agent printed (`http://localhost:5173`) opened inside the app window. With a
+loopback server configured (`http://localhost:8000`, the dev setup `server::normalize` allows),
+the perimeter compared host only, so every localhost page counted as the server. And a server
+configured as `http://127.0.0.1:8000` passed `normalize` but never opened in-app.
+
+- On loopback (`localhost`, `127.0.0.1`, `[::1]`), `http`/`https` pages are internal only when they
+  are the Vite dev shell (debug builds, the `devUrl` port) or the configured loopback server on the
+  same scheme, host AND port — a different port is a different local service.
+- Ordinary hosts keep host-only matching, a decision the existing test records; `tauri://localhost`
+  (the packaged shell) and `http://tauri.localhost` (Windows) stay internal.
+- The configured server's full URL is kept beside its host for this.
+- Tests: the configured-server test covers the printed dev server, the dev shell, a loopback
+  server by port, a scheme mismatch and `127.0.0.1`; a ruler keeps `PORTA_DO_DEV` equal to
+  `build.devUrl`. Reversal measured. The existing shell test caught my first version, which had
+  made `tauri://localhost` external — the rule now applies to `http`/`https` only.
+
+Suite: 135 = 134 passed + 1 ignored; clippy clean on Linux and `x86_64-pc-windows-gnu`.
+
 ## 1.6.30 - the Windows bridge answers the configured (on-prem) server too
 
 On Windows the Code-mode bridge checks which frame posted each message against
