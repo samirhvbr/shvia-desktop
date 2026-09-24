@@ -1,6 +1,6 @@
 [package]
 name = "shvia-desktop"
-version = "1.6.47"
+version = "1.6.48"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
@@ -55,7 +55,9 @@ uuid = { version = "1", features = ["v4"] }
 # `time` novo mudou a assinatura (passou a exigir `defaults`), quebrando o
 # `cookie`. Fixamos `time` numa versão compatível. Remover quando wry/cookie
 # subirem para uma versão que aceite o `time` novo.
-time = "=0.3.47"
+# 1.6.47: `=0.3.55` measured compatible with cookie 0.18.1 (cargo test, clippy on Linux and
+# windows-gnu). The pin stays exact on purpose: Dependabot proposes each move, and each is measured.
+time = "=0.3.55"
 tauri-plugin-autostart = "2"
 
 # Persiste tamanho/posição das janelas entre reinícios (F2). É **DESKTOP-only** —
