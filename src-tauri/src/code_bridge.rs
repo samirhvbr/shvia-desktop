@@ -154,7 +154,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
     claudeAuthStatus: function (o) { return post('claudeAuthStatus', o || {}); },
     // `Start` devolve a URL e DEIXA o cliente vivo esperando o código; `Code` o entrega.
     // Um por vez: começar de novo cancela o anterior (o código só vale para o PKCE que o gerou).
-    claudeAuthLoginStart: function (o) { return post('claudeAuthLoginStart', o || {}); },  // → {url} | {erro, codigo}
+    claudeAuthLoginStart: function (o) { return post('claudeAuthLoginStart', o || {}); },  // → {url, login} | {erro, codigo}; codigo 'cancelado' = the person said no in the native dialog (1.6.38)
     // 🔴 Volta na HORA, e NÃO diz se o login deu certo. O fim chega pelo evento
     // `{type:'claude_login_fim', code}`, e o veredito vem de um `claudeAuthStatus` depois —
     // nunca do stdout (o cliente não promete o que imprime) nem do código de saída, que é
@@ -985,6 +985,45 @@ fn ler_url_com_prazo(
     }
 }
 
+/// Asks the person, in a native dialog, before `claude auth login` starts (1.6.38).
+///
+/// 🔴 `claudeAuthLoginStart` used to spawn the login on the page's word alone — unlike
+/// `writeCliConfig`, which asks "Gravar/Cancelar". A script running in the server's origin
+/// (XSS, the actor `spawn` already defends against) could start a login, send the URL out and
+/// bring a code back, and the profile would then hold someone else's account; for the default
+/// profile, so would the `claude` in the terminal. Plausible, not proven end to end. The owner
+/// chose "native dialog" (23/09/2026): one more click, and the page cannot answer it.
+///
+/// Blocks until answered, so it is only called off the UI thread (`blocking_show` on the main
+/// thread freezes the app: the dialog needs the event loop that it would be holding).
+fn confirmar_login(window: &WebviewWindow, perfil: &str, padrao: bool) -> bool {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+    window
+        .app_handle()
+        .dialog()
+        .message(texto_da_confirmacao_de_login(perfil, padrao))
+        .title("Entrar no Claude Code")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom("Abrir o login".into(), "Cancelar".into()))
+        .blocking_show()
+}
+
+/// The dialog's text, apart so it can be tested. It names the profile: the decision is which
+/// account a directory will hold, and a dialog that does not say which is a click-through.
+fn texto_da_confirmacao_de_login(perfil: &str, padrao: bool) -> String {
+    let perfil = if perfil.trim().is_empty() { "sem nome" } else { perfil.trim() };
+    format!(
+        "Abrir o login do Claude Code no perfil “{perfil}”?\n\n\
+         A conta que você autorizar no navegador passa a ser a deste perfil{terminal}.\n\n\
+         Continue só se foi você quem pediu este login agora.",
+        terminal = if padrao {
+            " — e também a do `claude` no terminal, que usa o mesmo perfil"
+        } else {
+            ""
+        },
+    )
+}
+
 /// Começa o login e devolve a URL que o cliente imprimiu.
 fn iniciar_login(
     window: &WebviewWindow,
@@ -1420,10 +1459,23 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             fora_da_ui(window, &req, move |w| {
                 let (contas, _) = crate::contas_claude::registro(w.app_handle());
                 match crate::contas_claude::resolver(&contas, &id) {
-                    Ok(dir) => match iniciar_login(w, dir.as_ref()) {
-                        Ok((url, login)) => (true, serde_json::json!({ "url": url, "login": login })),
-                        Err((c, m)) => (false, serde_json::json!({ "erro": m, "codigo": c })),
-                    },
+                    Ok(dir) => {
+                        // 🔴 The person confirms, natively, before anything is spawned (1.6.38).
+                        // See `confirmar_login`. Off the UI thread: `fora_da_ui` runs this.
+                        let perfil = crate::contas_claude::achar(&contas, &id)
+                            .map(|c| c.rotulo.clone())
+                            .unwrap_or_default();
+                        if !confirmar_login(w, &perfil, dir.is_none()) {
+                            return (false, serde_json::json!({
+                                "erro": "login cancelado — nada foi aberto",
+                                "codigo": "cancelado",
+                            }));
+                        }
+                        match iniciar_login(w, dir.as_ref()) {
+                            Ok((url, login)) => (true, serde_json::json!({ "url": url, "login": login })),
+                            Err((c, m)) => (false, serde_json::json!({ "erro": m, "codigo": c })),
+                        }
+                    }
                     Err(e) => (false, serde_json::json!({ "erro": e.mensagem(), "codigo": e.codigo() })),
                 }
             });
@@ -2123,6 +2175,50 @@ mod tests_leitura_com_teto {
         assert_eq!(r["content"].as_str().unwrap().len(), READ_FILE_MAX);
         assert_eq!(r["bytes"], (READ_FILE_MAX + 1000) as u64);
         let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+#[cfg(test)]
+mod tests_confirmacao_do_login {
+    use super::texto_da_confirmacao_de_login;
+
+    /// The dialog names the profile, and says so when the terminal shares it (1.6.38).
+    #[test]
+    fn o_texto_nomeia_o_perfil() {
+        let nomeado = texto_da_confirmacao_de_login("Empresa Blue3", false);
+        assert!(nomeado.contains("“Empresa Blue3”"), "{nomeado}");
+        assert!(!nomeado.contains("terminal"), "a named profile is not the terminal's: {nomeado}");
+
+        let padrao = texto_da_confirmacao_de_login("Padrão do sistema", true);
+        assert!(padrao.contains("“Padrão do sistema”") && padrao.contains("terminal"), "{padrao}");
+
+        assert!(texto_da_confirmacao_de_login("  ", false).contains("“sem nome”"));
+    }
+
+    /// SOURCE check, declared as such: the dialog needs a display, so no unit test can click
+    /// it. It guards the order the fix depends on, inside the `claudeAuthLoginStart` arm: off
+    /// the UI thread first, then the native confirmation, then (and only then) the spawn, with
+    /// the refusal returning in between. Needles are built at run time so this test's own text
+    /// never matches them.
+    #[test]
+    fn o_login_so_sobe_depois_do_dialogo() {
+        let fonte = include_str!("code_bridge.rs");
+        let ini = fonte.find(&["pub fn handle", "_message("].concat()).expect("handle_message moved");
+        let corpo = &fonte[ini..];
+        let chave = ["\"claudeAuth", "LoginStart\" =>"].concat();
+        let a = corpo.find(&chave).expect("claudeAuthLoginStart arm not found");
+        let resto = &corpo[a + chave.len()..];
+        let braco = &resto[..resto.find("\n        \"").unwrap_or(resto.len())];
+
+        let pos = |agulha: &str| {
+            braco.find(agulha).unwrap_or_else(|| panic!("`{agulha}` is not in the arm:\n{braco}"))
+        };
+        let despacho = pos(&["fora_da", "_ui("].concat());
+        let dialogo = pos(&["confirmar", "_login(w"].concat());
+        let recusa = pos(&["\"cancel", "ado\""].concat());
+        let login = pos(&["iniciar", "_login(w"].concat());
+        assert!(despacho < dialogo, "the dialog blocks: it must run off the UI thread");
+        assert!(dialogo < recusa && recusa < login, "the login is spawned before the person says yes");
     }
 }
 

@@ -260,11 +260,7 @@ pub fn normalizar(home: &Path, contas: Vec<Conta>) -> Vec<Conta> {
 /// call this one function, so discovery and the turn cannot end up on different accounts —
 /// which is the failure this whole feature exists to make impossible.
 pub fn resolver(contas: &[Conta], id: &str) -> Result<Option<Alvo>, Erro> {
-    let alvo = if id.trim().is_empty() { PADRAO } else { id.trim() };
-    let conta = contas
-        .iter()
-        .find(|c| c.id == alvo)
-        .ok_or(Erro::Desconhecida)?;
+    let conta = achar(contas, id).ok_or(Erro::Desconhecida)?;
     if conta.dir.is_empty() {
         return Ok(None);
     }
@@ -274,6 +270,14 @@ pub fn resolver(contas: &[Conta], id: &str) -> Result<Option<Alvo>, Erro> {
     } else {
         Err(Erro::Indisponivel)
     }
+}
+
+/// The profile an ID names, with the same reading as [`resolver`]: an empty ID is [`PADRAO`].
+/// One lookup for both, so the label the login confirmation shows (1.6.38) is the label of
+/// the profile the login then runs on.
+pub fn achar<'a>(contas: &'a [Conta], id: &str) -> Option<&'a Conta> {
+    let alvo = if id.trim().is_empty() { PADRAO } else { id.trim() };
+    contas.iter().find(|c| c.id == alvo)
 }
 
 /// Applies the resolved directory to **one child process**.
@@ -646,6 +650,18 @@ mod tests {
         // String vazia é o mesmo pedido: a página que não manda `accountId` quer o padrão.
         assert_eq!(resolver(&contas, ""), Ok(None));
         assert_eq!(resolver(&contas, "  "), Ok(None));
+    }
+
+    /// `achar` reads an ID the way `resolver` does, so the label the login confirmation shows
+    /// is the profile the login runs on (1.6.38).
+    #[test]
+    fn achar_le_o_id_como_o_resolver() {
+        let contas = semente(&casa(), &|_| true);
+        assert_eq!(achar(&contas, "").map(|c| c.id.as_str()), Some(PADRAO));
+        assert_eq!(achar(&contas, "  ").map(|c| c.id.as_str()), Some(PADRAO));
+        assert_eq!(achar(&contas, " pessoal ").map(|c| c.id.as_str()), Some("pessoal"));
+        assert!(achar(&contas, "nao-existe").is_none());
+        assert_eq!(resolver(&contas, "nao-existe"), Err(Erro::Desconhecida));
     }
 
     #[test]
