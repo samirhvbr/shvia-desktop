@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.6.54 - release.sh comes from repodocs again, and --latest goes to the version version.md names
+
+The owner answered "Aplica só no desktop" to the panel's `repodocs-no-desktop` question: bring the
+repodocs standard (1.16.0) to this repository through its own flow (PR, CI, landing), and not
+through `fleet.sh --apply`, which commits straight into the main checkout. `fleet.sh check` named
+three differences here, and each one is a commit of this version.
+
+- **`tools/release.sh` is the standard's again.** This copy predated repodocs 1.9.1. Two fixes come
+  with it. In a fork, the Release goes to `origin`'s repository and not to whatever `gh` guesses;
+  this repository is not a fork. The one that matters here is the other: `--latest` goes to the
+  version `version.md` names, not to the last Release a run happens to touch. A backfill that
+  starts while `version.md` says N and finishes after a push moved it to N+1 no longer leaves the
+  badge on N. The file now carries the `repodocs:tool` provenance line, so the next
+  `fleet.sh hooks` knows it may rewrite it.
+
 ## 1.6.53 - dev.shvia.org is live, and the doc says what it is before anyone tests against it
 
 `docs/arquitetura.md` said the owner was creating `dev.shvia.org` and that it did not resolve

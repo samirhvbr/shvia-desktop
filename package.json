@@ -1,7 +1,7 @@
 {
   "name": "shvia-desktop",
   "private": true,
-  "version": "1.6.53",
+  "version": "1.6.54",
   "type": "module",
   "scripts": {
     "dev": "vite",
