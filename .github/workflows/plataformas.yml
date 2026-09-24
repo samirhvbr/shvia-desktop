@@ -1,0 +1,76 @@
+# The Rust code of the two platforms CI did not compile (1.6.37).
+#
+# ci.yml runs on ubuntu, so everything behind `cfg(target_os = "windows")` and
+# `cfg(target_os = "macos")` was never compiled there: `windows_ipc.rs`, `macos_ipc.rs`, and the
+# gates in lib.rs, tray.rs, updater.rs, code_bridge.rs and diagnostico.rs. The Windows build did
+# not compile from 0.9.0 (19/07) to 1.6.8 (23/09), and nothing said so: E1 was found by reading
+# the code, then confirmed by a cross-compiled `cargo check`.
+#
+# The owner answered "Enterprise (org)" on 23/09/2026: minutes are not the limit, macOS
+# included (10x). The path filter keeps it to changes that can break these builds.
+#
+# Release builds stay local by decision (docs/build.md): this compiles, lints and tests; it
+# does not package or sign anything.
+
+name: Platforms
+
+on:
+  push:
+    branches: [master]
+    paths: ['src-tauri/**', '.github/workflows/plataformas.yml']
+  pull_request:
+    paths: ['src-tauri/**', '.github/workflows/plataformas.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: plataformas-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows (clippy, cross-compiled from Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable branch as of 05/08/2026
+        with:
+          components: clippy
+          targets: x86_64-pc-windows-gnu
+      # tauri-build embeds the icon and the manifest with windres, so the check needs the
+      # MinGW toolchain even though nothing is linked.
+      - name: MinGW-w64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mingw-w64
+      # Same stand-in as ci.yml: externalBin must exist for the build script, and nothing
+      # here runs the sidecar.
+      - name: Sidecar stand-in so the Tauri build script can run
+        run: |
+          mkdir -p src-tauri/binaries
+          : > src-tauri/binaries/anna-x86_64-pc-windows-gnu.exe
+      - name: clippy (x86_64-pc-windows-gnu)
+        working-directory: src-tauri
+        run: cargo clippy --locked --target x86_64-pc-windows-gnu --all-targets -- -D warnings
+
+  macos:
+    name: macOS (clippy + test)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable branch as of 05/08/2026
+        with:
+          components: clippy
+      - name: Sidecar stand-in so the Tauri build script can run
+        run: |
+          mkdir -p src-tauri/binaries
+          triple="$(rustc -vV | awk '/^host:/{print $2}')"
+          : > "src-tauri/binaries/anna-$triple"
+          chmod +x "src-tauri/binaries/anna-$triple"
+      - name: clippy
+        working-directory: src-tauri
+        run: cargo clippy --locked --all-targets -- -D warnings
+      # The tests run here too: the fence, the git parsing and the updater cover paths and
+      # processes, and macOS is the platform the owner releases from.
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test --locked

@@ -402,6 +402,24 @@ Release + updater). Se compensar trazer essa matriz de volta (releases assinados
 centralizados via CI), é decisão de arquitetura a tomar separadamente — não consequência
 automática do upgrade de plano.
 
+### Platforms (1.6.37)
+
+`ci.yml` runs on ubuntu, so the code behind `cfg(target_os = "windows")` and
+`cfg(target_os = "macos")` — `windows_ipc.rs`, `macos_ipc.rs`, and the gates in `lib.rs`,
+`tray.rs`, `updater.rs` and others — was never compiled in CI. The Windows build did not compile
+from 0.9.0 to 1.6.8, two months, and nothing said so. `.github/workflows/plataformas.yml` runs
+when `src-tauri/**` changes:
+
+- **Windows** — `cargo clippy --target x86_64-pc-windows-gnu -D warnings` on ubuntu, with
+  MinGW-w64: `tauri-build` compiles the icon and manifest resource with
+  `x86_64-w64-mingw32-windres` (through `embed-resource`) even for a check.
+- **macOS** — `cargo clippy -D warnings` and `cargo test` on `macos-latest`, the platform the
+  releases are built on.
+
+Minutes are not the limit (the owner's answer on 23/09/2026: Enterprise), macOS included at 10x;
+the path filter is what keeps the cost to changes that can break these builds. It compiles,
+lints and tests. It does not package or sign; release builds stay local.
+
 ### Dependabot (1.6.35)
 
 `.github/dependabot.yml` watches every manifest: `cargo` in `src-tauri/`, `npm` at the root and

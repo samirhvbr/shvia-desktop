@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.6.37 - the Windows and macOS code is compiled in CI, not only on release day
+
+**The Windows build did not compile from 0.9.0 (19/07) to 1.6.8 (23/09), and nothing said so.**
+`ci.yml` runs on ubuntu, so everything behind `cfg(target_os = "windows")` and
+`cfg(target_os = "macos")` (`windows_ipc.rs`, `macos_ipc.rs`, the gates in `lib.rs`, `tray.rs`,
+`updater.rs`, `code_bridge.rs`, `diagnostico.rs`) was never compiled there. E1 was found by
+reading the code. The owner answered "Enterprise (org)": minutes are not the limit.
+
+- `.github/workflows/plataformas.yml` ("Platforms"), path-filtered to `src-tauri/**` and itself:
+  - **Windows**: `cargo clippy --locked --target x86_64-pc-windows-gnu --all-targets -D warnings`
+    on ubuntu with MinGW-w64. `tauri-build` compiles the resource file with
+    `x86_64-w64-mingw32-windres` through `embed-resource` even for a check, and panics without
+    it (read in `embed-resource` 3.0.11, `non_windows.rs`).
+  - **macOS**: `cargo clippy --locked --all-targets -D warnings` and `cargo test --locked` on
+    `macos-latest`, the platform releases are built on.
+- Verification: the workflow runs on its own PR (the path filter includes the file). The Windows
+  job is the command that confirmed E1 (E0061/E0308 on 1.6.7), and it has passed locally since
+  1.6.8. The macOS job has no local counterpart. Its first run is on this PR.
+- `docs/build.md`, "Platforms".
+
 ## 1.6.36 - serde_with moves to 3.21.0, closing an advisory that only GitHub knew about
 
 **The first alert after the alerts went on (1.6.35) was one CI could never have raised.**
