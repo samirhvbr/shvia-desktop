@@ -14,6 +14,9 @@ from outside (`code_bridge::reply`, `::Sidecars`, `::engine_status`, …) do not
   readers (`ler_no_maximo`, `ler_escolhido`), and their three test modules. 580 lines, moved
   unchanged except for visibility (`pub(super)`). 137 tests before and after, and clippy
   `-D warnings` clean on Linux and `x86_64-pc-windows-gnu`.
+- `code_bridge/cerca.rs`: the Code mode fence (`pasta_autorizada`, the authorized folders, the
+  dialog's gesture that grants one) and the device-local project→folder bindings, with
+  `tests_cerca`. 195 lines.
 
 ## 1.6.40 - the updater key rotation is prepared: one declared transition release, signed with the old key
 
