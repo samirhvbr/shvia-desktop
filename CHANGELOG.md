@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.6.29 - stopping an engine asks it to leave before killing it
+
+**"Parar", closing a window, a reload and a new session all ended the engine with SIGKILL**
+(`child.kill()`; TerminateProcess on Windows). The engine never ran its exit path: the Claude
+SDK's cleanup of the `claude` CLI it spawned (`process.on("exit")`), the Codex runner's
+`encerrar` (which kills `codex app-server`), anna's own shutdown. A running tool — `npm run dev`,
+`cargo test` — could outlive the stop, holding ports and `target/` locks.
+
+- Every stop now sends `{"type":"exit"}`, closes stdin, waits up to 2 s, and only then kills.
+  All three engines already leave on that message or on EOF.
+- The wait runs off the calling thread for "Parar", reloads, window close and session swaps
+  (all on the UI thread); at app exit it runs in place, all sidecars under one shared deadline.
+- Two tests with real processes: an engine that leaves on request gets the message and leaves
+  well before the deadline; one that ignores it is killed and reaped when the deadline passes.
+  Reversal measured: with a bare SIGKILL the first test reports the engine never got the request.
+
+⚠️ anna puts each tool in its own process group (SHVIA-CODE `tools.rs`); whether anna kills those
+groups on its way out is anna's side, in another repository.
+
+Suite: 134 = 133 passed + 1 ignored; clippy clean on Linux and `x86_64-pc-windows-gnu`.
+
 ## 1.6.28 - picking or previewing a huge file no longer loads it whole into memory
 
 `pickFiles` read each chosen file with `fs::read` and only then compared it with the 10 MB limit;

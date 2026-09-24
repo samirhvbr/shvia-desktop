@@ -239,6 +239,47 @@ struct Sidecar {
     gen: u64,
 }
 
+/// How long an engine gets to leave on its own before it is killed (1.6.29).
+const PRAZO_PARA_SAIR: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Ends a sidecar the way a person would: ask, wait, then force (1.6.29).
+///
+/// `child.kill()` alone is SIGKILL on Unix (TerminateProcess on Windows): the engine got no
+/// chance to run its exit path, so the Claude SDK's cleanup of the `claude` CLI it spawned
+/// (`process.on("exit")`), the Codex runner's `encerrar` (which kills `codex app-server`), and a
+/// running tool (`npm run dev`, `cargo test`) were skipped — orphans holding ports and locks.
+/// Every engine leaves on `{"type":"exit"}` or on stdin EOF: this sends the first, closes stdin,
+/// polls for `prazo`, and only then kills.
+fn encerrar_com_prazo(sc: Sidecar, prazo: std::time::Duration) {
+    encerrar_varios_com_prazo(vec![sc], prazo);
+}
+
+/// The same for several at once, under ONE deadline (the app's exit must not wait 2 s each).
+fn encerrar_varios_com_prazo(varios: Vec<Sidecar>, prazo: std::time::Duration) {
+    let mut filhos: Vec<Child> = varios
+        .into_iter()
+        .map(|sc| {
+            let Sidecar { child, mut stdin, .. } = sc;
+            let _ = writeln!(stdin, r#"{{"type":"exit"}}"#);
+            let _ = stdin.flush();
+            drop(stdin); // EOF, for an engine that only watches stdin
+            child
+        })
+        .collect();
+    let inicio = std::time::Instant::now();
+    while inicio.elapsed() < prazo {
+        filhos.retain_mut(|c| !matches!(c.try_wait(), Ok(Some(_))));
+        if filhos.is_empty() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    for mut c in filhos {
+        let _ = c.kill();
+        let _ = c.wait();
+    }
+}
+
 /// Registro de sidecars por rótulo de janela — em Tauri managed state.
 /// Cada entrada fica em `Option<Sidecar>` para que `send_line` consiga TIRAR
 /// o sidecar do mapa sob o lock, escrever no stdin FORA do lock (o pipe pode
@@ -259,9 +300,10 @@ impl Sidecars {
             .ok()
             .and_then(|mut m| m.remove(label))
             .and_then(|opt| opt);
-        if let Some(mut sc) = sc {
-            let _ = sc.child.kill();
-            let _ = sc.child.wait();
+        // Off the calling thread: this runs on "Parar", on a reload and on window close, all
+        // on the UI thread, and the engine gets up to PRAZO_PARA_SAIR to leave on its own.
+        if let Some(sc) = sc {
+            std::thread::spawn(move || encerrar_com_prazo(sc, PRAZO_PARA_SAIR));
         }
     }
 
@@ -296,10 +338,9 @@ impl Sidecars {
                     .collect()
             })
             .unwrap_or_default();
-        for mut sc in drained {
-            let _ = sc.child.kill();
-            let _ = sc.child.wait();
-        }
+        // At app exit, synchronously: a thread would die with the process. One shared
+        // deadline for all of them.
+        encerrar_varios_com_prazo(drained, PRAZO_PARA_SAIR);
     }
 
     /// Registra o sidecar da janela (nova geração), matando o anterior (troca de
@@ -316,9 +357,8 @@ impl Sidecars {
                 }),
             )
         });
-        if let Some(Some(mut old)) = old {
-            let _ = old.child.kill();
-            let _ = old.child.wait();
+        if let Some(Some(old)) = old {
+            std::thread::spawn(move || encerrar_com_prazo(old, PRAZO_PARA_SAIR));
         }
         gen
     }
@@ -1986,6 +2026,58 @@ fn sanitize_filename(nome: &str) -> String {
         "arquivo".to_string()
     } else {
         limpo
+    }
+}
+
+#[cfg(test)]
+mod tests_encerrar {
+    #[cfg(unix)]
+    use super::{encerrar_com_prazo, Sidecar};
+    #[cfg(unix)]
+    use std::process::{Command, Stdio};
+    #[cfg(unix)]
+    use std::time::{Duration, Instant};
+
+    #[cfg(unix)]
+    fn sidecar(script: &str, arg: &str) -> Sidecar {
+        let mut child = Command::new("sh")
+            .args(["-c", script, "sh", arg])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .unwrap();
+        let stdin = child.stdin.take().unwrap();
+        Sidecar { child, stdin, gen: 1 }
+    }
+
+    /// 🔴 1.6.29. "Parar" was SIGKILL: the engine never ran its exit path (the SDK's cleanup of
+    /// the `claude` CLI, the Codex runner killing its app-server). An engine that leaves on
+    /// `{"type":"exit"}` must get that message and leave on its own, well before the deadline.
+    #[cfg(unix)]
+    #[test]
+    fn motor_que_sabe_sair_recebe_o_pedido_e_sai_sozinho() {
+        let marca = std::env::temp_dir().join(format!("shvia-saida-{}", std::process::id()));
+        let _ = std::fs::remove_file(&marca);
+        let sc = sidecar(r#"while read l; do case "$l" in *exit*) echo pediu > "$1"; exit 0;; esac; done"#, &marca.to_string_lossy());
+        let t = Instant::now();
+        encerrar_com_prazo(sc, Duration::from_secs(5));
+        assert!(t.elapsed() < Duration::from_secs(3), "waited {:?} for an engine that leaves on request", t.elapsed());
+        assert_eq!(std::fs::read_to_string(&marca).unwrap_or_default().trim(), "pediu", "the engine never got the exit request");
+        let _ = std::fs::remove_file(&marca);
+    }
+
+    /// …and one that ignores it is still killed and reaped once the deadline passes.
+    #[cfg(unix)]
+    #[test]
+    fn motor_que_nao_sai_morre_no_prazo() {
+        let sc = sidecar("sleep 30", "");
+        let pid = sc.child.id();
+        let t = Instant::now();
+        encerrar_com_prazo(sc, Duration::from_millis(300));
+        assert!(t.elapsed() < Duration::from_secs(3), "took {:?}", t.elapsed());
+        #[cfg(target_os = "linux")]
+        assert!(!std::path::Path::new(&format!("/proc/{pid}")).exists(), "the stubborn engine is still alive (or a zombie)");
+        let _ = pid;
     }
 }
 
