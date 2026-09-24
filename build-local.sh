@@ -1114,6 +1114,42 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+# 🔴 What is published must be what is committed (1.6.34). Nothing tied a publish to the
+# repository: uncommitted changes — this checkout is shared by several sessions — shipped as
+# "version X" and matched no commit. The owner chose: refuse when something the BUILD reads is
+# dirty or untracked; only warn for the rest, and for a HEAD that is not origin/master.
+# ENTRADAS_DO_BUILD is what the bundle is made from (see the reuse list and tauri.conf.json),
+# plus version.md — the number the publish announces — and the Arch PKGBUILD.
+ENTRADAS_DO_BUILD="version.md src src-tauri claude-runner codex-runner public index.html package.json package-lock.json vite.config.ts tsconfig.json scripts build-local.sh packaging"
+confere_arvore_para_publicar() {
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "  ⚠️ fora de um repositório git — não dá para conferir que o publicado é o commitado." >&2
+    return 0
+  fi
+  local sujos outros
+  # shellcheck disable=SC2086  # the list is meant to split into paths
+  sujos="$(git status --porcelain --untracked-files=all -- $ENTRADAS_DO_BUILD 2>/dev/null || true)"
+  if [ -n "$sujos" ]; then
+    echo "" >&2
+    echo "  ✗ --publish com entrada do build suja ou fora do git — o que subiria não é nenhum commit:" >&2
+    printf '%s\n' "$sujos" | head -20 | sed 's/^/      /' >&2
+    echo "    Commite (ou descarte) e publique de novo. Para um teste local, rode sem --publish." >&2
+    echo "" >&2
+    return 1
+  fi
+  outros="$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "$outros" -gt 0 ]; then
+    echo "    ⚠️ $outros arquivo(s) fora do build sujo(s) na árvore — não entram no bundle."
+  fi
+  if git rev-parse --verify -q origin/master >/dev/null && [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/master)" ]; then
+    echo "    ⚠️ HEAD ($(git rev-parse --short HEAD)) não é o origin/master ($(git rev-parse --short origin/master))."
+  fi
+  return 0
+}
+if [ "$PUBLISH" -eq 1 ]; then
+  confere_arvore_para_publicar || exit 2
+fi
+
 # 🔴 A test build cannot be published (1.6.22). `--no-sign` skips the Apple signature and
 # notarization, and until 1.6.22 nothing stopped `--publish` from shipping it — directly, or
 # through the reuse path, which checks version, sha256 and freshness but never the signature.

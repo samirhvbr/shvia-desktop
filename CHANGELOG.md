@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.6.34 - a publish refuses a build input that is not committed
+
+**Nothing tied a publish to the repository.** `./build-local.sh --publish` bundled whatever was on
+disk, and this checkout is shared by several sessions: uncommitted changes could ship as
+"version X" and match no commit — and a bumped, uncommitted `version.md` would announce a version
+that exists nowhere. The owner chose "refuse when a build file is dirty".
+
+- `confere_arvore_para_publicar` runs before anything is built when `--publish` is given. A dirty
+  or untracked file under `ENTRADAS_DO_BUILD` (`version.md`, `src/`, `src-tauri/`,
+  `claude-runner/`, `codex-runner/`, `public/`, `index.html`, `package*.json`, `vite.config.ts`,
+  `tsconfig.json`, `scripts/`, `build-local.sh`, `packaging/`) refuses the publish with the list
+  (exit 2). Other dirty files, and a HEAD that is not `origin/master`, only warn. Ignored build
+  output (`dist/`, `src-tauri/target/`, `src-tauri/binaries/`) does not count. A build without
+  `--publish` is not checked.
+- `scripts/prova-publica-o-commitado.mjs` (`npm run prova:arvore`, a CI step) runs the real function
+  in temp git repositories: clean tree, modified input, untracked input, uncommitted `version.md`,
+  dirty README, HEAD ahead of `origin/master`, ignored output. Reversal measured: without the
+  refusal, the modified and untracked cases go through.
+
 ## 1.6.33 - a half-bumped commit is refused before it exists
 
 **The version went out half-bumped three times** — 1.1.19, 1.4.21, 1.6.3: `version.md` committed, a

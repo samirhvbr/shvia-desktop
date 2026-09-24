@@ -100,6 +100,9 @@ jobs:
       # sidecar, instead of bundling an old engine or failing the build (1.6.24).
       - name: Packaging without anna ships no stale engine
         run: npm run prova:sem-anna
+      # `--publish` ships only what is committed: a dirty or untracked build input refuses it (1.6.34).
+      - name: A publish refuses a dirty build input
+        run: npm run prova:arvore
       # `src-tauri/binaries/` is gitignored on purpose: the `anna` sidecar depends on the
       # build machine (ADR-021), so it is staged by `scripts/stage-anna.mjs` and never
       # committed. But `externalBin` in `tauri.conf.json` makes the Tauri build script
