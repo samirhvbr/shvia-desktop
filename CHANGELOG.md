@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.6.44 - the owner's Windows validation has a runbook, and it names three gaps found writing it
+
+The owner answered "I'll do it — send the runbook". Windows compiles since 1.6.8, and CI
+cross-checks the GNU target since 1.6.37, but the real build is MSVC and it has **never run on a
+Windows machine**. `docs/roteiro-validacao-windows.md` is a 45-minute pass with an expected
+result per step. It covers the build, install (SmartScreen expected), streaming, the tray and
+menus, notifications (no badge, by design), Diagnóstico, the Code mode's WebView2 bridge and the
+three engines, and ends in a report table.
+
+Three gaps surfaced while checking each step against the code, and the runbook names them:
+
+- **`build-local.ps1` lacks the 1.6.24 fix.** Tauri refuses a missing `bundle.externalBin`, so
+  `-NoAnna` (or no `anna` on PATH) fails the Windows build at its end. The runbook's
+  `TAURI_CONFIG` line works around it. The fix belongs in the script, measured on Windows (no
+  PowerShell here to prove it).
+- **`build-local.ps1` has no updater-key preflight.** Without the key, the release build fails
+  at its end. Validation builds skip updater artifacts through the same `TAURI_CONFIG` line.
+- **The Claude and Codex engines have no Windows path.** Their runners install through a bash
+  `install.sh`, and the lookup expects `claude-runner.exe`. Whether Windows needs them is the
+  owner's call.
+
 ## 1.6.43 - the owner's product answers close the open decisions in the state note
 
 Four questions sat in `.continue/estado-atual.md` as "Decisões em aberto" since the first weeks,
