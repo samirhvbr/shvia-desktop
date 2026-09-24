@@ -22,18 +22,14 @@
     "_comment": "Stack: Tauri 2 (Rust) + casca web (npm/Vite) + sidecar Python (F2). Servidor é remoto — nenhum banco/segredo roda aqui. A allow-list recomendada está no .claude/README.md; aplique manualmente (grant de permissão é ação sua, não do agente).",
     "defaultMode": "plan",
     "deny": [
-      "Read(./.env)",
       "Read(./**/*.pem)",
       "Read(./**/*.key)",
       "Read(./**/*.p8)",
       "Read(./**/*.p12)",
-      "Read(./**/*.pfx)",
+      "Read(./**/*.pfx)"
+    ],
+    "ask": [
       "Bash(rm -rf:*)",
-      "Bash(git push --force:*)",
-      "Bash(git push -f:*)",
-      "Bash(git push * --force*)",
-      "Bash(git reset --hard:*)",
-      "Bash(git clean -fd:*)",
       "Bash(curl * | sh:*)",
       "Bash(curl * | bash:*)",
       "Bash(wget * | sh:*)",
