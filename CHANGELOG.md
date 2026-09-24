@@ -20,6 +20,13 @@ Three gaps surfaced while checking each step against the code, and the runbook n
 - **The Claude and Codex engines have no Windows path.** Their runners install through a bash
   `install.sh`, and the lookup expects `claude-runner.exe`. Whether Windows needs them is the
   owner's call.
+- **B9's five runs are prepared** (the owner: "I'll do it this week — send the tasks").
+  `docs/code/RUN-ORCHESTRATOR.md` holds the throwaway setup (a clone whose remote is a local bare
+  repository, so run 4's push cannot reach GitHub), five prompts across the three engines (long
+  progress, a genuine decision, mid-task reports, an irreversible push, and a build-and-test),
+  how to read the decisions list, and a sheet counting **false continues** and **needless
+  asks**. It also proposes a reading for Q5, which stays open until the sheet is filled.
+  `RUN-20260910.md` B9 points to it.
 
 ## 1.6.43 - the owner's product answers close the open decisions in the state note
 
