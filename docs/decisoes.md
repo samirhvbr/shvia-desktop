@@ -153,6 +153,13 @@ how-to; linkar o ADR.
   **Windows (WebView2/Chromium)** tendem a suportar — validar ao empacotar lá.
 - **Saída se virar must-have:** **fallback Electron** (Chromium tem mídia/clipboard
   fortes) — ver ADR-003/006. É decisão de **produto**, não tomada agora.
+- **Re-measured 23/09/2026 (1.6.45).** Image paste got a bridge in 0.4.8 (02/07), two days
+  after this ADR, and was never measured again. On WebKitGTK 2.52.6, what the engine exposes is
+  no longer the limit: `getUserMedia`, the devices, the async clipboard API and the bridge's
+  synthetic paste all work (`scripts/sonda-webkitgtk.py`). Whether the microphone captures and
+  a real Ctrl+V reads an image is the owner's two-minute check,
+  [`roteiro-microfone-e-colar.md`](roteiro-microfone-e-colar.md). This ADR's "does not work"
+  stands until that check says otherwise.
 
 ---
 

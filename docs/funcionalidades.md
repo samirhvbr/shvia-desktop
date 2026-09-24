@@ -218,12 +218,13 @@ someone who uses or builds the app:
 
 ## Limitações conhecidas
 
-- ⚠️ **Mic e Ctrl+V de imagem no Linux** (`0.4.4`, **ADR-008**): o shell habilita
-  `getUserMedia` e o clipboard no WebKitGTK (o device é até enumerado), mas a
-  **captura do microfone** e o **paste de imagem** **não funcionam** — limitação do
-  **WebKitGTK**, não do código. **macOS/Windows** (WKWebView/WebView2) tendem a
-  resolver; fallback **Electron** se virar must-have no Linux. **Pendência ativa** —
-  ver [`.continue/estado-atual.md`](../.continue/estado-atual.md).
+- ⚠️ **Microphone and image paste on Linux** (**ADR-008**, re-measured in `1.6.45`): ADR-008
+  (0.4.4) found both not working on WebKitGTK. Image paste got a bridge in `0.4.8`, and on
+  WebKitGTK 2.52 (Debian 13's) the engine exposes everything both need, including the bridge's synthetic
+  paste (`scripts/sonda-webkitgtk.py`). Whether the microphone captures and a real Ctrl+V pastes
+  is **unverified** until the owner's two-minute check:
+  [`roteiro-microfone-e-colar.md`](roteiro-microfone-e-colar.md). macOS and Windows
+  (WKWebView/WebView2) tend to work.
 
 ## Notas técnicas
 

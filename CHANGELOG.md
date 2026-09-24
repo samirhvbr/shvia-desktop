@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.6.45 - microphone and image paste on Linux are re-measured, and the rest is a two-minute check
+
+ADR-008 (30/06) recorded that on WebKitGTK the microphone does not capture and an image does not
+paste. Two days later, **0.4.8 added a paste bridge**, and nobody measured again. The docs said
+"does not work" for three months. The owner answered "re-measure, and work around it if it
+fails".
+
+- `scripts/sonda-webkitgtk.py` measures what needs no person. It runs an offscreen WebView (no
+  window) with the app's settings, on the server's origin, denying every permission: the
+  microphone is never opened and the clipboard is never touched. On WebKitGTK **2.52.6** it
+  finds a secure context, `getUserMedia`, an `audioinput` and a `videoinput`,
+  `navigator.clipboard.read` and `ClipboardItem`. A synthetic `paste` carrying an image `File`,
+  which is the bridge's second half, reaches the listener with its `image/png` item.
+- Two false readings were caught on the way. `gst-inspect-1.0` is not installed, so it reported
+  every GStreamer capture element as absent. Through GObject introspection, `pulsesrc`,
+  `pipewiresrc` and `autoaudiosrc` are installed. And a control run with the app's settings at
+  their defaults gives the same result: in 2.52.6 exposure no longer depends on those settings.
+- `docs/roteiro-microfone-e-colar.md` is what needs a person, two minutes: a real Ctrl+V of an
+  image and five seconds of speech. It also carries the native workarounds if either fails.
+  ADR-008 gains a dated note, and `docs/funcionalidades.md` and the state note say
+  "unverified" instead of "does not work". `docs/README.md` indexes the runbook.
+
 ## 1.6.44 - the owner's Windows validation has a runbook, and it names three gaps found writing it
 
 The owner answered "I'll do it — send the runbook". Windows compiles since 1.6.8, and CI

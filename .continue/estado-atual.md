@@ -233,18 +233,14 @@ implementação, no `CHANGELOG.md` da 1.1.19.
 
 ### 3. WebKitGTK no Linux — **não reavaliado desde julho/2026**
 
-Os dois vieram da 0.8.0 e **não há commit indicando conserto**, mas também não
-foram testados de novo. São limitações do WebKitGTK (ADR-008), não do nosso
-código:
-
-1. **Microfone não captura.** O shell habilita `getUserMedia` e o WebKitGTK
-   enumera o device, mas a captura efetiva não vai.
-2. **Ctrl+V de imagem não cola.** Texto funciona; o WebKitGTK não expõe a imagem
-   do clipboard à página.
-
-**Caminhos:** validar em macOS (WKWebView) e Windows (WebView2), que tendem a
-suportar; se virarem must-have no Linux, o fallback é Electron (ADR-003/006/008).
-Decisão de produto, não de engenharia.
+**Re-measured on 23/09/2026 (1.6.45)**, and the old text was partly stale. Image paste has
+had a bridge since 0.4.8 (02/07), two days after ADR-008, and nobody measured again. On
+WebKitGTK 2.52.6 the engine exposes everything both features need (`getUserMedia`, the
+devices, the async clipboard API), and the bridge's synthetic paste delivers its image
+(`scripts/sonda-webkitgtk.py`, offscreen, no microphone opened, clipboard untouched). What is
+left needs a person: the owner's two-minute check,
+[`../docs/roteiro-microfone-e-colar.md`](../docs/roteiro-microfone-e-colar.md). If it fails,
+the native workarounds are written there.
 
 ### 4. Windows — validação ao vivo
 
