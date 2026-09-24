@@ -70,6 +70,11 @@ jobs:
         run: |
           npm ci --prefix claude-runner --no-audit --no-fund
           npm run prova:cd
+      # The runners' Windows installers (1.6.55), run under pwsh against a temporary LOCALAPPDATA:
+      # both install, both refuse a module they do not copy (the 1.4.7 class), and a broken link
+      # ahead in PATH does not break them. The Windows machine itself is the owner's runbook.
+      - name: The Windows runner installers install, and refuse an incomplete install
+        run: npm run prova:instaladores-ps1
       - name: Portadores de versão alinhados
         run: npm run prova:bump
       # The pre-commit hook checks the carriers in the INDEX, where 1.6.3 went wrong (1.6.33).
