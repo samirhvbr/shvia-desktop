@@ -22,6 +22,9 @@ this was in CI, so it lands as 1.6.48 (PR #63 closed, rebuilt on the new master)
   was already closed by 3.21.0 in 1.6.36; this is the minor move that resolves the PR. The cost
   is in the tree: `darling` 0.24 and a third `syn` (1, 2 and 3 now coexist), paid in compile
   time. Measured the same way, all green.
+- **`@tauri-apps/cli` 2.11.5 (`#46`)**, lock only. The `^2` range is kept, as Dependabot's PR did.
+  The lock diff is the same 94 lines as the PR's. Measured: `npm ci`, `tauri --version` answers
+  2.11.5, and `npm run build` passes.
 
 ## 1.6.47 - the repository stops choosing the model
 
