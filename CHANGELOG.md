@@ -18,6 +18,10 @@ the Windows job: both predate 1.6.37.
   list, so the list cannot fall behind a new matched crate. Reversal measured: removing
   `webview2-com` from the list turns it red.
 - #51 and #52 are closed with the measurement.
+- **`base64` 0.23 (#50).** Our two uses (`STANDARD.encode`/`decode`, `dialogos.rs`) are unchanged.
+  0.23.1 was already in the tree through another crate, so the lock moves one line. Measured:
+  `cargo test` (137), clippy `-D warnings` on Linux and `x86_64-pc-windows-gnu`, `cargo deny`
+  (all four ok).
 
 ## 1.6.48 - the patch and minor updates Dependabot proposed land as versioned commits
 

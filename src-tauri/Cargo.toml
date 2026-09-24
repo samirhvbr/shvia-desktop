@@ -44,7 +44,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 # Decodifica o artefato que a página manda para o `saveFile` da ponte (bytes em
 # base64 — a página lê o /files/{id} com a sessão dela e repassa os bytes).
-base64 = "0.22"
+base64 = "0.23"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Token de capacidade da ponte nativa (per-sessão, anti-iframe). Só v4 (CSPRNG).
