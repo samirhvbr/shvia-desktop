@@ -25,6 +25,15 @@ had no control, and so a command that never ran was read as a sandbox that works
 - `plataforma.test.mjs` joins `prova:politica`. `plataforma.mjs` is a new local module, so it
   joins the `cp` of `install.sh` and the `$Files` of `install.ps1`. `prova:instalador` flagged it
   missing from both before the lists were updated.
+- **`codex` starts on Windows.** The npm install of the Codex CLI is a `codex.cmd` shim, and Node
+  does not run a `.cmd` without a shell (ENOENT, and EINVAL since Node 20.12.2), so the Codex
+  engine could never start there. `resolverCodex` (in `plataforma.mjs`) turns the shim into what
+  it runs: `node` with the `node_modules\@openai\codex\bin\codex.js` next to it. A native
+  `codex.exe` on PATH wins, a shim without its `codex.js` is not trusted, and `SHVIA_CODEX_BIN`
+  still overrides everything. Linux and macOS still spawn `codex`. Five cases in
+  `plataforma.test.mjs` run the Windows branches on any OS. Whether Codex's own sandbox holds on
+  Windows is measured only there, and the proof above now tells a refusal from a command that
+  did not run.
 
 ## 1.6.57 - on Windows the app runs the runners that install.ps1 installed, as node with the .mjs
 

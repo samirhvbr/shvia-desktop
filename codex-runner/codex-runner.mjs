@@ -42,12 +42,13 @@
 //     {"type":"turn_done"} | {"type":"error"|"warn","message"}
 
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import * as readline from "node:readline";
 import { validarPayload } from "./esquema.mjs";
-// What differs per OS (1.6.58): the commands of the sandbox proof.
-import { comandosDaProva } from "./plataforma.mjs";
+// What differs per OS (1.6.58): how `codex` is started, and the commands of the sandbox proof.
+import { comandosDaProva, resolverCodex } from "./plataforma.mjs";
 // 🔴 IMPORTADO do motor vizinho, nunca copiado. A lista de segredos é a mesma nos dois
 // motores porque é a MESMA lista — duas cópias divergem no dia em que alguém acrescenta
 // um padrão a uma delas, e a que fica para trás segue verde sem proteger nada.
@@ -105,8 +106,10 @@ const catalogueTimeout = listModels ? setTimeout(() => {
 const { askForApproval, sandboxMode } = POLITICA;
 
 // ------------------------------------------------------- the app-server child
-const codexBin = process.env.SHVIA_CODEX_BIN || "codex";
-const child = spawn(codexBin, ["app-server", "--stdio"], {
+// On Windows the npm `codex` is a `.cmd` that Node cannot spawn without a shell; `resolverCodex`
+// turns it into `node <codex.js>` (plataforma.mjs). Elsewhere this is `codex`, as it was.
+const lancarCodex = resolverCodex({ existe: existsSync });
+const child = spawn(lancarCodex.comando, [...lancarCodex.prefixo, "app-server", "--stdio"], {
   cwd: PROJECT_DIR,
   stdio: ["pipe", "pipe", "pipe"],
   env: process.env,
