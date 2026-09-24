@@ -27,6 +27,10 @@ Three gaps surfaced while checking each step against the code, and the runbook n
   how to read the decisions list, and a sheet counting **false continues** and **needless
   asks**. It also proposes a reading for Q5, which stays open until the sheet is filled.
   `RUN-20260910.md` B9 points to it.
+- `docs/README.md` indexes both runbooks. The macOS job of this PR went red on
+  `todo_doc_e_alcancavel`: a `.md` in `docs/` that no index links is refused, and
+  `roteiro-validacao-windows.md` had no link. The check before this commit ran only the docs
+  and version proofs, not `cargo test`, which is where that ruler lives.
 
 ## 1.6.43 - the owner's product answers close the open decisions in the state note
 
