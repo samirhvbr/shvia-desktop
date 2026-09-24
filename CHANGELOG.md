@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.6.36 - serde_with moves to 3.21.0, closing an advisory that only GitHub knew about
+
+**The first alert after the alerts went on (1.6.35) was one CI could never have raised.**
+GHSA-7gcf-g7xr-8hxj (medium, published 15/07/2026): `serde_with` from 2.3.0 up to 3.21.0 panics
+when serializing a `KeyValueMap` with an empty sequence or map entry. It has no RUSTSEC id, so
+`cargo deny` and `cargo audit`, which read the RustSec database, passed over it for two months.
+`serde_with` reaches us through `tauri-utils`.
+
+- `cargo update -p serde_with --precise 3.21.0`: the first patched version. Dependabot's PR #39
+  proposed 3.23.0, which also brings `syn` 3 and `darling` 0.24 into the tree (+155/-59 in
+  `Cargo.lock`). 3.21.0 stays on `syn` 2 (+37/-53): `darling` 0.21 → 0.23, `bs58` and `tinyvec` in,
+  three `windows-*` 0.62 crates out. The rest is left to the weekly grouped update.
+- Measured on this tree: `cargo test --locked` (134 passed), `clippy -D warnings` on Linux and on
+  `x86_64-pc-windows-gnu`, `cargo deny check` (advisories, bans, licenses, sources ok).
+- The open `glib` alert (GHSA-wrw7-89jp-8q8g) stays open: glib >= 0.20 only arrives with Tauri's
+  move to gtk4, and `src-tauri/deny.toml` already carries the reason (RUSTSEC-2024-0429).
+  Dependabot's security job for it fails for the same reason; that red run on `master` is not
+  the code.
+
 ## 1.6.35 - Dependabot watches every manifest, and the repository's alerts are on
 
 There was no `.github/dependabot.yml` (finding M6 of the 08/09 review), and the repository's
