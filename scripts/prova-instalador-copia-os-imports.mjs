@@ -105,7 +105,7 @@ for (const runner of RUNNERS) {
       const re = new RegExp('^' + base.split('*').map((x) => x.replace(/[.+^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
       return re.test(arquivo);
     });
-    const fora = [...precisa, 'install.sh', 'package.json', 'package-lock.json']
+    const fora = [...precisa, 'install.sh', 'install.ps1', 'package.json', 'package-lock.json']
       .filter((a) => !cobre(a)).sort();
     const okRes = origens.length > 0 && fora.length === 0;
     if (!okRes) falhas++;

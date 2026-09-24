@@ -120,7 +120,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // boot: sobe um shell interativo. → {candidatos:[{alias,var,dir,disponivel}]}
     // Instala o `claude-runner` a partir da fonte que veio NO INSTALADOR. Gesto
     // explícito: baixa pacote da rede e leva segundos. → {saida} | {erro, codigo}
-    // codigo: 'recursos_ausentes' (build sem a fonte) | 'bash_ausente' | 'instalacao_falhou'
+    // codigo: 'recursos_ausentes' (build sem a fonte) | 'bash_ausente' | 'powershell_ausente' (Windows) | 'instalacao_falhou'
     // O `erro` de 'instalacao_falhou' é a saída INTEIRA do install.sh — mostre como veio.
     // Portão 2 — o login pela tela. `status` é leitura pura e sem cota.
     // → {loggedIn, email, subscriptionType, proveniencia, proveniencia_motivo?} | {erro, codigo}

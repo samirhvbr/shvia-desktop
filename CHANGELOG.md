@@ -22,6 +22,12 @@ runners, and this version makes the app use them. Nothing changes on Linux or ma
   on Windows. Its cases are the only place the Windows choice executes before the owner's
   runbook. Reversal measured: with the Windows branch off, the test fails. `cargo test` passes
   139 tests, and clippy `-D warnings` passes on Linux (all targets) and `x86_64-pc-windows-gnu`.
+- **The "Instalar runner" button runs `install.ps1` on Windows**, with Windows PowerShell:
+  `-NoProfile -NonInteractive -ExecutionPolicy Bypass -File`. The policy applies to that run
+  only, and the click is the consent. `install.ps1` travels in the app (`bundle.resources`), and
+  `prova:instalador` requires it there. A missing PowerShell answers `powershell_ausente`, beside
+  `bash_ausente`. The source ruler that guards the two candidate paths now counts
+  `.join(INSTALADOR)`, and checks that the constant names both installers.
 
 ## 1.6.56 - the two runners get a Windows installer, proved under PowerShell
 

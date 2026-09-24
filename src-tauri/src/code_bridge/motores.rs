@@ -199,6 +199,10 @@ pub(super) fn motor_do_engine(engine: &str) -> (&'static str, &'static str, &'st
 /// do motor não vale nesta máquina — não apareceria em lugar nenhum.
 pub(super) const SAIDA_SANDBOX_NAO_CONFIRMADO: i32 = 3;
 
+/// The installer the "Instalar runner" button runs, by OS: `install.sh` with bash, or on
+/// Windows (1.6.57) `install.ps1` with Windows PowerShell, which every Windows 10/11 has.
+pub(crate) const INSTALADOR: &str = if cfg!(windows) { "install.ps1" } else { "install.sh" };
+
 pub(super) fn script_do_instalador(app: &tauri::AppHandle) -> Result<PathBuf, (&'static str, String)> {
     let dir = app.path().resource_dir().map_err(|e| {
         ("recursos_ausentes", format!("não achei a pasta de recursos do app: {e}"))
@@ -214,8 +218,8 @@ pub(super) fn script_do_instalador(app: &tauri::AppHandle) -> Result<PathBuf, (&
      *
      * Procurar nos dois custa dois `is_file()` e sobrevive à convenção mudar de novo. */
     let candidatos = [
-        dir.join("_up_").join("claude-runner").join("install.sh"),
-        dir.join("claude-runner").join("install.sh"),
+        dir.join("_up_").join("claude-runner").join(INSTALADOR),
+        dir.join("claude-runner").join(INSTALADOR),
     ];
     if let Some(script) = candidatos.iter().find(|p| p.is_file()) {
         return Ok(script.clone());
@@ -231,11 +235,20 @@ pub(super) fn script_do_instalador(app: &tauri::AppHandle) -> Result<PathBuf, (&
     ))
 }
 
-/// Roda o `install.sh` que veio no instalador e devolve a saída dele.
+/// Roda o instalador que veio no app (`INSTALADOR`) e devolve a saída dele.
 pub(super) fn instalar_claude_runner(app: &tauri::AppHandle) -> Result<String, (&'static str, String)> {
     let script = script_do_instalador(app)?;
-    let mut cmd = Command::new("bash");
-    cmd.arg(&script);
+    // `-ExecutionPolicy Bypass` applies to THIS run only: a machine on the default
+    // (Restricted) policy would refuse the script, and the button is the user's consent.
+    let (mut cmd, sem_interprete) = if cfg!(windows) {
+        let mut c = Command::new("powershell");
+        c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"]).arg(&script);
+        (c, "powershell_ausente")
+    } else {
+        let mut c = Command::new("bash");
+        c.arg(&script);
+        (c, "bash_ausente")
+    };
     // App de GUI não herda o PATH do shell (ADR-029), e o `install.sh` precisa do `node` e
     // do `npm`. Sem isto o botão falharia dizendo que não há Node numa máquina que tem.
     if let Some(p) = crate::user_env::sidecar_path() {
@@ -245,7 +258,7 @@ pub(super) fn instalar_claude_runner(app: &tauri::AppHandle) -> Result<String, (
         if e.kind() == std::io::ErrorKind::TimedOut {
             ("instalacao_sem_resposta", format!("o instalador não terminou: {e}"))
         } else {
-            ("bash_ausente", format!("não consegui executar o instalador: {e}"))
+            (sem_interprete, format!("não consegui executar o instalador: {e}"))
         }
     })?;
     let texto = format!(
@@ -497,11 +510,17 @@ mod tests_motor {
             .and_then(|x| x.split("fn instalar_claude_runner").next())
             .unwrap_or("");
         assert!(corpo.contains("\"_up_\""), "o caminho que o Tauri produz para `..` não é procurado");
+        // Since 1.6.57 the file name is `INSTALADOR` (install.sh, or install.ps1 on Windows):
+        // two candidates, each joined to it. Counting "install.sh" would now count nothing.
         assert_eq!(
-            corpo.matches("install.sh").count(),
-            3,
-            "dois candidatos mais a mensagem que os nomeia: procurar num lugar só quebra em silêncio",
+            corpo.matches(".join(INSTALADOR)").count(),
+            2,
+            "dois candidatos: procurar num lugar só quebra em silêncio",
         );
+        let decl = fonte.lines().find(|l| l.contains("const INSTALADOR")).unwrap_or("");
+        assert!(decl.contains("\"install.ps1\"") && decl.contains("\"install.sh\""),
+            "o botão precisa de um instalador por SO: {decl}");
+        assert!(conf.contains("../claude-runner/install.ps1"), "o install.ps1 não viaja no instalador do app");
     }
 
     /// 🔴 On Windows a runner is `node <runner>.mjs`, from the `install.ps1` folder, and never
