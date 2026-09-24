@@ -33,6 +33,13 @@ from outside (`code_bridge::reply`, `::Sidecars`, `::engine_status`, …) do not
   Measured: with `cancelar_login()` removed from `iniciar_login`, that ruler stayed green. All
   three now end at the function's own closing brace. Reversal measured: removing
   `cancelar_login()`, or adding `.wait()` to `entregar_codigo`, turns them red.
+- `code_bridge/motores.rs`: the engine map (`motor_do_engine`), finding a binary
+  (`resolve_bin`, `engine_status`), the model catalogues, the runner's exit codes, the anna
+  version, and installing the Claude runner. 531 lines. `tests_motor` is split by subject: 5
+  tests stay with the engines, 7 about the login become `tests_login`, and 2 about `Sidecars`
+  become `tests_colher`. The last two stay in `code_bridge.rs` until their code moves.
+  `engine_status` and `versao_do_anna` are re-exported. The runner-source ruler reads
+  `motores.rs` and `../../tauri.conf.json`.
 
 ## 1.6.40 - the updater key rotation is prepared: one declared transition release, signed with the old key
 
