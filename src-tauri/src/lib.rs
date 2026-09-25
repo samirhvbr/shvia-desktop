@@ -2111,6 +2111,79 @@ mod tests {
         );
     }
 
+    /// No markdown link reaches a sibling repository by a relative path (1.7.0; the owner's
+    /// `dir-case` answer, "Script que aceita os dois").
+    ///
+    /// `](../../SHVIA-WEB/docs/x.md)` resolves only where the folder on disk has that exact case —
+    /// this machine has `SHVIA-WEB`, a fresh clone of the repository is `shvia-web` — and never on
+    /// GitHub, where it points outside the repository. The eight such links became GitHub URLs,
+    /// which work everywhere. Folders that are not the repository's (`node_modules`, `target`,
+    /// the loop's `.loop`) are skipped.
+    #[test]
+    fn nenhum_link_relativo_para_repositorio_vizinho() {
+        let raiz = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let base = if raiz.join("../docs").is_dir() { raiz.join("..") } else { raiz.to_path_buf() };
+        fn anda(d: &std::path::Path, saida: &mut Vec<std::path::PathBuf>) {
+            if let Ok(e) = std::fs::read_dir(d) {
+                for x in e.flatten() {
+                    let p = x.path();
+                    let nome = x.file_name().to_string_lossy().to_string();
+                    if p.is_dir() {
+                        if !matches!(nome.as_str(), "node_modules" | "target" | ".git" | "dist" | ".loop") {
+                            anda(&p, saida);
+                        }
+                    } else if nome.ends_with(".md") {
+                        saida.push(p);
+                    }
+                }
+            }
+        }
+        let mut md = Vec::new();
+        anda(&base, &mut md);
+        assert!(md.len() > 10, "a régua leu {} .md — estaria medindo o vazio", md.len());
+
+        // Code is not a link: a fenced block or an inline `code span` may QUOTE the pattern (the
+        // 1.7.0 changelog entry does, and this ruler's first version failed on it).
+        fn sem_codigo(linha: &str) -> String {
+            let mut out = String::new();
+            for (i, parte) in linha.split('`').enumerate() {
+                if i % 2 == 0 {
+                    out.push_str(parte);
+                }
+            }
+            out
+        }
+        let mut achados = Vec::new();
+        for f in &md {
+            let texto = std::fs::read_to_string(f).unwrap_or_default();
+            let mut em_bloco = false;
+            for (i, linha) in texto.lines().enumerate() {
+                if linha.trim_start().starts_with("```") {
+                    em_bloco = !em_bloco;
+                    continue;
+                }
+                if em_bloco {
+                    continue;
+                }
+                let limpa = sem_codigo(linha);
+                let mut resto = limpa.as_str();
+                while let Some(pos) = resto.find("](") {
+                    let depois = &resto[pos + 2..];
+                    let alvo = depois.trim_start_matches("../");
+                    if alvo.len() < depois.len() && (alvo.starts_with("SHVIA-") || alvo.starts_with("shvia-")) {
+                        achados.push(format!("{}:{}", f.strip_prefix(&base).unwrap_or(f).display(), i + 1));
+                    }
+                    resto = depois;
+                }
+            }
+        }
+        assert!(
+            achados.is_empty(),
+            "link relativo para um repositório vizinho — quebra com a pasta em outra caixa e no GitHub; \
+             use https://github.com/samirhvbr/<repo>/blob/master/…: {achados:?}",
+        );
+    }
+
     /// 🔴 muda 0.19 drops the predefined quit/close-window items on GTK without an error,
     /// and that is how Linux had no "Sair" until 1.6.9. This is a SOURCE check, and says
     /// so: a test cannot open a GTK menu. It guards the one decision — those two

@@ -495,7 +495,7 @@ how-to; linkar o ADR.
 - **Contexto:** o ADR-011 entregou notificação nativa e registrou como limite "v1 sem
   clique→abrir `/precos`; o badge navega", deixando o clique como coisa a fazer
   depois. Ao ir implementar (item **D8** do
-  [comparativo 9router × hermes](../../SHVIA-WEB/docs/comparativos/9router-hermes.md)),
+  [comparativo 9router × hermes](https://github.com/samirhvbr/shvia-web/blob/master/docs/comparativos/9router-hermes.md)),
   a leitura do `tauri-plugin-notification` **2.3.3** mostrou que não é questão de
   esforço: o `desktop.rs` expõe só `title`, `body`, `icon`, `sound` e `show`. Não há
   callback de clique nem ação. O `register_action_types` e o handler de ação existem
@@ -538,7 +538,7 @@ how-to; linkar o ADR.
 - **Contexto:** o modal Sobre já lia `version.app` do `GET /api/v1/health` para
   mostrar a versão do ShvIA, mas o uso era **puramente informativo** — não havia como
   o servidor dizer "essa casca é velha demais para o que eu mudei". Item **D6** do
-  [comparativo 9router × hermes](../../SHVIA-WEB/docs/comparativos/9router-hermes.md),
+  [comparativo 9router × hermes](https://github.com/samirhvbr/shvia-web/blob/master/docs/comparativos/9router-hermes.md),
   e pré-requisito honesto do **D1** (auto-update): não se força atualização sem antes
   saber avisar.
 - **Decisão:** o **servidor** declara o que espera, em
@@ -581,7 +581,7 @@ how-to; linkar o ADR.
 
 - **Data:** 27/07/2026 · **Status:** Aceito
 - **Contexto:** o endereço do ShvIA era a constante `SHVIA_URL` em `src/main.ts`.
-  Item **D4** do [comparativo 9router × hermes](../../SHVIA-WEB/docs/comparativos/9router-hermes.md),
+  Item **D4** do [comparativo 9router × hermes](https://github.com/samirhvbr/shvia-web/blob/master/docs/comparativos/9router-hermes.md),
   e o item (a) que faltava da F2. Sem ele não há **on-prem** (cliente com o próprio
   ShvIA) nem apontar a casca para um servidor local em desenvolvimento.
 - **O bloqueio não era de UI, era de CSP.** O `csp` do `tauri.conf.json` é
@@ -644,7 +644,7 @@ how-to; linkar o ADR.
 
 - **Data:** 27/07/2026 · **Status:** Aceito
 - **Contexto:** item **D9** do
-  [comparativo 9router × hermes](../../SHVIA-WEB/docs/comparativos/9router-hermes.md),
+  [comparativo 9router × hermes](https://github.com/samirhvbr/shvia-web/blob/master/docs/comparativos/9router-hermes.md),
   e **insumo do D1** (auto-update): sem manifesto, o updater não tem o que ler. O
   estado até aqui: o macOS assinava e notarizava no `build-local.sh`, mas havia
   **zero checksum em qualquer plataforma** e o `build-local.ps1` não tinha **uma
@@ -1006,7 +1006,7 @@ verificação que o `--publish` existe para fazer.
 ## ADR-024 — Bandeja/menubar, e fechar a janela deixa de encerrar o app
 
 - **Data:** 28/07/2026 · **Status:** Aceito · **Item:** **D2** do
-  [comparativo 9router × hermes](../../SHVIA-WEB/docs/comparativos/9router-hermes.md)
+  [comparativo 9router × hermes](https://github.com/samirhvbr/shvia-web/blob/master/docs/comparativos/9router-hermes.md)
   · **Fecha o buraco de:** [ADR-011](#adr-011--notificações-nativas-dos-alertas-de-preço-ponte-via-canal-do-modo-code)
 
 ### Contexto
@@ -1194,7 +1194,7 @@ errado** — e era o caso: ele estava verde enquanto o Linux não atualizava. Ex
 ## ADR-025 — "Diagnóstico" verifica, o "Sobre" exibe
 
 - **Data:** 28/07/2026 · **Status:** Aceito · **Item:** **D7** do
-  [comparativo 9router × hermes](../../SHVIA-WEB/docs/comparativos/9router-hermes.md)
+  [comparativo 9router × hermes](https://github.com/samirhvbr/shvia-web/blob/master/docs/comparativos/9router-hermes.md)
 
 ### Contexto
 
@@ -1282,7 +1282,7 @@ apareceu ao ter de **explicar por escrito** o que o painel checaria e por quê.
 ## ADR-026 — A config de CLI é escrita pelo nativo; a página só propõe valores
 
 - **Data:** 28/07/2026 · **Status:** Aceito · **Item:** **D3** do
-  [comparativo 9router × hermes](../../SHVIA-WEB/docs/comparativos/9router-hermes.md)
+  [comparativo 9router × hermes](https://github.com/samirhvbr/shvia-web/blob/master/docs/comparativos/9router-hermes.md)
 
 ### Contexto
 

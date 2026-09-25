@@ -24,7 +24,7 @@ construídas, briefings para "continuar" depois.
 Removido em 28/07/2026: `NEW-escopo-projeto.md` — era a especificação de **provedores de
 nuvem no gateway**, ou seja, assunto do SHVIA-**WEB**, parada neste repo por engano e com
 o trabalho entregue há muito (os três drivers existem). O conteúdo está preservado em
-[`SHVIA-WEB/docs/ARQUIVO/NEW-provedores-nuvem-gateway.md`](../../SHVIA-WEB/docs/ARQUIVO/NEW-provedores-nuvem-gateway.md).
+[`SHVIA-WEB/docs/ARQUIVO/NEW-provedores-nuvem-gateway.md`](https://github.com/samirhvbr/shvia-web/blob/master/docs/ARQUIVO/NEW-provedores-nuvem-gateway.md).
 
 ## Convenção
 
