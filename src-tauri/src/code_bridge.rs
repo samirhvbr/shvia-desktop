@@ -149,8 +149,13 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             let ok = send(window, &v);
             reply(window, &req, ok, serde_json::json!({ "ok": ok }));
         }
+        // Kills ONE session: the one the page names, or the single session of before 1.8.0 when
+        // it names none. The window's other sessions keep working.
         "kill" => {
-            window.app_handle().state::<Sidecars>().kill_label(window.label());
+            let Ok(sessao) = sessao_do_pedido(&v) else {
+                return reply(window, &req, false, serde_json::json!({ "error": "nome de sessão inválido", "codigo": "sessao_invalida" }));
+            };
+            window.app_handle().state::<Sidecars>().kill_sessao(&chave(window.label(), &sessao));
             reply(window, &req, true, serde_json::json!({ "ok": true }));
         }
         "pickFolder" => pick_folder(window, req),
