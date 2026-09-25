@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.6.59 - links to SHVIA-WEB stop depending on the case of the folder on disk
+
+The owner answered `dir-case` with "Script que aceita os dois". Measured again on 24/09, the
+problem is smaller than on 23/09. No script resolves a sibling repository's folder any more:
+`stage-anna.mjs` only names `../SHVIA-CODE` in a help message, which now names both spellings.
+What was left are 8 markdown links of the form `](../../SHVIA-WEB/docs/…)`, in `docs/decisoes.md`
+and `.continue/README.md`. They resolve only where the folder on disk has that exact case (this
+machine has `SHVIA-WEB`, a fresh clone is `shvia-web`), and never on GitHub, where they point
+outside the repository.
+
+- **The 8 links are GitHub URLs now** (`https://github.com/samirhvbr/shvia-web/blob/master/…`).
+  Both targets were checked on the remote's `master`. They work from any disk and on GitHub.
+- **A ruler keeps it that way:** `nenhum_link_relativo_para_repositorio_vizinho` (in `lib.rs`)
+  fails on any markdown link that climbs out of the repository into a `SHVIA-*`/`shvia-*`
+  folder. Code spans and fenced blocks are skipped, because they quote the pattern — this entry
+  does, and the ruler's first version failed on it. Reversal measured: one real link put back
+  fails it, with the file and line.
+
 ## 1.6.58 - the Codex sandbox proof refuses a command that never ran
 
 The Codex runner refuses to start unless its sandbox holds. It asks the `codex` app-server to

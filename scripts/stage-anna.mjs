@@ -177,7 +177,7 @@ if (menor !== -1 && partes[menor] < ANNA_MINIMO[menor]) {
   console.error(`[stage-anna] ${origem} é "${versao}", abaixo do piso ${ANNA_MINIMO.join(".")}.`);
   console.error("            Empacotar isto entrega um Modo Code que trava no 422 do gateway em sessão longa.");
   console.error("            Conserte instalando o anna atual e rodando de novo:");
-  console.error("              cd ../SHVIA-CODE && ./install.sh   # ou: --from /caminho/para/anna");
+  console.error("              cd ../SHVIA-CODE (ou ../shvia-code) && ./install.sh   # ou: --from /caminho/para/anna");
   process.exit(1);
 }
 
