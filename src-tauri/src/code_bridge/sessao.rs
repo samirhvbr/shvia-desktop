@@ -1,12 +1,12 @@
-//! The agent session: one engine process per window (`Sidecars`), started by `spawn` with the
-//! fence, the account and the Run's flags, fed by `send`, and ended politely before it is
-//! killed (`encerrar_com_prazo`). A window that reloads or closes ends its own agent.
-//! Split out of `code_bridge.rs` in 1.6.41.
+//! The agent sessions: one engine process per session of a window (`Sidecars`), started by
+//! `spawn` with the fence, the account and the Run's flags, fed by `send`, and ended politely
+//! before it is killed (`encerrar_com_prazo`). A window that reloads or closes ends all of its
+//! agents. Split out of `code_bridge.rs` in 1.6.41; several sessions per window since 1.8.0.
 
 use super::*;
 
-/// Um sidecar `anna` de uma janela (uma sessão code ativa por janela). `gen` é a
-/// geração da sessão — a thread de stdout usa pra saber se ainda é a sessão viva.
+/// One engine process of one session of a window. `gen` is the session's generation: the
+/// stdout thread uses it to know whether it is still the live session under its key.
 pub(super) struct Sidecar {
     child: Child,
     stdin: ChildStdin,
@@ -54,7 +54,43 @@ pub(super) fn encerrar_varios_com_prazo(varios: Vec<Sidecar>, prazo: std::time::
     }
 }
 
-/// Registro de sidecars por rótulo de janela — em Tauri managed state.
+/// Most sessions one window may hold at once (1.8.0). Each one is an engine process, and the
+/// Claude runner starts a `claude` CLI of its own: a page that spawned in a loop, from a bug or
+/// from a hostile script, would otherwise fill the machine. Eight is several projects working
+/// at the same time, which is the point of 1.8.0, and far from what a person drives.
+pub(super) const MAX_SESSOES_POR_JANELA: usize = 8;
+
+/// The key of one agent session in `Sidecars`: the window, plus the session the page names.
+///
+/// Until 1.7.1 a window held ONE session, keyed by its label, so switching project in Code mode
+/// had to kill the agent that was working. Since 1.8.0 the page names each session (one per
+/// project) and they live side by side. An empty `sessao` is the key of before, byte for byte:
+/// a page that does not know `recursos.sessoes` never sends one, and gets exactly the old
+/// single-session behaviour.
+///
+/// The separator is U+001F (unit separator). `sessao_valida` keeps it out of any session name,
+/// so no pair of (label, sessao) can collide with another.
+pub(super) fn chave(label: &str, sessao: &str) -> String {
+    if sessao.is_empty() {
+        label.to_string()
+    } else {
+        format!("{label}\u{1f}{sessao}")
+    }
+}
+
+/// Is this key one of `label`'s sessions (the legacy one or a named one)?
+fn da_janela(chave: &str, label: &str) -> bool {
+    chave == label || chave.strip_prefix(label).is_some_and(|resto| resto.starts_with('\u{1f}'))
+}
+
+/// A session name comes from the PAGE, so it is untrusted input that becomes a map key and an
+/// event tag. Short, and only `[A-Za-z0-9_.:-]`: enough for "p42" or a UUID, and nothing that
+/// could break the key's separator or the `_emit` string.
+pub(super) fn sessao_valida(sessao: &str) -> bool {
+    sessao.len() <= 64 && sessao.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-'))
+}
+
+/// Registro de sidecars por sessão de janela (`chave`) — em Tauri managed state.
 /// Cada entrada fica em `Option<Sidecar>` para que `send_line` consiga TIRAR
 /// o sidecar do mapa sob o lock, escrever no stdin FORA do lock (o pipe pode
 /// bloquear se o anna estiver ocupado), e devolver a entrada no lock de novo.
@@ -65,28 +101,59 @@ pub struct Sidecars {
 }
 
 impl Sidecars {
-    pub(super) fn kill_label(&self, label: &str) {
+    /// Ends ONE session (the page's "Parar", "Novo chat", a new engine for that project).
+    pub(super) fn kill_sessao(&self, chave: &str) {
         // Remove sob o lock, mas mata/espera FORA dele — child.wait() pode bloquear
         // e seguraria o Mutex global (send/insert de outras janelas travariam).
         let sc = self
             .map
             .lock()
             .ok()
-            .and_then(|mut m| m.remove(label))
+            .and_then(|mut m| m.remove(chave))
             .and_then(|opt| opt);
-        // Off the calling thread: this runs on "Parar", on a reload and on window close, all
-        // on the UI thread, and the engine gets up to PRAZO_PARA_SAIR to leave on its own.
+        // Off the calling thread: this runs on "Parar" on the UI thread, and the engine gets up
+        // to PRAZO_PARA_SAIR to leave on its own.
         if let Some(sc) = sc {
             std::thread::spawn(move || encerrar_com_prazo(sc, PRAZO_PARA_SAIR));
         }
     }
 
-    /// Mata o sidecar de UMA janela (fechou a janela).
+    /// Ends EVERY session of one window: it closed, or a new document started in it (reload).
+    /// Nothing re-attaches to a running engine, so a session the page can no longer see is an
+    /// agent with no owner.
     pub fn kill_one(&self, label: &str) {
-        self.kill_label(label);
+        let varios: Vec<Sidecar> = self
+            .map
+            .lock()
+            .ok()
+            .map(|mut m| {
+                let chaves: Vec<String> = m.keys().filter(|k| da_janela(k, label)).cloned().collect();
+                chaves.into_iter().filter_map(|k| m.remove(&k).flatten()).collect()
+            })
+            .unwrap_or_default();
+        if !varios.is_empty() {
+            std::thread::spawn(move || encerrar_varios_com_prazo(varios, PRAZO_PARA_SAIR));
+        }
     }
 
-    /// Há sessão do Code viva nesta janela?
+    /// How many sessions this window holds (the ones being created included).
+    pub(super) fn sessoes_da_janela(&self, label: &str) -> usize {
+        self.map.lock().map(|m| m.keys().filter(|k| da_janela(k, label)).count()).unwrap_or(0)
+    }
+
+    /// Is `chave` a session that exists right now (running or being created)?
+    pub(super) fn existe(&self, chave: &str) -> bool {
+        self.map.lock().map(|m| m.contains_key(chave)).unwrap_or(false)
+    }
+
+    /// May session `chave` start in window `label`? A respawn (the key exists) always may,
+    /// because it replaces the one it had; only a NEW session counts against
+    /// `MAX_SESSOES_POR_JANELA`.
+    pub(super) fn cabe(&self, label: &str, chave: &str) -> bool {
+        self.existe(chave) || self.sessoes_da_janela(label) < MAX_SESSOES_POR_JANELA
+    }
+
+    /// Há sessão do Code viva nesta janela? (qualquer uma, desde 1.8.0)
     ///
     /// Existe para o guard de fechamento (`decidir_fechar`): fechar com `anna` no ar
     /// perde a sessão **e** deixa o processo órfão. Medido em 20/08/2026 nesta máquina:
@@ -97,7 +164,7 @@ impl Sidecars {
     /// conta como viva de propósito: perguntar de graça é barato, fechar por cima de um
     /// spawn em curso deixa exatamente o órfão que este guard existe para evitar.
     pub fn tem_sessao(&self, label: &str) -> bool {
-        self.map.lock().map(|m| m.contains_key(label)).unwrap_or(false)
+        self.sessoes_da_janela(label) > 0
     }
 
     /// Mata todos (saída do app — anti-órfão).
@@ -117,13 +184,13 @@ impl Sidecars {
         encerrar_varios_com_prazo(drained, PRAZO_PARA_SAIR);
     }
 
-    /// Registra o sidecar da janela (nova geração), matando o anterior (troca de
-    /// sessão). Devolve a geração desta sessão.
-    fn insert(&self, label: String, child: Child, stdin: ChildStdin) -> u64 {
+    /// Registra o sidecar da sessão (nova geração), matando o anterior da MESMA chave
+    /// (respawn). Devolve a geração desta sessão.
+    fn insert(&self, chave: String, child: Child, stdin: ChildStdin) -> u64 {
         let gen = self.next_gen.fetch_add(1, Ordering::Relaxed) + 1;
         let old = self.map.lock().ok().and_then(|mut m| {
             m.insert(
-                label,
+                chave,
                 Some(Sidecar {
                     child,
                     stdin,
@@ -149,13 +216,13 @@ impl Sidecars {
     /// recusou subir porque o sandbox não segurou. Sem o código, a tela conta os dois
     /// como a mesma coisa, e o segundo é justamente o que o usuário precisa ler.
     ///
-    /// Remove sob o lock e espera FORA dele, pela mesma razão do `kill_label`:
+    /// Remove sob o lock e espera FORA dele, pela mesma razão do `kill_sessao`:
     /// `wait()` pode bloquear e seguraria o Mutex global.
-    fn colher(&self, label: &str, gen: u64) -> Option<Option<i32>> {
+    fn colher(&self, chave: &str, gen: u64) -> Option<Option<i32>> {
         let sc = {
             let mut m = self.map.lock().ok()?;
-            match m.get(label).and_then(|opt| opt.as_ref()) {
-                Some(sc) if sc.gen == gen => m.remove(label).and_then(|opt| opt),
+            match m.get(chave).and_then(|opt| opt.as_ref()) {
+                Some(sc) if sc.gen == gen => m.remove(chave).and_then(|opt| opt),
                 _ => return None,
             }
         };
@@ -163,16 +230,16 @@ impl Sidecars {
         Some(sc.child.wait().ok().and_then(|st| st.code()))
     }
 
-    /// Escreve uma linha no stdin do sidecar da janela (mensagem ou decisão).
+    /// Escreve uma linha no stdin do sidecar da sessão (mensagem ou decisão).
     /// `false` = não havia sessão viva ou a escrita falhou (o host então sabe que
     /// a decisão/mensagem caiu, em vez de assumir ok).
     ///
     /// Importante: o `writeln!+flush` acontece FORA do Mutex global — se o pipe
     /// do anna encher (tool longa, gate bloqueante), só esta chamada trava;
     /// outras janelas e o spawn/kill continuam funcionando.
-    fn send_line(&self, label: &str, line: &str) -> bool {
+    fn send_line(&self, chave: &str, line: &str) -> bool {
         let mut sidecar = match self.map.lock() {
-            Ok(mut map) => match map.get_mut(label) {
+            Ok(mut map) => match map.get_mut(chave) {
                 Some(slot) => slot.take(),
                 None => None,
             },
@@ -183,7 +250,7 @@ impl Sidecars {
         };
         let ok = writeln!(sc.stdin, "{line}").and_then(|_| sc.stdin.flush()).is_ok();
         if let Ok(mut map) = self.map.lock() {
-            if let Some(slot) = map.get_mut(label) {
+            if let Some(slot) = map.get_mut(chave) {
                 *slot = Some(sc);
             }
             // Se a janela foi removida entre os dois locks, recria sem gravar
@@ -246,8 +313,29 @@ pub(super) fn argumentos_da_run(autonomy: Option<&serde_json::Value>) -> Vec<Str
     args
 }
 
+/// The session a `spawn`/`send`/`kill` names, from the page's `sessao` field. `Ok("")` = none
+/// (the single session of before 1.8.0); `Err` = a name `sessao_valida` refuses.
+pub(super) fn sessao_do_pedido(v: &serde_json::Value) -> Result<String, ()> {
+    let sessao = v.get("sessao").and_then(|x| x.as_str()).unwrap_or_default();
+    if sessao_valida(sessao) {
+        Ok(sessao.to_string())
+    } else {
+        Err(())
+    }
+}
+
 pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or_default().to_string();
+    let Ok(sessao) = sessao_do_pedido(v) else {
+        return reply(window, req, false, serde_json::json!({ "error": "nome de sessão inválido", "codigo": "sessao_invalida" }));
+    };
+    let chave_sessao = chave(window.label(), &sessao);
+    if !window.app_handle().state::<Sidecars>().cabe(window.label(), &chave_sessao) {
+        return reply(window, req, false, serde_json::json!({
+            "error": format!("já há {MAX_SESSOES_POR_JANELA} agentes trabalhando nesta janela — pare um antes de começar outro"),
+            "codigo": "sessoes_demais",
+        }));
+    }
     let dir = s("projectDir");
     if dir.is_empty() || !PathBuf::from(&dir).is_dir() {
         return reply(window, req, false, serde_json::json!({ "error": "pasta do projeto inválida" }));
@@ -431,10 +519,14 @@ pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     let stderr = child.stderr.take().expect("stderr piped");
     let stdin = child.stdin.take().expect("stdin piped");
 
-    // Guarda no state, matando um sidecar anterior desta janela (troca de sessão).
-    // A geração desta sessão acompanha a thread de stdout (guarda o 'exited').
-    let label = window.label().to_string();
-    let gen = window.app_handle().state::<Sidecars>().insert(label.clone(), child, stdin);
+    // Guarda no state, matando um sidecar anterior da MESMA sessão (respawn). As outras
+    // sessões da janela seguem trabalhando (1.8.0). A geração desta sessão acompanha a
+    // thread de stdout (guarda o 'exited').
+    let gen = window.app_handle().state::<Sidecars>().insert(chave_sessao.clone(), child, stdin);
+    // Every event carries the session it came from, so the page can file it under its project
+    // while another one is on screen. Empty for the single session of before 1.8.0: the shim
+    // then adds nothing, and an old page sees the events it always saw.
+    let sessao_js = js_str(&sessao);
 
     // stderr → log do app (nunca a timeline).
     let tag = exe_base.to_string();
@@ -446,23 +538,23 @@ pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
 
     // stdout NDJSON → evento na página (`_emit`), no main thread (WebKit).
     let win = window.clone();
-    let exit_label = label;
+    let exit_chave = chave_sessao;
     std::thread::spawn(move || {
         let app = win.app_handle().clone();
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
             if line.trim().is_empty() {
                 continue;
             }
-            let js = format!("window.__shviaCode&&window.__shviaCode._emit(JSON.parse({}))", js_str(&line));
+            let js = format!("window.__shviaCode&&window.__shviaCode._emit(JSON.parse({}),{})", js_str(&line), sessao_js);
             let w = win.clone();
             let _ = app.run_on_main_thread(move || {
                 let _ = w.eval(&js);
             });
         }
         // stdout fechou → anna saiu. Só sinaliza 'exited' se ESTA geração ainda é a
-        // sessão viva da janela; se foi substituída (respawn) ou morta (kill/troca
-        // de projeto), fica quieta pra não derrubar a sessão nova que acabou de subir.
-        if let Some(codigo) = app.state::<Sidecars>().colher(&exit_label, gen) {
+        // sessão viva da chave; se foi substituída (respawn) ou morta (kill), fica
+        // quieta pra não derrubar a sessão nova que acabou de subir.
+        if let Some(codigo) = app.state::<Sidecars>().colher(&exit_chave, gen) {
             // O motivo vai junto do evento. `sandbox_nao_confirmado` é estado NOMEADO,
             // não "motor indisponível": o binário existe, respondeu e se recusou a
             // servir porque a garantia dele não vale nesta máquina. Tratar isso como
@@ -473,9 +565,10 @@ pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
                 Some(_) => "erro",
             };
             let js = format!(
-                "window.__shviaCode&&window.__shviaCode._emit({{type:'exited',reason:{},code:{}}})",
+                "window.__shviaCode&&window.__shviaCode._emit({{type:'exited',reason:{},code:{}}},{})",
                 js_str(motivo),
                 codigo.map_or("null".to_string(), |c| c.to_string()),
+                sessao_js,
             );
             let w = win.clone();
             let _ = app.run_on_main_thread(move || {
@@ -490,6 +583,9 @@ pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     // mudaria o `embedding.md`, que é contrato dos DOIS motores — a resposta do `spawn` é
     // o lugar que já existe para isto.
     let mut resposta = serde_json::json!({ "ok": true });
+    if !sessao.is_empty() {
+        resposta["sessao"] = serde_json::json!(sessao);
+    }
     if let Some((id, rotulo)) = resolvida {
         resposta["accountId"] = serde_json::json!(id);
         resposta["accountLabel"] = serde_json::json!(rotulo);
@@ -498,11 +594,14 @@ pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
 }
 
 pub(super) fn send(window: &WebviewWindow, v: &serde_json::Value) -> bool {
+    let Ok(sessao) = sessao_do_pedido(v) else {
+        return false;
+    };
     let line = match v.get("payload") {
         Some(p) => serde_json::to_string(p).unwrap_or_default(),
         None => return false,
     };
-    window.app_handle().state::<Sidecars>().send_line(window.label(), &line)
+    window.app_handle().state::<Sidecars>().send_line(&chave(window.label(), &sessao), &line)
 }
 
 #[cfg(test)]
@@ -667,5 +766,157 @@ mod tests_colher {
         // sinalizasse, derrubaria a sessão nova — foi para isso que a geração existe.
         assert_eq!(sc.colher("janela", gen_velha), None, "geração velha sinalizou");
         assert!(sc.colher("janela", gen_nova).is_some());
+    }
+}
+
+#[cfg(test)]
+// 1.8.0: several sessions per window. Every test runs real processes, because the defects
+// this guards against live in the choreography (who is killed, who receives the line), not
+// in arithmetic.
+mod tests_sessoes {
+    use super::*;
+    use std::process::Stdio;
+
+    fn processo(script: &str) -> (Child, ChildStdin) {
+        let mut filho = crate::processo::comando("/bin/sh")
+            .args(["-c", script])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("spawn do /bin/sh");
+        let stdin = filho.stdin.take().expect("stdin");
+        (filho, stdin)
+    }
+
+    fn vivo(sc: &Sidecars, chave: &str) -> bool {
+        let mut m = sc.map.lock().unwrap();
+        match m.get_mut(chave).and_then(|o| o.as_mut()) {
+            Some(s) => matches!(s.child.try_wait(), Ok(None)),
+            None => false,
+        }
+    }
+
+    #[test]
+    fn a_chave_sem_sessao_e_a_de_antes() {
+        // A page that never names a session must land on the exact key 1.7.1 used.
+        assert_eq!(chave("main", ""), "main");
+        assert_ne!(chave("main", "p1"), "main");
+        assert!(da_janela(&chave("main", ""), "main"));
+        assert!(da_janela(&chave("main", "p1"), "main"));
+        // Another window whose label starts the same is another window.
+        assert!(!da_janela(&chave("main2", ""), "main"));
+        assert!(!da_janela(&chave("main2", "p1"), "main"));
+    }
+
+    #[test]
+    fn nome_de_sessao_e_entrada_nao_confiavel() {
+        for ok in ["", "p42", "proj-7", "a1b2c3d4-e5f6-4789-abcd-0123456789ab", "p:1.2_x"] {
+            assert!(sessao_valida(ok), "{ok:?} should be accepted");
+        }
+        let longo = "x".repeat(65);
+        for ruim in ["a b", "a\u{1f}b", "'); alert(1); ('", "p/1", "p\n1", longo.as_str()] {
+            assert!(!sessao_valida(ruim), "{ruim:?} should be refused");
+        }
+    }
+
+    /// 🔴 The bug 1.8.0 exists for: a new session in the window used to kill the one that was
+    /// working. Two projects, two sessions, both alive.
+    #[test]
+    fn duas_sessoes_da_mesma_janela_convivem() {
+        let sc = Sidecars::default();
+        let (f1, s1) = processo("sleep 30");
+        let (f2, s2) = processo("sleep 30");
+        let g1 = sc.insert(chave("janela", "p1"), f1, s1);
+        sc.insert(chave("janela", "p2"), f2, s2);
+        assert!(vivo(&sc, &chave("janela", "p1")), "starting p2 killed p1");
+        assert!(vivo(&sc, &chave("janela", "p2")));
+        assert_eq!(sc.sessoes_da_janela("janela"), 2);
+        // p1's generation is still the live one under ITS key: its stdout thread must be able
+        // to report its end, which the old window-wide generation would have swallowed.
+        assert!(sc.existe(&chave("janela", "p1")));
+        sc.kill_one("janela");
+        let _ = g1;
+    }
+
+    #[test]
+    fn parar_uma_sessao_nao_toca_na_outra() {
+        let sc = Sidecars::default();
+        let (f1, s1) = processo("sleep 30");
+        let pid1 = f1.id();
+        let (f2, s2) = processo("sleep 30");
+        sc.insert(chave("janela", "p1"), f1, s1);
+        sc.insert(chave("janela", "p2"), f2, s2);
+
+        sc.kill_sessao(&chave("janela", "p1"));
+
+        assert!(!sc.existe(&chave("janela", "p1")));
+        assert!(vivo(&sc, &chave("janela", "p2")), "stopping p1 reached p2");
+        // p1 really ends: `sleep` ignores the exit request, so the deadline kills it.
+        #[cfg(target_os = "linux")]
+        {
+            let t = std::time::Instant::now();
+            while std::path::Path::new(&format!("/proc/{pid1}")).exists() && t.elapsed() < std::time::Duration::from_secs(5) {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            assert!(!std::path::Path::new(&format!("/proc/{pid1}")).exists(), "p1 still running after its kill");
+        }
+        let _ = pid1;
+        sc.kill_one("janela");
+    }
+
+    #[test]
+    fn a_linha_vai_so_para_a_sessao_nomeada() {
+        let dir = std::env::temp_dir().join(format!("shvia-sessoes-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (a, b) = (dir.join("p1"), dir.join("p2"));
+        let sc = Sidecars::default();
+        let script = |f: &std::path::Path| format!("read l; echo \"$l\" > '{}'", f.display());
+        let (f1, s1) = processo(&script(&a));
+        let (f2, s2) = processo(&script(&b));
+        let g1 = sc.insert(chave("janela", "p1"), f1, s1);
+        let g2 = sc.insert(chave("janela", "p2"), f2, s2);
+
+        assert!(sc.send_line(&chave("janela", "p2"), "para-p2"));
+        assert!(sc.send_line(&chave("janela", "p1"), "para-p1"));
+        // Both read one line and leave: reaping them is the wait for the writes.
+        assert_eq!(sc.colher(&chave("janela", "p2"), g2), Some(Some(0)));
+        assert_eq!(sc.colher(&chave("janela", "p1"), g1), Some(Some(0)));
+        assert_eq!(std::fs::read_to_string(&a).unwrap().trim(), "para-p1");
+        assert_eq!(std::fs::read_to_string(&b).unwrap().trim(), "para-p2");
+        // A session that does not exist receives nothing, and says so.
+        assert!(!sc.send_line(&chave("janela", "p3"), "ninguem"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Reload and window close still end everything the window started — and nothing else.
+    #[test]
+    fn fechar_a_janela_encerra_todas_as_dela_e_so_as_dela() {
+        let sc = Sidecars::default();
+        for (janela, sessao) in [("janela", ""), ("janela", "p1"), ("janela", "p2"), ("outra", "p1")] {
+            let (f, s) = processo("sleep 30");
+            sc.insert(chave(janela, sessao), f, s);
+        }
+        assert!(sc.tem_sessao("janela"));
+        sc.kill_one("janela");
+        assert_eq!(sc.sessoes_da_janela("janela"), 0);
+        assert!(!sc.tem_sessao("janela"));
+        assert!(vivo(&sc, &chave("outra", "p1")), "closing one window reached another");
+        sc.kill_one("outra");
+    }
+
+    #[test]
+    fn so_uma_sessao_nova_conta_para_o_teto() {
+        let sc = Sidecars::default();
+        for i in 0..MAX_SESSOES_POR_JANELA {
+            assert!(sc.cabe("janela", &chave("janela", &format!("p{i}"))), "session {i} refused below the cap");
+            let (f, s) = processo("sleep 30");
+            sc.insert(chave("janela", &format!("p{i}")), f, s);
+        }
+        assert!(!sc.cabe("janela", &chave("janela", "mais-uma")), "the cap let one more in");
+        // A respawn of an existing session replaces it, so it always fits.
+        assert!(sc.cabe("janela", &chave("janela", "p0")));
+        // The cap is per window.
+        assert!(sc.cabe("outra", &chave("outra", "p0")));
+        sc.kill_one("janela");
     }
 }

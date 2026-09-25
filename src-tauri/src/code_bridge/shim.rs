@@ -60,8 +60,8 @@ pub const BRIDGE_JS: &str = r#"(function () {
   window.__shviaCode = {
     // sessão do agente
     spawn: function (o) { return post('spawn', o || {}); },   // erro de motor ausente vem {error, codigo} — ver claudeModels;  {projectDir, apiKey, model?, effort?, url?, engine?, modelDoClaude?, accountId?, autonomy?}  autonomy:{stopByHost, maxIterations, maxCostUsd} = a Run (RUN-20260910), só no motor claude;  engine:'claude' = assinatura; modelDoClaude:true = model/effort vieram de claudeModels(), nao do gateway; accountId = perfil de conta (ver claudeAccounts)
-    send:  function (o) { return post('send', { payload: o }); }, // {type:'user',text} | {id,decision}
-    kill:  function () { return post('kill'); },
+    send:  function (o, sessao) { return post('send', sessao ? { payload: o, sessao: sessao } : { payload: o }); }, // {type:'user',text} | {id,decision}; sessao = which session (recursos.sessoes)
+    kill:  function (sessao) { return post('kill', sessao ? { sessao: sessao } : null); }, // sem sessao = a sessão única de antes da 1.8.0
     onEvent: function (cb) { if (typeof cb === 'function') listeners.push(cb); },
     // pasta / vínculo
     pickFolder: function () { return post('pickFolder'); },
@@ -203,10 +203,15 @@ pub const BRIDGE_JS: &str = r#"(function () {
     //           `autonomy` field of `spawn` becomes `--parada host` and the two caps. Without
     //           the flag the page falls back to continuing BETWEEN turns only, which works on
     //           every shell — presence, never a version number, same as `imagem`.
-    recursos: { imagem: true, conta: true, run: true },
+    //   sessoes: several agent sessions per window (1.8.0). `spawn({..., sessao})` names one,
+    //           `send(o, sessao)` and `kill(sessao)` address it, and every event it emits
+    //           carries `evt.sessao`. Switching project no longer has to kill the agent that
+    //           is working: each project keeps its own. Without a name everything is the one
+    //           session of before, so a page that never reads this flag sees no change.
+    recursos: { imagem: true, conta: true, run: true, sessoes: true },
     // chamados pelo Rust (eval):
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
-    _emit: function (evt) { for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }
+    _emit: function (evt, sessao) { if (sessao && evt && typeof evt === 'object') evt.sessao = sessao; for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }
   };
   window.__shviaDesktop = wk ? { platform: 'webkit', bridge: 'webkit' }
                              : { platform: 'windows', bridge: 'webview2' };
