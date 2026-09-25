@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.8.0 - a window keeps one agent per session, so switching project stops killing the one at work
+
+The owner asked for it on 25/09/2026: in Code mode, give a command, go to another project or
+chat, and the command keeps working. It could not. The bridge held **one engine process per
+window**, keyed by the window's label, so the page's project switch had to kill the agent before
+the next project could have one (`aplicarPasta` → `resetSession` → `bridge.kill()` in
+SHVIA-WEB's `code-mode.js`).
+
+This is the shell's half. The page's half (keeping each project's session and filing the events
+of the ones off screen) is a SHVIA-WEB change, and it switches on only where this shell says
+`recursos.sessoes`.
+
+- **`Sidecars` is keyed by window + session** (`chave(label, sessao)`, U+001F between the two).
+  `spawn({..., sessao})` starts a named session; `send(o, sessao)` and `kill(sessao)` address it.
+  A respawn of the same session still replaces it, and the other sessions of the window keep
+  working.
+- **Every event carries the session it came from**: stdout lines and `exited` reach `_emit`
+  with the name, and the shim sets `evt.sessao`.
+- **A page that names no session gets exactly the old behaviour.** The empty name is the old
+  key (the label), and the shim adds no field, so today's page and a page that never reads the
+  flag behave as before.
+- **A reload or closing the window still ends every session of that window**, and only that
+  window's. The close guard (`tem_sessao`) now counts any of them.
+- **The session name is untrusted input**: at most 64 characters of `[A-Za-z0-9_.:-]`
+  (`sessao_valida`), refused with `sessao_invalida` otherwise, so it can neither break the key
+  nor the `_emit` string.
+- **At most 8 sessions per window** (`MAX_SESSOES_POR_JANELA`): each one is an engine process,
+  and the Claude runner starts a `claude` CLI of its own. A ninth new session is refused with
+  `sessoes_demais`; a respawn of an existing one always fits.
+
+Measured: `cargo test --lib code_bridge` gives 75 passed and 1 ignored (the live Codex smoke,
+which needs `codex-runner/install.sh`). Seven tests are new (`tests_sessoes`) and run real
+processes:
+
+- two sessions of one window coexist;
+- stopping one does not touch the other, and the stopped one really ends;
+- a line reaches only the session it names;
+- closing a window ends all of its sessions and none of another window's;
+- only a new session counts against the cap;
+- a name is refused when it could break the key or the `_emit` string;
+- a page that names no session gets the old key.
+
 ## 1.7.1 - the app ships both runners and brings an installed one up to date at every start
 
 The app updates itself; the runners it drives did not. They live outside it, where their
