@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.7.1 - the app ships both runners and brings an installed one up to date at every start
+
+The app updates itself; the runners it drives did not. They live outside it, where their
+installers leave them, and changed only when someone ran an installer by hand.
+
+- **Measured on the owner's machine on 25/09/2026, with the app at 1.6.58:** the `codex-runner`
+  was 1.4.34 (09/09) and did not know `--modelos`. So the Codex engine listed no model and no
+  effort, and locked both selectors on "Codex indisponível" ("Atualize o codex-runner para listar
+  os modelos"). The `claude-runner` was from 21/08. The app could not have fixed the Codex one:
+  it shipped only the Claude runner.
+- **The app now ships the Codex runner too** (`bundle.resources`: its modules, `package.json`, both
+  installers and the protocol schema).
+- **At every start, in the background** (`code_bridge/atualizacao.rs`), each installed runner is
+  compared with the one the app brought:
+  - not installed: nothing, since the first install stays the button's;
+  - older, or the same version with different files: reinstall with the bundled installer, plus a
+    native notification;
+  - newer: nothing, since a runner installed by hand is not downgraded.
+
+  The Codex runner's comparison includes the `politica.mjs` copy it imports from
+  `../claude-runner`.
+- **One install per runner at a time.** The "Instalar runner" button and the start share one lock.
+  The model catalogues wait for an install in progress, and a session refuses to start on a runner
+  being rewritten, with a message saying so.
+- **`build-local.sh` reuse:** `codex-runner/` joins the freshness check. `prova:reuso` caught it:
+  a commit that changed only the Codex runner would have shipped the old bundle.
+- **ADR-036.** Notes in `docs/funcionalidades.md` and the two engine guides. A doc comment
+  orphaned at the top of `login.rs` since the 1.6.41 split moved to the function it describes.
+
+Tests: 9 new in `atualizacao`, and the bundle ruler now requires the Codex runner's files. Six
+reversal proofs, each red on the expected test:
+
+- same version with different files ignored;
+- a file missing on one side counted as different;
+- the policy copy left out;
+- versions compared as text;
+- the start ignoring the button's lock;
+- the Codex installer dropped from the bundle.
+
+`cargo test --lib` 150 passed; clippy `-D warnings` clean. `prova:*`: 19 pass, and 2 are NOT
+MEASURED here (`prova:ps1`, `prova:instaladores-ps1`: no `pwsh` on this machine; CI runs them, and
+no `.ps1` changed).
+
+Renumbered from 1.6.60 (PR #76) on 25/09/2026: the owner asked for the next desktop commit to be 1.7.0.
+
 ## 1.7.0 - links to SHVIA-WEB stop depending on the case of the folder on disk
 
 The owner answered `dir-case` with "Script que aceita os dois". Measured again on 24/09, the
@@ -17,6 +62,8 @@ outside the repository.
   folder. Code spans and fenced blocks are skipped, because they quote the pattern — this entry
   does, and the ruler's first version failed on it. Reversal measured: one real link put back
   fails it, with the file and line.
+
+Renumbered from 1.6.59 (PR #75) on 25/09/2026: the owner asked for the next desktop commit to be 1.7.0.
 
 ## 1.6.58 - the Codex sandbox proof refuses a command that never ran
 

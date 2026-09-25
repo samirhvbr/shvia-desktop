@@ -216,6 +216,20 @@ someone who uses or builds the app:
 - **Installing the runner from a terminal finishes** (`1.6.25`); **restarting the login keeps
   it** (`1.6.26`).
 
+## Phase 7 — the engines' runners follow the app (1.7.0 → 1.7.1)
+
+The desktop's minor jumps to 1.7 at the owner's request (25/09/2026); 1.7.0 carries the links to
+the web repository made independent of the folder's case (renumbered from 1.6.59).
+
+**1.7.1 — the gate before gate 1: an installed runner the app left behind.** Gate 1 answered *no
+runner*; nothing answered *an old one*. The app updates itself, and the runners live outside it.
+Measured on the owner's machine on 25/09/2026, with the app at 1.6.58: `codex-runner` 1.4.34,
+without `--modelos` (the Codex engine locked MODEL and EFFORT), and `claude-runner` from 21/08. The
+app now ships both runners, and at every start reinstalls an installed one that is older than the
+bundled one, or has the same version and different files. It never installs an engine nobody
+installed, and never downgrades a newer one. Code in `src-tauri/src/code_bridge/atualizacao.rs`,
+decision in ADR-036.
+
 ## Limitações conhecidas
 
 - ⚠️ **Microphone and image paste on Linux** (**ADR-008**, re-measured in `1.6.45`): ADR-008

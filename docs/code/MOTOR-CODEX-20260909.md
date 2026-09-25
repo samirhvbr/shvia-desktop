@@ -227,3 +227,14 @@ reload the matching web update; old desktop builds cannot expose this catalogue.
 
 Validation commands: `cd codex-runner && npm test`, `node codex-runner/codex-runner.mjs
 --modelos`, and `cargo test --lib` from `src-tauri` after installing the runner.
+
+**An installed runner older than 1.5.9 has no catalogue** (measured on 25/09/2026). It does not
+know `--modelos`: it prints nothing and exits 0, the bridge answers *"Atualize o codex-runner para
+listar os modelos."*, and the page locks MODEL and EFFORT on *"Codex indisponível"*. That was the
+owner's machine, with the app at 1.6.58 and the runner at 1.4.34 (09/09). No app update could have
+fixed it, because the app did not ship this runner. Since 1.7.1 it does, and it updates an
+installed runner at start (ADR-036).
+
+What `model/list` offers on a ChatGPT plan, measured the same day with codex-cli 0.142.4:
+`gpt-5.5`, efforts `low`/`medium`/`high`/`xhigh`. With `includeHidden: true` there is only
+`codex-auto-review` besides it. One model in the selector is Codex's offer, not a defect.

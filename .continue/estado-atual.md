@@ -3,7 +3,10 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Last updated: **23/09/2026** (version 1.6.43).
+> Last updated: **25/09/2026** (version 1.7.1). 1.7.0 = the links to the web repository (ex-1.6.59, #75),
+> 1.7.1 = the runners follow the app (ex-1.6.60, #76, ADR-036). Queued from the owner's comparison
+> page (via the shvia-turn1 session): a quick-question window on a global shortcut with a `shvia://`
+> scheme, and the desktop half of exposing device commands to the agent.
 
 > ⚠️ **Saneado em 02/09/2026** (achado F-22): descrevia a **1.1.34** com o repo em 1.4.3.
 > Foi o **terceiro** saneamento manual deste arquivo pelo mesmo motivo — daí a régua

@@ -204,7 +204,9 @@ text — no install, no `node_modules`, runs anywhere, which is exactly where th
 cannot reach.
 
 **If `--version` is behind:** `bash claude-runner/install.sh` from the repository. It is
-idempotent, and from 1.5.15 the install is complete.
+idempotent, and from 1.5.15 the install is complete. **Since 1.7.1 the app does this by itself** at every start, for an
+installed runner older than the one it shipped (or with the same version and different files):
+ADR-036. Measured on 25/09/2026: the owner's `claude-runner` was from 21/08, with the app at 1.6.58.
 
 ## 3. The account picker shows only `Padrão do sistema`
 

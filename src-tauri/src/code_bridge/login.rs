@@ -28,12 +28,6 @@ use super::*;
 /// empacotamento — e é essa leitura errada que custou o diagnóstico de 08/09, por isso
 /// os dois pontos que devolvem a ausência dizem `install.sh` na mesma frase
 /// (`ERRO_RUNNER_AUSENTE`).
-/// Onde a fonte do runner mora dentro do app instalado.
-///
-/// Separada do `instalar_claude_runner` para ter teste: o caminho é a parte que quebra em
-/// silêncio quando o `bundle.resources` muda de forma, e um erro aqui só apareceria para
-/// quem clica o botão numa máquina sem o repositório — a pessoa com menos condição de
-/// diagnosticar.
 /// Login do Claude Code conduzido pela tela, em vez de pelo terminal (portão 2).
 ///
 /// ## O que foi MEDIDO, e por que o desenho é este

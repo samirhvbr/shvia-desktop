@@ -1519,6 +1519,10 @@ pub fn run() {
             // janela-mãe se a rede fosse instantânea.
             #[cfg(desktop)]
             updater::agendar(app.handle());
+            // The runners live outside the app and did not follow its updates (1.7.1, see
+            // `code_bridge::atualizacao`). In the background: never holds the window.
+            #[cfg(desktop)]
+            code_bridge::na_abertura(app.handle().clone());
             // Bandeja depois da janela: o menu mostra o servidor configurado, que só
             // existe depois do `server::load` acima. E `instalar` não pode derrubar o
             // `setup` — app sem bandeja é degradação; app que não abre é falha.

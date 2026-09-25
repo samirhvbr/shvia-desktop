@@ -29,6 +29,8 @@ use super::*;
 /// sobre qual conta estava valendo. O catálogo é por assinatura, então discordar aqui
 /// significa oferecer na tela um modelo que o turno vai recusar.
 pub(super) fn claude_models(conta: Option<&crate::contas_claude::Alvo>) -> serde_json::Value {
+    // Off the UI thread: waiting here gets the updated runner, not one half copied (1.7.1).
+    super::atualizacao::esperar_instalacao("claude-runner");
     let Some(lancamento) = resolve_runner("claude-runner") else {
         return serde_json::json!({ "erro": erro_runner_ausente(), "codigo": COD_RUNNER_AUSENTE });
     };
@@ -50,6 +52,7 @@ pub(super) fn claude_models(conta: Option<&crate::contas_claude::Alvo>) -> serde
 
 /// Query the same runner and PATH used for Codex turns. The runner bounds the request.
 pub(super) fn codex_models() -> serde_json::Value {
+    super::atualizacao::esperar_instalacao("codex-runner");
     let Some(lancamento) = resolve_runner("codex-runner") else {
         return serde_json::json!({ "erro": erro_codex_ausente(), "codigo": COD_CODEX_AUSENTE });
     };
@@ -203,7 +206,13 @@ pub(super) const SAIDA_SANDBOX_NAO_CONFIRMADO: i32 = 3;
 /// Windows (1.6.57) `install.ps1` with Windows PowerShell, which every Windows 10/11 has.
 pub(crate) const INSTALADOR: &str = if cfg!(windows) { "install.ps1" } else { "install.sh" };
 
-pub(super) fn script_do_instalador(app: &tauri::AppHandle) -> Result<PathBuf, (&'static str, String)> {
+/// Where a runner's installer lives inside the installed app.
+///
+/// Apart from `instalar_runner` so it has a test: the path is the part that breaks silently when
+/// `bundle.resources` changes shape, and an error here would only show to whoever presses the
+/// button on a machine without the repository, the person least able to diagnose it. (Until
+/// 1.7.1 this paragraph sat at the top of `login.rs`, left there by the 1.6.41 split.)
+pub(super) fn script_do_instalador(app: &tauri::AppHandle, base: &str) -> Result<PathBuf, (&'static str, String)> {
     let dir = app.path().resource_dir().map_err(|e| {
         ("recursos_ausentes", format!("não achei a pasta de recursos do app: {e}"))
     })?;
@@ -218,8 +227,8 @@ pub(super) fn script_do_instalador(app: &tauri::AppHandle) -> Result<PathBuf, (&
      *
      * Procurar nos dois custa dois `is_file()` e sobrevive à convenção mudar de novo. */
     let candidatos = [
-        dir.join("_up_").join("claude-runner").join(INSTALADOR),
-        dir.join("claude-runner").join(INSTALADOR),
+        dir.join("_up_").join(base).join(INSTALADOR),
+        dir.join(base).join(INSTALADOR),
     ];
     if let Some(script) = candidatos.iter().find(|p| p.is_file()) {
         return Ok(script.clone());
@@ -236,8 +245,11 @@ pub(super) fn script_do_instalador(app: &tauri::AppHandle) -> Result<PathBuf, (&
 }
 
 /// Roda o instalador que veio no app (`INSTALADOR`) e devolve a saída dele.
-pub(super) fn instalar_claude_runner(app: &tauri::AppHandle) -> Result<String, (&'static str, String)> {
-    let script = script_do_instalador(app)?;
+///
+/// Any runner the app ships (1.7.1: the Codex one too). The caller holds the runner's install
+/// lock (`atualizacao::tentar_instalar`): the button and the check at every start share it.
+pub(super) fn instalar_runner(app: &tauri::AppHandle, base: &str) -> Result<String, (&'static str, String)> {
+    let script = script_do_instalador(app, base)?;
     // `-ExecutionPolicy Bypass` applies to THIS run only: a machine on the default
     // (Restricted) policy would refuse the script, and the button is the user's consent.
     let (mut cmd, sem_interprete) = if cfg!(windows) {
@@ -507,7 +519,7 @@ mod tests_motor {
         let corpo = fonte
             .split("fn script_do_instalador")
             .nth(1)
-            .and_then(|x| x.split("fn instalar_claude_runner").next())
+            .and_then(|x| x.split("fn instalar_runner").next())
             .unwrap_or("");
         assert!(corpo.contains("\"_up_\""), "o caminho que o Tauri produz para `..` não é procurado");
         // Since 1.6.57 the file name is `INSTALADOR` (install.sh, or install.ps1 on Windows):
@@ -521,6 +533,14 @@ mod tests_motor {
         assert!(decl.contains("\"install.ps1\"") && decl.contains("\"install.sh\""),
             "o botão precisa de um instalador por SO: {decl}");
         assert!(conf.contains("../claude-runner/install.ps1"), "o install.ps1 não viaja no instalador do app");
+        // 1.7.1: the Codex runner travels too, or the app could never update it.
+        for arquivo in ["../codex-runner/*.mjs", "../codex-runner/*.json", "../codex-runner/install.sh",
+            "../codex-runner/install.ps1", "../codex-runner/schemas/*.json"] {
+            assert!(conf.contains(arquivo), "o bundle não leva {arquivo}");
+        }
+        // A slice that loses its end marker runs to the end of the file and passes forever.
+        assert!(fonte.contains("fn instalar_runner("), "o marcador do fim da fatia sumiu");
+        assert!(corpo.len() < 3000, "a fatia não parou no instalador: {} bytes", corpo.len());
     }
 
     /// 🔴 On Windows a runner is `node <runner>.mjs`, from the `install.ps1` folder, and never
