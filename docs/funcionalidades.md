@@ -183,6 +183,15 @@ Two defects were found **under** gate 1 while opening it, and both had been ship
   finish it with no code pasted; an invalid code does not end the process; the exit code is
   `0` either way. The screen half is in `SHVIA-WEB`.
 
+**1.6.60 — the gate before gate 1: an installed runner the app left behind.** Gate 1 answered *no
+runner*; nothing answered *an old one*. The app updates itself, and the runners live outside it.
+Measured on the owner's machine on 25/09/2026, with the app at 1.6.58: `codex-runner` 1.4.34,
+without `--modelos` (the Codex engine locked MODEL and EFFORT), and `claude-runner` from 21/08. The
+app now ships both runners, and at every start reinstalls an installed one that is older than the
+bundled one, or has the same version and different files. It never installs an engine nobody
+installed, and never downgrades a newer one. Code in `src-tauri/src/code_bridge/atualizacao.rs`,
+decision in ADR-036.
+
 🔴 **Node is the cost of one choice, not a product requirement.** Measured: `claude` itself is
 a self-contained Mach-O binary; the runner is a shell wrapper that `exec`s `node` with the
 `.mjs` because it carries the Agent SDK. Whether the runner should speak to the native binary

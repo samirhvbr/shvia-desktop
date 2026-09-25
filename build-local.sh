@@ -944,9 +944,10 @@ can_reuse_build() {
   # bundle shipped under the new commit. scripts/prova-reuso-ve-o-que-empacota.mjs reads
   # tauri.conf.json and fails when something it bundles is missing here. `node_modules` is
   # pruned: it is not a source, and scanning it made the check slow.
+  # 1.6.60: `codex-runner/` too, since the app ships it to keep the installed one current.
   local novas
   novas="$(find src src-tauri/src src-tauri/capabilities src-tauri/binaries \
-                src-tauri/icons claude-runner public \
+                src-tauri/icons claude-runner codex-runner public \
                 index.html package.json package-lock.json vite.config.ts tsconfig.json \
                 src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/build.rs src-tauri/tauri.conf.json \
              \( -name node_modules -prune \) -o \( -type f -newer "$ref" -print -quit \) 2>/dev/null || true)"

@@ -2090,3 +2090,60 @@ reason, and the reason is written down with it.
   UI, but every desktop-only screen then waits for a web release and for the server to answer.
 - **Forma B for everything** (the alternative ADR-002 rejected): a full client over `/api/v1`,
   with two UIs for all of it. Not what was asked.
+
+---
+
+## ADR-036 — The app keeps the installed runners current
+
+- **Date:** 25/09/2026 · **Status:** **Accepted**, by the owner's answer in the session
+  ("App atualiza sozinho")
+
+### Context
+
+The app updates itself (ADR on the updater); the runners it drives do not. They live outside the
+app, where their installers leave them (`~/.local/share/shvia-*-runner`, or `$XDG_DATA_HOME`;
+`%LOCALAPPDATA%\shvia-*` on Windows), and changed only when someone ran an installer. Measured on
+the owner's machine on 25/09/2026, with the app at 1.6.58:
+
+- `codex-runner` **1.4.34**, from 09/09. It did not know `--modelos`, so the Codex engine listed
+  no model and no effort and locked both selectors ("Atualize o codex-runner para listar os
+  modelos"). The app could not have fixed it: it shipped only the Claude runner.
+- `claude-runner` from **21/08**, a month of fixes behind the app that drove it.
+
+Not the first time: in 1.5.15 the same doc measured an installed runner at 1.4.20 against the
+repository at 1.5.14. The answer then was to make a reinstall complete, not to make it happen.
+
+### Decision
+
+The app ships both runners (`bundle.resources`), and at every start, in the background, compares
+each installed runner with the one it brought (`src-tauri/src/code_bridge/atualizacao.rs`):
+
+| installed | action |
+|---|---|
+| not installed | nothing: the first install stays the "Instalar runner" button's, the user's consent |
+| older than the bundled one | reinstall, with the bundled installer, and a native notification |
+| same version, different files | reinstall: the Codex runner changed 8 times with 7 bumps since 09/09 |
+| newer | nothing: a runner installed by hand from a newer checkout is not downgraded |
+
+The reinstall runs the same installer the button runs. The button and the start share one lock per
+runner. The model catalogues wait for an install in progress. A session refuses to start on a runner
+being rewritten, and says so.
+
+### Consequences
+
+- An app update now reaches the runners on the next start, with no terminal and no button.
+- The start may run `npm ci` (Claude runner) in the background when the app brought a newer runner.
+  The Claude runner's version follows the app's (it is one of the version carriers), so that is
+  **once per app release**, on the first start after it. It never blocks the window, and a failure
+  is one notification pointing at the button.
+- A developer who installs a runner from a branch keeps it while its version is higher than the
+  app's. At the same version the app's copy wins, because equal numbers do not prove equal runners.
+
+### Alternatives
+
+- **Only warn** (offered in the same question): the app says the runner is behind and offers the
+  button. Nothing changes without a click, and the machine that needed it most stayed behind for a
+  month without anyone noticing.
+- **Run the bundled runner directly, never an installed copy:** no drift at all, but the Claude
+  runner needs `node_modules` (the Agent SDK) written somewhere outside the read-only bundle. That
+  is an install anyway, under another name.

@@ -269,6 +269,14 @@ pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     let engine = s("engine");
     let is_claude = engine == "claude";
     let (exe_base, erro_ausente, cod_ausente) = motor_do_engine(&engine);
+    // This runs on the UI thread, so it refuses instead of waiting: a session started while the
+    // installer rewrites the runner's folder would load half the files (1.6.60).
+    if super::atualizacao::instalando(exe_base) {
+        return reply(window, req, false, serde_json::json!({
+            "error": "o runner deste motor está sendo atualizado junto com o app — tente de novo em alguns segundos",
+            "codigo": "runner_atualizando",
+        }));
+    }
     let Some(lancamento) = resolve_runner(exe_base) else {
         return reply(window, req, false,
             serde_json::json!({ "error": erro_ausente, "codigo": cod_ausente }));

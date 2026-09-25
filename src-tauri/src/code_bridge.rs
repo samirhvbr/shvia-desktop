@@ -42,6 +42,8 @@ use login::*;
 pub use login::cancelar_login;
 mod sessao;
 use sessao::*;
+mod atualizacao;
+pub(crate) use atualizacao::na_abertura;
 pub use sessao::Sidecars;
 pub(crate) use motores::{engine_status, versao_do_anna};
 
@@ -125,9 +127,6 @@ fn fora_da_ui(
         reply(&w, &req, ok, dados);
     });
 }
-
-/// One runner install at a time: two would overwrite the same directories concurrently.
-static INSTALANDO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Ponto de entrada do handler nativo: recebe uma mensagem JSON da página.
 pub fn handle_message(window: &WebviewWindow, payload: &str) {
@@ -328,16 +327,16 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
          * criaria duas definições do que é uma instalação, e a que o desenvolvedor testa
          * no terminal deixaria de ser a que o usuário recebe. */
         "claudeRunnerInstall" => {
-            use std::sync::atomic::Ordering;
-            if INSTALANDO.swap(true, Ordering::SeqCst) {
-                return reply(window, &req, false, serde_json::json!({
-                    "erro": "já há uma instalação do claude-runner em andamento",
-                    "codigo": "instalacao_em_andamento",
-                }));
-            }
+            // One install of a runner at a time, shared with the check at every start
+            // (`atualizacao`, 1.6.60): two would write the same folder at once.
             fora_da_ui(window, &req, |w| {
-                let r = instalar_claude_runner(w.app_handle());
-                INSTALANDO.store(false, Ordering::SeqCst);
+                let Some(_trava) = atualizacao::tentar_instalar("claude-runner") else {
+                    return (false, serde_json::json!({
+                        "erro": "já há uma instalação do claude-runner em andamento",
+                        "codigo": "instalacao_em_andamento",
+                    }));
+                };
+                let r = instalar_runner(w.app_handle(), "claude-runner");
                 match r {
                     Ok(saida) => (true, serde_json::json!({ "saida": saida })),
                     Err((codigo, msg)) => (false, serde_json::json!({ "erro": msg, "codigo": codigo })),
