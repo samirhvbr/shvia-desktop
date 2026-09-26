@@ -8,11 +8,14 @@
  * binary if it is not on PATH. Without one, this prints NOT MEASURED and exits 0 locally, but
  * exits 1 in CI (CI=true): a check that quietly skips where it matters is not a check.
  *
- * Three measurements:
+ * Four measurements:
  *   1. the whole script parses (the Windows build never runs in CI);
  *   2. no function is called at script level before its definition — PowerShell runs top to
  *      bottom, the parser does not catch it, and 1.6.50's first draft had exactly that;
- *   3. the two new functions, cut out of the script and run against temp dirs.
+ *   3. the functions, cut out of the script and run against temp dirs;
+ *   4. the override reaches `tauri build` as `--config <file>` (1.7.2). Measuring only the JSON
+ *      let 1.6.50 pass here while the real Windows run failed: the script put it in
+ *      $env:TAURI_CONFIG, which the Rust build reads and the CLI's bundler does not.
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -68,7 +71,7 @@ function funcao(nome) {
   if (i < 0) { falhas.push(`${nome} moved out of build-local.ps1`); return ""; }
   return fonte.slice(i, fonte.indexOf("\n}\n", i) + 3);
 }
-const FUNCS = funcao("Resolve-UpdaterKey") + "\n" + funcao("Get-TauriConfigOverride");
+const FUNCS = ["Resolve-UpdaterKey", "Get-TauriConfigOverride", "Write-TauriConfigFile"].map(funcao).join("\n");
 
 const TRIPLE = "x86_64-pc-windows-msvc";
 function override({ sidecar, key, noSign, updater = true }) {
@@ -98,6 +101,26 @@ $r = Resolve-UpdaterKey -HomeDir '${home}'
   } finally { rmSync(home, { recursive: true, force: true }); }
 }
 
+function arquivoDeConfig() {
+  const dir = mkdtempSync(join(tmpdir(), "shvia-ps1-cfg-"));
+  const json = '{"bundle":{"externalBin":[]}}';
+  try {
+    const out = ps(`${FUNCS}
+$f = Write-TauriConfigFile -Root '${dir}' -Json '${json}'
+"RESULT $f"`);
+    const f = out.trim().split("\n").pop().replace(/^RESULT /, "");
+    if (!f.startsWith(join(dir, "src-tauri", "target"))) return `outside src-tauri/target: ${f}`;
+    const bytes = readFileSync(f);
+    return bytes.equals(Buffer.from(json)) ? "RESULT exact, no BOM" : `RESULT bytes ${bytes.toString("hex")}`;
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+// The call itself, read from the source: the bundler only sees `--config`.
+function chamadaDoBuild() {
+  if (/\$env:TAURI_CONFIG\s*=/.test(fonte)) return "the script assigns $env:TAURI_CONFIG";
+  if (!/npx tauri build --config \$script:TauriConfigFile/.test(fonte)) return "tauri build has no --config $script:TauriConfigFile";
+  return "RESULT --config";
+}
+
 const CASOS = [
   ["sidecar and key present: no override", () => override({ sidecar: true, key: true, noSign: false }), "RESULT NULL"],
   ["🔴 no anna staged: externalBin is emptied", () => override({ sidecar: false, key: true, noSign: false }), 'RESULT {"bundle":{"externalBin":[]}}'],
@@ -107,6 +130,8 @@ const CASOS = [
   ["updater artifacts off in the config: no key needed", () => override({ sidecar: true, key: false, noSign: false, updater: false }), "RESULT NULL"],
   ["the key files are read like build-local.sh reads them", () => chave({ comArquivos: true }), "RESULT True [dW50cnVzdGVkIGtleQ==] [s3nha com espaço ]"],
   ["no key anywhere: false", () => chave({ comArquivos: false }), "RESULT False [] []"],
+  ["the override file is the exact JSON, without a BOM", () => arquivoDeConfig(), "RESULT exact, no BOM"],
+  ["🔴 the override reaches the bundler as --config, not only as TAURI_CONFIG", () => chamadaDoBuild(), "RESULT --config"],
 ];
 for (const [nome, rodar, esperado] of CASOS) {
   const obtido = rodar();

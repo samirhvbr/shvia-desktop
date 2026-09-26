@@ -142,6 +142,14 @@ function Invoke-GitSync {
 # The Windows validation runbook (1.6.44) worked around both with a hand-set TAURI_CONFIG. Now
 # the key is checked before `npm ci`, and the externalBin decision is made after the anna step.
 # A TAURI_CONFIG the person set is respected as it is.
+#
+# The override reaches `tauri build` as `--config <file>` (1.7.2). Until then it went only into
+# $env:TAURI_CONFIG, and the first real Windows run (26/09/2026) showed what that does: the Rust
+# compiled for 13 minutes and the bundler then failed on `binaries\anna-<triple>.exe`. tauri-build
+# and tauri-codegen read TAURI_CONFIG from the environment; the CLI builds its bundle config from
+# tauri.conf.json, the platform file and `--config` only (tauri-cli 2.11.5, helpers/config.rs).
+# A file and not inline JSON: Windows PowerShell 5.1 strips the double quotes inside a native
+# argument, and `npx` is a .cmd on top of that.
 
 # The updater key, from the environment or from the files build-local.sh reads (1.1.9):
 # $HOME\.shvia\updater.key and updater.pass. The same pair on the three OSes (ADR-022). The
@@ -175,6 +183,16 @@ function Get-TauriConfigOverride {
   }
   if ($bundle.Count -eq 0) { return $null }
   return (@{ bundle = $bundle } | ConvertTo-Json -Depth 5 -Compress)
+}
+
+# Writes $Json where `tauri build --config` reads it and returns the path. UTF-8 without a BOM:
+# 5.1's `Set-Content -Encoding UTF8` writes one, and a BOM is not JSON.
+function Write-TauriConfigFile {
+  param([string]$Root, [string]$Json)
+  $file = Join-Path (Join-Path (Join-Path $Root 'src-tauri') 'target') 'build-local.tauri-config.json'
+  New-Item -ItemType Directory -Force (Split-Path $file) | Out-Null
+  [System.IO.File]::WriteAllText($file, $Json, (New-Object System.Text.UTF8Encoding $false))
+  return $file
 }
 
 Write-Host "==> ShvIA Desktop — build local (Windows)"
@@ -288,19 +306,25 @@ if ($NoAnna) {
   Invoke-Native "stage-anna" { node scripts/stage-anna.mjs }
 }
 
-if ($env:TAURI_CONFIG) {
-  Write-Host "    TAURI_CONFIG definido por você — respeitado como está: $env:TAURI_CONFIG" -ForegroundColor Yellow
+$override = $env:TAURI_CONFIG
+if ($override) {
+  Write-Host "    TAURI_CONFIG definido por você — respeitado como está: $override" -ForegroundColor Yellow
 } else {
   $triple = ((& rustc -vV) | Select-String '^host:').ToString().Split(' ')[1]
   $override = Get-TauriConfigOverride -Root $PSScriptRoot -Triple $triple -HasKey $script:TemChave -NoSign ([bool]$NoSign) -UpdaterArtifacts $script:ComUpdater
-  if ($override) {
-    $env:TAURI_CONFIG = $override
-    Write-Host "    TAURI_CONFIG = $override" -ForegroundColor Yellow
-  }
+}
+$script:TauriConfigFile = $null
+if ($override) {
+  $script:TauriConfigFile = Write-TauriConfigFile -Root $PSScriptRoot -Json $override
+  Write-Host "    --config $($script:TauriConfigFile) = $override" -ForegroundColor Yellow
 }
 
 Step "[3/4] Tauri build"
-Invoke-Native "tauri build" { npx tauri build }
+if ($script:TauriConfigFile) {
+  Invoke-Native "tauri build" { npx tauri build --config $script:TauriConfigFile }
+} else {
+  Invoke-Native "tauri build" { npx tauri build }
+}
 
 Step "[4/4] assinatura + checksums + release.json (item D9)"
 Invoke-Signing

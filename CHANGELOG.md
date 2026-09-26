@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.7.2 - the Windows build passes its Tauri override as --config, the only place the bundler reads it
+
+The first real Windows build (26/09/2026, no `anna` on PATH) compiled the Rust for 13 minutes and
+then failed in the bundler: `resource path binaries\anna-x86_64-pc-windows-msvc.exe doesn't exist`.
+
+- **Cause:** since 1.6.50, `build-local.ps1` put its override (`externalBin: []` with no engine
+  staged, `createUpdaterArtifacts: false` with `-NoSign` and no key) only in `$env:TAURI_CONFIG`.
+  tauri-build and tauri-codegen read that variable, so the compile passed. The CLI does not: it
+  builds the bundle config from `tauri.conf.json`, the platform file and `--config` only
+  (tauri-cli 2.11.5, `helpers/config.rs`). `build-local.sh` always used `--config`.
+- **Fix:** the override is written to `src-tauri\target\build-local.tauri-config.json` (UTF-8, no
+  BOM) and passed as `npx tauri build --config <file>`. A file, not inline JSON: Windows
+  PowerShell 5.1 strips the double quotes inside a native argument. A `TAURI_CONFIG` the person
+  set is passed the same way, since the bundler ignored it too.
+- **`prova:ps1`** measured the JSON and never whether it reached `tauri build`, so it passed on
+  the broken script. Two new cases: the file is the exact JSON without a BOM, and the build call
+  carries `--config` and never assigns `$env:TAURI_CONFIG` (fails on 1.7.1, passes now). The pwsh
+  cases were not run here (no pwsh on this machine); the Windows rebuild is the real proof.
+
 ## 1.7.1 - the app ships both runners and brings an installed one up to date at every start
 
 The app updates itself; the runners it drives did not. They live outside it, where their

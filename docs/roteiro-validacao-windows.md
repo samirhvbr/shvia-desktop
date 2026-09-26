@@ -103,6 +103,10 @@ the script reads them, as `build-local.sh` does.
   or requires the updater key **before** `npm ci`, instead of failing at the end of the bundle.
   Proven with PowerShell in CI (`npm run prova:ps1`); this machine is the first real run. A
   release build still needs the key, the same one as on the Mac (ADR-022).
+- ✅ **Fixed in 1.7.2: the first real run failed where the proof could not look.** The override
+  went only into `$env:TAURI_CONFIG`, which the Rust build reads and the Tauri CLI's bundler does
+  not, so the build compiled for 13 minutes and then asked for `binaries\anna-<triple>.exe`. It
+  now goes as `tauri build --config <file>`, and `prova:ps1` checks the call itself.
 - ✅ **Since 1.6.56–1.6.58 the Claude and Codex engines have a Windows path** (the owner:
   "Sim, precisa dos dois no Windows"). `install.ps1` installs each runner (proved under pwsh in
   CI). The app runs them as `node <runner>.mjs` and never through the terminal `.cmd`, the
