@@ -107,6 +107,8 @@ the script reads them, as `build-local.sh` does.
   went only into `$env:TAURI_CONFIG`, which the Rust build reads and the Tauri CLI's bundler does
   not, so the build compiled for 13 minutes and then asked for `binaries\anna-<triple>.exe`. It
   now goes as `tauri build --config <file>`, and `prova:ps1` checks the call itself.
+  1.7.3: the path is literal text, because `npx` here is npm's `npx.ps1`, which re-runs the
+  statement in its own scope, where the script's `$script:` variables do not exist.
 - ✅ **Since 1.6.56–1.6.58 the Claude and Codex engines have a Windows path** (the owner:
   "Sim, precisa dos dois no Windows"). `install.ps1` installs each runner (proved under pwsh in
   CI). The app runs them as `node <runner>.mjs` and never through the terminal `.cmd`, the

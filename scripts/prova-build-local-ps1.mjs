@@ -15,7 +15,9 @@
  *   3. the functions, cut out of the script and run against temp dirs;
  *   4. the override reaches `tauri build` as `--config <file>` (1.7.2). Measuring only the JSON
  *      let 1.6.50 pass here while the real Windows run failed: the script put it in
- *      $env:TAURI_CONFIG, which the Rust build reads and the CLI's bundler does not.
+ *      $env:TAURI_CONFIG, which the Rust build reads and the CLI's bundler does not. The path is
+ *      literal text and no `npx` line holds a `$` (1.7.3): npm's npx.ps1 re-runs the caller's
+ *      statement text in its own scope, where the script's variables are not set.
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -101,6 +103,7 @@ $r = Resolve-UpdaterKey -HomeDir '${home}'
   } finally { rmSync(home, { recursive: true, force: true }); }
 }
 
+const ARQ_CONFIG = "src-tauri/target/build-local.tauri-config.json";
 function arquivoDeConfig() {
   const dir = mkdtempSync(join(tmpdir(), "shvia-ps1-cfg-"));
   const json = '{"bundle":{"externalBin":[]}}';
@@ -109,15 +112,17 @@ function arquivoDeConfig() {
 $f = Write-TauriConfigFile -Root '${dir}' -Json '${json}'
 "RESULT $f"`);
     const f = out.trim().split("\n").pop().replace(/^RESULT /, "");
-    if (!f.startsWith(join(dir, "src-tauri", "target"))) return `outside src-tauri/target: ${f}`;
+    if (f !== join(dir, ...ARQ_CONFIG.split("/"))) return `written to ${f}, not ${ARQ_CONFIG}`;
     const bytes = readFileSync(f);
     return bytes.equals(Buffer.from(json)) ? "RESULT exact, no BOM" : `RESULT bytes ${bytes.toString("hex")}`;
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
-// The call itself, read from the source: the bundler only sees `--config`.
+// The call itself, read from the source: the bundler only sees `--config`, and npx.ps1 only sees text.
 function chamadaDoBuild() {
   if (/\$env:TAURI_CONFIG\s*=/.test(fonte)) return "the script assigns $env:TAURI_CONFIG";
-  if (!/npx tauri build --config \$script:TauriConfigFile/.test(fonte)) return "tauri build has no --config $script:TauriConfigFile";
+  if (!fonte.includes(`npx tauri build --config ${ARQ_CONFIG} }`)) return `tauri build has no --config ${ARQ_CONFIG}`;
+  const comVariavel = fonte.split("\n").filter((l) => !/^\s*#/.test(l) && /\bnpx\b.*\$/.test(l));
+  if (comVariavel.length) return `npx line with a variable: ${comVariavel[0].trim()}`;
   return "RESULT --config";
 }
 
@@ -131,7 +136,7 @@ const CASOS = [
   ["the key files are read like build-local.sh reads them", () => chave({ comArquivos: true }), "RESULT True [dW50cnVzdGVkIGtleQ==] [s3nha com espaço ]"],
   ["no key anywhere: false", () => chave({ comArquivos: false }), "RESULT False [] []"],
   ["the override file is the exact JSON, without a BOM", () => arquivoDeConfig(), "RESULT exact, no BOM"],
-  ["🔴 the override reaches the bundler as --config, not only as TAURI_CONFIG", () => chamadaDoBuild(), "RESULT --config"],
+  ["🔴 the override reaches the bundler as --config, as literal text npx.ps1 can re-run", () => chamadaDoBuild(), "RESULT --config"],
 ];
 for (const [nome, rodar, esperado] of CASOS) {
   const obtido = rodar();

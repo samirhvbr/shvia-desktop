@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.7.3 - the Windows build names its --config file as literal text, which npm's npx.ps1 can re-run
+
+1.7.2's rebuild on the same machine (26/09/2026) stopped at `[3/4] Tauri build` in one second:
+`A variável '$script:TauriConfigFile' não pode ser recuperada porque ainda não foi definida`,
+raised from `C:\nvm4w\nodejs\npx.ps1`.
+
+- **Cause:** with nvm4w, `npx` resolves to npm's `npx.ps1`, not `npx.cmd`. That shim reads the
+  caller's statement as text and runs it again with `Invoke-Expression`, in its own scope, under
+  `Set-StrictMode -Version Latest`. `$script:` then meant the shim's script scope. `npx tauri build`
+  with no variable, as before 1.7.2, never met this.
+- **Fix:** the call is `npx tauri build --config src-tauri/target/build-local.tauri-config.json`,
+  a path relative to the repo root the script starts in. The CLI reads it while parsing the
+  arguments, before it changes into `src-tauri` (tauri-cli 2.11.5).
+- **`prova:ps1`:** the call must name that exact path, the file must be written to it, and no
+  `npx` line may hold a `$`. Measured against the three versions: 1.7.1 fails (assigns
+  `$env:TAURI_CONFIG`), 1.7.2 fails (variable in the `npx` line), 1.7.3 passes. The pwsh cases
+  still did not run here; the Windows rebuild is the proof.
+
 ## 1.7.2 - the Windows build passes its Tauri override as --config, the only place the bundler reads it
 
 The first real Windows build (26/09/2026, no `anna` on PATH) compiled the Rust for 13 minutes and

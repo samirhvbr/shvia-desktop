@@ -149,7 +149,13 @@ function Invoke-GitSync {
 # and tauri-codegen read TAURI_CONFIG from the environment; the CLI builds its bundle config from
 # tauri.conf.json, the platform file and `--config` only (tauri-cli 2.11.5, helpers/config.rs).
 # A file and not inline JSON: Windows PowerShell 5.1 strips the double quotes inside a native
-# argument, and `npx` is a .cmd on top of that.
+# argument.
+#
+# And the path is LITERAL text in the `npx` line, never a variable (1.7.3). Where `npx` resolves
+# to npm's npx.ps1 (nvm4w puts it first on PATH), that shim takes the caller's statement as TEXT
+# and runs it again with Invoke-Expression, in its own scope, under Set-StrictMode Latest. So
+# `$script:TauriConfigFile` meant npx.ps1's script scope and failed as unset (26/09/2026, 1.7.2).
+# No `$` in an `npx` line: prova:ps1 checks it.
 
 # The updater key, from the environment or from the files build-local.sh reads (1.1.9):
 # $HOME\.shvia\updater.key and updater.pass. The same pair on the three OSes (ADR-022). The
@@ -186,7 +192,8 @@ function Get-TauriConfigOverride {
 }
 
 # Writes $Json where `tauri build --config` reads it and returns the path. UTF-8 without a BOM:
-# 5.1's `Set-Content -Encoding UTF8` writes one, and a BOM is not JSON.
+# 5.1's `Set-Content -Encoding UTF8` writes one, and a BOM is not JSON. The `tauri build` call
+# names this same path as literal text, relative to the repo root (see above).
 function Write-TauriConfigFile {
   param([string]$Root, [string]$Json)
   $file = Join-Path (Join-Path (Join-Path $Root 'src-tauri') 'target') 'build-local.tauri-config.json'
@@ -321,7 +328,8 @@ if ($override) {
 
 Step "[3/4] Tauri build"
 if ($script:TauriConfigFile) {
-  Invoke-Native "tauri build" { npx tauri build --config $script:TauriConfigFile }
+  # Literal path, relative to the repo root (Set-Location at the top): see the npx.ps1 note above.
+  Invoke-Native "tauri build" { npx tauri build --config src-tauri/target/build-local.tauri-config.json }
 } else {
   Invoke-Native "tauri build" { npx tauri build }
 }
