@@ -3,8 +3,11 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Last updated: **25/09/2026** (version 1.7.1). 1.7.0 = the links to the web repository (ex-1.6.59, #75),
-> 1.7.1 = the runners follow the app (ex-1.6.60, #76, ADR-036). Queued from the owner's comparison
+> Last updated: **25/09/2026** (version 1.8.0). 1.7.0 = the links to the web repository (ex-1.6.59, #75),
+> 1.7.1 = the runners follow the app (ex-1.6.60, #76, ADR-036), 1.8.0 = several agent sessions per
+> window (`recursos.sessoes`), so SHVIA-WEB's Code mode can keep a project's agent working while
+> another project is on screen. The page's half is a SHVIA-WEB change; until it ships, nothing on
+> screen changes. Queued from the owner's comparison
 > page (via the shvia-turn1 session): a quick-question window on a global shortcut with a `shvia://`
 > scheme, and the desktop half of exposing device commands to the agent.
 
