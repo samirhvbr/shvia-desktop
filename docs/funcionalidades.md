@@ -120,6 +120,14 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
   (ADR-011); a page posting to the native handler by hand was dropped for lack of the
   token — and is banned on the web side (finding F-16). The Run's gate card (SHVIA-WEB
   block B5) uses it when the window is not in front. Presence of the method is the flag.
+- **Several agent sessions per window** (`1.8.0`): `recursos.sessoes`. Until 1.7.1 a window
+  held ONE engine process, so switching project in Code mode had to kill the agent that was
+  working. Now `spawn({..., sessao})` names a session, `send(o, sessao)` and `kill(sessao)`
+  address it, and every event it emits carries `evt.sessao`: each project keeps its own
+  agent, and the page files the events of the ones off screen under their project. A page
+  that names no session gets the single session of before, byte for byte. At most 8
+  sessions per window (`MAX_SESSOES_POR_JANELA`); a reload or closing the window still ends
+  all of them, and the close guard counts any of them.
 
 ## Phase 4 — the Run in Code mode (1.5.x)
 
