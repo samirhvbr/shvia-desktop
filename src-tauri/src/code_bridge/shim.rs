@@ -208,7 +208,12 @@ pub const BRIDGE_JS: &str = r#"(function () {
     //           carries `evt.sessao`. Switching project no longer has to kill the agent that
     //           is working: each project keeps its own. Without a name everything is the one
     //           session of before, so a page that never reads this flag sees no change.
-    recursos: { imagem: true, conta: true, run: true, sessoes: true },
+    //   plano:  both runners honour a PLAN turn (1.9.0): `plano: true` on the user message makes
+    //           the Claude runner deny every tool that is not a read, and the Codex runner run
+    //           that turn in a read-only sandbox. Without the flag the page offers Plan only on
+    //           the gateway engine, where it refuses every gate itself — on an older shell a
+    //           Claude or Codex turn would edit while the screen says "Plan".
+    recursos: { imagem: true, conta: true, run: true, sessoes: true, plano: true },
     // chamados pelo Rust (eval):
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
     _emit: function (evt, sessao) { if (sessao && evt && typeof evt === 'object') evt.sessao = sessao; for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }

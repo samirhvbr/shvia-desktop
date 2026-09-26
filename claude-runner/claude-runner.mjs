@@ -40,7 +40,7 @@
 import * as readline from "node:readline";
 // A política de permissão (cerca de leitura, rede e destrutivo) mora em módulo próprio —
 // é a única forma de ela ter teste, já que este arquivo roda ao ser importado (F-13/F-29).
-import { EDICAO, LEITURA, PATH_ARG, decidir, previa } from "./politica.mjs";
+import { EDICAO, LEITURA, PATH_ARG, decidir, previa, decidirNoPlano } from "./politica.mjs";
 // The stop handshake of the Run (RUN-20260910, B2) lives in its own pure module for the
 // same reason: it is proved by `parada.test.mjs`, and this file cannot be imported by a test.
 import { encerrarPendentes, esperarDecisao, montarStopRequest, opcoesDaRun, saidaDoHook } from "./parada.mjs";
@@ -228,6 +228,15 @@ async function preToolUse(input /* PreToolUseHookInput */) {
   const toolName = input?.tool_name ?? "";
   const toolInput = input?.tool_input ?? {};
   const id = input?.tool_use_id ?? "";
+
+  // A PLAN turn refuses every tool that is not a read, before any level or card can release
+  // it (see `decidirNoPlano`). Called on EVERY tool, with the turn's mode: outside a plan turn
+  // it returns null. Reads go on to `decidir`, so the fence still applies to them.
+  const noPlano = decidirNoPlano(toolName, turnoPlano);
+  if (noPlano) {
+    process.stderr.write(`[plano] ${toolName}: negado\n`);
+    return denyDecision(noPlano.motivo);
+  }
 
   // Um único ponto de decisão, e ele é testável: `politica.mjs`. A ordem lá é cerca ANTES
   // de atalho — leitura só é automática dentro da pasta e fora da denylist de segredos;
@@ -433,7 +442,13 @@ function traduzirMensagem(message, estado, modelo) {
   return { eventos, estado: { sessionId, sawTextDelta } };
 }
 
-async function runTurn(text, images) {
+// Whether the turn running now is a PLAN turn (1.9.0). Per turn, never per process: the
+// person plans, reads the plan, switches Approval to Auto and says "go" — and the agent that
+// executes is the same session, with the plan in its memory.
+let turnoPlano = false;
+
+async function runTurn(text, images, plano = false) {
+  turnoPlano = plano === true;
   const options = {
     cwd: PROJECT_DIR,
     includePartialMessages: true, // deltas de texto via stream_event
@@ -477,7 +492,7 @@ async function pump() {
   if (item === undefined) return;
   busy = true;
   try {
-    await runTurn(item.text, item.images);
+    await runTurn(item.text, item.images, item.plano);
   } catch (e) {
     emit({ type: "error", message: String(e?.message ?? e) });
     emit({ type: "turn_done" });
@@ -515,7 +530,8 @@ rl.on("line", (raw) => {
     // A fila guardava STRING. Com imagem isso a perderia: o turno enfileirado
     // sairia depois sem os blocos, bem-formado e sem a figura — silêncio com cara
     // de sucesso. Guarda o PAR, e a imagem viaja presa ao pedido que a trouxe.
-    queue.push({ text: String(msg.text ?? ""), images: Array.isArray(msg.images) ? msg.images : [] });
+    // `plano: true` = a PLAN turn (1.9.0). Strictly `true`: anything else is a normal turn.
+    queue.push({ text: String(msg.text ?? ""), images: Array.isArray(msg.images) ? msg.images : [], plano: msg.plano === true });
     pump();
     return;
   }

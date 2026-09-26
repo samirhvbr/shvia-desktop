@@ -35,6 +35,14 @@ three labels over one behaviour would be the approval pill lying three different
 `--aprovacao` is accepted and ignored (the bridge passes it to every engine; refusing
 to spawn over a flag that cannot change anything would break the spawn for no gain).
 
+**One exception, per turn (1.9.0): a PLAN turn.** When the page's Approval is "Plan", the
+user message carries `plano: true`, and that turn starts with `sandboxPolicy: readOnly`.
+Codex can read and run commands that write nothing, and a write fails in the sandbox. The
+next turn gets back the sandbox `thread/start` reported (`sandboxDoTurno` in
+`protocolo.mjs`). Unlike Manual/Edit/Auto this is a real difference in behaviour, which is
+why it exists here. Proof: `plano.test.mjs`, against a fake app-server that records every
+`turn/start`.
+
 ### Against `claude-runner`'s Auto, honestly
 
 Read from `politica.mjs:130-150`, not from memory:

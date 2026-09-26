@@ -128,6 +128,15 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
   that names no session gets the single session of before, byte for byte. At most 8
   sessions per window (`MAX_SESSOES_POR_JANELA`); a reload or closing the window still ends
   all of them, and the close guard counts any of them.
+- **PLAN turns** (`1.9.0`): `recursos.plano`. SHVIA-WEB's Approval gained "Plan": the agent reads
+  and presents a plan, and writes and runs nothing. The page sends `plano: true` on each user
+  message of that mode. The mode is per TURN, so switching Plan → Auto to execute keeps the same
+  session and its memory of the plan. **Claude runner:** the hook denies every tool outside
+  `LEITURA` before any level or card (`decidirNoPlano`), and reads still pass the fence.
+  **Codex runner:** that turn starts with `sandboxPolicy: readOnly`, and the next turn gets back
+  the policy `thread/start` reported (`sandboxDoTurno`), so config.toml grants survive.
+  `approvalPolicy` is never touched. **anna** needs nothing: every write and command of it
+  reaches the page as a gate, and the page refuses them all in Plan.
 
 ## Phase 4 — the Run in Code mode (1.5.x)
 
