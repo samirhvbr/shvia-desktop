@@ -878,13 +878,17 @@ fn build_shvia_window(
         // tarja junto ficava indicador em dobro (visto no macOS, 07/07).
         .on_page_load(|webview, payload| {
             // A new document is starting in this window: the page that owned the
-            // window's agent is gone — reload (menu, offline bar), a link, a redirect.
-            // Nothing re-attaches to a running sidecar, and the Run plan says an armed
-            // run is never restored on reload (docs/code/RUN-20260910.md, Q1). Until
-            // 1.6.11 the agent kept running with no owner: auto approval kept editing
-            // files, and its stdout was eval'd into whatever page loaded next.
+            // window's agents is gone — reload (menu, offline bar), a link, a redirect.
+            //
+            // Until 1.6.11 the agent kept running with no owner: auto approval kept
+            // editing files, and its stdout was eval'd into whatever page loaded next.
+            // 1.6.11 answered by killing it. Since 1.8.1 (ADR-037, the owner on
+            // 26/09/2026: "a reload must not stop what I asked") the agents whose page
+            // declared it re-attaches are LET GO OF instead: they keep working, their
+            // lines go to a log and not into the next page, and the next page of this
+            // window takes them back (`sessions`/`attach`). The others end as before.
             if let PageLoadEvent::Started = payload.event() {
-                webview.app_handle().state::<code_bridge::Sidecars>().kill_one(webview.label());
+                webview.app_handle().state::<code_bridge::Sidecars>().soltar_janela(webview.label());
                 return;
             }
             if let PageLoadEvent::Finished = payload.event() {
@@ -2229,22 +2233,25 @@ mod tests {
         assert!(tray.contains(&["\"tray-quit\" => app", ".exit(0)"].concat()), "tray.rs lost the Linux quit handler");
     }
 
-    /// 🔴 A reload or a navigation must end the window's agent (1.6.11). SOURCE check,
-    /// declared as such: a unit test cannot drive a webview's page load. It guards the
-    /// decision — the page-load hook handles the start of a new document by killing that
-    /// window's sidecar — so removing it fails here instead of in someone's working tree.
+    /// 🔴 A reload or a navigation lets go of the window's agents (1.8.1, ADR-037), and never
+    /// leaves them eval'ing into the next page. SOURCE check, declared as such: a unit test cannot
+    /// drive a webview's page load. It guards the decision — the page-load hook handles the start
+    /// of a new document with `soltar_janela` (resumable sessions detached, the rest ended) — so
+    /// going back to the kill of 1.6.11, or dropping the call, fails here. What `soltar_janela`
+    /// does is proved on real processes in `tests_retomada` (sessao.rs).
     #[test]
-    fn documento_novo_na_janela_encerra_o_agente_dela() {
+    fn documento_novo_na_janela_solta_os_agentes_dela() {
         let fonte = include_str!("lib.rs");
         let gancho = ["on_page_load", "(|webview, payload| {"].concat();
         let i = fonte.find(&gancho).expect("the page-load hook moved: update this ruler");
-        let corpo = &fonte[i..i + 1200.min(fonte.len() - i)];
+        let corpo = &fonte[i..i + 1600.min(fonte.len() - i)];
         let inicio = ["PageLoadEvent", "::Started"].concat();
-        let mata = ["kill_one(", "webview.label())"].concat();
+        let solta = ["soltar_janela(", "webview.label())"].concat();
         let a = corpo.find(&inicio).expect("the hook no longer handles the start of a document");
-        let b = corpo.find(&mata).expect("the hook no longer kills the window's sidecar");
-        assert!(a < b, "the kill must be in the Started branch");
+        let b = corpo.find(&solta).expect("the hook no longer lets go of the window's agents");
+        assert!(a < b, "the let-go must be in the Started branch");
         let fim = ["PageLoadEvent", "::Finished"].concat();
-        assert!(corpo.find(&fim).is_some_and(|f| b < f), "the kill must come before the Finished branch");
+        assert!(corpo.find(&fim).is_some_and(|f| b < f), "the let-go must come before the Finished branch");
+        assert!(!corpo[a..b].contains(&["kill_", "one("].concat()), "the Started branch kills the window's agents again");
     }
 }

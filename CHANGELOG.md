@@ -1,5 +1,58 @@
 # Changelog
 
+## 1.8.1 - an agent survives a reload of its window, and the next page takes it back
+
+The owner, 26/09/2026: *"um reload na tela … ao voltar, o agente parou"*. 1.8.0 (several sessions
+per window) was half of it: a new document in the window (the reload menu, the offline bar,
+SHVIA-WEB's locale change, a link to an admin page) still kills every agent of the window, a
+decision of 1.6.11. Now the shell lets go of the agent and the next page takes it back.
+
+This was meant to ship inside 1.8.0 as its second commit (PR #81). #81 was stacked on #79 and was
+merged into #79's branch instead of `master`, so 1.8.0 was published without it. It ships here,
+unchanged apart from the version numbers it cites.
+
+- **A session can be resumable.** `spawn({..., sessao, retomavel: true, meta: {projectId,
+  rotulo}})`. The page promises it will come back for the session after a reload. Only a named
+  session can be resumable, and `meta` passes filtered (`info_da_sessao`): a project id of
+  `[A-Za-z0-9_-]` and a name with no control character.
+- **A new document lets go of the resumable sessions** (`soltar_janela`, called from the
+  page-load hook where `kill_one` was). They keep working, and the others end as before.
+- **Every engine line is numbered and logged** (`Registro`, up to 8 MB per session), and eval'd
+  only while a page is attached. Each event carries `evt.seq`. Nothing reaches a page that did not
+  ask: the defect 1.6.11 closed stays closed.
+- **The next page takes the sessions back.** `sessions()` lists the window's resumable sessions:
+  - `seq`: the last line number;
+  - `ocupado`: whether a turn is in flight;
+  - `abertos`: the gates and Run stops still unanswered, as the engine sent them;
+  - `info`: project, name, folder, engine and approval mode.
+
+  `attach(sessao, desde)` replays the lines after `desde`, in order, then goes live. The answer
+  says `lacuna` when some of them were dropped from the log.
+- **No page for a while.** After 15 s, a gate or Run stop still waiting produces one native notice
+  (*"O agente está esperando você"*), and so does a turn that ended (*"O agente terminou o que
+  você pediu"*). An idle agent that no page came back for is ended after 10 minutes. An agent
+  that ended on its own keeps its `exited` for 30 minutes, for the next page to learn it.
+- **A line from a generation that is no longer the live one is dropped.** Until now, a respawned
+  or ended engine's last lines still reached the page, where they could only be taken for the new
+  session's.
+- `recursos.retomada` tells the page the shell can do this. A page that does not declare
+  `retomavel` sees a reload end its agents as before.
+
+Measured: `cargo test --locked` gives 167 passed and 1 ignored (the live Codex smoke). Nine tests are
+new (`tests_retomada`), and the engine side runs real processes:
+
+- a reload lets go of the resumable session, ends the other, and leaves another window alone;
+- the page that comes back gets what it missed, in order, and nothing it had;
+- a line of an old generation stays out of the new one's log;
+- `ocupado` and the open requests follow both directions;
+- a full log drops the oldest lines and says so;
+- an end with no page waits for the next page, and an end with a page does not linger;
+- the pass ends the idle session, notifies the waiting one once and spares the working one;
+- the end-of-turn notice comes only after a reload's worth of time;
+- `meta` passes filtered.
+
+The ruler on the page-load hook now guards the let-go (`documento_novo_na_janela_solta_os_agentes_dela`).
+
 ## 1.8.0 - a window keeps one agent per session, so switching project stops killing the one at work
 
 The owner asked for it on 25/09/2026: in Code mode, give a command, go to another project or

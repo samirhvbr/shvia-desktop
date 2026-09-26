@@ -59,9 +59,11 @@ pub const BRIDGE_JS: &str = r#"(function () {
   }
   window.__shviaCode = {
     // sessão do agente
-    spawn: function (o) { return post('spawn', o || {}); },   // erro de motor ausente vem {error, codigo} — ver claudeModels;  {projectDir, apiKey, model?, effort?, url?, engine?, modelDoClaude?, accountId?, autonomy?}  autonomy:{stopByHost, maxIterations, maxCostUsd} = a Run (RUN-20260910), só no motor claude;  engine:'claude' = assinatura; modelDoClaude:true = model/effort vieram de claudeModels(), nao do gateway; accountId = perfil de conta (ver claudeAccounts)
+    spawn: function (o) { return post('spawn', o || {}); },   // erro de motor ausente vem {error, codigo} — ver claudeModels;  {projectDir, apiKey, model?, effort?, url?, engine?, modelDoClaude?, accountId?, autonomy?}  autonomy:{stopByHost, maxIterations, maxCostUsd} = a Run (RUN-20260910), só no motor claude;  engine:'claude' = assinatura; modelDoClaude:true = model/effort vieram de claudeModels(), nao do gateway; accountId = perfil de conta (ver claudeAccounts); sessao + retomavel:true + meta:{projectId, rotulo} = a sessão sobrevive a um reload e a página seguinte a retoma (recursos.retomada)
     send:  function (o, sessao) { return post('send', sessao ? { payload: o, sessao: sessao } : { payload: o }); }, // {type:'user',text} | {id,decision}; sessao = which session (recursos.sessoes)
     kill:  function (sessao) { return post('kill', sessao ? { sessao: sessao } : null); }, // sem sessao = a sessão única de antes da 1.8.0
+    sessions: function () { return post('sessions'); }, // {janela, sessoes:[{sessao, seq, ocupado, encerrada, anexada, abertos, info}]} — as retomáveis desta janela (recursos.retomada)
+    attach: function (sessao, desde) { return post('attach', { sessao: sessao, desde: desde || 0 }); }, // {ate, lacuna, encerrada}; as linhas depois de `desde` chegam em seguida pelo onEvent
     onEvent: function (cb) { if (typeof cb === 'function') listeners.push(cb); },
     // pasta / vínculo
     pickFolder: function () { return post('pickFolder'); },
@@ -208,10 +210,15 @@ pub const BRIDGE_JS: &str = r#"(function () {
     //           carries `evt.sessao`. Switching project no longer has to kill the agent that
     //           is working: each project keeps its own. Without a name everything is the one
     //           session of before, so a page that never reads this flag sees no change.
-    recursos: { imagem: true, conta: true, run: true, sessoes: true },
+    //   retomada: an agent survives a new document in the window (1.8.1). A session spawned
+    //           with `retomavel: true` is let go of on a reload instead of ended; the next
+    //           page asks `sessions()` and `attach(sessao, desde)`, and every event carries
+    //           `evt.seq`, the number the page hands back as `desde`. Without the flag the
+    //           page spawns as before and a reload ends its agents.
+    recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true },
     // chamados pelo Rust (eval):
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
-    _emit: function (evt, sessao) { if (sessao && evt && typeof evt === 'object') evt.sessao = sessao; for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }
+    _emit: function (evt, sessao, seq) { if (evt && typeof evt === 'object') { if (sessao) evt.sessao = sessao; if (seq) evt.seq = seq; } for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }
   };
   window.__shviaDesktop = wk ? { platform: 'webkit', bridge: 'webkit' }
                              : { platform: 'windows', bridge: 'webview2' };
