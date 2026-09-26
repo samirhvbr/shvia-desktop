@@ -158,6 +158,10 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             window.app_handle().state::<Sidecars>().kill_sessao(&chave(window.label(), &sessao));
             reply(window, &req, true, serde_json::json!({ "ok": true }));
         }
+        // A page that loads after a reload takes its window's agents back (1.8.0): it asks which
+        // are there, then attaches each one from the last line it handled. Both read memory only.
+        "sessions" => listar_sessoes(window, &req),
+        "attach" => anexar_sessao(window, &req, &v),
         "pickFolder" => pick_folder(window, req),
         "pickFiles" => pick_files(window, req),
         "saveFile" => save_file(window, req, &v),

@@ -2147,3 +2147,86 @@ being rewritten, and says so.
 - **Run the bundled runner directly, never an installed copy:** no drift at all, but the Claude
   runner needs `node_modules` (the Agent SDK) written somewhere outside the read-only bundle. That
   is an install anyway, under another name.
+
+---
+
+## ADR-037 — A reload does not stop the agent: the page lets go of it and the next page takes it back
+
+- **Date:** 26/09/2026 · **Status:** **Accepted**, by the owner's request in the session ("mesmo
+  que eu navegue em outros projetos, esse projeto não pare o que eu pedi … um reload na tela")
+- **Supersedes:** the decision of 1.6.11 that a new document in the window ends its agent (the
+  comment in `lib.rs`'s page-load hook and the ruler `documento_novo_na_janela_encerra_o_agente_dela`)
+
+### Context
+
+1.8.0's first half (PR #78) keeps one engine process per **session** of a window, so switching
+project in Code mode stops killing the agent at work. A new document in the window still ended
+every one of them: the reload menu, the offline bar, a language change (SHVIA-WEB's locale picker
+calls `location.reload()`), a link to an admin page. The owner's complaint named the reload
+explicitly.
+
+1.6.11 had a reason: until then the agent outlived its page **with no owner**. Auto approval kept
+editing files, and its stdout was eval'd into whatever page loaded next. Killing it removed both.
+But the process was never the problem — the page losing sight of it was. And the page is where
+the approvals, the queue, the Run and the record are decided; moving them into the shell would
+mean a second implementation of the approval policy and the Run's reducer, in a process that has
+no authenticated session to record a turn or ask the orchestrator.
+
+### Decision
+
+The shell keeps, per session, what a page needs to take the session back (`Registro` in
+`code_bridge/sessao.rs`), and a new document **lets go of** the sessions whose page declared, at
+spawn, that it re-attaches (`retomavel: true`, only for a named session):
+
+| | before (1.6.11–1.7.3) | 1.8.0 |
+|---|---|---|
+| a new document starts in the window | every agent of the window is killed | resumable agents are detached and keep working; the others are killed |
+| a line the engine prints | eval'd into the page | numbered and logged (8 MB per session); eval'd only while a page is attached |
+| the next page | starts from nothing | `sessions()` lists them; `attach(sessao, desde)` replays the lines after `desde`, then goes live |
+| a gate while no page is attached | — | waits: `anna` blocks on stdin for the decision and both runners hold it in a map, none with a deadline. A native notice after 15 s |
+| an idle agent nobody came back for | — | ended after 10 minutes |
+| an agent that ends while detached | — | its `exited` is kept 30 minutes for the next page |
+| closing the window, quitting the app | ends every agent | unchanged |
+
+The page is the one that decides again once it is back: it answers the gates that waited with the
+same approval policy, answers or re-asks the Run's held stop, drains the queue, and records the
+turn. What a page carries across the reload (the queue, the Run's state, the answer being
+streamed, the cards waiting) is its own business, in SHVIA-WEB
+(`docs/FRONTEND/MODO-CODE-SEGUNDO-PLANO.md`).
+
+The two defects 1.6.11 closed stay closed:
+
+- **Nothing is eval'd into a page that did not ask.** Detached, lines only go to the log. A page
+  receives them after it calls `attach`, which needs the bridge token (only pages of
+  `SERVER_HOSTS` have it) and only reaches the sessions of its own window.
+- **No agent without an owner.** The next page of the window lists and shows every resumable
+  agent, and can stop any of them. A page that never comes back leaves the agent working until
+  it is idle, then it is ended; one waiting for a person produces a native notice; closing the
+  window asks first, as before (`tem_sessao`).
+
+### Consequences
+
+- A reload, a locale change or a trip to an admin page no longer stops an agent at work. The
+  engine keeps its context: the conversation continues where it was.
+- Up to 8 MB of output per session is held in memory (8 sessions per window at most). Past it the
+  oldest lines go, and the page is told (`lacuna`), because the record of that answer may be
+  incomplete.
+- While no dashboard is loaded, nothing answers a gate. An agent that needs a decision waits, and
+  the person is told natively. An agent in "Auto" mode keeps going only as far as the engine's
+  own policy allows it (the Claude runner decides reads and in-project edits itself).
+- A page of an old SHVIA-WEB never declares `retomavel`, so its agents end on a reload as before.
+- A navigation that becomes a download fires the start of a load and leaves the old page alive.
+  The page recovers by checking, every few seconds, that its sessions are still attached, and
+  re-attaching the ones that are not.
+
+### Alternatives considered
+
+- **Move the queue, the approvals and the Run into the shell** (what an analysis pasted into the
+  session proposed): the page would only watch. It works without any page loaded, but it
+  duplicates `approvalPlan` and the Run's reducer in Rust, and the shell cannot record a turn or
+  ask `/orchestrate` without the web session's cookie. Two definitions of the approval policy is
+  exactly what ADR-032 exists to prevent.
+- **Keep the process and re-attach without a log:** every line printed during the reload would be
+  lost, including a gate the new page would never see, so the agent would wait forever.
+- **Keep ending the agent on a reload, and warn before reloading:** the reloads that matter do not
+  ask (the offline bar, a locale change, the menu).
