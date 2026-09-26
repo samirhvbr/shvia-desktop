@@ -21,8 +21,8 @@ of the ones off screen) is a SHVIA-WEB change, and it switches on only where thi
 - **A page that names no session gets exactly the old behaviour.** The empty name is the old
   key (the label), and the shim adds no field, so today's page and a page that never reads the
   flag behave as before.
-- **A reload or closing the window still ends every session of that window**, and only that
-  window's. The close guard (`tem_sessao`) now counts any of them.
+- **Closing the window ends every session of that window**, and only that window's. The close
+  guard (`tem_sessao`) now counts any of them. (A reload no longer does: see below.)
 - **The session name is untrusted input**: at most 64 characters of `[A-Za-z0-9_.:-]`
   (`sessao_valida`), refused with `sessao_invalida` otherwise, so it can neither break the key
   nor the `_emit` string.
@@ -41,6 +41,55 @@ processes:
 - only a new session counts against the cap;
 - a name is refused when it could break the key or the `_emit` string;
 - a page that names no session gets the old key.
+
+### An agent survives a reload of its window (ADR-037)
+
+The owner, 26/09/2026: *"um reload na tela … ao voltar, o agente parou"*. Several sessions per
+window was half of it: a new document in the window (the reload menu, the offline bar, SHVIA-WEB's
+locale change, a link to an admin page) still killed every agent of the window, a decision of
+1.6.11. Now the shell lets go of the agent and the next page takes it back.
+
+- **A session can be resumable.** `spawn({..., sessao, retomavel: true, meta: {projectId,
+  rotulo}})`. The page promises it will come back for the session after a reload. Only a named
+  session can be resumable, and `meta` passes filtered (`info_da_sessao`): a project id of
+  `[A-Za-z0-9_-]` and a name with no control character.
+- **A new document lets go of the resumable sessions** (`soltar_janela`, called from the
+  page-load hook where `kill_one` was). They keep working, and the others end as before.
+- **Every engine line is numbered and logged** (`Registro`, up to 8 MB per session), and eval'd
+  only while a page is attached. Each event carries `evt.seq`. Nothing reaches a page that did not
+  ask: the defect 1.6.11 closed stays closed.
+- **The next page takes the sessions back.** `sessions()` lists the window's resumable sessions:
+  - `seq`: the last line number;
+  - `ocupado`: whether a turn is in flight;
+  - `abertos`: the gates and Run stops still unanswered, as the engine sent them;
+  - `info`: project, name, folder, engine and approval mode.
+
+  `attach(sessao, desde)` replays the lines after `desde`, in order, then goes live. The answer
+  says `lacuna` when some of them were dropped from the log.
+- **No page for a while.** After 15 s, a gate or Run stop still waiting produces one native notice
+  (*"O agente está esperando você"*), and so does a turn that ended (*"O agente terminou o que
+  você pediu"*). An idle agent that no page came back for is ended after 10 minutes. An agent
+  that ended on its own keeps its `exited` for 30 minutes, for the next page to learn it.
+- **A line from a generation that is no longer the live one is dropped.** Until now, a respawned
+  or ended engine's last lines still reached the page, where they could only be taken for the new
+  session's.
+- `recursos.retomada` tells the page the shell can do this. A page that does not declare
+  `retomavel` sees a reload end its agents as before.
+
+Measured: `cargo test --locked`: see the PR. Nine tests are new (`tests_retomada`), and the engine
+side runs real processes:
+
+- a reload lets go of the resumable session, ends the other, and leaves another window alone;
+- the page that comes back gets what it missed, in order, and nothing it had;
+- a line of an old generation stays out of the new one's log;
+- `ocupado` and the open requests follow both directions;
+- a full log drops the oldest lines and says so;
+- an end with no page waits for the next page, and an end with a page does not linger;
+- the pass ends the idle session, notifies the waiting one once and spares the working one;
+- the end-of-turn notice comes only after a reload's worth of time;
+- `meta` passes filtered.
+
+The ruler on the page-load hook now guards the let-go (`documento_novo_na_janela_solta_os_agentes_dela`).
 
 ## 1.7.3 - the Windows build names its --config file as literal text, which npm's npx.ps1 can re-run
 
