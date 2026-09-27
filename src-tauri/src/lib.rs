@@ -425,11 +425,11 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
     '.shvia-about-env{margin:0 0 22px;font:400 .7rem/1.5 var(--font-mono,Consolas,monospace);color:var(--tx-dim,#97A3B5)}',
     '.shvia-about-actions{display:flex;justify-content:flex-end;gap:10px}',
     '.shvia-about-actions button{font:500 .8rem/1 var(--font-sans,system-ui,sans-serif);padding:9px 16px;border-radius:10px;cursor:pointer;transition:background .15s ease-out,color .15s ease-out}',
-    '.shvia-about-actions button:focus-visible{outline:2px solid var(--accent,#34B3EC);outline-offset:2px}',
+    '.shvia-about-actions button:focus-visible{outline:2px solid var(--accent,#2350E6);outline-offset:2px}',
     '#shvia-about-copy{background:transparent;border:1px solid var(--line-2,rgba(150,170,200,.18));color:var(--tx-dim,#97A3B5)}',
     '#shvia-about-copy:hover{background:var(--bg-item-hover,rgba(255,255,255,.05));color:var(--tx,#ECF1F8)}',
-    '#shvia-about-close{background:var(--azure-soft,rgba(52,179,236,.12));border:1px solid rgba(52,179,236,.35);color:var(--azure-strong,#5FC8F5)}',
-    '#shvia-about-close:hover{background:rgba(52,179,236,.22)}',
+    '#shvia-about-close{background:var(--azure-soft,rgba(35,80,230,.14));border:1px solid rgba(110,151,255,.38);color:var(--azure-strong,#6E97FF)}',
+    '#shvia-about-close:hover{background:rgba(35,80,230,.24)}',
     '@media (prefers-reduced-motion:reduce){#shvia-about-overlay,.shvia-about-card,.shvia-about-actions button{transition:none}}'
   ].join('');
   var style = document.getElementById('shvia-about-style');

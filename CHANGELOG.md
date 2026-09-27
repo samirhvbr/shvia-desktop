@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.1 - Apply the bipartite Shield identity to the ShvIA desktop app
+
+The desktop splash and native package icons now use ShvIA's selected Shield identity:
+the graphite and titanium shell, cobalt left hemisphere and six orchestration nodes.
+The previous Portal vectors and every replaced native icon are preserved under
+`brand/versao2-portal/`.
+
 ## 1.8.0 - a window keeps one agent per session, so switching project stops killing the one at work
 
 The owner asked for it on 25/09/2026: in Code mode, give a command, go to another project or

@@ -270,11 +270,11 @@ const MODAL_JS: &str = r#"(function () {
     '.shvia-diag-dica{margin:6px 0 0;grid-column:2;font:400 .78rem/1.5 var(--font-sans,system-ui,sans-serif);color:var(--tx-dim,#97A3B5)}',
     '.shvia-diag-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}',
     '.shvia-diag-actions button{font:500 .8rem/1 var(--font-sans,system-ui,sans-serif);padding:9px 16px;border-radius:10px;cursor:pointer;transition:background .15s ease-out,color .15s ease-out}',
-    '.shvia-diag-actions button:focus-visible{outline:2px solid var(--accent,#34B3EC);outline-offset:2px}',
+    '.shvia-diag-actions button:focus-visible{outline:2px solid var(--accent,#2350E6);outline-offset:2px}',
     '#shvia-diag-copy{background:transparent;border:1px solid var(--line-2,rgba(150,170,200,.18));color:var(--tx-dim,#97A3B5)}',
     '#shvia-diag-copy:hover{background:var(--bg-item-hover,rgba(255,255,255,.05));color:var(--tx,#ECF1F8)}',
-    '#shvia-diag-close{background:var(--azure-soft,rgba(52,179,236,.12));border:1px solid rgba(52,179,236,.35);color:var(--azure-strong,#5FC8F5)}',
-    '#shvia-diag-close:hover{background:rgba(52,179,236,.22)}',
+    '#shvia-diag-close{background:var(--azure-soft,rgba(35,80,230,.14));border:1px solid rgba(110,151,255,.38);color:var(--azure-strong,#6E97FF)}',
+    '#shvia-diag-close:hover{background:rgba(35,80,230,.24)}',
     '@media (prefers-reduced-motion:reduce){#shvia-diag-overlay,.shvia-diag-card,.shvia-diag-actions button{transition:none}}'
   ].join('');
   var style = document.getElementById('shvia-diag-style');
