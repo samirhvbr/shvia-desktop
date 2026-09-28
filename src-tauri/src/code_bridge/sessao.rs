@@ -1,9 +1,13 @@
 //! The agent sessions: one engine process per session of a window (`Sidecars`), started by
 //! `spawn` with the fence, the account and the Run's flags, fed by `send`, and ended politely
-//! before it is killed (`encerrar_com_prazo`). A window that reloads or closes ends all of its
-//! agents. Split out of `code_bridge.rs` in 1.6.41; several sessions per window since 1.8.0.
+//! before it is killed (`encerrar_com_prazo`). A window that closes ends all of its agents; a
+//! window that loads a new document lets go of the ones the page declared resumable and ends
+//! the rest (`soltar_janela`), and the next page picks them up (`listar`, `anexar`). Split out of
+//! `code_bridge.rs` in 1.6.41; several sessions per window since 1.8.0, and surviving a reload since 1.8.2.
 
 use super::*;
+use std::collections::VecDeque;
+use std::time::{Duration, Instant};
 
 /// One engine process of one session of a window. `gen` is the session's generation: the
 /// stdout thread uses it to know whether it is still the live session under its key.
@@ -90,14 +94,199 @@ pub(super) fn sessao_valida(sessao: &str) -> bool {
     sessao.len() <= 64 && sessao.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-'))
 }
 
+/// How much of one session's output the shell keeps for a page that loads again (1.8.2). A
+/// reload needs only the seconds between the old page's last event and the new page's return,
+/// but a person may leave the dashboard for an admin page while the agent works. Past this the
+/// oldest lines go, and `anexar` says so (`lacuna`) instead of pretending the output is whole.
+pub(super) const LOG_MAX_BYTES: usize = 8 * 1024 * 1024;
+/// An idle agent that no page came back for is ended after this. A working one is never ended
+/// for being alone: finishing what it was asked is the point of surviving the reload.
+pub(super) const OCIOSA_SEM_PAGINA: Duration = Duration::from_secs(10 * 60);
+/// A session that ended while no page was attached is kept this long, so the next page can
+/// still learn how it ended (the `exited` line is in its log).
+pub(super) const ENCERRADA_SEM_PAGINA: Duration = Duration::from_secs(30 * 60);
+/// How long a session goes without a page before the person is told natively that it needs
+/// them or finished. Longer than a reload, so reloading never produces a notice.
+pub(super) const AVISO_APOS: Duration = Duration::from_secs(15);
+
+/// A native notice the shell owes the person about a session no page is watching.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) enum Aviso {
+    /// A gate or a Run stop has waited `AVISO_APOS` for a page that is not there.
+    Esperando(String),
+    /// The turn ended while no page was attached.
+    Terminou(String),
+}
+
+/// What the shell keeps of one session so that a page loading again can pick it up (1.8.2).
+///
+/// Until this, a new document in the window killed its agents (1.6.11): nothing could re-attach,
+/// so a session the page could no longer see was an agent with no owner. The owner asked on
+/// 26/09/2026 that a reload stop nothing. The engine process already outlives the page; what did
+/// not was the page's view of it. This is that view, kept where the process is:
+///
+/// - every line the engine printed, **numbered** (`seq`), in a bounded log. The page records the
+///   last number it handled and asks for what came after, so a line eval'd into a document that
+///   was already going away is not lost, and a line it already had is not handled twice;
+/// - whether a turn is in flight (`ocupado`) and which gate or Run stop is still unanswered
+///   (`abertos`), for a page that comes back with nothing of its own (no `sessionStorage`);
+/// - whether a page is attached (`anexada`). Detached, lines are logged and not eval'd: the
+///   next document is some page that did not ask for them.
+pub(super) struct Registro {
+    gen: u64,
+    /// The page promised, at spawn, to re-attach after a reload. Without it a new document ends
+    /// the session, as before 1.8.2: an old page never comes back for it.
+    retomavel: bool,
+    /// What the page needs to serve the session again with nothing of its own: the project, its
+    /// name, the folder, the engine and the approval mode it was started with.
+    info: serde_json::Value,
+    seq: u64,
+    log: VecDeque<(u64, String)>,
+    bytes: usize,
+    anexada: bool,
+    solta_desde: Option<Instant>,
+    ocupado: bool,
+    abertos: Vec<(String, String, Instant)>,
+    encerrada: bool,
+    avisou_espera: bool,
+}
+
+impl Registro {
+    fn novo(gen: u64, retomavel: bool, info: serde_json::Value) -> Self {
+        Registro {
+            gen,
+            retomavel,
+            info,
+            seq: 0,
+            log: VecDeque::new(),
+            bytes: 0,
+            anexada: true,
+            solta_desde: None,
+            ocupado: false,
+            abertos: Vec::new(),
+            encerrada: false,
+            avisou_espera: false,
+        }
+    }
+
+    fn rotulo(&self) -> String {
+        self.info.get("rotulo").and_then(|r| r.as_str()).unwrap_or_default().to_string()
+    }
+
+    /// One line the engine printed: numbered, logged, and read for the state a bare page needs.
+    /// Returns its number, and the notice it deserves when no page is attached.
+    fn anotar_saida(&mut self, linha: &str) -> (u64, Option<Aviso>) {
+        self.seq += 1;
+        let v: Option<serde_json::Value> = serde_json::from_str(linha).ok();
+        let tipo = v.as_ref().and_then(|v| v.get("type")).and_then(|t| t.as_str()).unwrap_or_default();
+        let mut aviso = None;
+        match tipo {
+            "gate_request" | "stop_request" => {
+                self.ocupado = true;
+                if let Some(id) = v.as_ref().and_then(|v| v.get("id")).and_then(|i| i.as_str()) {
+                    self.abertos.retain(|(i, _, _)| i != id);
+                    self.abertos.push((id.to_string(), linha.to_string(), Instant::now()));
+                }
+            }
+            // A closed turn has nothing left open: the engine answered or gave up on each gate.
+            "turn_done" | "error" => {
+                self.ocupado = false;
+                self.abertos.clear();
+                if tipo == "turn_done" && !self.anexada && self.solta_desde.is_some_and(|t| t.elapsed() >= AVISO_APOS) {
+                    aviso = Some(Aviso::Terminou(self.rotulo()));
+                }
+            }
+            "exited" => {
+                self.ocupado = false;
+                self.abertos.clear();
+                self.encerrada = true;
+            }
+            // Output of a turn in flight. `model` (announced at start), `usage` and `warn` say
+            // nothing about whether one is.
+            "text" | "tool_call" | "tool_result" => self.ocupado = true,
+            _ => {}
+        }
+        self.bytes += linha.len();
+        self.log.push_back((self.seq, linha.to_string()));
+        while self.bytes > LOG_MAX_BYTES && self.log.len() > 1 {
+            if let Some((_, velha)) = self.log.pop_front() {
+                self.bytes -= velha.len();
+            }
+        }
+        (self.seq, aviso)
+    }
+
+    /// One line the page sent: a message starts a turn, a decision closes its gate or stop.
+    fn anotar_entrada(&mut self, linha: &str) {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(linha) else {
+            return;
+        };
+        if v.get("type").and_then(|t| t.as_str()) == Some("user") {
+            self.ocupado = true;
+        }
+        if let (Some(id), Some(_)) = (v.get("id").and_then(|i| i.as_str()), v.get("decision")) {
+            self.abertos.retain(|(i, _, _)| i != id);
+        }
+    }
+
+    /// The lines after `desde`, and whether some of them are gone (`lacuna`): the log dropped
+    /// lines the page never had.
+    fn depois_de(&self, desde: u64) -> (Vec<(u64, String)>, bool) {
+        let eventos: Vec<(u64, String)> = self.log.iter().filter(|(s, _)| *s > desde).cloned().collect();
+        let primeiro = self.log.front().map(|(s, _)| *s).unwrap_or(self.seq + 1);
+        (eventos, desde < self.seq && primeiro > desde + 1)
+    }
+
+    /// The session as `listar` shows it.
+    fn como_json(&self, sessao: &str) -> serde_json::Value {
+        let abertos: Vec<serde_json::Value> = self
+            .abertos
+            .iter()
+            .filter_map(|(_, l, _)| serde_json::from_str(l).ok())
+            .collect();
+        serde_json::json!({
+            "sessao": sessao,
+            "seq": self.seq,
+            "ocupado": self.ocupado,
+            "encerrada": self.encerrada,
+            "anexada": self.anexada,
+            "abertos": abertos,
+            "info": self.info,
+        })
+    }
+}
+
+/// What `anexar` gives the page that takes a session back (1.8.2).
+#[derive(Debug)]
+pub(super) struct Retomada {
+    /// The lines after the page's `desde`, in order, to be eval'd through `_emit`.
+    pub(super) eventos: Vec<(u64, String)>,
+    /// The number of the last line.
+    pub(super) ate: u64,
+    /// Some lines after `desde` were dropped from the log.
+    pub(super) lacuna: bool,
+    /// The session had ended: the page learned it now, and the shell forgot it.
+    pub(super) encerrada: bool,
+}
+
+/// The name part of a key (`chave`), for `listar`.
+fn sessao_da_chave<'a>(chave: &'a str, label: &str) -> Option<&'a str> {
+    chave.strip_prefix(label).and_then(|r| r.strip_prefix('\u{1f}'))
+}
+
 /// Registro de sidecars por sessão de janela (`chave`) — em Tauri managed state.
 /// Cada entrada fica em `Option<Sidecar>` para que `send_line` consiga TIRAR
 /// o sidecar do mapa sob o lock, escrever no stdin FORA do lock (o pipe pode
 /// bloquear se o anna estiver ocupado), e devolver a entrada no lock de novo.
+///
+/// `regs` is the page's view of each session (`Registro`, 1.8.2), in its own map on purpose:
+/// `send_line` takes the `Sidecar` out of `map` while it writes, and the stdout thread must be
+/// able to log a line during that write. The two locks are never held at once.
 #[derive(Default)]
 pub struct Sidecars {
     map: Mutex<HashMap<String, Option<Sidecar>>>,
     next_gen: AtomicU64,
+    regs: Mutex<HashMap<String, Registro>>,
 }
 
 impl Sidecars {
@@ -111,6 +300,9 @@ impl Sidecars {
             .ok()
             .and_then(|mut m| m.remove(chave))
             .and_then(|opt| opt);
+        if let Ok(mut regs) = self.regs.lock() {
+            regs.remove(chave);
+        }
         // Off the calling thread: this runs on "Parar" on the UI thread, and the engine gets up
         // to PRAZO_PARA_SAIR to leave on its own.
         if let Some(sc) = sc {
@@ -118,22 +310,165 @@ impl Sidecars {
         }
     }
 
-    /// Ends EVERY session of one window: it closed, or a new document started in it (reload).
-    /// Nothing re-attaches to a running engine, so a session the page can no longer see is an
-    /// agent with no owner.
+    /// Ends EVERY session of one window: it closed. (A new document in it is `soltar_janela`.)
     pub fn kill_one(&self, label: &str) {
+        if let Ok(mut regs) = self.regs.lock() {
+            regs.retain(|k, _| !da_janela(k, label));
+        }
+        self.matar_da_janela(label, |_| true);
+    }
+
+    /// Removes and ends the sessions of `label` that `alvo` picks, off the calling thread.
+    fn matar_da_janela(&self, label: &str, alvo: impl Fn(&str) -> bool) {
         let varios: Vec<Sidecar> = self
             .map
             .lock()
             .ok()
             .map(|mut m| {
-                let chaves: Vec<String> = m.keys().filter(|k| da_janela(k, label)).cloned().collect();
+                let chaves: Vec<String> =
+                    m.keys().filter(|k| da_janela(k, label) && alvo(k)).cloned().collect();
                 chaves.into_iter().filter_map(|k| m.remove(&k).flatten()).collect()
             })
             .unwrap_or_default();
         if !varios.is_empty() {
             std::thread::spawn(move || encerrar_varios_com_prazo(varios, PRAZO_PARA_SAIR));
         }
+    }
+
+    /// A new document started in window `label` (reload, a link, a redirect) (1.8.2).
+    ///
+    /// The sessions the page declared resumable are let go of, not ended: they keep working,
+    /// their lines go to the log instead of into whatever page loads next, and the next page of
+    /// this window that knows them picks them up (`anexar`). Every other session of the window
+    /// ends, as every one did before 1.8.2 — a page that did not declare it would re-attach
+    /// never comes back for its agent. Returns how many were let go of.
+    pub fn soltar_janela(&self, label: &str) -> usize {
+        let agora = Instant::now();
+        let mut retomaveis: Vec<String> = Vec::new();
+        if let Ok(mut regs) = self.regs.lock() {
+            regs.retain(|k, r| {
+                if !da_janela(k, label) {
+                    return true;
+                }
+                if r.retomavel {
+                    if r.anexada {
+                        r.anexada = false;
+                        r.solta_desde = Some(agora);
+                        r.avisou_espera = false;
+                    }
+                    retomaveis.push(k.clone());
+                    true
+                } else {
+                    false
+                }
+            });
+        }
+        self.matar_da_janela(label, |k| !retomaveis.iter().any(|r| r == k));
+        retomaveis.len()
+    }
+
+    /// The resumable sessions of window `label`, for the page that just loaded in it.
+    pub(super) fn listar(&self, label: &str) -> Vec<serde_json::Value> {
+        let Ok(regs) = self.regs.lock() else {
+            return Vec::new();
+        };
+        let mut lista: Vec<(u64, serde_json::Value)> = regs
+            .iter()
+            .filter(|(_, r)| r.retomavel)
+            .filter_map(|(k, r)| sessao_da_chave(k, label).map(|s| (r.gen, r.como_json(s))))
+            .collect();
+        lista.sort_by_key(|(gen, _)| *gen);
+        lista.into_iter().map(|(_, v)| v).collect()
+    }
+
+    /// The page of window `label` takes session `sessao` back from line `desde` on. A session
+    /// that had already ended is forgotten here: this was the page learning it. `None`: no such
+    /// session in this window.
+    pub(super) fn anexar(&self, label: &str, sessao: &str, desde: u64) -> Option<Retomada> {
+        let k = chave(label, sessao);
+        let mut regs = self.regs.lock().ok()?;
+        let r = regs.get_mut(&k)?;
+        let (eventos, lacuna) = r.depois_de(desde);
+        r.anexada = true;
+        r.solta_desde = None;
+        r.avisou_espera = false;
+        let (ate, encerrada) = (r.seq, r.encerrada);
+        if encerrada {
+            regs.remove(&k);
+        }
+        Some(Retomada { eventos, ate, lacuna, encerrada })
+    }
+
+    /// A line the engine printed, logged under its session. `None` = not the live generation of
+    /// that key (respawned or ended): the line is a leftover, and nobody is told. Otherwise its
+    /// number, whether a page is attached to receive it now, and the notice it deserves.
+    pub(super) fn anotar_saida(&self, chave: &str, gen: u64, linha: &str) -> Option<(u64, bool, Option<Aviso>)> {
+        let mut regs = self.regs.lock().ok()?;
+        let r = regs.get_mut(chave).filter(|r| r.gen == gen)?;
+        let (seq, aviso) = r.anotar_saida(linha);
+        Some((seq, r.anexada, aviso))
+    }
+
+    /// The session ended on its own: its `exited` line is logged like any other. With a page
+    /// attached the page receives it now and the session is forgotten; without one it is kept
+    /// (`ENCERRADA_SEM_PAGINA`) for the next page to learn how it ended.
+    pub(super) fn anotar_fim(&self, chave: &str, gen: u64, linha: &str) -> Option<(u64, bool)> {
+        let mut regs = self.regs.lock().ok()?;
+        let r = regs.get_mut(chave).filter(|r| r.gen == gen)?;
+        let (seq, _) = r.anotar_saida(linha);
+        let anexada = r.anexada;
+        if anexada {
+            regs.remove(chave);
+        }
+        Some((seq, anexada))
+    }
+
+    /// A line the page sent to session `chave`.
+    pub(super) fn anotar_entrada(&self, chave: &str, linha: &str) {
+        if let Ok(mut regs) = self.regs.lock() {
+            if let Some(r) = regs.get_mut(chave) {
+                r.anotar_entrada(linha);
+            }
+        }
+    }
+
+    /// The periodic pass over the sessions no page is watching (1.8.2): the notices they owe,
+    /// the idle ones nobody came back for (ended), and the ended ones nobody learned about
+    /// (forgotten). Returns the notices; the ending happens here, off the lock.
+    pub(super) fn varrer(&self) -> Vec<Aviso> {
+        let mut avisos = Vec::new();
+        let mut ociosas: Vec<String> = Vec::new();
+        if let Ok(mut regs) = self.regs.lock() {
+            regs.retain(|k, r| {
+                let Some(desde) = r.solta_desde.filter(|_| !r.anexada) else {
+                    return true;
+                };
+                if r.encerrada {
+                    return desde.elapsed() < ENCERRADA_SEM_PAGINA;
+                }
+                if !r.ocupado && r.abertos.is_empty() && desde.elapsed() >= OCIOSA_SEM_PAGINA {
+                    ociosas.push(k.clone());
+                    return false;
+                }
+                if !r.avisou_espera && r.abertos.iter().any(|(_, _, t)| t.elapsed() >= AVISO_APOS) && desde.elapsed() >= AVISO_APOS {
+                    r.avisou_espera = true;
+                    avisos.push(Aviso::Esperando(r.rotulo()));
+                }
+                true
+            });
+        }
+        if !ociosas.is_empty() {
+            let varios: Vec<Sidecar> = self
+                .map
+                .lock()
+                .ok()
+                .map(|mut m| ociosas.iter().filter_map(|k| m.remove(k).flatten()).collect())
+                .unwrap_or_default();
+            if !varios.is_empty() {
+                std::thread::spawn(move || encerrar_varios_com_prazo(varios, PRAZO_PARA_SAIR));
+            }
+        }
+        avisos
     }
 
     /// How many sessions this window holds (the ones being created included).
@@ -169,6 +504,9 @@ impl Sidecars {
 
     /// Mata todos (saída do app — anti-órfão).
     pub fn kill_all(&self) {
+        if let Ok(mut regs) = self.regs.lock() {
+            regs.clear();
+        }
         let drained: Vec<Sidecar> = self
             .map
             .lock()
@@ -186,8 +524,19 @@ impl Sidecars {
 
     /// Registra o sidecar da sessão (nova geração), matando o anterior da MESMA chave
     /// (respawn). Devolve a geração desta sessão.
+    #[cfg(test)]
     fn insert(&self, chave: String, child: Child, stdin: ChildStdin) -> u64 {
+        self.insert_com(chave, child, stdin, false, serde_json::json!({}))
+    }
+
+    /// `insert`, with what the page declared at spawn: whether it re-attaches after a reload, and
+    /// what a bare page needs to serve the session again. The `Registro` is created here, before
+    /// the stdout thread exists, so the engine's first line always has somewhere to go.
+    fn insert_com(&self, chave: String, child: Child, stdin: ChildStdin, retomavel: bool, info: serde_json::Value) -> u64 {
         let gen = self.next_gen.fetch_add(1, Ordering::Relaxed) + 1;
+        if let Ok(mut regs) = self.regs.lock() {
+            regs.insert(chave.clone(), Registro::novo(gen, retomavel, info));
+        }
         let old = self.map.lock().ok().and_then(|mut m| {
             m.insert(
                 chave,
@@ -519,10 +868,18 @@ pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     let stderr = child.stderr.take().expect("stderr piped");
     let stdin = child.stdin.take().expect("stdin piped");
 
+    // A page that re-attaches after a reload says so, and gives what a page coming back with
+    // nothing of its own needs to serve the session again (1.8.2). Only a named session can be
+    // resumed: the single session of before has no name to be picked up by.
+    let retomavel = !sessao.is_empty() && v.get("retomavel").and_then(|x| x.as_bool()).unwrap_or(false);
+    let motor = if engine.is_empty() { "gateway" } else { engine.as_str() };
+    let info = info_da_sessao(v.get("meta"), &dir, motor, &s("approval"));
+
     // Guarda no state, matando um sidecar anterior da MESMA sessão (respawn). As outras
     // sessões da janela seguem trabalhando (1.8.0). A geração desta sessão acompanha a
     // thread de stdout (guarda o 'exited').
-    let gen = window.app_handle().state::<Sidecars>().insert(chave_sessao.clone(), child, stdin);
+    let gen = window.app_handle().state::<Sidecars>().insert_com(chave_sessao.clone(), child, stdin, retomavel, info);
+    iniciar_vigia(window.app_handle());
     // Every event carries the session it came from, so the page can file it under its project
     // while another one is on screen. Empty for the single session of before 1.8.0: the shim
     // then adds nothing, and an old page sees the events it always saw.
@@ -537,6 +894,10 @@ pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     });
 
     // stdout NDJSON → evento na página (`_emit`), no main thread (WebKit).
+    //
+    // Every line is numbered and logged first (1.8.2), and eval'd only while a page is attached.
+    // A line of a generation that is no longer the live one (respawned, ended) is dropped: until
+    // 1.8.2 it still reached the page, where it could only be taken for the new session's.
     let win = window.clone();
     let exit_chave = chave_sessao;
     std::thread::spawn(move || {
@@ -545,11 +906,15 @@ pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
             if line.trim().is_empty() {
                 continue;
             }
-            let js = format!("window.__shviaCode&&window.__shviaCode._emit(JSON.parse({}),{})", js_str(&line), sessao_js);
-            let w = win.clone();
-            let _ = app.run_on_main_thread(move || {
-                let _ = w.eval(&js);
-            });
+            let Some((seq, anexada, aviso)) = app.state::<Sidecars>().anotar_saida(&exit_chave, gen, &line) else {
+                continue;
+            };
+            if anexada {
+                emitir(&win, &line, &sessao_js, seq);
+            }
+            if let Some(aviso) = aviso {
+                avisar(&app, &aviso);
+            }
         }
         // stdout fechou → anna saiu. Só sinaliza 'exited' se ESTA geração ainda é a
         // sessão viva da chave; se foi substituída (respawn) ou morta (kill), fica
@@ -564,16 +929,12 @@ pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
                 Some(0) | None => "fim",
                 Some(_) => "erro",
             };
-            let js = format!(
-                "window.__shviaCode&&window.__shviaCode._emit({{type:'exited',reason:{},code:{}}},{})",
-                js_str(motivo),
-                codigo.map_or("null".to_string(), |c| c.to_string()),
-                sessao_js,
-            );
-            let w = win.clone();
-            let _ = app.run_on_main_thread(move || {
-                let _ = w.eval(&js);
-            });
+            // A JSON line like the engine's own, so it is logged and replayed like them: a
+            // session that ended while no page was attached is learned by the next one.
+            let linha = serde_json::json!({ "type": "exited", "reason": motivo, "code": codigo }).to_string();
+            if let Some((seq, true)) = app.state::<Sidecars>().anotar_fim(&exit_chave, gen, &linha) {
+                emitir(&win, &linha, &sessao_js, seq);
+            }
         }
     });
 
@@ -601,7 +962,125 @@ pub(super) fn send(window: &WebviewWindow, v: &serde_json::Value) -> bool {
         Some(p) => serde_json::to_string(p).unwrap_or_default(),
         None => return false,
     };
-    window.app_handle().state::<Sidecars>().send_line(&chave(window.label(), &sessao), &line)
+    let k = chave(window.label(), &sessao);
+    let sidecars = window.app_handle().state::<Sidecars>();
+    let ok = sidecars.send_line(&k, &line);
+    if ok {
+        sidecars.anotar_entrada(&k, &line);
+    }
+    ok
+}
+
+/// What `listar` gives a page about a session (1.8.2), from what its page declared at spawn.
+///
+/// `meta` comes from the page, so only two of its fields pass, each checked: a project id of at
+/// most 32 characters of `[A-Za-z0-9_-]` (the dashboard's are numbers), and a name of at most
+/// 80 characters with no control character — it becomes the title of a native notice. The
+/// folder, the engine and the approval mode are the spawn's own, and the folder already passed
+/// the fence.
+pub(super) fn info_da_sessao(meta: Option<&serde_json::Value>, pasta: &str, motor: &str, aprovacao: &str) -> serde_json::Value {
+    let mut info = serde_json::Map::new();
+    info.insert("pasta".into(), pasta.into());
+    info.insert("motor".into(), motor.into());
+    let aprovacao = match aprovacao {
+        "auto" | "edit" => aprovacao,
+        _ => "manual",
+    };
+    info.insert("aprovacao".into(), aprovacao.into());
+    if let Some(m) = meta.and_then(|m| m.as_object()) {
+        let id = match m.get("projectId") {
+            Some(serde_json::Value::Number(n)) => n.to_string(),
+            Some(serde_json::Value::String(s)) => s.clone(),
+            _ => String::new(),
+        };
+        if !id.is_empty() && id.len() <= 32 && id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-')) {
+            info.insert("projectId".into(), id.into());
+        }
+        if let Some(r) = m.get("rotulo").and_then(|r| r.as_str()) {
+            let limpo: String = r.chars().filter(|c| !c.is_control()).take(80).collect();
+            let limpo = limpo.trim();
+            if !limpo.is_empty() {
+                info.insert("rotulo".into(), limpo.into());
+            }
+        }
+    }
+    serde_json::Value::Object(info)
+}
+
+/// Evals one engine line into the window's page, on the main thread, with its session and its
+/// number (1.8.2). The only way a line reaches a page, live or replayed.
+pub(super) fn emitir(win: &WebviewWindow, linha: &str, sessao_js: &str, seq: u64) {
+    let js = format!(
+        "window.__shviaCode&&window.__shviaCode._emit(JSON.parse({}),{},{})",
+        js_str(linha),
+        sessao_js,
+        seq
+    );
+    let w = win.clone();
+    let _ = win.app_handle().run_on_main_thread(move || {
+        let _ = w.eval(&js);
+    });
+}
+
+/// A native notice about a session no page is watching. Its title carries the project's name
+/// the page gave at spawn (`info_da_sessao`), with markup neutralized as in `notify`.
+fn avisar(app: &tauri::AppHandle, aviso: &Aviso) {
+    let (rotulo, corpo) = match aviso {
+        Aviso::Esperando(r) => (r, "O agente está esperando você. Abra o Code no ShvIA para decidir."),
+        Aviso::Terminou(r) => (r, "O agente terminou o que você pediu."),
+    };
+    let titulo = if rotulo.is_empty() { "ShvIA Code".to_string() } else { format!("ShvIA Code — {rotulo}") };
+    let limpa = |s: &str| s.replace(['<', '>'], " ");
+    let _ = app.notification().builder().title(limpa(&titulo)).body(limpa(corpo)).show();
+}
+
+/// Starts, once per app, the pass over the sessions no page is watching (`Sidecars::varrer`).
+fn iniciar_vigia(app: &tauri::AppHandle) {
+    static INICIADA: OnceLock<()> = OnceLock::new();
+    if INICIADA.set(()).is_err() {
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(5));
+        for aviso in app.state::<Sidecars>().varrer() {
+            avisar(&app, &aviso);
+        }
+    });
+}
+
+/// `sessions`: the resumable sessions of this window, for the page that just loaded in it
+/// (1.8.2). `janela` lets the page tell its own window's snapshot from one a `window.open`
+/// copied into a new window.
+pub(super) fn listar_sessoes(window: &WebviewWindow, req: &str) {
+    let lista = window.app_handle().state::<Sidecars>().listar(window.label());
+    reply(window, req, true, serde_json::json!({ "janela": window.label(), "sessoes": lista }));
+}
+
+/// `attach`: the page takes session `sessao` back from the line after `desde` (1.8.2). The
+/// answer comes first; then every line it had not seen, in order, through `_emit`.
+pub(super) fn anexar_sessao(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
+    let sessao = match sessao_do_pedido(v) {
+        Ok(s) if !s.is_empty() => s,
+        _ => {
+            return reply(window, req, false,
+                serde_json::json!({ "error": "nome de sessão inválido", "codigo": "sessao_invalida" }))
+        }
+    };
+    let desde = v.get("desde").and_then(|d| d.as_u64()).unwrap_or(0);
+    let Some(Retomada { eventos, ate, lacuna, encerrada }) =
+        window.app_handle().state::<Sidecars>().anexar(window.label(), &sessao, desde)
+    else {
+        return reply(window, req, false,
+            serde_json::json!({ "error": "sessão inexistente nesta janela", "codigo": "sessao_inexistente" }));
+    };
+    reply(window, req, true, serde_json::json!({
+        "sessao": sessao, "ate": ate, "lacuna": lacuna, "encerrada": encerrada, "reenviados": eventos.len(),
+    }));
+    let sessao_js = js_str(&sessao);
+    for (seq, linha) in eventos {
+        emitir(window, &linha, &sessao_js, seq);
+    }
 }
 
 #[cfg(test)]
@@ -918,5 +1397,272 @@ mod tests_sessoes {
         // The cap is per window.
         assert!(sc.cabe("outra", &chave("outra", "p0")));
         sc.kill_one("janela");
+    }
+}
+
+#[cfg(test)]
+// 1.8.2: an agent survives a new document in its window (ADR-037). The engine side
+// runs real processes, like `tests_sessoes`: who is let go of and who is ended lives in the
+// choreography. The log and the state a bare page needs are read straight from `Registro`.
+mod tests_retomada {
+    use super::*;
+    use std::process::Stdio;
+
+    fn processo() -> (Child, ChildStdin) {
+        let mut filho = crate::processo::comando("/bin/sh")
+            .args(["-c", "sleep 30"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("spawn do /bin/sh");
+        let stdin = filho.stdin.take().expect("stdin");
+        (filho, stdin)
+    }
+
+    fn vivo(sc: &Sidecars, chave: &str) -> bool {
+        let mut m = sc.map.lock().unwrap();
+        match m.get_mut(chave).and_then(|o| o.as_mut()) {
+            Some(s) => matches!(s.child.try_wait(), Ok(None)),
+            None => false,
+        }
+    }
+
+    /// The engine exits on its own: what `colher` sees, without waiting 30 s for `sleep`.
+    fn morre(sc: &Sidecars, k: &str) {
+        let s = sc.map.lock().unwrap().remove(k).flatten();
+        if let Some(mut s) = s {
+            let _ = s.child.kill();
+            let _ = s.child.wait();
+        }
+    }
+
+    fn info(rotulo: &str) -> serde_json::Value {
+        serde_json::json!({ "projectId": "42", "rotulo": rotulo, "pasta": "/tmp", "motor": "claude", "aprovacao": "auto" })
+    }
+
+    fn ha_quanto(segundos: u64) -> Instant {
+        Instant::now().checked_sub(Duration::from_secs(segundos)).expect("clock too young for the test")
+    }
+
+    /// 🔴 The owner's case (26/09/2026): a reload used to end the agent at work. A resumable
+    /// session is let go of and keeps running; one whose page never declared it would come back
+    /// ends, as every session did before; another window is not touched.
+    #[test]
+    fn um_documento_novo_solta_a_retomavel_e_encerra_a_outra() {
+        let sc = Sidecars::default();
+        let (f1, s1) = processo();
+        let (f2, s2) = processo();
+        let (f3, s3) = processo();
+        sc.insert_com(chave("janela", "p1"), f1, s1, true, info("RADIANT"));
+        sc.insert_com(chave("janela", "p2"), f2, s2, false, info("AUDITOR"));
+        sc.insert_com(chave("outra", "p1"), f3, s3, true, info("TDAH"));
+
+        assert_eq!(sc.soltar_janela("janela"), 1);
+
+        assert!(vivo(&sc, &chave("janela", "p1")), "the reload ended the resumable agent");
+        assert!(!sc.existe(&chave("janela", "p2")), "a session with no promise to re-attach survived the reload");
+        assert!(vivo(&sc, &chave("outra", "p1")), "the reload of one window reached another");
+        let lista = sc.listar("janela");
+        assert_eq!(lista.len(), 1);
+        assert_eq!(lista[0]["sessao"], "p1");
+        assert_eq!(lista[0]["anexada"], false);
+        assert_eq!(lista[0]["info"]["rotulo"], "RADIANT");
+        sc.kill_one("janela");
+        sc.kill_one("outra");
+    }
+
+    /// Detached, a line is logged and not delivered; the page that comes back gets exactly the
+    /// lines after the last one it handled, in order, and the next ones live again.
+    #[test]
+    fn a_pagina_que_volta_recebe_o_que_perdeu_e_so_isso() {
+        let sc = Sidecars::default();
+        let (f, s) = processo();
+        let k = chave("janela", "p1");
+        let gen = sc.insert_com(k.clone(), f, s, true, info("RADIANT"));
+
+        let (n1, anexada, _) = sc.anotar_saida(&k, gen, r#"{"type":"text","delta":"a"}"#).unwrap();
+        assert!(anexada, "a fresh session is attached to the page that spawned it");
+        sc.soltar_janela("janela");
+        let (n2, anexada, _) = sc.anotar_saida(&k, gen, r#"{"type":"text","delta":"b"}"#).unwrap();
+        assert!(!anexada, "a line was delivered into the next page while no page had asked for it");
+        let (n3, _, _) = sc.anotar_saida(&k, gen, r#"{"type":"turn_done"}"#).unwrap();
+        assert_eq!((n1, n2, n3), (1, 2, 3));
+
+        let Retomada { eventos, ate, lacuna, encerrada } = sc.anexar("janela", "p1", n1).expect("the session is there");
+        assert_eq!(eventos.iter().map(|(n, _)| *n).collect::<Vec<_>>(), vec![2, 3], "the page must get what it missed, in order, and nothing it had");
+        assert!(eventos[0].1.contains("\"b\""));
+        assert_eq!((ate, lacuna, encerrada), (3, false, false));
+        let (_, anexada, _) = sc.anotar_saida(&k, gen, r#"{"type":"text","delta":"c"}"#).unwrap();
+        assert!(anexada, "after attach the lines go live again");
+        // Another window cannot take it, and a name nobody has answers None.
+        assert!(sc.anexar("outra", "p1", 0).is_none());
+        assert!(sc.anexar("janela", "p9", 0).is_none());
+        sc.kill_one("janela");
+    }
+
+    /// A line of a generation that is no longer the live one is not logged under the new one.
+    #[test]
+    fn linha_de_geracao_velha_nao_entra_no_log_da_nova() {
+        let sc = Sidecars::default();
+        let k = chave("janela", "p1");
+        let (f1, s1) = processo();
+        let velha = sc.insert_com(k.clone(), f1, s1, true, info("x"));
+        let (f2, s2) = processo();
+        let nova = sc.insert_com(k.clone(), f2, s2, true, info("x"));
+        assert!(sc.anotar_saida(&k, velha, r#"{"type":"text","delta":"velha"}"#).is_none());
+        assert_eq!(sc.anotar_saida(&k, nova, r#"{"type":"text","delta":"nova"}"#).map(|t| t.0), Some(1));
+        sc.kill_one("janela");
+    }
+
+    /// What a page with nothing of its own (no `sessionStorage`) needs: is a turn in flight,
+    /// and which gate or Run stop is still waiting for an answer.
+    #[test]
+    fn ocupado_e_pedidos_abertos_seguem_as_linhas_dos_dois_lados() {
+        let mut r = Registro::novo(1, true, info("x"));
+        r.anotar_entrada(r#"{"type":"user","text":"faça"}"#);
+        assert!(r.ocupado);
+        r.anotar_saida(r#"{"type":"gate_request","id":"g1","scope":"Bash","policy":"confirm","preview":{"kind":"command","command":"ls"}}"#);
+        r.anotar_saida(r#"{"type":"stop_request","id":"s-1","iteration":1,"last":"pronto"}"#);
+        assert_eq!(r.abertos.len(), 2);
+        let listado = r.como_json("p1");
+        assert_eq!(listado["abertos"][0]["id"], "g1", "the open gate must come back as the engine sent it");
+        assert_eq!(listado["abertos"][1]["type"], "stop_request");
+        r.anotar_entrada(r#"{"id":"g1","decision":"approve"}"#);
+        assert_eq!(r.abertos.len(), 1, "an answered gate stayed open");
+        assert_eq!(r.abertos[0].0, "s-1");
+        r.anotar_saida(r#"{"type":"turn_done"}"#);
+        assert!(!r.ocupado);
+        assert!(r.abertos.is_empty(), "a closed turn left a request open");
+        // `model` is announced at start and `usage` right before the end: neither is a turn.
+        r.anotar_saida(r#"{"type":"model","model":"claude-x"}"#);
+        r.anotar_saida(r#"{"type":"usage","tokens":1}"#);
+        assert!(!r.ocupado);
+        // A line that is not JSON is still logged (the page drops it, as it always did).
+        let antes = r.log.len();
+        r.anotar_saida("não é json");
+        assert_eq!(r.log.len(), antes + 1);
+    }
+
+    /// Past the cap the oldest lines go, and the page that asks from before them is told.
+    #[test]
+    fn log_cheio_perde_o_mais_velho_e_diz_que_perdeu() {
+        let mut r = Registro::novo(1, true, info("x"));
+        let grande = format!(r#"{{"type":"text","delta":"{}"}}"#, "x".repeat(LOG_MAX_BYTES / 4));
+        for _ in 0..6 {
+            r.anotar_saida(&grande);
+        }
+        assert!(r.bytes <= LOG_MAX_BYTES, "the log grew past its cap: {} bytes", r.bytes);
+        let primeiro = r.log.front().unwrap().0;
+        assert!(primeiro > 1, "nothing was dropped: the test did not fill the log");
+        let (eventos, lacuna) = r.depois_de(0);
+        assert!(lacuna, "lines the page never had were dropped and nobody said so");
+        assert_eq!(eventos.len(), r.log.len());
+        let (_, lacuna) = r.depois_de(primeiro - 1);
+        assert!(!lacuna, "asking from right before the oldest line is not a gap");
+        let (eventos, lacuna) = r.depois_de(r.seq);
+        assert!(eventos.is_empty() && !lacuna, "a page that has everything has no gap");
+    }
+
+    /// An engine that ends with no page attached leaves its `exited` for the next page, which
+    /// learns it once; with a page attached the page gets it live and nothing is kept.
+    #[test]
+    fn fim_sem_pagina_espera_a_proxima_e_com_pagina_nao_fica() {
+        let sc = Sidecars::default();
+        let (f1, s1) = processo();
+        let k1 = chave("janela", "p1");
+        let g1 = sc.insert_com(k1.clone(), f1, s1, true, info("x"));
+        sc.soltar_janela("janela");
+        morre(&sc, &k1);
+        let (n, anexada) = sc.anotar_fim(&k1, g1, r#"{"type":"exited","reason":"erro","code":1}"#).unwrap();
+        assert!(!anexada);
+        let lista = sc.listar("janela");
+        assert_eq!(lista.len(), 1, "an agent that ended alone vanished before any page learned it");
+        assert_eq!(lista[0]["encerrada"], true);
+        let Retomada { eventos, encerrada, .. } = sc.anexar("janela", "p1", 0).unwrap();
+        assert!(encerrada);
+        assert_eq!(eventos.last().map(|(s, _)| *s), Some(n));
+        assert!(sc.listar("janela").is_empty(), "the page learned the end; the record must go");
+
+        let (f2, s2) = processo();
+        let k2 = chave("janela", "p2");
+        let g2 = sc.insert_com(k2.clone(), f2, s2, true, info("x"));
+        morre(&sc, &k2);
+        let (_, anexada) = sc.anotar_fim(&k2, g2, r#"{"type":"exited","reason":"fim","code":0}"#).unwrap();
+        assert!(anexada);
+        assert!(sc.listar("janela").is_empty(), "an end the page received live was kept anyway");
+    }
+
+    /// The pass over detached sessions: an idle one nobody came back for is ended; a working one
+    /// is never ended for being alone; one waiting for a person is told once, after a reload's
+    /// worth of time; an ended one nobody learned about is forgotten after its time.
+    #[test]
+    fn a_varredura_encerra_a_ociosa_avisa_a_que_espera_e_poupa_a_que_trabalha() {
+        let sc = Sidecars::default();
+        let mut gens = Vec::new();
+        for nome in ["ociosa", "trabalhando", "esperando", "recarregou"] {
+            let (f, s) = processo();
+            gens.push(sc.insert_com(chave("janela", nome), f, s, true, info(nome)));
+        }
+        sc.anotar_entrada(&chave("janela", "trabalhando"), r#"{"type":"user","text":"x"}"#);
+        sc.anotar_saida(&chave("janela", "esperando"), gens[2], r#"{"type":"gate_request","id":"g1"}"#);
+        sc.anotar_saida(&chave("janela", "recarregou"), gens[3], r#"{"type":"gate_request","id":"g2"}"#);
+        sc.soltar_janela("janela");
+        {
+            let mut regs = sc.regs.lock().unwrap();
+            let longe = ha_quanto(OCIOSA_SEM_PAGINA.as_secs() + 1);
+            for nome in ["ociosa", "trabalhando", "esperando"] {
+                regs.get_mut(&chave("janela", nome)).unwrap().solta_desde = Some(longe);
+            }
+            regs.get_mut(&chave("janela", "esperando")).unwrap().abertos[0].2 = longe;
+            // "recarregou": the gate is old, but the page left a second ago — a reload.
+            regs.get_mut(&chave("janela", "recarregou")).unwrap().abertos[0].2 = longe;
+        }
+
+        let avisos = sc.varrer();
+        assert_eq!(avisos, vec![Aviso::Esperando("esperando".into())], "wrong notices: {avisos:?}");
+        assert!(!sc.existe(&chave("janela", "ociosa")), "an idle agent nobody came back for was kept");
+        assert!(vivo(&sc, &chave("janela", "trabalhando")), "a working agent was ended for being alone");
+        assert!(vivo(&sc, &chave("janela", "esperando")), "an agent waiting for a person was ended");
+        assert!(sc.varrer().is_empty(), "the same wait was notified twice");
+
+        // An ended one past its time is forgotten.
+        {
+            let mut regs = sc.regs.lock().unwrap();
+            let r = regs.get_mut(&chave("janela", "trabalhando")).unwrap();
+            r.encerrada = true;
+            r.solta_desde = Some(ha_quanto(ENCERRADA_SEM_PAGINA.as_secs() + 1));
+        }
+        sc.varrer();
+        assert!(sc.listar("janela").iter().all(|s| s["sessao"] != "trabalhando"));
+        sc.kill_one("janela");
+    }
+
+    /// The notice for a turn that ended while no page was watching, and none within a reload.
+    #[test]
+    fn fim_de_turno_sem_pagina_avisa_so_depois_de_um_reload() {
+        let mut r = Registro::novo(1, true, info("RADIANT"));
+        r.anexada = false;
+        r.solta_desde = Some(Instant::now());
+        assert_eq!(r.anotar_saida(r#"{"type":"turn_done"}"#).1, None, "a reload's worth of absence produced a notice");
+        r.solta_desde = Some(ha_quanto(AVISO_APOS.as_secs() + 1));
+        assert_eq!(r.anotar_saida(r#"{"type":"turn_done"}"#).1, Some(Aviso::Terminou("RADIANT".into())));
+        r.anexada = true;
+        assert_eq!(r.anotar_saida(r#"{"type":"turn_done"}"#).1, None, "an attached page was notified natively");
+    }
+
+    /// `meta` is the page's: only a checked project id and a clean name pass.
+    #[test]
+    fn o_que_a_pagina_declara_passa_filtrado() {
+        let i = info_da_sessao(Some(&serde_json::json!({ "projectId": 42, "rotulo": "  RADIANT\u{7}  ", "x": "y" })), "/p", "claude", "auto");
+        assert_eq!(i["projectId"], "42");
+        assert_eq!(i["rotulo"], "RADIANT");
+        assert!(i.get("x").is_none(), "an unknown field passed");
+        assert_eq!((i["pasta"].as_str(), i["motor"].as_str(), i["aprovacao"].as_str()), (Some("/p"), Some("claude"), Some("auto")));
+        let longo = "r".repeat(200);
+        let i = info_da_sessao(Some(&serde_json::json!({ "projectId": "a/b", "rotulo": longo })), "/p", "gateway", "tudo");
+        assert!(i.get("projectId").is_none(), "a project id with a slash passed");
+        assert_eq!(i["rotulo"].as_str().map(|s| s.chars().count()), Some(80));
+        assert_eq!(i["aprovacao"], "manual", "an unknown approval mode must fall to the strictest");
+        assert!(info_da_sessao(None, "/p", "codex", "edit").get("rotulo").is_none());
     }
 }

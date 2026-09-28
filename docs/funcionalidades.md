@@ -126,8 +126,15 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
   address it, and every event it emits carries `evt.sessao`: each project keeps its own
   agent, and the page files the events of the ones off screen under their project. A page
   that names no session gets the single session of before, byte for byte. At most 8
-  sessions per window (`MAX_SESSOES_POR_JANELA`); a reload or closing the window still ends
-  all of them, and the close guard counts any of them.
+  sessions per window (`MAX_SESSOES_POR_JANELA`); closing the window ends all of them, and the
+  close guard counts any of them.
+- **An agent survives a reload of its window** (`1.8.2`, ADR-037): `recursos.retomada`. A
+  session spawned with `retomavel: true` is let go of when a new document starts in the window
+  (reload, offline bar, a link) instead of ended. Its lines are numbered (`evt.seq`) and logged
+  (8 MB), and eval'd only while a page is attached. The next page calls `sessions()` (with busy
+  state and the open gates) and `attach(sessao, desde)` to get what it missed and go live again.
+  With no page for 15 s a waiting gate or a finished turn produces a native notice. An idle agent
+  nobody came back for ends after 10 minutes.
 
 ## Phase 4 — the Run in Code mode (1.5.x)
 

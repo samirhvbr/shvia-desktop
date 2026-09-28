@@ -193,7 +193,7 @@ path used from outside (`code_bridge::handle_message`, `::reply`, `::Sidecars`, 
 |---|---|
 | `code_bridge.rs` | the dispatch (`handle_message`), `reply`, `fora_da_ui`, `saida_com_prazo` and the deadlines, `notify`/`badge` |
 | `code_bridge/shim.rs` | the JS shim (`BRIDGE_JS`) and the session's capability token |
-| `code_bridge/sessao.rs` | one engine process per session of a window (`Sidecars`, keyed by window + `sessao` since 1.8.0), `spawn`, `send`, ending it |
+| `code_bridge/sessao.rs` | one engine process per session of a window (`Sidecars`, keyed by window + `sessao` since 1.8.0), `spawn`, `send`, ending it; what survives a reload since 1.8.2 (`Registro`: the numbered log, busy state, open requests; `soltar_janela`, `listar`, `anexar`, ADR-037) |
 | `code_bridge/motores.rs` | which binary each engine is, finding it, catalogues, exit codes, installing the runner |
 | `code_bridge/login.rs` | the Claude Code login driven from the screen, and its native confirmation |
 | `code_bridge/cerca.rs` | the fence (ADR-031) and the project→folder bindings |
