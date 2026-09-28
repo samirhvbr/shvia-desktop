@@ -484,3 +484,26 @@ export function previa(toolName, input) {
   // fallback: descreve a chamada como comando (visível no card)
   return { kind: "command", command: `${toolName} ${JSON.stringify(inp)}`, why: "" };
 }
+
+/**
+ * A PLAN turn (1.9.0): the page's Approval "Plan", sent as `plano: true` on the user message.
+ * The agent reads what it needs and presents a plan; it writes nothing and runs nothing.
+ *
+ * Only `LEITURA` passes, and it still goes through `decidir` afterwards, so the fence (the
+ * project folder, the secret denylist) holds as on any other turn. Everything else is DENIED
+ * here, before `decidir`, and not turned into a card: a card would let an approval, the Auto
+ * mode or "trust this project" release the write this mode exists to prevent. The reason
+ * reaches the model, which is told what to do instead.
+ *
+ * `plano` is the turn's mode, passed on every call: the hook calls this UNCONDITIONALLY, so
+ * the rule cannot be skipped by a condition in the caller.
+ *
+ * Returns `{acao: "deny", motivo}` for a tool the plan turn refuses, or null to go on.
+ */
+export const MOTIVO_PLANO =
+  "Modo planejamento: neste turno nada é escrito nem executado. Use só leitura (Read, Glob, Grep, LS) e apresente o plano: o que mudaria, em quais arquivos, em que ordem e como verificar.";
+
+export function decidirNoPlano(toolName, plano, leitura = LEITURA) {
+  if (plano !== true) return null;
+  return leitura.has(String(toolName || "")) ? null : { acao: "deny", motivo: MOTIVO_PLANO };
+}

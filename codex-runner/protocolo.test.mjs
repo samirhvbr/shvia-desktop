@@ -12,6 +12,7 @@ import {
   POLITICA,
   politicaValida,
   traduzirNotificacao,
+  sandboxDoTurno,
 } from "./protocolo.mjs";
 
 test("a política é UMA, e é a que a medição M provou", () => {
@@ -250,3 +251,27 @@ test("o aviso de segredo usa a MESMA lista do outro motor", () => {
   assert.equal(caminhoProibido(".env.example"), false);
   assert.equal(caminhoProibido("README.md"), false);
 });
+
+// ── PLAN turns (1.9.0) ────────────────────────────────────────────────────────
+test("a plan turn runs read-only, and only the sandbox is overridden", () => {
+  assert.deepEqual(sandboxDoTurno({ plano: true }), { type: "readOnly" });
+  assert.deepEqual(sandboxDoTurno({ plano: true, anteriorFoiPlano: true }), { type: "readOnly" });
+});
+
+test("a normal turn after a normal turn sends no override at all", () => {
+  assert.equal(sandboxDoTurno({}), null);
+  assert.equal(sandboxDoTurno({ plano: false, anteriorFoiPlano: false, politicaDaThread: { type: "workspaceWrite" } }), null);
+});
+
+test("the turn after a plan turn puts back the THREAD's own policy, not one typed here", () => {
+  const daThread = { type: "workspaceWrite", networkAccess: true, writableRoots: ["/srv/extra"] };
+  assert.deepEqual(sandboxDoTurno({ plano: false, anteriorFoiPlano: true, politicaDaThread: daThread }), daThread,
+    "what config.toml granted (network, extra roots) survives a plan turn");
+  // Only when the server did not report its policy does the fallback appear.
+  assert.deepEqual(sandboxDoTurno({ anteriorFoiPlano: true, politicaDaThread: null }), { type: "workspaceWrite" });
+});
+
+test("`plano` counts only when it is literally true", () => {
+  for (const v of ["true", 1, "sim", {}]) assert.equal(sandboxDoTurno({ plano: v }), null, JSON.stringify(v));
+});
+

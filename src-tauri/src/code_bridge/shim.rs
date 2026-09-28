@@ -215,7 +215,12 @@ pub const BRIDGE_JS: &str = r#"(function () {
     //           page asks `sessions()` and `attach(sessao, desde)`, and every event carries
     //           `evt.seq`, the number the page hands back as `desde`. Without the flag the
     //           page spawns as before and a reload ends its agents.
-    recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true },
+    //   plano:  both runners honour a PLAN turn (1.9.0): `plano: true` on the user message makes
+    //           the Claude runner deny every tool that is not a read, and the Codex runner run
+    //           that turn in a read-only sandbox. Without the flag the page offers Plan only on
+    //           the gateway engine, where it refuses every gate itself — on an older shell a
+    //           Claude or Codex turn would edit while the screen says "Plan".
+    recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true, plano: true },
     // chamados pelo Rust (eval):
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
     _emit: function (evt, sessao, seq) { if (evt && typeof evt === 'object') { if (sessao) evt.sessao = sessao; if (seq) evt.seq = seq; } for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }
