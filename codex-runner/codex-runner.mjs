@@ -60,6 +60,7 @@ import {
   pedidoParaGate,
   POLITICA,
   traduzirNotificacao,
+  sandboxDoTurno,
 } from "./protocolo.mjs";
 
 // ---------------------------------------------------------------- NDJSON output
@@ -187,6 +188,11 @@ child.on("exit", (code, signal) => {
   encerrar(1);
 });
 
+// The thread's own sandbox, as `thread/start` reported it: what a turn after a PLAN turn
+// puts back (see `sandboxDoTurno`). And whether the last turn was a plan one.
+let politicaDaThread = null;
+let ultimoFoiPlano = false;
+
 async function garantirThread() {
   if (threadId) return threadId;
   const r = await pedir("thread/start", {
@@ -196,20 +202,28 @@ async function garantirThread() {
     sandbox: sandboxMode,
   });
   threadId = r?.threadId ?? r?.thread?.id ?? null;
+  politicaDaThread = r?.sandbox && typeof r.sandbox === "object" ? r.sandbox : null;
   if (!threadId) {
     emit({ type: "error", message: "app-server did not return a threadId on thread/start." });
   }
   return threadId;
 }
 
-async function rodarTurno(texto) {
+async function rodarTurno(texto, plano = false) {
   ocupado = true;
   try {
     const tid = await garantirThread();
     if (!tid) return;
     emit({ type: "model", model: MODEL || "codex", server: "chatgpt" });
     const acabou = new Promise((resolve) => { fimDoTurno = resolve; });
-    await pedir("turn/start", { threadId: tid, input: [{ type: "text", text: texto }], ...(EFFORT ? { effort: EFFORT } : {}) });
+    // A PLAN turn runs read-only, and the next one gets the thread's own policy back.
+    const sandboxPolicy = sandboxDoTurno({ plano, anteriorFoiPlano: ultimoFoiPlano, politicaDaThread });
+    await pedir("turn/start", {
+      threadId: tid, input: [{ type: "text", text: texto }],
+      ...(EFFORT ? { effort: EFFORT } : {}),
+      ...(sandboxPolicy ? { sandboxPolicy } : {}),
+    });
+    ultimoFoiPlano = plano === true;
     // The ack came back; now WAIT for the turn itself.
     await acabou;
   } catch (e) {
@@ -224,7 +238,7 @@ async function rodarTurno(texto) {
 function drenar() {
   if (ocupado) return;
   const proximo = fila.shift();
-  if (proximo !== undefined) { rodarTurno(proximo); return; }
+  if (proximo !== undefined) { rodarTurno(proximo.texto, proximo.plano); return; }
   if (stdinFechado) encerrar(0);
 }
 
@@ -313,7 +327,9 @@ readline.createInterface({ input: process.stdin })
     if (msg.type === "exit") { encerrar(0); return; }
     if (msg.type === "user") {
       const texto = String(msg.text ?? "");
-      if (ocupado) fila.push(texto); else rodarTurno(texto);
+      // `plano: true` = a PLAN turn (1.9.0). Strictly `true`: anything else is a normal turn.
+      const plano = msg.plano === true;
+      if (ocupado) fila.push({ texto, plano }); else rodarTurno(texto, plano);
     }
   })
   .on("close", () => { stdinFechado = true; drenar(); });

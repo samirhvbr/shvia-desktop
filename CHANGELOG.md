@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.9.0 - a plan turn reads and presents a plan, and writes and runs nothing, on both runners
+
+The owner, 26/09/2026: "we also need a planning mode in Code, where the agent does not execute
+or write, and only presents the plan", and it goes in the Approval options. SHVIA-WEB's
+Approval gains "Plan" (Manual · Edit · Auto · Plan). This is the shell's half: the page cannot
+enforce it alone. At the Auto level the RUNNERS release reads, in-folder edits and safe commands
+without a card, so a plan kept only by the page would be a polite request to the model.
+
+- **Per turn, never per process.** The page sends `plano: true` on the user message. Switching
+  Plan → Auto to execute keeps the same session, with the plan in its memory. The level from
+  `spawn` (`--aprovacao`) never reached a running Claude runner anyway.
+- **Claude runner:** `decidirNoPlano` (politica.mjs) denies every tool outside `LEITURA` in the
+  hook, BEFORE `decidir`. That puts it before any level, card, Auto or "trust this project"
+  that could release the write. Reads still go through `decidir`, so the fence holds. The deny
+  reason tells the model to present the plan.
+- **Codex runner:** a plan turn starts with `sandboxPolicy: {type: "readOnly"}`. `turn/start`
+  overrides last "for this turn and subsequent turns", so the next turn puts back the policy
+  `thread/start` REPORTED (`sandboxDoTurno`, protocolo.mjs). A policy typed by hand would drop
+  what the user's config.toml granted. `approvalPolicy` is untouched: `never` still never
+  reaches the wire, and an escalation request reaches the page, which refuses it in Plan.
+- **anna** needs nothing. It ignores the field (it reads the message as a JSON value), and
+  every write and command of it is a gate the page refuses in Plan.
+- **The shim declares `recursos.plano`**, so the page offers Plan to Claude and Codex only on a
+  shell that enforces it.
+- **A message without `plano`, or with anything but `true`, is the turn of before**, byte for
+  byte.
+
+Measured: `prova:politica` has 69 tests, all passing:
+
+- `decidirNoPlano` passes every read and refuses edits, `Bash`, the network, `Task`, MCP tools
+  and an unknown tool;
+- `sandboxDoTurno` is covered in its four cases;
+- `codex-runner/plano.test.mjs` runs the REAL runner against a fake app-server that records
+  every `turn/start`. Plan → normal → normal gave `readOnly`, then exactly the thread's reported
+  policy (network and extra root included), then no override. `approvalPolicy` never appears;
+- `claude-runner/plano.test.mjs` is a declared source check of the three wires: the reader keeps
+  `plano` only when it is `true`, the pump passes it to `runTurn`, and the hook asks the plan
+  rule before `decidir`, with a deny and never a card. The hook calls it UNCONDITIONALLY, with
+  the turn's mode: the first version sat behind `if (turnoPlano)`, and a reversion to
+  `if (false && turnoPlano)` stayed green. Nine reversions are now red, among them four ways
+  of skipping the rule in the Claude hook.
+
 ## 1.8.2 - an agent survives a reload of its window, and the next page takes it back
 
 The owner, 26/09/2026: *"um reload na tela … ao voltar, o agente parou"*. 1.8.0 (several sessions

@@ -278,3 +278,24 @@ export function traduzirNotificacao(msg) {
 export function ehDecisao(msg) {
   return !!msg && msg.id !== undefined && msg.id !== null && typeof msg.decision === "string";
 }
+
+/**
+ * The `sandboxPolicy` a turn is started with (1.9.0), or null to send none.
+ *
+ * A PLAN turn (the page's Approval "Plan", `plano: true` on the user message) runs READ-ONLY:
+ * Codex may read and run commands that write nothing, and a write fails in the sandbox. If it
+ * asks to escalate, the request reaches the page as a card, and the page refuses every card in
+ * Plan. `approvalPolicy` is NOT touched: `never` must never reach the wire (`politicaValida`),
+ * and read-only does not need it.
+ *
+ * `turn/start` overrides last "for this turn and subsequent turns", so the turn AFTER a plan
+ * turn must put the thread's own policy back. That is the one `thread/start` returned
+ * (`politicaDaThread`), which keeps whatever the user's config.toml granted (network, extra
+ * roots). A policy typed here would silently drop those. `workspaceWrite` with defaults is only
+ * the fallback for a server that did not report it.
+ */
+export function sandboxDoTurno({ plano = false, anteriorFoiPlano = false, politicaDaThread = null } = {}) {
+  if (plano === true) return { type: "readOnly" };
+  if (anteriorFoiPlano) return politicaDaThread && typeof politicaDaThread === "object" ? politicaDaThread : { type: "workspaceWrite" };
+  return null;
+}

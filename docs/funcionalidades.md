@@ -135,6 +135,15 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
   state and the open gates) and `attach(sessao, desde)` to get what it missed and go live again.
   With no page for 15 s a waiting gate or a finished turn produces a native notice. An idle agent
   nobody came back for ends after 10 minutes.
+- **PLAN turns** (`1.9.0`): `recursos.plano`. SHVIA-WEB's Approval gained "Plan": the agent reads
+  and presents a plan, and writes and runs nothing. The page sends `plano: true` on each user
+  message of that mode. The mode is per TURN, so switching Plan → Auto to execute keeps the same
+  session and its memory of the plan. **Claude runner:** the hook denies every tool outside
+  `LEITURA` before any level or card (`decidirNoPlano`), and reads still pass the fence.
+  **Codex runner:** that turn starts with `sandboxPolicy: readOnly`, and the next turn gets back
+  the policy `thread/start` reported (`sandboxDoTurno`), so config.toml grants survive.
+  `approvalPolicy` is never touched. **anna** needs nothing: every write and command of it
+  reaches the page as a gate, and the page refuses them all in Plan.
 
 ## Phase 4 — the Run in Code mode (1.5.x)
 

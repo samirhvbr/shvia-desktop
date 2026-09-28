@@ -13,6 +13,8 @@ import {
   decidir,
   dentroDoProjeto,
   previa,
+  decidirNoPlano,
+  MOTIVO_PLANO,
 } from "./politica.mjs";
 
 /**
@@ -254,3 +256,28 @@ test("every runner test file is in the script CI runs", () => {
     }
   }
 });
+
+// ── PLAN turns (1.9.0) ────────────────────────────────────────────────────────
+test("a plan turn lets every read tool through to the fence, and nothing else", () => {
+  for (const t of LEITURA) assert.equal(decidirNoPlano(t, true), null, `${t} is a read and must reach decidir`);
+  // Every write, every execution and the network: denied before any level or card sees them.
+  for (const t of [...EDICAO, "Bash", "BashOutput", "KillShell", "WebFetch", "WebSearch", "Task", "SlashCommand", "mcp__x__y", ""]) {
+    const r = decidirNoPlano(t, true);
+    assert.ok(r && r.acao === "deny", `${t || "(empty)"} must be denied in a plan turn`);
+    assert.equal(r.motivo, MOTIVO_PLANO);
+  }
+});
+
+test("the plan rule is an allowlist: a tool nobody listed is denied, not waved through", () => {
+  assert.equal(decidirNoPlano("FerramentaQueAindaNaoExiste", true)?.acao, "deny");
+  assert.match(MOTIVO_PLANO, /plano/i, "the model is told what to do instead");
+});
+
+test("outside a plan turn the rule steps aside for every tool", () => {
+  for (const t of [...LEITURA, ...EDICAO, "Bash", "WebFetch"]) {
+    assert.equal(decidirNoPlano(t, false), null, `${t} outside a plan turn`);
+    assert.equal(decidirNoPlano(t, undefined), null);
+    assert.equal(decidirNoPlano(t, "true"), null, "only a literal true is a plan turn");
+  }
+});
+
