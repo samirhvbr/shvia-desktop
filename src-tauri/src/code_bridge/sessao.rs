@@ -982,8 +982,10 @@ pub(super) fn info_da_sessao(meta: Option<&serde_json::Value>, pasta: &str, moto
     let mut info = serde_json::Map::new();
     info.insert("pasta".into(), pasta.into());
     info.insert("motor".into(), motor.into());
+    // `plan` (1.9.0) passes too: a Plan session that comes back with no snapshot must come back
+    // as Plan, where the page refuses every gate — as `manual` its cards would offer to run.
     let aprovacao = match aprovacao {
-        "auto" | "edit" => aprovacao,
+        "auto" | "edit" | "plan" => aprovacao,
         _ => "manual",
     };
     info.insert("aprovacao".into(), aprovacao.into());
@@ -1663,6 +1665,8 @@ mod tests_retomada {
         assert!(i.get("projectId").is_none(), "a project id with a slash passed");
         assert_eq!(i["rotulo"].as_str().map(|s| s.chars().count()), Some(80));
         assert_eq!(i["aprovacao"], "manual", "an unknown approval mode must fall to the strictest");
+        let i = info_da_sessao(None, "/p", "claude", "plan");
+        assert_eq!(i["aprovacao"], "plan", "a Plan session would come back as Manual, and its cards would offer to run");
         assert!(info_da_sessao(None, "/p", "codex", "edit").get("rotulo").is_none());
     }
 }

@@ -42,6 +42,10 @@ Measured: `prova:politica` has 69 tests, all passing:
   `if (false && turnoPlano)` stayed green. Nine reversions are now red, among them four ways
   of skipping the rule in the Claude hook.
 
+**A Plan session survives a reload as Plan.** `info_da_sessao` (1.8.2's reload) accepted only
+`auto`, `edit` and `manual`, so a Plan session that a page took back with no snapshot came back as
+Manual: its cards would offer to run what Plan refuses. `plan` now passes, with a test line.
+
 ## 1.8.2 - an agent survives a reload of its window, and the next page takes it back
 
 The owner, 26/09/2026: *"um reload na tela … ao voltar, o agente parou"*. 1.8.0 (several sessions
