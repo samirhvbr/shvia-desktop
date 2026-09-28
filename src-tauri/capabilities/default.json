@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability para a janela principal e janelas extras (win-*)",
-  "windows": ["main", "win-*"],
+  "description": "Capability for the main window, the extra windows (win-*) and the quick window (rapida, ADR-038)",
+  "windows": ["main", "win-*", "rapida"],
   "permissions": [
     "core:default",
     "opener:default"

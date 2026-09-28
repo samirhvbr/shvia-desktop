@@ -27,6 +27,11 @@ mod server;
 mod diagnostico;
 #[cfg(desktop)]
 mod tray;
+// The quick window and the `shvia://` scheme (1.10.0, ADR-038).
+#[cfg(desktop)]
+mod esquema;
+#[cfg(desktop)]
+mod rapida;
 /// Auto-update: checa o manifesto que o ShvIA serve, pergunta e instala (D1; ADR-022).
 #[cfg(desktop)]
 mod updater;
@@ -831,7 +836,7 @@ pub(crate) fn rebuild_main_window(app: &tauri::AppHandle) {
 /// no `containerDo` (E-5) e nos dois caminhos de atualização (G-21): a segunda cópia não
 /// nasce errada, ela envelhece sozinha. Agora existe **uma** função, e quem abre janela passa
 /// a URL.
-fn build_shvia_window(
+pub(crate) fn build_shvia_window(
     app: &tauri::AppHandle,
     label: &str,
     url: WebviewUrl,
@@ -929,11 +934,23 @@ fn build_shvia_window(
     // mobile a WebView ocupa a tela toda e não há ícone de janela. No desktop
     // começa oculta p/ restaurar o estado antes de mostrar (evita o "pulo").
     #[cfg(desktop)]
-    let builder = builder
-        .icon(tauri::include_image!("icons/icon.png"))?
-        .inner_size(1280.0, 800.0)
-        .min_inner_size(800.0, 600.0)
-        .visible(false);
+    let e_rapida = label == rapida::JANELA;
+    #[cfg(desktop)]
+    let builder = builder.icon(tauri::include_image!("icons/icon.png"))?.visible(false);
+    // The quick window (ADR-038): small, above the other apps, out of the taskbar and the
+    // Alt+Tab list — it is summoned by its shortcut, not switched to. Same builder otherwise, so
+    // the same navigation perimeter, bridges and page hooks as every other window.
+    #[cfg(desktop)]
+    let builder = if e_rapida {
+        builder
+            .inner_size(rapida::LARGURA, rapida::ALTURA)
+            .min_inner_size(380.0, 420.0)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .visible_on_all_workspaces(true)
+    } else {
+        builder.inner_size(1280.0, 800.0).min_inner_size(800.0, 600.0)
+    };
 
     let win = builder.build()?;
 
@@ -954,10 +971,20 @@ fn build_shvia_window(
         win.on_window_event(move |event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let app = alvo.app_handle();
+                // Closing the quick window puts it away (ADR-038). It keeps its page, its
+                // conversation and any Code session in it, for the next time it is summoned.
+                if alvo.label() == rapida::JANELA {
+                    api.prevent_close();
+                    let _ = alvo.hide();
+                    return;
+                }
                 // `<= 1` e não `== 1`: durante o fechamento a contagem pode já não
                 // incluir esta janela, dependendo do SO. Errar para o lado de recolher
                 // é melhor que errar para o lado de sair com o app devendo um alerta.
-                let ultima = app.webview_windows().len() <= 1;
+                // The quick window is not counted (1.10.0): hidden, it would make the last
+                // real window look like one of two, and closing it would leave the app
+                // running with nothing on screen and no tray notice.
+                let ultima = rapida::normais(app).len() <= 1;
                 let code_em_voo = app
                     .state::<code_bridge::Sidecars>()
                     .tem_sessao(alvo.label());
@@ -1027,8 +1054,12 @@ fn build_shvia_window(
     #[cfg(desktop)]
     {
         use tauri_plugin_window_state::{StateFlags, WindowExt};
-        let _ = win.restore_state(StateFlags::all());
-        let _ = win.show();
+        // The quick window is placed on the pointer's screen at every show (`rapida.rs`), and
+        // shown only when summoned: nothing to restore, and nothing to show now.
+        if !e_rapida {
+            let _ = win.restore_state(StateFlags::all());
+            let _ = win.show();
+        }
     }
 
     Ok(win)
@@ -1268,13 +1299,48 @@ fn tts_cancel() {
 /// **Multi-janela é desktop-only** (mobile é single-window).
 #[cfg(desktop)]
 fn open_new_window(app: &tauri::AppHandle) -> tauri::Result<()> {
+    open_window_at(app, "index.html")
+}
+
+/// `open_new_window` at a given address of the local shell (a `shvia://` link, ADR-038).
+#[cfg(desktop)]
+fn open_window_at(app: &tauri::AppHandle, casca: &str) -> tauri::Result<()> {
     let open = app.webview_windows();
     let mut n = open.len() + 1;
     while open.contains_key(&format!("win-{n}")) {
         n += 1;
     }
-    build_shvia_window(app, &format!("win-{n}"), WebviewUrl::App("index.html".into()))?;
+    build_shvia_window(app, &format!("win-{n}"), WebviewUrl::App(casca.into()))?;
     Ok(())
+}
+
+/// Serves the `shvia://` links (ADR-038). What each one reaches is `esquema::rota`'s closed
+/// list; the link never picks the server or the path.
+#[cfg(desktop)]
+fn ao_abrir_links(app: &tauri::AppHandle, links: Vec<tauri::Url>) {
+    // One click is one link. A batch of them is not something a person does, and each would
+    // open a window.
+    let Some(link) = links.into_iter().next() else { return };
+    match esquema::rota(link.as_str()) {
+        esquema::Rota::Rapida => rapida::alternar(app),
+        esquema::Rota::Abrir => tray::mostrar(app),
+        // A page can fire a link in a loop; the browser asks the first time, and after that
+        // "always allow" lets it through. At most one new window per interval.
+        // `destino_permitido` is what the shell will accept anyway; asked here too, so a route
+        // that one day produces something else fails in the open instead of at the dashboard.
+        esquema::Rota::Destino(destino)
+            if esquema::destino_permitido(&destino) && esquema::pode_abrir_janela() =>
+        {
+            if let Err(e) = open_window_at(app, &esquema::caminho_da_casca(&destino)) {
+                eprintln!("ShvIA: não foi possível abrir a janela do link: {e}");
+            }
+        }
+        esquema::Rota::Destino(_) => tray::mostrar(app),
+        esquema::Rota::Recusada => {
+            eprintln!("ShvIA: link não reconhecido: {}", esquema::para_o_log(link.as_str()));
+            tray::mostrar(app);
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1303,11 +1369,17 @@ pub fn run() {
     // decide certo sobre a instância ERRADA: cada uma acha que é a única do mundo.
     let builder = tauri::Builder::default();
     #[cfg(desktop)]
-    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+        // A `shvia://` link started this second process (1.10.0, ADR-038). The `deep-link`
+        // feature has already handed it to `ao_abrir_links`, which decides what comes forward;
+        // raising the main window here too would cover the quick window it just showed.
+        if argv.iter().skip(1).any(|a| esquema::e_link(a)) {
+            return;
+        }
         // Segunda invocação: trazer de volta o que já existe. `show` antes de
         // `unminimize` porque a janela pode estar recolhida na bandeja (hidden), e
         // `unminimize` numa janela oculta não a torna visível.
-        if let Some(w) = app.webview_windows().values().next() {
+        if let Some(w) = rapida::normais(app).first() {
             let _ = w.show();
             let _ = w.unminimize();
             let _ = w.set_focus();
@@ -1326,7 +1398,17 @@ pub fn run() {
     // existe no desktop; no mobile o builder segue direto pro `.setup()`.
     #[cfg(desktop)]
     let builder = builder
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        // The quick window has no geometry of its own to keep (`rapida.rs` places it).
+        .plugin(tauri_plugin_window_state::Builder::default().with_denylist(&[rapida::JANELA]).build())
+        // The quick window's shortcut and the `shvia://` scheme (ADR-038). No capability
+        // declares either: the page can neither register a system-wide key nor read the links
+        // that opened the app (ADR-001).
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, atalho, evento| rapida::ao_atalho(app, atalho, evento.state()))
+                .build(),
+        )
+        .plugin(tauri_plugin_deep_link::init())
         // Auto-update (D1; ADR-022). Registrado sem capability: quem dirige é o
         // `updater.rs` pela API Rust — a página remota não alcança o plugin.
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -1484,11 +1566,11 @@ pub fn run() {
                     .replace("__SHVIA_TAURI__", tauri::VERSION)
                     .replace("__SHVIA_ANNA__", &code_bridge::versao_do_anna())
                     .replace("__SHVIA_SERVER_HOST__", SERVER_HOST);
-                let windows = app.webview_windows();
+                let windows = rapida::normais(app);
                 let alvo = windows
-                    .values()
+                    .iter()
                     .find(|w| w.is_focused().unwrap_or(false))
-                    .or_else(|| windows.values().next());
+                    .or_else(|| windows.first());
                 if let Some(win) = alvo {
                     // Sem janela em foco (ex.: macOS com tudo minimizado e menu
                     // global clicável), traz a janela alvo à frente — senão o
@@ -1530,6 +1612,26 @@ pub fn run() {
             // Bandeja depois da janela: o menu mostra o servidor configurado, que só
             // existe depois do `server::load` acima. E `instalar` não pode derrubar o
             // `setup` — app sem bandeja é degradação; app que não abre é falha.
+            // The quick window's shortcut, and the links (ADR-038). After the main window: a
+            // link that started the app is served once there is a window to serve it from.
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                rapida::aplicar_atalho(app.handle());
+                // An AppImage is not installed, so nothing registered the scheme with the
+                // system; the plugin writes the handler for it. The .deb, .rpm, MSI, NSIS and
+                // the macOS bundle register it at install (`plugins.deep-link` in
+                // tauri.conf.json).
+                #[cfg(target_os = "linux")]
+                if app.env().appimage.is_some() {
+                    let _ = app.deep_link().register_all();
+                }
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |evento| ao_abrir_links(&handle, evento.urls()));
+                if let Ok(Some(links)) = app.deep_link().get_current() {
+                    ao_abrir_links(app.handle(), links);
+                }
+            }
             #[cfg(desktop)]
             if let Err(e) = tray::instalar(app.handle()) {
                 eprintln!("ShvIA: não foi possível criar o ícone de bandeja: {e}");
@@ -1553,12 +1655,22 @@ pub fn run() {
             ..
         } => {
             app_handle.state::<code_bridge::Sidecars>().kill_one(&label);
+            // The last real window is gone (closed with "close keeps running" off, or after
+            // the Code question): the app would end here, as it did before 1.10.0 — but a
+            // hidden quick window still counts as a window and would keep it alive with
+            // nothing on screen. It goes too.
+            #[cfg(desktop)]
+            if label != rapida::JANELA && rapida::normais(app_handle).is_empty() {
+                if let Some(w) = app_handle.get_webview_window(rapida::JANELA) {
+                    let _ = w.destroy();
+                }
+            }
         }
         // macOS: clicar no ícone do Dock com todas as janelas fechadas não
         // recria nada por padrão. Recria a principal para o usuário.
         #[cfg(target_os = "macos")]
         tauri::RunEvent::Reopen { .. } => {
-            if app_handle.webview_windows().is_empty() {
+            if rapida::normais(app_handle).is_empty() {
                 let _ = build_shvia_window(app_handle, "main", WebviewUrl::App("index.html".into()));
             }
         }

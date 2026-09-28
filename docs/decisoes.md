@@ -2230,3 +2230,108 @@ The two defects 1.6.11 closed stay closed:
   lost, including a gate the new page would never see, so the agent would wait forever.
 - **Keep ending the agent on a reload, and warn before reloading:** the reloads that matter do not
   ask (the offline bar, a locale change, the menu).
+
+## ADR-038 — The quick window is the chat page in a small frame, and a `shvia://` link never runs anything
+
+- **Date:** 28/09/2026 · **Status:** **Accepted** — queue item I3 (`atalho-rapido`), from the
+  owner's comparison page with OpenClaw (the owner asked for it; the shape below is this ADR's)
+- **Code:** `src-tauri/src/rapida.rs` (the window and the shortcut), `src-tauri/src/esquema.rs`
+  (the links), `destino()` in `src/main.ts` (the shell's half of the path check)
+
+### Context
+
+OpenClaw's macOS app has a Quick Chat: a global shortcut shows a small native panel over any
+app, the question goes to an agent, and the reply streams inside the panel
+(`apps/macos/Sources/OpenClaw/QuickChatController.swift`). It also has an `openclaw://` scheme
+whose `agent` route **runs** a message, with a confirmation dialog and a key for links without it
+(`DeepLinks.swift`).
+
+This app is a thin shell over the ShvIA web page (ADR-002). It has no chat of its own, no
+session token (the login is the page's cookie), and no screen to show a reply in.
+
+### Decision
+
+**The quick window is another window of the page**, labelled `rapida`, built by the same
+`build_shvia_window` as every other one, so it has the same navigation perimeter, the same
+bridges and the same page hooks. Only its frame differs: 520×680, above the other apps, out of
+the taskbar, on every workspace. It goes straight to `/chat` through the local shell
+(`index.html?ir=/chat`, so the offline splash still applies).
+
+| | OpenClaw | ShvIA Desktop |
+|---|---|---|
+| what shows | a native panel, reply embedded | the ShvIA chat page |
+| where | the pointer's screen, centered, top at 22 % | the same |
+| toggling | shows / hides, reuses the panel | the same; closing it also hides it |
+| hides on losing focus | yes | **no** — the page's file picker takes the focus |
+| Escape | dismisses | **the page's** — it closes the page's dialogs |
+| shortcut | Option+Space, a recorder in settings | `Ctrl+Shift+Espaço`, 3 chords or off in the tray |
+| a taken chord | the recorder warns | the tray says so; a notice when it is chosen |
+
+**The quick window is not one of "the app's windows".** Everything that counts or picks them
+(`rapida::normais`) leaves it out: the "last window closes to the tray" rule, the tray's "Abrir
+o ShvIA", the second instance, the About menu, the macOS Dock. Hidden most of the time, it would
+otherwise be the window those pick, and a click would show nothing. When the last real window is
+destroyed, the quick window is destroyed too, so the app ends as it did before.
+
+**A `shvia://` link reaches a closed list, and none of it runs anything:**
+
+| link | effect |
+|---|---|
+| `shvia://`, `shvia://abrir` | the app comes forward |
+| `shvia://rapida` | the quick window toggles |
+| `shvia://chat`, `shvia://chat?q=…` | a new window at the chat, the text in the composer, **not sent** |
+| `shvia://configuracoes/<secao>` | a new window with that settings section open |
+| anything else | the app comes forward; the log gets the scheme and host only |
+
+Any page, e-mail or message can carry a link, so it is a stranger's input. What makes the list
+safe without a confirmation is that nothing on it acts: the prompt waits in the composer for the
+person to read and send. **A route that would send, approve or run something does not enter this
+list without a confirmation,** which is OpenClaw's answer for exactly that route. And the link
+never chooses the server or the path: the window goes to the configured server
+(`server.rs`), at a path built in Rust, and the shell accepts only `/chat` and `/chat?…`. A test
+keeps the two sides written alike. Limits: a prompt over 8 000 characters is refused whole, and
+links open at most one window every 2 s.
+
+**On Wayland there is no global shortcut to take.** The protocol has none. The plugin grabs
+through XWayland, which only sees keys while an X11 app has focus. The tray says so, and the way
+is the system's own shortcut settings bound to `xdg-open shvia://rapida`. That is also why
+`rapida` is a route.
+
+### Consequences
+
+- The quick window is a full ShvIA page, so SHVIA-WEB's narrow layout is what shows in it. A
+  layout made for it (only the composer until there is an answer) is SHVIA-WEB work, and would
+  be keyed on the window, not on a parameter the page could be sent by a link.
+- A Code session started in the quick window keeps running while it is hidden (it is hidden, not
+  closed; ADR-037's rules apply unchanged).
+- Over a **fullscreen** macOS app the window may not show: that takes an `NSPanel` with the
+  full-screen-auxiliary behavior, which Tauri's window does not offer. OpenClaw's panel is native
+  for this reason.
+- The plugins are pinned to the tauri 2.10 line (`~2.3.2`, `~2.4.10`). Their next minors require
+  tauri 2.12, which brings the Windows crates measured breaking the build (1.6.49). They move
+  together with tauri.
+- The scheme is registered by the installers (`.deb`, `.rpm`, MSI, NSIS, the macOS bundle). An
+  AppImage registers itself at start (`register_all`), since nothing installed it.
+
+### How to check it (not yet done on a running app)
+
+1. `Ctrl+Shift+Espaço` over another app → the window shows on that screen; again → it hides;
+   click another app, press it → it comes forward (it does not hide).
+2. Attach a file in the quick window → the picker opens and the window stays.
+3. Tray → "Atalho da janela rápida" → choose "Alt+Espaço" on Windows → the tray reports it is in
+   use, and a notice says so.
+4. `xdg-open 'shvia://chat?q=resuma%20isto'` (Linux), `start shvia://chat?q=oi` (Windows),
+   `open 'shvia://chat?q=oi'` (macOS) → a new window at the chat, the text in the composer, not
+   sent. `shvia://configuracoes/github` → the GitHub settings pane.
+5. With "Fechar mantém rodando" off, open the quick window, then close the main window → the app
+   ends (it does not keep running with the quick window hidden).
+
+### Alternatives considered
+
+- **A native quick window with its own chat:** the shell would need a session token and its own
+  chat client — a second ShvIA, and exactly what ADR-002 declined.
+- **Open the quick question in the main window:** switching the person's main window to a new
+  conversation loses what was on it; a small window over the current app is the point.
+- **A link that sends the prompt, with a confirmation:** nothing asked for it, and a confirmation
+  is what people learn to click through. Filling the composer gets the same result with the
+  person's own Enter as the confirmation.
