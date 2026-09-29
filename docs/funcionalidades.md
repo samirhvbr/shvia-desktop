@@ -254,6 +254,17 @@ bundled one, or has the same version and different files. It never installs an e
 installed, and never downgrades a newer one. Code in `src-tauri/src/code_bridge/atualizacao.rs`,
 decision in ADR-036.
 
+## Phase 8 — reaching the app from anywhere (1.10.0)
+
+**1.10.0 — the quick window and `shvia://`.** `Ctrl+Shift+Espaço` (`⌘⇧Espaço`) shows a small
+ShvIA chat window over any app, on the pointer's screen; the same keys, or closing it, put it
+away, and it keeps its conversation. The chord is picked in the tray ("Atalho da janela rápida"),
+which also says when another program holds it, or when the session is Wayland, where the way is a
+system shortcut for `xdg-open shvia://rapida`. `shvia://` links open the app at the chat, with a
+prompt in the composer that is never sent, or at a settings section. The list is closed, and
+nothing a link does runs anything. Code in `rapida.rs` and `esquema.rs`, decision in ADR-038.
+Not yet exercised in a running app: ADR-038 has the check.
+
 ## Limitações conhecidas
 
 - ⚠️ **Microphone and image paste on Linux** (**ADR-008**, re-measured in `1.6.45`): ADR-008

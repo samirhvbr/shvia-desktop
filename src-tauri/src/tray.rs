@@ -44,7 +44,7 @@
 //!
 //! [ADR-011]: ../../docs/decisoes.md
 
-use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_autostart::ManagerExt;
@@ -151,6 +151,8 @@ fn montar_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let rotulo_host = MenuItem::with_id(app, "tray-host", format!("Servidor: {host}"), false, None::<&str>)?;
 
     let abrir = MenuItem::with_id(app, "tray-open", "Abrir o ShvIA", true, None::<&str>)?;
+    let rapida = MenuItem::with_id(app, "tray-quick", "Janela rápida", true, None::<&str>)?;
+    let atalho = submenu_do_atalho(app)?;
     let atualizar = MenuItem::with_id(app, "tray-update", "Verificar atualizações…", true, None::<&str>)?;
 
     // `is_enabled()` do plugin, não uma cópia nossa: se o usuário apagar o LaunchAgent
@@ -188,6 +190,8 @@ fn montar_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &rotulo_host,
             &PredefinedMenuItem::separator(app)?,
             &abrir,
+            &rapida,
+            &atalho,
             &atualizar,
             &PredefinedMenuItem::separator(app)?,
             &autostart,
@@ -196,6 +200,44 @@ fn montar_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &sair,
         ],
     )
+}
+
+/// "Atalho da janela rápida" (ADR-038): the chords of `rapida::OPCOES`, "Desligado", and — read,
+/// like the rest of this menu — why the chosen one is not working, when it is not.
+fn submenu_do_atalho(app: &AppHandle) -> tauri::Result<Submenu<tauri::Wry>> {
+    let escolha = crate::rapida::escolha(app);
+    let mut itens: Vec<Box<dyn tauri::menu::IsMenuItem<tauri::Wry>>> = Vec::new();
+    for o in crate::rapida::OPCOES {
+        itens.push(Box::new(CheckMenuItem::with_id(
+            app,
+            format!("tray-shortcut:{}", o.id),
+            o.rotulo,
+            true,
+            escolha == o.id,
+            None::<&str>,
+        )?));
+    }
+    itens.push(Box::new(CheckMenuItem::with_id(
+        app,
+        format!("tray-shortcut:{}", crate::rapida::DESLIGADO),
+        "Desligado",
+        true,
+        escolha == crate::rapida::DESLIGADO,
+        None::<&str>,
+    )?));
+    // The chord another program holds, or Wayland, where no app can take one. Disabled items:
+    // information, not actions.
+    let aviso = if crate::rapida::sessao_wayland() {
+        Some("No Wayland: crie um atalho do sistema para xdg-open shvia://rapida".to_string())
+    } else {
+        crate::rapida::falha().map(|_| "Este atalho está em uso por outro programa".to_string())
+    };
+    if let Some(texto) = aviso {
+        itens.push(Box::new(PredefinedMenuItem::separator(app)?));
+        itens.push(Box::new(MenuItem::with_id(app, "tray-shortcut-info", texto, false, None::<&str>)?));
+    }
+    let refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = itens.iter().map(|b| b.as_ref()).collect();
+    Submenu::with_items(app, "Atalho da janela rápida", true, &refs)
 }
 
 /// Cria o ícone de bandeja. Chamado uma vez, no `setup`.
@@ -248,6 +290,21 @@ pub fn instalar(app: &AppHandle) -> tauri::Result<()> {
 fn tratar_menu(app: &AppHandle, id: &str) {
     match id {
         "tray-open" => mostrar(app),
+        "tray-quick" => crate::rapida::alternar(app),
+        _ if id.starts_with("tray-shortcut:") => {
+            let escolhido = &id["tray-shortcut:".len()..];
+            if let Some(e) = crate::rapida::escolher(app, escolhido) {
+                // Said where the click happened: a chord that silently does nothing is the
+                // shortcut the person will blame the app for.
+                let _ = app
+                    .notification()
+                    .builder()
+                    .title("ShvIA")
+                    .body(format!("Não foi possível usar este atalho — outro programa já o usa ({e})."))
+                    .show();
+            }
+            recarregar_menu(app);
+        }
         // Linux only: `exit` runs `RunEvent::Exit` (sidecars and pending login killed).
         "tray-quit" => app.exit(0),
         "tray-update" => crate::updater::verificar_agora(app),
@@ -290,9 +347,11 @@ fn recarregar_menu(app: &AppHandle) {
 
 /// Traz o app de volta: mostra e foca a janela, recriando-a se não existir mais.
 pub fn mostrar(app: &AppHandle) {
-    let janelas = app.webview_windows();
+    // The quick window is left out (ADR-038): it is hidden most of the time, and it is not
+    // what "Abrir o ShvIA" means.
+    let janelas = crate::rapida::normais(app);
 
-    if let Some(win) = janelas.get("main").or_else(|| janelas.values().next()) {
+    if let Some(win) = janelas.iter().find(|w| w.label() == "main").or_else(|| janelas.first()) {
         let _ = win.show();
         // `unminimize` antes do foco: uma janela minimizada aceita `set_focus` sem
         // aparecer, e o clique na bandeja pareceria não fazer nada.

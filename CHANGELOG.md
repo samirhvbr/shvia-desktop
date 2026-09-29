@@ -1,5 +1,57 @@
 # Changelog
 
+## 1.10.0 - a global shortcut shows a quick ShvIA window over any app, and shvia:// links open the app at the chat
+
+Queue item I3 (`atalho-rapido`), from the owner's OpenClaw comparison page. Decision in ADR-038.
+
+- **The quick window.** `Ctrl+Shift+Espaço` (`⌘⇧Espaço` on macOS) shows a small ShvIA window
+  (520×680) above the other apps, on the screen the pointer is on, centered with its top at 22 %
+  (OpenClaw's `QuickChatPlacement.swift`). The same shortcut, or closing it, puts it away. It is
+  hidden, never destroyed, so the conversation is still there the next time. It is the ShvIA chat
+  page itself, with the same navigation perimeter and bridges as every window (`rapida.rs`,
+  `build_shvia_window`).
+- **What was not copied from OpenClaw, and why.** It does not hide when it loses focus: the
+  page's native file picker takes the focus, and the window would vanish mid-attach. Escape stays
+  the page's, which uses it to close its own dialogs.
+- **The shortcut is picked in the tray** ("Atalho da janela rápida"): three chords or "Desligado",
+  stored in `janela-rapida.json`. A missing or unknown value is the default, never "off". A chord
+  another program holds is reported in the tray and by a notice when chosen; the app starts
+  anyway. On Wayland no app can take a global shortcut, and the tray says so and names the way:
+  a system shortcut for `xdg-open shvia://rapida`.
+- **`shvia://` links** (`esquema.rs`), a closed list:
+  - `shvia://` and `shvia://abrir` bring the app forward;
+  - `shvia://rapida` toggles the quick window;
+  - `shvia://chat?q=texto` opens a window at the chat with the text in the composer, **not sent**
+    (SHVIA-WEB's `/chat?q=`);
+  - `shvia://configuracoes/<secao>` opens a settings section.
+
+  Anything else brings the app forward and is logged by scheme and host only. Nothing a link does
+  runs anything, so there is no confirmation (OpenClaw's `agent` link runs, and asks). A prompt
+  over 8 000 characters is refused whole, never cut. At most one link window every 2 s. The link
+  never picks the server or the path: the local shell repeats the check (`destino()` in
+  `src/main.ts`), and a test keeps the two rules written alike.
+- **The quick window does not count as one of the app's windows** (`rapida::normais`): not for
+  "the last window closes to the tray", the tray's "Abrir o ShvIA", the second instance, the
+  About menu or the macOS Dock. When the last real window is destroyed, it goes too, so the app
+  ends as it did before instead of running with nothing on screen.
+- **Plugins pinned to the tauri 2.10 line:** `tauri-plugin-global-shortcut ~2.3.2` and
+  `tauri-plugin-deep-link ~2.4.10`, plus the `deep-link` feature of the single-instance plugin,
+  which hands a link to the running instance. Their next minors require tauri 2.12. Measured: the
+  unpinned `cargo add` moved tauri 2.11.6 → 2.12.0 and 60 crates, including `windows` 0.62 and
+  `webview2-com` 0.39, the pair that breaks the Windows build (1.6.49). Pinned, the lock only
+  gains the new crates. No capability declares either plugin (ADR-001).
+
+Measured:
+
+- `cargo test`: 185 passed, 18 of them new — the routes, the encoding, the refusals, the
+  throttle, the toggle's four states, the placement and the stored choice;
+- `cargo clippy --all-targets` is clean on Linux and on `x86_64-pc-windows-gnu`;
+- `cargo deny check` passes;
+- `tsc --noEmit` passes.
+
+NOT measured: the running app. Nobody has pressed the shortcut or clicked a link yet — no
+display session was driven from here. The check on the three systems is in ADR-038.
+
 ## 1.9.0 - a plan turn reads and presents a plan, and writes and runs nothing, on both runners
 
 The owner, 26/09/2026: "we also need a planning mode in Code, where the agent does not execute

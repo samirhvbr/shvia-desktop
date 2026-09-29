@@ -33,6 +33,11 @@
 // Dev: "?hold" congela no estado connecting e "?hold=offline" mostra o estado
 // offline — pra estilizar o splash sem ser redirecionado (sem auto-retry).
 // "?server" abre direto o formulário de servidor.
+//
+// "?ir=/chat…" (1.10.0, ADR-038): where on the server to go, set by Rust for the quick window
+// and for `shvia://` links. Only `/chat` and `/chat?…` are honoured — the same rule as
+// `esquema::destino_permitido`, repeated here so this shell never becomes a redirect to a path
+// or an origin a link chose. Anything else enters at the server's root, as before.
 
 import { invoke } from "@tauri-apps/api/core";
 
@@ -130,8 +135,17 @@ async function serverReachable(): Promise<boolean> {
   }
 }
 
+/** The server address to enter: the root, or the `?ir=` destination when it is allowed. */
+function destino(): string {
+  const ir = params.get("ir");
+  if (ir !== null && (ir === "/chat" || ir.startsWith("/chat?"))) {
+    return config.url + ir;
+  }
+  return config.url;
+}
+
 function enter(): void {
-  window.location.replace(config.url);
+  window.location.replace(destino());
 }
 
 // Tentativa silenciosa (auto-retry): não mexe na UI enquanto verifica — só
