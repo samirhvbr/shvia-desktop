@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.10.1 - the Code tab's "New chat" request is specified in the queue
+
+Documentation only. On the Code tab, "New chat" should clear the window and open an item in the
+history below, as it does on the Chat tab, and today it does not. The owner asked for it on
+30/09/2026 and called the button decorative.
+
+The specification is `.continue/NOVO-CHAT-ABA-CODE-20260930.md`, with the acceptance criteria and
+the diagnosis read in SHVIA-WEB's `origin/master`:
+
+- The sidebar's `#reset-button` and the rail's `+` are visible on the Code face but call the Chat
+  tab's `resetChat()`, which clears a hidden window and also resets the Chat's active
+  conversation.
+- The folder card's "New chat" ends the agent but, by an earlier decision, keeps the timeline,
+  and draws nothing at all when the timeline is empty.
+- The request reverses that earlier decision, so the note states the condition that keeps its
+  original reason alive: nothing that was in the window may disappear from the history.
+
+The change itself is in SHVIA-WEB, not here, so there is no Desktop code in this version. The
+item sits in `.continue/` because the behavior does not exist yet; it leaves when it does. It is
+listed in `.continue/README.md` and as pending item 5 of `.continue/estado-atual.md`.
+
 ## 1.10.0 - a global shortcut shows a quick ShvIA window over any app, and shvia:// links open the app at the chat
 
 Queue item I3 (`atalho-rapido`), from the owner's OpenClaw comparison page. Decision in ADR-038.

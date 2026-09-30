@@ -269,6 +269,16 @@ dentro do instalador.
 Falta também o **Authenticode EV** (o macOS já tem Developer ID + notarização +
 staple no `build-local.sh`).
 
+### 5. "Novo chat" da aba Code não faz nada visível — pedido de 30/09/2026
+
+Na aba Chat o botão limpa a janela e a conversa vira item da lista. Na aba Code ele é
+decorativo: o botão da barra lateral e o `+` do trilho chamam o `resetChat()` da aba Chat (que
+opera numa janela escondida e ainda zera a conversa ativa dela), e o botão do cartão da pasta
+só encerra o agente, sem limpar a timeline. O pedido é limpar a janela e abrir um item no
+histórico abaixo. **O código a mudar é do SHVIA-WEB**, não deste repo. Especificação,
+diagnóstico e o ADR que precisa nascer:
+[`NOVO-CHAT-ABA-CODE-20260930.md`](NOVO-CHAT-ABA-CODE-20260930.md).
+
 ## Decisões em aberto (confirmar com o time)
 
 **Answered by the owner on the panel on 23/09/2026.** Kept here as the record of what was
