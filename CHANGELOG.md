@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.10.2 - the Codex runner forwards the agent's plan, which ShvIA's Code mode shows in its Tasks tab
+
+The owner, 30/09/2026: the agent's own task list in Code mode, as opencode shows it. SHVIA-WEB gains
+a Tasks tab; Claude's `TodoWrite` already reached it, and the SHVIA engine gains `todo_write`
+(SHVIA-CODE 0.13.0). The Codex app-server publishes its plan as `turn/plan/updated`, and the runner
+dropped it.
+
+- `traduzirNotificacao` turns `turn/plan/updated` into `{type: "plan_update", plan[{step, status}],
+  explanation}` (at most 50 steps; a malformed notification gives an empty plan, never a throw).
+- Doc: `codex-runner/README.md` ("The agent's plan"). Test: 1 new in `protocolo.test.mjs` (23 pass);
+  against master's `protocolo.mjs` it fails.
+
 ## 1.10.1 - the Code tab's "New chat" request is specified in the queue
 
 Documentation only. On the Code tab, "New chat" should clear the window and open an item in the
