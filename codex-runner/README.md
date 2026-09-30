@@ -15,6 +15,15 @@ codex-runner --version
 
 No npm dependency: it drives the `codex` CLI the user already has.
 
+## The agent's plan (1.10.2)
+
+`turn/plan/updated` — the agent's task list, whole, each time it changes — leaves the runner as
+`{"type":"plan_update","plan":[{"step","status"}],"explanation"}`, the app-server's own shape
+(`status`: `pending` | `inProgress` | `completed`). ShvIA's Code mode shows it in the **Tasks**
+tab (SHVIA-WEB `docs/FRONTEND/ABA-TAREFAS.md`). Until 1.10.2 the notification had no case in
+`traduzirNotificacao` and never left the runner. The desktop shell forwards any event line, so
+nothing else changes on the way.
+
 ## 🔴 The guarantee, and the hole in it — read this before shipping the engine
 
 > **Inside the sandbox's writable set, writes do NOT ask. Outside it, you get a card.**

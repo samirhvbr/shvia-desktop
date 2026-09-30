@@ -275,3 +275,20 @@ test("`plano` counts only when it is literally true", () => {
   for (const v of ["true", 1, "sim", {}]) assert.equal(sandboxDoTurno({ plano: v }), null, JSON.stringify(v));
 });
 
+
+test("the agent's plan leaves the runner as plan_update, whole, for ShvIA's Tasks tab (1.10.2)", () => {
+  const ev = traduzirNotificacao({
+    method: "turn/plan/updated",
+    params: {
+      threadId: "t", turnId: "u", explanation: "two steps",
+      plan: [{ step: "Read the spec", status: "completed" }, { step: "Patch the runner", status: "inProgress" }],
+    },
+  });
+  assert.deepEqual(ev, {
+    type: "plan_update",
+    plan: [{ step: "Read the spec", status: "completed" }, { step: "Patch the runner", status: "inProgress" }],
+    explanation: "two steps",
+  });
+  // A malformed notification still gives an event with an empty plan, never a throw.
+  assert.deepEqual(traduzirNotificacao({ method: "turn/plan/updated", params: {} }).plan, []);
+});

@@ -171,6 +171,20 @@ export function traduzirNotificacao(msg) {
     case "item/reasoning/summaryTextDelta":
       return { type: "text", delta: String(p.delta ?? "") };
 
+    // The agent's plan (its task list), sent whole each time it changes. ShvIA's Code mode shows it
+    // in the Tasks tab (SHVIA-WEB docs/FRONTEND/ABA-TAREFAS.md), which reads `plan_update` with the
+    // app-server's own shape: `plan[{step, status: pending|inProgress|completed}]`. Until 1.10.2
+    // this notification fell to `default` and never left the runner.
+    case "turn/plan/updated":
+      return {
+        type: "plan_update",
+        plan: (Array.isArray(p.plan) ? p.plan : []).slice(0, 50).map((s) => ({
+          step: String(s?.step ?? ""),
+          status: String(s?.status ?? "pending"),
+        })),
+        explanation: p.explanation ?? null,
+      };
+
     case "item/started": {
       const item = p.item || {};
       if (item.type !== "commandExecution" && item.type !== "fileChange") return null;
