@@ -24,6 +24,7 @@
 //        `images` é OPCIONAL e só o motor claude a consome hoje: o SDK aceita
 //        `MessageParam` com blocos (text|image|document), então a imagem vai
 //        estruturada, nunca em base64 no meio do texto.
+//     {"type":"steer","text":"..."}                       orienta o turno em andamento (1.11.0)
 //     {"type":"exit"}                                     encerra
 //     {"id":"...","decision":"approve"|"always"|"reject"} resposta a um gate_request
 //     {"id":"...","decision":"continue"|"stop","message"}   resposta a um stop_request
@@ -35,6 +36,8 @@
 //     {"type":"gate_request","id","scope","policy","preview"}   (BLOQUEIA)
 //     {"type":"stop_request","id","iteration","last","reason"}  (BLOQUEIA; só com --parada host)
 //     {"type":"usage","tokens","cost","estimated"}
+//     {"type":"steer_applied","text"}                   o turno leu a orientação (1.11.0)
+//     {"type":"steer_deferred","text"}                  não leu: o host decide (a página a manda em seguida)
 //     {"type":"turn_done"} | {"type":"error"|"warn","message"}
 
 import * as readline from "node:readline";
@@ -44,6 +47,8 @@ import { EDICAO, LEITURA, PATH_ARG, decidir, previa, decidirNoPlano } from "./po
 // The stop handshake of the Run (RUN-20260910, B2) lives in its own pure module for the
 // same reason: it is proved by `parada.test.mjs`, and this file cannot be imported by a test.
 import { encerrarPendentes, esperarDecisao, montarStopRequest, opcoesDaRun, saidaDoHook } from "./parada.mjs";
+// Steering the turn in flight (1.11.0): pure for the same reason, proved by `orientacao.test.mjs`.
+import { criarOrientacao } from "./orientacao.mjs";
 
 // ---------------------------------------------------------------- saída NDJSON
 function emit(obj) {
@@ -285,6 +290,15 @@ let busy = false;
 let stdinClosed = false; // no modo pipe (one-shot), sair após esvaziar a fila
 const queue = [];
 
+// ------------------------------------------------------------- steering (1.11.0)
+// A steer goes INTO the turn in flight; the rules, and the measurement against the real SDK,
+// are in `orientacao.mjs`, which is the part a test can drive.
+let consultaAtual = null; // the turn's Query, while it runs
+const orientacao = criarOrientacao({
+  emitir: (ev) => emit(ev),
+  enfileirar: (texto) => queue.push({ text: texto, images: [], plano: false }),
+});
+
 /**
  * Monta o `prompt` do `query()`.
  *
@@ -478,7 +492,9 @@ async function runTurn(text, images, plano = false) {
   let estado = { sessionId, sawTextDelta: false };
   stopsNoTurno = 0; // `iteration` of the stop_request counts within the turn
 
-  for await (const message of query({ prompt: montarPrompt(text, images), options })) {
+  consultaAtual = query({ prompt: montarPrompt(text, images), options });
+  for await (const message of consultaAtual) {
+    orientacao.observar(message);
     const r = traduzirMensagem(message, estado, MODEL);
     estado = r.estado;
     sessionId = estado.sessionId;
@@ -497,6 +513,8 @@ async function pump() {
     emit({ type: "error", message: String(e?.message ?? e) });
     emit({ type: "turn_done" });
   } finally {
+    consultaAtual = null;
+    orientacao.encerrarTurno();
     busy = false;
     if (queue.length) pump();
     else if (stdinClosed) process.exit(0); // one-shot: turno acabou, stdin em EOF
@@ -525,6 +543,12 @@ rl.on("line", (raw) => {
   if (msg.type === "exit") {
     rl.close();
     process.exit(0);
+  }
+  if (msg.type === "steer") {
+    // `busy` and the query are set in the same tick a turn starts, so a turn never runs without it.
+    const r = orientacao.orientar(String(msg.text ?? ""), busy ? consultaAtual : null, sessionId);
+    if (r === "enfileirada") pump();
+    return;
   }
   if (msg.type === "user") {
     // A fila guardava STRING. Com imagem isso a perderia: o turno enfileirado

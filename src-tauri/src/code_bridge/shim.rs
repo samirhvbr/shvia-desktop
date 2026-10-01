@@ -220,7 +220,12 @@ pub const BRIDGE_JS: &str = r#"(function () {
     //           that turn in a read-only sandbox. Without the flag the page offers Plan only on
     //           the gateway engine, where it refuses every gate itself — on an older shell a
     //           Claude or Codex turn would edit while the screen says "Plan".
-    recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true, plano: true },
+    //   orientar: both runners take `{type:'steer',text}` while a turn runs (1.11.0) and answer
+    //           `steer_applied` or `steer_deferred`. Without the flag the page sends a plain
+    //           `user` message as before: an older runner does not know `steer`, warns that the
+    //           message was not recognised, and the correction is LOST. Anna does not know it
+    //           either, so the page sends it only to the claude and codex engines.
+    recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true, plano: true, orientar: true },
     // chamados pelo Rust (eval):
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
     _emit: function (evt, sessao, seq) { if (evt && typeof evt === 'object') { if (sessao) evt.sessao = sessao; if (seq) evt.seq = seq; } for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }

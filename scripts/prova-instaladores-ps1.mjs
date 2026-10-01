@@ -70,7 +70,7 @@ try {
   const cmd1 = join(c1.lad, "shvia", "bin", "claude-runner.cmd");
   const wrap = tem(cmd1) ? readFileSync(cmd1, "latin1") : "";
   caso("claude-runner installs", c1.code === 0 && /✓ claude-runner instalado/.test(c1.out)
-    && ["claude-runner.mjs", "politica.mjs", "parada.mjs", "package.json", "package-lock.json"].every((f) => tem(join(d1, f)))
+    && ["claude-runner.mjs", "politica.mjs", "parada.mjs", "orientacao.mjs", "package.json", "package-lock.json"].every((f) => tem(join(d1, f)))
     && tem(join(d1, "node_modules", "@anthropic-ai", "claude-agent-sdk", "package.json"))
     && wrap.includes("\r\n") && wrap.includes("%LOCALAPPDATA%\\shvia-claude-runner\\claude-runner.mjs"),
     `exit ${c1.code}\n${c1.out.slice(-800)}`);

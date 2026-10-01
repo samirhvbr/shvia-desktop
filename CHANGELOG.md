@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.11.0 - both Code-mode engines take a correction in the middle of a turn
+
+OpenClaw comparison item `steer`, the Code-mode half (the site chat's half is SHVIA-WEB 2.111.55). What the person
+types while the agent works used to wait in the runner's queue for the whole turn to end. Both runners now take
+`{"type":"steer","text"}` and put it INTO the turn in flight; the desktop bridge forwards the line unchanged, and the
+page side (sending `steer` while the agent works) is SHVIA-WEB's `code-mode.js`. Same contract on both engines:
+`steer_applied` when the turn read it, `steer_deferred` when it could not — handed back, never as `error`, and NOT run
+by the runner: the page puts it at the front of its own queue, which owns the turn bookkeeping (the queue chips, the
+Run's accounting). With no turn running a steer is just the next message. The shell declares `recursos.orientar`
+(`shim.rs`), so a page sends `steer` only to a desktop whose runners know it: an older runner warns "not recognised"
+and the correction would be lost.
+
+### Codex — `turn/steer`
+
+- New host message `{"type":"steer","text"}`. With a turn running, it goes into that turn by id (`expectedTurnId`
+  from `turn/start`'s answer) and the runner answers `steer_applied`. Refused by the server (the turn just ended,
+  or a review/compact turn) it is handed back with `steer_deferred` — never as `error`, which the bridge reads as
+  "turn over". With no turn running it is a normal message. A steer sent right after the message
+  waits for the turn's id instead of being deferred.
+- `turn/steer` joins the payload schema check (`esquema.mjs`); the bundled schema already had `TurnSteerParams`.
+- Doc: `codex-runner/README.md` ("Steering the turn in flight"). Test: `orientar.test.mjs`, 4 cases, the real runner
+  against a fake app-server; added to `prova:politica`.
+- The page side (sending `steer` while the agent works) is SHVIA-WEB's `code-mode.js`; the desktop bridge forwards the
+  line unchanged.
+
+### Claude — `streamInput` with `priority: "next"`
+
+- Measured against the real Agent SDK (0.3.258) on 01/10/2026: Haiku, a 4 s `sleep` tool call, the correction pushed
+  during it. The model read it before its next request and the turn ended with ONE result that obeyed it — also with
+  the plain-string prompt, so text turns keep `montarPrompt`'s string path. Then the REAL runner end to end: `tool_call`,
+  steer, `tool_result`, `steer_applied`, one `turn_done`, and the answer obeyed.
+- 🔴 `streamInput` resolving does not mean the model read it: a correction that lands while the model writes its LAST
+  message is never consumed. So `steer_applied` waits for the main conversation's NEXT model request (`message_start`
+  without `parent_tool_use_id`); unconfirmed at the end of the turn, it is deferred.
+- The rules live in the new pure `orientacao.mjs` (the runner acts on import and CI has no SDK), tested by
+  `orientacao.test.mjs` (5 unit + 1 source check of the wiring), added to `prova:politica`. Both installers copy the
+  new module (`install.sh`, `install.ps1`, and `prova-instaladores-ps1.mjs`'s list).
+
 ## 1.10.2 - the Codex runner forwards the agent's plan, which ShvIA's Code mode shows in its Tasks tab
 
 The owner, 30/09/2026: the agent's own task list in Code mode, as opencode shows it. SHVIA-WEB gains

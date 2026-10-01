@@ -33,6 +33,17 @@ Igual ao `anna` (`embedding.md`):
 - **stdin**: `{"type":"user","text":…}` · `{"type":"exit"}` · `{"id":…,"decision":"approve"|"always"|"reject"}` · `{"id":…,"decision":"continue"|"stop","message":…}` (answer to a `stop_request`)
 - **stdout**: `model` · `text{delta}` · `tool_call` · `tool_result` · `gate_request` · `stop_request` (only with `--parada host`) · `usage` · `turn_done` · `error`/`warn`
 
+## Steering the turn in flight (1.11.0)
+
+`{"type":"steer","text":"..."}`, sent while a turn runs, goes INTO it: `streamInput` on the turn's own query, as a
+user message with `priority: "next"`, which the model reads before its next request. The runner answers
+`{"type":"steer_applied","text"}` only when the main conversation starts that next request (a `message_start`
+without `parent_tool_use_id`): `streamInput` resolving does not prove the model read it, and a correction that lands
+while the model writes its last message never is. Still unconfirmed when the turn ends, it goes back to the host,
+once, with `{"type":"steer_deferred","text"}`, and the runner does NOT run it: the host decides (the Code-mode page
+puts it at the front of its own queue, where its turn bookkeeping lives). With no turn running it is a normal message. Same contract as the
+Codex runner (`turn/steer`). Rules and the real-SDK measurement: `orientacao.mjs`; test: `orientacao.test.mjs`.
+
 ## The Run (1.5.0) — `--parada host`, `--teto-iteracoes`, `--teto-custo`
 
 Block B2 of `docs/code/RUN-20260910.md`. With `--parada host` the runner installs the SDK

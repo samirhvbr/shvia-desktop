@@ -24,6 +24,26 @@ tab (SHVIA-WEB `docs/FRONTEND/ABA-TAREFAS.md`). Until 1.10.2 the notification ha
 `traduzirNotificacao` and never left the runner. The desktop shell forwards any event line, so
 nothing else changes on the way.
 
+## Steering the turn in flight (1.11.0)
+
+`{"type":"steer","text":"..."}` on stdin, sent while a turn runs, goes INTO that turn through the
+app-server's `turn/steer`: the model reads it before its next step instead of the message waiting
+for the whole turn to end. It is aimed at the turn by id (`expectedTurnId`, from `turn/start`'s
+answer), so a correction that arrives late is refused rather than landing in the next turn.
+
+| Situation | What the runner does | Line to the host |
+|---|---|---|
+| a turn is running | `turn/steer` | `{"type":"steer_applied","text"}` |
+| the server refuses it (the turn just ended; review/compact turns cannot be steered) | hands it back; does NOT run it — the host decides | `{"type":"steer_deferred","text"}` |
+| no turn running | runs it as a normal message | (the normal turn events) |
+
+A refused steer is **not** an `error` line: the desktop bridge reads `error` as "the turn is over",
+and the turn may be fine. A steer sent right after the message waits for the turn's id instead of
+being deferred. The Code-mode page puts a deferred steer at the front of its own queue: the page owns the
+queue (its chips, the Run's accounting), and a turn the runner started on its own would reach it with none
+of that. The page sends `steer` only when the shell declares `recursos.orientar`. Test:
+`orientar.test.mjs` (the real runner against a fake app-server).
+
 ## 🔴 The guarantee, and the hole in it — read this before shipping the engine
 
 > **Inside the sandbox's writable set, writes do NOT ask. Outside it, you get a card.**

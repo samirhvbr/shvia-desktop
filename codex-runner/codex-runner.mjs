@@ -30,6 +30,7 @@
 // ## Contract (embedding.md)
 //   Host → runner (stdin, one JSON line per message):
 //     {"type":"user","text":"..."}                        starts a turn
+//     {"type":"steer","text":"..."}                       steers the turn in flight (1.11.0)
 //     {"type":"exit"}                                     shuts down
 //     {"id":"...","decision":"approve"|"always"|"reject"} answers a gate_request
 //   runner → Host (stdout):
@@ -39,6 +40,8 @@
 //     {"type":"tool_result","id","name","bytes","content"}
 //     {"type":"gate_request","id","scope","policy","preview"}   (BLOCKS)
 //     {"type":"usage","tokens","cost","estimated"}
+//     {"type":"steer_applied","text"}                   the steer went into the turn in flight
+//     {"type":"steer_deferred","text"}                  it could not: the host decides (sends it next)
 //     {"type":"turn_done"} | {"type":"error"|"warn","message"}
 
 import { spawn } from "node:child_process";
@@ -134,8 +137,12 @@ child.stderr.on("data", (d) => process.stderr.write(d));
 // the LSP family, which frames with headers and would have hung here forever.
 let proximoId = 1;
 const pendentes = new Map(); // our request id → resolve
+// Requests whose refusal is an expected answer, not a failure: the id → true. A refused
+// `turn/steer` (the turn ended a moment ago, or it is a review/compact turn) must NOT reach the
+// page as `error` — the bridge reads `error` as "the turn is over", and the turn may be fine.
+const silenciosos = new Set();
 
-function pedir(method, params) {
+function pedir(method, params, { silencioso = false } = {}) {
   // 🔴 The payload is checked against Codex's OWN schema before it leaves. On its
   // first run this caught `sandboxMode` in `thread/start` — a field that does not
   // exist (it is `sandbox`), which the server had been ignoring in silence since the
@@ -148,6 +155,7 @@ function pedir(method, params) {
     throw new Error(`payload inválido em ${method}`);
   }
   const id = proximoId++;
+  if (silencioso) silenciosos.add(id);
   const linha = JSON.stringify({ jsonrpc: "2.0", id, method, params });
   if (process.env.SHVIA_CODEX_DEBUG) process.stderr.write("[->] " + linha + "\n");
   child.stdin.write(linha + "\n");
@@ -165,6 +173,15 @@ const gatesPendentes = new Map();
 // ------------------------------------------------------------------ the turn
 let threadId = null;
 let ocupado = false;
+// The id of the turn in flight, from `turn/start`'s answer. `turn/steer` needs it as
+// `expectedTurnId`: the server refuses a steer aimed at a turn that is no longer the active
+// one, which is what keeps a late correction from landing in the NEXT turn.
+let turnoAtual = null;
+// Settles when the turn in flight has an id, or ended without one. A steer typed right after the
+// message reaches the runner before `turn/start` has answered; without this wait it would find no
+// id and be deferred — the turn it was meant for was already running.
+let turnoIdentificado = null;
+let avisarTurno = null;
 // Resolves when `turn/completed` arrives. 🔴 It exists because `turn/start`
 // ANSWERS IMMEDIATELY — it is an ack that the turn was accepted, not the end of
 // it. The first smoke run proved it: the runner emitted `model`, awaited
@@ -211,6 +228,7 @@ async function garantirThread() {
 
 async function rodarTurno(texto, plano = false) {
   ocupado = true;
+  turnoIdentificado = new Promise((resolve) => { avisarTurno = resolve; });
   try {
     const tid = await garantirThread();
     if (!tid) return;
@@ -218,11 +236,13 @@ async function rodarTurno(texto, plano = false) {
     const acabou = new Promise((resolve) => { fimDoTurno = resolve; });
     // A PLAN turn runs read-only, and the next one gets the thread's own policy back.
     const sandboxPolicy = sandboxDoTurno({ plano, anteriorFoiPlano: ultimoFoiPlano, politicaDaThread });
-    await pedir("turn/start", {
+    const inicio = await pedir("turn/start", {
       threadId: tid, input: [{ type: "text", text: texto }],
       ...(EFFORT ? { effort: EFFORT } : {}),
       ...(sandboxPolicy ? { sandboxPolicy } : {}),
     });
+    turnoAtual = inicio?.turn?.id ?? null;
+    avisarTurno?.();
     ultimoFoiPlano = plano === true;
     // The ack came back; now WAIT for the turn itself.
     await acabou;
@@ -230,9 +250,36 @@ async function rodarTurno(texto, plano = false) {
     emit({ type: "error", message: String(e?.message ?? e) });
   } finally {
     fimDoTurno = null;
+    turnoAtual = null;
+    avisarTurno?.();
     ocupado = false;
     drenar();
   }
+}
+
+// ------------------------------------------------------------- steering (1.11.0)
+//
+// What the person types while the agent works goes INTO the turn in flight (`turn/steer`): the
+// model reads it before its next step, instead of the message waiting for the whole turn to end.
+// What the turn cannot take is not lost and not run here: `steer_deferred` hands it back, and the
+// HOST decides — the Code-mode page puts it at the front of its own queue, which is where its turn
+// bookkeeping (the queue chips, the Run's accounting) lives. A turn this runner started on its own
+// would reach the page with none of that.
+async function orientar(texto) {
+  if (!texto.trim()) return;
+  // Nothing running: a steer is just the next message.
+  if (!ocupado) { rodarTurno(texto); return; }
+  if (!turnoAtual && turnoIdentificado) await turnoIdentificado;
+  const turno = turnoAtual;
+  let r = null;
+  // The turn ended (or never got an id) while we waited: there is nothing to aim at.
+  if (turno && threadId) {
+    r = await pedir("turn/steer",
+      { threadId, expectedTurnId: turno, input: [{ type: "text", text: texto }] },
+      { silencioso: true });
+  }
+  if (r && !r.erro) { emit({ type: "steer_applied", text: texto }); return; }
+  emit({ type: "steer_deferred", text: texto });
 }
 
 function drenar() {
@@ -261,8 +308,9 @@ readline.createInterface({ input: child.stdout }).on("line", async (linha) => {
     const resolve = pendentes.get(msg.id);
     if (resolve) {
       pendentes.delete(msg.id);
-      if (msg.error) emit({ type: "error", message: String(msg.error?.message ?? "app-server error") });
-      resolve(msg.result ?? null);
+      const quieto = silenciosos.delete(msg.id);
+      if (msg.error && !quieto) emit({ type: "error", message: String(msg.error?.message ?? "app-server error") });
+      resolve(msg.error && quieto ? { erro: msg.error } : (msg.result ?? null));
     }
     return;
   }
@@ -325,6 +373,7 @@ readline.createInterface({ input: process.stdin })
       return;
     }
     if (msg.type === "exit") { encerrar(0); return; }
+    if (msg.type === "steer") { orientar(String(msg.text ?? "")); return; }
     if (msg.type === "user") {
       const texto = String(msg.text ?? "");
       // `plano: true` = a PLAN turn (1.9.0). Strictly `true`: anything else is a normal turn.
