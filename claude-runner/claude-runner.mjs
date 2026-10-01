@@ -37,7 +37,7 @@
 //     {"type":"stop_request","id","iteration","last","reason"}  (BLOQUEIA; só com --parada host)
 //     {"type":"usage","tokens","cost","estimated"}
 //     {"type":"steer_applied","text"}                   o turno leu a orientação (1.11.0)
-//     {"type":"steer_deferred","text"}                  não leu: ela roda como a próxima mensagem
+//     {"type":"steer_deferred","text"}                  não leu: o host decide (a página a manda em seguida)
 //     {"type":"turn_done"} | {"type":"error"|"warn","message"}
 
 import * as readline from "node:readline";

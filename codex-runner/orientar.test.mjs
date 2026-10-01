@@ -94,7 +94,7 @@ test("a steer sent while the turn runs goes INTO that turn, aimed at its id", ()
   assert.equal(do_tipo(saida, "steer_deferred").length, 0);
 });
 
-test("a steer the server refuses is not an error: it runs as the next message, once", () => {
+test("a steer the server refuses is not an error: it goes back to the host, and the runner does not run it", () => {
   const { run, pedidos, saida } = rodar([
     { type: "user", text: "refatore o módulo de login" },
     { type: "steer", text: "não mexa nos testes" },
@@ -104,8 +104,8 @@ test("a steer the server refuses is not an error: it runs as the next message, o
     `a refused steer reached the page as an error, which the bridge reads as "turn over": ${run.stdout}`);
   assert.deepEqual(do_tipo(saida, "steer_deferred").map((m) => m.text), ["não mexa nos testes"]);
   const inicios = pedidos.filter((p) => p.metodo === "turn/start");
-  assert.equal(inicios.length, 2, `the deferred steer must run as the next turn: ${JSON.stringify(pedidos)}`);
-  assert.deepEqual(inicios[1].params.input, [{ type: "text", text: "não mexa nos testes" }]);
+  assert.equal(inicios.length, 1,
+    `the page owns the queue: a turn the runner started on its own would skip its bookkeeping: ${JSON.stringify(pedidos)}`);
 });
 
 test("a steer with no turn in flight is simply the next message", () => {

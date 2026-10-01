@@ -10,8 +10,9 @@
 // model writes its LAST message is never consumed, and nothing says so. So a steer is confirmed
 // (`steer_applied`) only when the main conversation starts a NEW model request after the push —
 // a `message_start` stream event without `parent_tool_use_id` (a sub-agent's request does not carry
-// the main thread's input). One still unconfirmed when the turn ends runs as the next message,
-// once (`steer_deferred`): the same rule as the site chat's steer (SHVIA-WEB 2.111.55).
+// the main thread's input). One still unconfirmed when the turn ends is handed back with
+// `steer_deferred` and NOT run here: the host decides — the Code-mode page puts it at the front of
+// its own queue, where its turn bookkeeping lives.
 //
 // Pure on purpose, like `parada.mjs`: `claude-runner.mjs` acts on import and imports the SDK, which
 // CI does not install, so this is the part a test can drive (`orientacao.test.mjs`).
@@ -19,7 +20,8 @@
 /**
  * @param {object} deps
  * @param {(ev: object) => void} deps.emitir  writes one protocol line to the host
- * @param {(texto: string) => void} deps.enfileirar  runs a text as the next message
+ * @param {(texto: string) => void} deps.enfileirar  runs a text as the next message (a steer
+ *   with no turn running, which is just a message)
  */
 export function criarOrientacao({ emitir, enfileirar }) {
   let pendentes = [];
@@ -58,12 +60,9 @@ export function criarOrientacao({ emitir, enfileirar }) {
       pendentes = [];
     },
 
-    /** The turn ended (well or not): what it never read runs as the next message, once. */
+    /** The turn ended (well or not): what it never read goes back to the host, once. */
     encerrarTurno() {
-      for (const texto of pendentes) {
-        enfileirar(texto);
-        emitir({ type: "steer_deferred", text: texto });
-      }
+      for (const texto of pendentes) emitir({ type: "steer_deferred", text: texto });
       pendentes = [];
     },
 

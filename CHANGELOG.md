@@ -6,15 +6,18 @@ OpenClaw comparison item `steer`, the Code-mode half (the site chat's half is SH
 types while the agent works used to wait in the runner's queue for the whole turn to end. Both runners now take
 `{"type":"steer","text"}` and put it INTO the turn in flight; the desktop bridge forwards the line unchanged, and the
 page side (sending `steer` while the agent works) is SHVIA-WEB's `code-mode.js`. Same contract on both engines:
-`steer_applied` when the turn read it, `steer_deferred` when it could not (it then runs as the next message, once,
-never as `error`), and with no turn running a steer is just the next message.
+`steer_applied` when the turn read it, `steer_deferred` when it could not — handed back, never as `error`, and NOT run
+by the runner: the page puts it at the front of its own queue, which owns the turn bookkeeping (the queue chips, the
+Run's accounting). With no turn running a steer is just the next message. The shell declares `recursos.orientar`
+(`shim.rs`), so a page sends `steer` only to a desktop whose runners know it: an older runner warns "not recognised"
+and the correction would be lost.
 
 ### Codex — `turn/steer`
 
 - New host message `{"type":"steer","text"}`. With a turn running, it goes into that turn by id (`expectedTurnId`
   from `turn/start`'s answer) and the runner answers `steer_applied`. Refused by the server (the turn just ended,
-  or a review/compact turn) it runs as the next message, once, with `steer_deferred` — never as `error`, which the
-  bridge reads as "turn over". With no turn running it is a normal message. A steer sent right after the message
+  or a review/compact turn) it is handed back with `steer_deferred` — never as `error`, which the bridge reads as
+  "turn over". With no turn running it is a normal message. A steer sent right after the message
   waits for the turn's id instead of being deferred.
 - `turn/steer` joins the payload schema check (`esquema.mjs`); the bundled schema already had `TurnSteerParams`.
 - Doc: `codex-runner/README.md` ("Steering the turn in flight"). Test: `orientar.test.mjs`, 4 cases, the real runner

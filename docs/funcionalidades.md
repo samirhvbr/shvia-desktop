@@ -270,8 +270,9 @@ Not yet exercised in a running app: ADR-038 has the check.
 **1.11.0 — steering, on both engines.** What the person types while the agent works in Code mode
 goes INTO the turn in flight, instead of waiting for the whole turn to end: Codex through the
 app-server's `turn/steer`, Claude through `streamInput` with `priority: "next"`. The runner answers
-`steer_applied` when the turn read it and `steer_deferred` when it could not, in which case it runs
-as the next message, once; never as an error. Measured against the real Claude Agent SDK and the
+`steer_applied` when the turn read it and `steer_deferred` when it could not, in which case the
+page sends it as the next message; never as an error. The shell declares `recursos.orientar`, so a
+page never sends `steer` to an older desktop, whose runner would drop it. Measured against the real Claude Agent SDK and the
 real runner on 01/10/2026. The page side (sending `steer` while the agent works) is SHVIA-WEB's
 `code-mode.js`; until it ships, nothing on screen sends it.
 

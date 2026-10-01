@@ -34,12 +34,14 @@ answer), so a correction that arrives late is refused rather than landing in the
 | Situation | What the runner does | Line to the host |
 |---|---|---|
 | a turn is running | `turn/steer` | `{"type":"steer_applied","text"}` |
-| the server refuses it (the turn just ended; review/compact turns cannot be steered) | runs it as the next message, once | `{"type":"steer_deferred","text"}` |
+| the server refuses it (the turn just ended; review/compact turns cannot be steered) | hands it back; does NOT run it — the host decides | `{"type":"steer_deferred","text"}` |
 | no turn running | runs it as a normal message | (the normal turn events) |
 
 A refused steer is **not** an `error` line: the desktop bridge reads `error` as "the turn is over",
 and the turn may be fine. A steer sent right after the message waits for the turn's id instead of
-being deferred. Same rule as the site chat's steer (SHVIA-WEB 2.111.55). Test:
+being deferred. The Code-mode page puts a deferred steer at the front of its own queue: the page owns the
+queue (its chips, the Run's accounting), and a turn the runner started on its own would reach it with none
+of that. The page sends `steer` only when the shell declares `recursos.orientar`. Test:
 `orientar.test.mjs` (the real runner against a fake app-server).
 
 ## 🔴 The guarantee, and the hole in it — read this before shipping the engine

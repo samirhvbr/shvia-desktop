@@ -39,8 +39,9 @@ Igual ao `anna` (`embedding.md`):
 user message with `priority: "next"`, which the model reads before its next request. The runner answers
 `{"type":"steer_applied","text"}` only when the main conversation starts that next request (a `message_start`
 without `parent_tool_use_id`): `streamInput` resolving does not prove the model read it, and a correction that lands
-while the model writes its last message never is. Still unconfirmed when the turn ends, it runs as the next message,
-once, with `{"type":"steer_deferred","text"}`. With no turn running it is a normal message. Same contract as the
+while the model writes its last message never is. Still unconfirmed when the turn ends, it goes back to the host,
+once, with `{"type":"steer_deferred","text"}`, and the runner does NOT run it: the host decides (the Code-mode page
+puts it at the front of its own queue, where its turn bookkeeping lives). With no turn running it is a normal message. Same contract as the
 Codex runner (`turn/steer`). Rules and the real-SDK measurement: `orientacao.mjs`; test: `orientacao.test.mjs`.
 
 ## The Run (1.5.0) — `--parada host`, `--teto-iteracoes`, `--teto-custo`

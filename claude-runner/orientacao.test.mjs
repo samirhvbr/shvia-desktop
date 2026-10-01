@@ -48,14 +48,14 @@ test("it is confirmed only on the main conversation's NEXT request, never by a s
   assert.equal(linhas.length, 1, "confirmed once");
 });
 
-test("a steer the turn never read runs as the next message, once", () => {
+test("a steer the turn never read goes back to the host, once, and is NOT run by the runner", () => {
   const { o, linhas, fila, consulta } = montar();
   o.orientar("e rode os testes", consulta, "s");
   o.encerrarTurno();
-  assert.deepEqual(fila, ["e rode os testes"]);
   assert.deepEqual(linhas, [{ type: "steer_deferred", text: "e rode os testes" }]);
+  assert.deepEqual(fila, [], "the page owns the queue: a turn started here would skip its bookkeeping");
   o.encerrarTurno();
-  assert.equal(fila.length, 1, "deferred once, not at every turn end");
+  assert.equal(linhas.length, 1, "deferred once, not at every turn end");
 });
 
 test("with no turn running a steer is simply the next message; an empty one does nothing", () => {
@@ -68,12 +68,12 @@ test("with no turn running a steer is simply the next message; an empty one does
 });
 
 test("a query that rejects the input does not throw out of the runner; the turn end defers it", async () => {
-  const { o, fila } = montar();
+  const { o, linhas } = montar();
   const fechada = { streamInput: async () => { throw new Error("Query closed"); } };
   assert.equal(o.orientar("x", fechada, "s"), "injetada");
   await tick();
   o.encerrarTurno();
-  assert.deepEqual(fila, ["x"]);
+  assert.deepEqual(linhas, [{ type: "steer_deferred", text: "x" }]);
 });
 
 // ---- the wiring, by source (the runner cannot be imported here)

@@ -41,7 +41,7 @@
 //     {"type":"gate_request","id","scope","policy","preview"}   (BLOCKS)
 //     {"type":"usage","tokens","cost","estimated"}
 //     {"type":"steer_applied","text"}                   the steer went into the turn in flight
-//     {"type":"steer_deferred","text"}                  it could not: it runs as the next message
+//     {"type":"steer_deferred","text"}                  it could not: the host decides (sends it next)
 //     {"type":"turn_done"} | {"type":"error"|"warn","message"}
 
 import { spawn } from "node:child_process";
@@ -261,8 +261,10 @@ async function rodarTurno(texto, plano = false) {
 //
 // What the person types while the agent works goes INTO the turn in flight (`turn/steer`): the
 // model reads it before its next step, instead of the message waiting for the whole turn to end.
-// Same rule as the site chat's steer (SHVIA-WEB 2.111.55): what the turn cannot take is not lost,
-// it runs as the next message, once.
+// What the turn cannot take is not lost and not run here: `steer_deferred` hands it back, and the
+// HOST decides — the Code-mode page puts it at the front of its own queue, which is where its turn
+// bookkeeping (the queue chips, the Run's accounting) lives. A turn this runner started on its own
+// would reach the page with none of that.
 async function orientar(texto) {
   if (!texto.trim()) return;
   // Nothing running: a steer is just the next message.
@@ -277,9 +279,7 @@ async function orientar(texto) {
       { silencioso: true });
   }
   if (r && !r.erro) { emit({ type: "steer_applied", text: texto }); return; }
-  fila.push({ texto, plano: false });
   emit({ type: "steer_deferred", text: texto });
-  drenar();
 }
 
 function drenar() {
