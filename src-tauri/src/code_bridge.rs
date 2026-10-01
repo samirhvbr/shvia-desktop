@@ -44,6 +44,7 @@ mod sessao;
 use sessao::*;
 mod atualizacao;
 pub(crate) use atualizacao::na_abertura;
+mod aparelho;
 pub use sessao::Sidecars;
 pub(crate) use motores::{engine_status, versao_do_anna};
 
@@ -164,6 +165,10 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
         "attach" => anexar_sessao(window, &req, &v),
         "pickFolder" => pick_folder(window, req),
         "pickFiles" => pick_files(window, req),
+        // The agent's device commands (ADR-039): the tray switch, the closed list and the
+        // per-command consent all live in `aparelho.rs`, none of them in the page.
+        "aparelho" => aparelho::aparelho(window, &req, &v),
+        "aparelhoStatus" => reply(window, &req, true, aparelho::status(window)),
         "saveFile" => save_file(window, req, &v),
         "getBinding" => {
             let pid = v.get("projectId").and_then(|p| p.as_str()).unwrap_or_default();

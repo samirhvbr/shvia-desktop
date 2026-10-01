@@ -178,11 +178,20 @@ pub(super) fn pick_folder(window: &WebviewWindow, req: String) {
 /// Arquivo acima do teto do servidor (10 MB) sai em `skipped` em vez de derrubar
 /// a seleção inteira — o resto do que foi escolhido continua valendo.
 pub(super) fn pick_files(window: &WebviewWindow, req: String) {
+    pick_files_titulo(window, req, None)
+}
+
+/// The same picker with a title of its own. The agent's `files.pick` (ADR-039) uses it to say
+/// who is asking and why: the picker IS that command's consent, so it has to read as a request.
+pub(super) fn pick_files_titulo(window: &WebviewWindow, req: String, titulo: Option<String>) {
     use base64::Engine;
     use tauri_plugin_dialog::DialogExt;
 
     let win = window.clone();
     let mut dialogo = window.app_handle().dialog().file();
+    if let Some(t) = titulo {
+        dialogo = dialogo.set_title(t);
+    }
     if let Some(dir) = ultima_pasta(window, "arquivos") {
         dialogo = dialogo.set_directory(dir);
     }

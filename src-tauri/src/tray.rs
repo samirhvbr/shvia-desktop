@@ -66,6 +66,9 @@ pub struct Prefs {
     pub close_to_tray: bool,
     /// O aviso de "continuo rodando aqui" já foi mostrado alguma vez?
     pub avisou: bool,
+    /// The agent's device commands (ADR-039). Off by default, and only this menu turns it on:
+    /// no bridge action writes this file, so a script on the page cannot.
+    pub aparelho: bool,
 }
 
 impl Default for Prefs {
@@ -74,7 +77,7 @@ impl Default for Prefs {
         // entrega nada — o alerta de preço continua não chegando com a janela fechada,
         // que é o buraco inteiro. E é o comportamento que o macOS já tinha; o default
         // faz os outros dois SOs pararem de divergir.
-        Self { close_to_tray: true, avisou: false }
+        Self { close_to_tray: true, avisou: false, aparelho: false }
     }
 }
 
@@ -112,6 +115,9 @@ impl Prefs {
                 .and_then(|x| x.as_bool())
                 .unwrap_or(padrao.close_to_tray),
             avisou: v.get("avisou").and_then(|x| x.as_bool()).unwrap_or(false),
+            // Only a literal `true` turns it on: a missing field, a wrong type or a hand edit
+            // gone wrong leaves the agent without the machine, which is the safe side.
+            aparelho: v.get("aparelho").and_then(|x| x.as_bool()).unwrap_or(false),
         }
     }
 }
@@ -121,7 +127,7 @@ fn gravar(app: &AppHandle, p: Prefs) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    let json = serde_json::json!({ "close_to_tray": p.close_to_tray, "avisou": p.avisou });
+    let json = serde_json::json!({ "close_to_tray": p.close_to_tray, "avisou": p.avisou, "aparelho": p.aparelho });
     // Falha de escrita é silenciosa de propósito: a preferência volta ao default no
     // próximo boot, e um diálogo de erro para isso interromperia o usuário por nada.
     let _ = std::fs::write(path, json.to_string());
@@ -138,6 +144,12 @@ pub fn desligar_recolher(app: &AppHandle) {
         p.close_to_tray = false;
         gravar(app, p);
     }
+}
+
+/// Is the agent allowed to ask this machine for device commands (ADR-039)? Read from disk on
+/// every call, like the rest of this menu: the switch the person sees is the one that applies.
+pub fn aparelho_ligado(app: &AppHandle) -> bool {
+    ler(app).aparelho
 }
 
 /// Monta o menu da bandeja **lendo o estado real** a cada chamada.
@@ -176,6 +188,17 @@ fn montar_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         None::<&str>,
     )?;
 
+    // ADR-039. Its own item, not inside a submenu: it is the gate on what the agent can do on
+    // this machine, and it has to be seen where the person looks.
+    let aparelho = CheckMenuItem::with_id(
+        app,
+        "tray-device-commands",
+        "Comandos de aparelho para o agente",
+        true,
+        prefs.aparelho,
+        None::<&str>,
+    )?;
+
     // On GTK the predefined `quit` is dropped silently (see the app menu in lib.rs), so
     // until 1.6.9 the Linux tray had no way to quit. A plain item handled below instead.
     #[cfg(target_os = "linux")]
@@ -196,6 +219,7 @@ fn montar_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &PredefinedMenuItem::separator(app)?,
             &autostart,
             &recolher,
+            &aparelho,
             &PredefinedMenuItem::separator(app)?,
             &sair,
         ],
@@ -334,6 +358,12 @@ fn tratar_menu(app: &AppHandle, id: &str) {
             gravar(app, p);
             recarregar_menu(app);
         }
+        "tray-device-commands" => {
+            let mut p = ler(app);
+            p.aparelho = !p.aparelho;
+            gravar(app, p);
+            recarregar_menu(app);
+        }
         _ => {}
     }
 }
@@ -438,6 +468,24 @@ mod tests {
     /// O aviso é uma vez na VIDA da instalação: gravado `true`, tem de ser lido `true`.
     /// Se voltasse `false`, a notificação "continuo rodando aqui" apareceria a cada
     /// fechamento — e ruído repetido é ruído que o usuário aprende a ignorar.
+    /// 🔴 The agent's device commands are OFF until the person turns them on (ADR-039). A
+    /// default of `true`, or an `unwrap_or(true)`, would hand the machine to every agent turn
+    /// in silence.
+    #[test]
+    fn comandos_de_aparelho_nascem_desligados() {
+        assert!(!Prefs::default().aparelho);
+        assert!(!do_str("{}").aparelho);
+        assert!(!do_str(r#"{"close_to_tray":true,"avisou":true}"#).aparelho);
+    }
+
+    #[test]
+    fn so_um_true_literal_liga_os_comandos_de_aparelho() {
+        assert!(do_str(r#"{"aparelho":true}"#).aparelho);
+        for errado in [r#"{"aparelho":"true"}"#, r#"{"aparelho":1}"#, r#"{"aparelho":null}"#] {
+            assert!(!do_str(errado).aparelho, "{errado} turned the commands on");
+        }
+    }
+
     #[test]
     fn o_aviso_dado_permanece_dado() {
         assert!(do_str(r#"{"close_to_tray":true,"avisou":true}"#).avisou);

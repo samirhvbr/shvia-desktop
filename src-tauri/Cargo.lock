@@ -3644,13 +3644,14 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "shvia-desktop"
-version = "1.11.0"
+version = "1.12.0"
 dependencies = [
  "base64 0.23.1",
  "javascriptcore-rs",
  "objc2",
  "objc2-foundation",
  "objc2-web-kit",
+ "raw-window-handle",
  "serde",
  "serde_json",
  "tauri",
@@ -3669,6 +3670,7 @@ dependencies = [
  "webkit2gtk",
  "webview2-com",
  "windows",
+ "zbus",
 ]
 
 [[package]]

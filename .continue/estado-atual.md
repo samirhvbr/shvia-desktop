@@ -3,7 +3,7 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Last updated: **01/10/2026** (version 1.11.0). 1.7.0 = the links to the web repository (ex-1.6.59, #75),
+> Last updated: **01/10/2026** (version 1.12.0). 1.7.0 = the links to the web repository (ex-1.6.59, #75),
 > 1.7.1 = the runners follow the app (ex-1.6.60, #76, ADR-036), 1.7.2/1.7.3 = the Windows build's
 > `--config`, 1.8.0 = several agent sessions per window (`recursos.sessoes`, #79, published 26/09),
 > 1.8.1 = the bipartite Shield identity (published 27/09), 1.8.2 = an agent that survives a reload
@@ -12,11 +12,11 @@
 > ex-#82), 1.10.0 = the quick window on a global shortcut and the `shvia://` scheme (ADR-038; not
 > yet exercised in a running app — the check is in the ADR). 1.10.2 = the Codex runner forwards the agent's plan (#91, the
 > Tasks tab), 1.11.0 = steering a turn in flight on both runners (`steer` → `steer_applied` /
-> `steer_deferred`); its page side is SHVIA-WEB's `code-mode.js`, not built yet. Together with SHVIA-WEB 2.111.22 Code
+> `steer_deferred`); its page side is SHVIA-WEB's `code-mode.js` (#442), 1.12.0 = the agent's device commands
+> behind a tray switch (`recursos.aparelho`, ADR-039; the round trip on the server is SHVIA-WEB's, not built yet). Together with SHVIA-WEB 2.111.22 Code
 > mode keeps a project's agent working while another project, Chat, Configurações or a reload is on
-> screen; Plan needs SHVIA-WEB's Plan approval (#382). Still queued from the owner's comparison page
-> (via the shvia-turn1 session): the desktop half of exposing device commands to the agent (I4,
-> waits for SHVIA-WEB's wave-4 contract).
+> screen; Plan needs SHVIA-WEB's Plan approval (#382). Nothing else queued from the owner's comparison page
+> on the desktop: I4 (device commands) is this 1.12.0.
 
 > ⚠️ **Saneado em 02/09/2026** (achado F-22): descrevia a **1.1.34** com o repo em 1.4.3.
 > Foi o **terceiro** saneamento manual deste arquivo pelo mesmo motivo — daí a régua
