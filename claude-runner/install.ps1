@@ -27,7 +27,7 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 # ⚠️ Every LOCAL module the runner imports goes in this list, and on this one line:
 # scripts/prova-instalador-copia-os-imports.mjs reads it (the 1.4.7 class — a new import that
 # is not copied makes an installation that is born broken). install.sh has the same list.
-$Files = @('claude-runner.mjs', 'politica.mjs', 'parada.mjs', 'package.json', 'package-lock.json')
+$Files = @('claude-runner.mjs', 'politica.mjs', 'parada.mjs', 'orientacao.mjs', 'package.json', 'package-lock.json')
 
 $Dir = $PSScriptRoot
 if (-not $env:LOCALAPPDATA) { Write-Output 'erro: LOCALAPPDATA não está definido (isto roda no Windows).'; exit 1 }

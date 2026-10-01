@@ -265,6 +265,16 @@ prompt in the composer that is never sent, or at a settings section. The list is
 nothing a link does runs anything. Code in `rapida.rs` and `esquema.rs`, decision in ADR-038.
 Not yet exercised in a running app: ADR-038 has the check.
 
+## Phase 9 — correcting the agent mid-turn (1.11.0)
+
+**1.11.0 — steering, on both engines.** What the person types while the agent works in Code mode
+goes INTO the turn in flight, instead of waiting for the whole turn to end: Codex through the
+app-server's `turn/steer`, Claude through `streamInput` with `priority: "next"`. The runner answers
+`steer_applied` when the turn read it and `steer_deferred` when it could not, in which case it runs
+as the next message, once; never as an error. Measured against the real Claude Agent SDK and the
+real runner on 01/10/2026. The page side (sending `steer` while the agent works) is SHVIA-WEB's
+`code-mode.js`; until it ships, nothing on screen sends it.
+
 ## Limitações conhecidas
 
 - ⚠️ **Microphone and image paste on Linux** (**ADR-008**, re-measured in `1.6.45`): ADR-008

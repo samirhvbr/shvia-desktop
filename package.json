@@ -15,7 +15,7 @@
     "pull": "node scripts/git-sync.mjs",
     "release:manifest": "node scripts/release-manifest.mjs",
     "anna:stage": "node scripts/stage-anna.mjs",
-    "prova:politica": "node --test claude-runner/politica.test.mjs claude-runner/parada.test.mjs claude-runner/entrada.test.mjs claude-runner/plano.test.mjs codex-runner/catalogue.test.mjs codex-runner/protocolo.test.mjs codex-runner/ciclo.test.mjs codex-runner/plano.test.mjs codex-runner/orientar.test.mjs codex-runner/plataforma.test.mjs",
+    "prova:politica": "node --test claude-runner/politica.test.mjs claude-runner/parada.test.mjs claude-runner/entrada.test.mjs claude-runner/plano.test.mjs claude-runner/orientacao.test.mjs codex-runner/catalogue.test.mjs codex-runner/protocolo.test.mjs codex-runner/ciclo.test.mjs codex-runner/plano.test.mjs codex-runner/orientar.test.mjs codex-runner/plataforma.test.mjs",
     "prova:runner-version": "node claude-runner/claude-runner.mjs --version",
     "runner:sdk-bump": "node scripts/bump-sdk-do-runner.mjs",
     "prova:doc": "node scripts/prova-frescor-da-doc.mjs",
