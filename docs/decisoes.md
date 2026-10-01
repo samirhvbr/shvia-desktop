@@ -2422,6 +2422,24 @@ PipeWire and xcb to Linux and a second `windows` crate to Windows for one comman
   different layers, and neither can be skipped from the page.
 - `device.info` deliberately omits the host name, the user name and every path.
 
+### How to check it on a running app (Linux X11 done on 01/10; Wayland, macOS and Windows not yet)
+
+Until SHVIA-WEB's tool exists, call the bridge from the page's developer console
+(`window.__shviaCode`), on the app's own window:
+
+1. `__shviaCode.aparelhoStatus()` → `{ligado: false, comandos: [4 names]}`.
+   `__shviaCode.aparelho('device.info')` → rejected with `codigo: 'desligado'`.
+2. Tray → "Comandos de aparelho para o agente" on → `aparelhoStatus().ligado` is `true`, and
+   `aparelho('device.info')` answers the OS, the architecture and the version.
+3. `aparelho('system.notify', '', {texto: 'teste'})` → a native notification.
+4. `aparelho('files.pick', 'o log do erro')` → the picker opens titled "O agente do ShvIA pediu
+   arquivos: o log do erro"; cancel → `{files: [], canceled: true}`.
+5. `aparelho('screen.snapshot', 'ver o erro')` → our dialog quotes the reason; "Recusar" →
+   rejected with `recusado` and nothing captured. Again, "Capturar a tela" → on GNOME its own
+   dialog; Share → `{mimeType: 'image/png', dataBase64, tamanho}`. On macOS the first capture asks
+   for Screen Recording; on Windows nothing else is asked. Nothing is left in `~/Pictures`, the
+   temporary folder or the Desktop.
+
 ### Alternatives considered
 
 - **Expose `notify` and `pickFiles` to the agent as they are:** the page could not tell the person
