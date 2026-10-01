@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.11.0 - the Codex engine takes a correction in the middle of a turn
+
+OpenClaw comparison item `steer`, the Code-mode half (the site chat's half is SHVIA-WEB 2.111.55). What the person
+types while the agent works used to wait in the runner's queue for the whole turn to end. The Codex app-server has
+`turn/steer`, and the runner now uses it.
+
+- New host message `{"type":"steer","text"}`. With a turn running, it goes into that turn by id (`expectedTurnId`
+  from `turn/start`'s answer) and the runner answers `steer_applied`. Refused by the server (the turn just ended,
+  or a review/compact turn) it runs as the next message, once, with `steer_deferred` — never as `error`, which the
+  bridge reads as "turn over". With no turn running it is a normal message. A steer sent right after the message
+  waits for the turn's id instead of being deferred.
+- `turn/steer` joins the payload schema check (`esquema.mjs`); the bundled schema already had `TurnSteerParams`.
+- Doc: `codex-runner/README.md` ("Steering the turn in flight"). Test: `orientar.test.mjs`, 4 cases, the real runner
+  against a fake app-server; added to `prova:politica`.
+- The page side (sending `steer` while the agent works) is SHVIA-WEB's `code-mode.js`; the desktop bridge forwards the
+  line unchanged.
+
 ## 1.10.2 - the Codex runner forwards the agent's plan, which ShvIA's Code mode shows in its Tasks tab
 
 The owner, 30/09/2026: the agent's own task list in Code mode, as opencode shows it. SHVIA-WEB gains

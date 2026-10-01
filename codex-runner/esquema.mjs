@@ -40,6 +40,7 @@ export const ESQUEMA_DO_METODO = Object.freeze({
   "model/list": "ModelListParams",
   "thread/start": "ThreadStartParams",
   "turn/start": "TurnStartParams",
+  "turn/steer": "TurnSteerParams",
   "command/exec": "CommandExecParams",
 });
 
