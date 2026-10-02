@@ -82,10 +82,10 @@ tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 # and `webview2-com` 0.39 — the pair measured breaking the Windows build (1.6.49, G3). Measured
 # on 28/09/2026: `cargo add` of the unpinned plugins moved tauri 2.11.6 → 2.12.0 and 60 crates.
 # Move them together with tauri, when the Windows crates are moved and measured.
-tauri-plugin-global-shortcut = "~2.3.2"
+tauri-plugin-global-shortcut = "~2.4.0"
 # The `shvia://` scheme (1.10.0, ADR-038). Rust API only, for the same reason: the page never
 # learns which links opened the app, and the routes it can reach are a fixed list (`esquema.rs`).
-tauri-plugin-deep-link = "~2.4.10"
+tauri-plugin-deep-link = "~2.5.0"
 # Auto-update (item D1 — ADR-022). Dirigido SÓ pela API Rust (`src/updater.rs`):
 # a capability não declara `updater:default`, senão a página remota poderia
 # escolher o binário que roda na máquina (ADR-001). É **desktop-only** — no mobile
