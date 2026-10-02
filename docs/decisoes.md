@@ -211,7 +211,7 @@ how-to; linkar o ADR.
     (`sendNative`); Rust→página segue `eval`.
   - novo `windows_ipc.rs` (`#[cfg(target_os = "windows")]`): registra
     `add_WebMessageReceived` no `ICoreWebView2` (via `webview2-com` 0.38 +
-    `windows` 0.61 — versões CASADAS com o wry 0.55) e repassa a string para
+    `windows` 0.61 — versões CASADAS com o wry 0.55; desde a 1.12.2, 0.39 + 0.62 com o wry 0.57) e repassa a string para
     `code_bridge::handle_message`. `with_webview` dá o controller; `take_pwstr`
     libera a string do WebView2.
   - `resolve_anna()` virou cross-platform: procura `anna(.exe)` **ao lado do app**
@@ -2307,9 +2307,12 @@ is the system's own shortcut settings bound to `xdg-open shvia://rapida`. That i
 - Over a **fullscreen** macOS app the window may not show: that takes an `NSPanel` with the
   full-screen-auxiliary behavior, which Tauri's window does not offer. OpenClaw's panel is native
   for this reason.
-- The plugins are pinned to the tauri 2.10 line (`~2.3.2`, `~2.4.10`). Their next minors require
-  tauri 2.12, which brings the Windows crates measured breaking the build (1.6.49). They move
-  together with tauri.
+- The plugins are pinned to a tauri line (`~`). They were on 2.10 (`~2.3.2`, `~2.4.10`) because their
+  next minors need tauri 2.12, which brings the Windows crates measured breaking the build ALONE
+  (1.6.49). **Moved on 02/10/2026 (1.12.2):** tauri 2.12.0, the two plugins (`~2.4.0`, `~2.5.0`) and the
+  Windows pair (`webview2-com` 0.39, `windows` 0.62) went up together, with no code change; the
+  Windows clippy (cross-compiled) and the Linux tests pass here and macOS passes in CI. The Windows
+  bridge has still not run on a Windows machine (the owner's validation script covers it).
 - The scheme is registered by the installers (`.deb`, `.rpm`, MSI, NSIS, the macOS bundle). An
   AppImage registers itself at start (`register_all`), since nothing installed it.
 

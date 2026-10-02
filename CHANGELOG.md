@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.12.2 - tauri goes to 2.12.0 with its plugins and the Windows pair, with no code change
+
+Dependabot #97, #95 and #96 taken into versioned commits, as `docs/build.md` ("Dependabot") requires. The PRs stay open:
+Dependabot closes them by itself when `master` no longer needs them, and closing one by hand would stop it proposing that
+update again.
+
+#97 as proposed does not build: its `Windows (clippy, cross-compiled)` job is red. Reproduced here on
+`x86_64-pc-windows-gnu`: `windows_ipc.rs:88`, `&ICoreWebView2WebMessageReceivedEventHandler: Param<…>` is not satisfied.
+tauri 2.12.0 brings wry 0.57, whose `webview2-com-sys` 0.39 and `windows-core` 0.62 are not the 0.38 and 0.61 our own
+direct dependencies were matched to, so there are two copies of `windows-core` and the handler built from one is passed
+to a call of the other. It is the "alone" failure measured on 24/09 (1.6.49), and the `Cargo.toml` note said the cure: move
+them together with tauri. That is what this does.
+
+- **Moved together:** `tauri` 2.11.6 → 2.12.0, `tauri-build` 2.6.3 → 2.7.1, the plugins (`opener` 2.6.0, `dialog` 2.8.0,
+  `notification` 2.5.0, `autostart` 2.6.0, `window-state` 2.5.0, `updater` 2.13.0, and the two held on a line by `~`:
+  `global-shortcut` 2.3.2 → 2.4.0, `deep-link` 2.4.10 → 2.5.0), plus our own `webview2-com` 0.38 → 0.39 and `windows`
+  0.61 → 0.62. No source file changes: only comments that named wry 0.55 and the old pair.
+- **Checked here:** Windows clippy cross-compiled with `-D warnings` (it was the red job), Linux `cargo test --locked` (196)
+  and clippy, and the `prova:*` rulers. For macOS the crates matched to wry still resolve to one version each
+  (`objc2` 0.6.4, `objc2-web-kit` 0.3.2); compiling it is CI's.
+- Two copies of `windows` 0.61 remain in the tree (`tauri-plugin-opener`, `tauri-winrt-notification`); neither touches the
+  WebView types, so they coexist. The plugins' release notes are about their JavaScript API and `windows-rs`; this app
+  drives them from Rust only.
+- **Not measured:** the Windows bridge has still not run on a Windows machine (the owner's validation covers it), and the
+  quick window's shortcut and the `shvia://` links have still not been exercised in a running app (ADR-038 has the check).
+- ADR-038's consequence about the pinned plugins now says when and how they moved.
+
 ## 1.12.1 - the Claude runner's hono goes to 4.13.12, past the serveStatic path-bypass fix
 
 Dependabot #93, taken into a versioned commit as `docs/build.md` ("Dependabot") requires. `hono` is not a direct
