@@ -27,6 +27,14 @@ them together with tauri. That is what this does.
   quick window's shortcut and the `shvia://` links have still not been exercised in a running app (ADR-038 has the check).
 - ADR-038's consequence about the pinned plugins now says when and how they moved.
 
+### The Claude runner's SDK goes to 0.3.285, and the steer is measured again
+
+Dependabot #95, `@anthropic-ai/claude-agent-sdk` `^0.3.282` → `^0.3.285`, with its lockfile. The steer of 1.11.0 rests on
+the SDK's `streamInput` with `priority: "next"`, so a new SDK is not taken on the unit tests alone (they use a fake
+query): the REAL runner was driven against the REAL SDK 0.3.285 (Haiku, a 4 s `sleep` tool call, the correction sent
+right after the call started). Result: `tool_call` → `steer` → `tool_result` → `steer_applied` → ONE `turn_done`, and the
+answer obeyed ("The command printed DONE. BANANA."), the same as on 0.3.258. `prova:politica` and `prova:runner` pass.
+
 ## 1.12.1 - the Claude runner's hono goes to 4.13.12, past the serveStatic path-bypass fix
 
 Dependabot #93, taken into a versioned commit as `docs/build.md` ("Dependabot") requires. `hono` is not a direct
