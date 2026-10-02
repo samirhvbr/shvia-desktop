@@ -2432,6 +2432,19 @@ are not read. The capture dialog says the request is valid for about 3 minutes.
 relation to 180 s, written down here because the number lives in the other repository. If SHVIA-WEB
 changes those deadlines, this one moves with them.
 
+**The page can say how long is really left (`restante`, 1.12.3).** A fixed 170 s from the moment the
+request reaches the bridge leaves a margin of `10 s − latency`, not a guarantee: the server's clock
+starts at its emit, ours when the page hands the request over (pointed out when the two halves were
+read against each other, and corrected on the SHVIA-WEB side too). So `aparelho(comando, motivo, args,
+restante)` takes a fourth argument, an integer in seconds: the page computes it as the request's
+`prazo_s` minus what the page already spent minus 10 s for the stream's delivery, which it cannot
+measure. The desktop's ceiling for that request is **the smaller of `restante` and 170 s**, counted
+from the bridge. `restante` of 0 or less answers `expirou` before any dialog, picker or command
+opens (the page already does the same, this is the shell not trusting that it does); **absent, or
+anything that is not an integer, means 170 s**: the stricter-or-equal side, never a longer wait. A
+shell older than 1.12.3 ignores the argument, so the page can send it already. The capture dialog
+says the actual time (`cerca de 3 minutos` on a fresh request, seconds when little is left).
+
 ### Consequences
 
 - The tray grows one item. It is on the menu itself, not in a submenu: it is the gate on what the

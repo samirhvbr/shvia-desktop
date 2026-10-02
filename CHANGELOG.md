@@ -20,6 +20,24 @@ for a request nobody was waiting for, and the screen was captured and posted for
   (`if <condition> {`), and every reversal turns a test red.
 - Docs: ADR-039 ("A request has a ceiling of its own", the error list, the running-app check), `docs/funcionalidades.md`.
 
+### The page can hand the desktop the seconds that are left
+
+Asked for by SHVIA-WEB #454, after the two halves were read against each other: a fixed 170 s counted from the bridge
+leaves a margin of `10 s − latency` against the server's 180 s (the server's clock starts at its emit, ours when the
+page hands the request over), so it holds today but not by construction. `aparelho(comando, motivo, args, restante)`
+now takes a fourth argument, an integer in seconds.
+
+- **The ceiling of a request is the smaller of `restante` and 170 s**, counted from the bridge. `restante` of 0 or less
+  answers `expirou` before anything opens: no dialog, no picker, no notification, no info. **Absent, or anything that is
+  not an integer** (a string, a float, `null`), **means 170 s**: the stricter-or-equal side, never a longer wait. A shell
+  older than this one ignores the argument, which is why the page can already send it.
+- The capture dialog says the real time: "cerca de 3 minutos" on a fresh request, seconds when little is left.
+- Tests: the smaller of the two, a `restante` above 170 never lengthens the wait, 0 and negatives are already out, values
+  that are not integers fall back to 170, the dialog text for 170, 120 and 45 s, the boundary against a shorter ceiling,
+  and the source check now also requires the exact `let Some(teto) = … else { return … expirou` guard before any command
+  and `teto` (not the constant) in all three places that count time. **Seven reversals, one by one, each turned a test
+  red.**
+
 ## 1.12.2 - tauri goes to 2.12.0 with its plugins and the Windows pair, with no code change
 
 Dependabot #97, #95 and #96 taken into versioned commits, as `docs/build.md` ("Dependabot") requires. The PRs stay open:

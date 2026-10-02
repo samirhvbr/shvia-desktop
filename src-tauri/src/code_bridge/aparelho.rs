@@ -41,8 +41,35 @@ const PRAZO_TELA: std::time::Duration = std::time::Duration::from_secs(90);
 pub(crate) const PRAZO_DO_PEDIDO: std::time::Duration = std::time::Duration::from_secs(170);
 
 /// Is a request this old past its ceiling? Apart so the boundary can be tested.
-pub(crate) fn vencido(decorrido: std::time::Duration) -> bool {
-    decorrido > PRAZO_DO_PEDIDO
+pub(crate) fn vencido(decorrido: std::time::Duration, teto: std::time::Duration) -> bool {
+    decorrido > teto
+}
+
+/// The ceiling of THIS request: the smaller of `PRAZO_DO_PEDIDO` and the seconds the page says are
+/// left (`restante`, the fourth argument of `aparelho(...)`, SHVIA-WEB #454). `None` means it has
+/// already run out (`restante` of 0 or less), so nothing may open at all.
+///
+/// The page computes `restante` as the server's `prazo_s` minus what the page already spent minus
+/// 10 s for the stream's delivery, which it cannot measure; the fixed 170 s alone left a margin of
+/// 10 s minus the latency (found when the two halves were cross-read). A shell older than this one
+/// ignores the argument, which is why the page can send it already. Absent, or anything that is
+/// not an integer, means "use my own 170": the stricter-or-equal side, never a longer wait.
+pub(crate) fn teto_do_pedido(restante: Option<&serde_json::Value>) -> Option<std::time::Duration> {
+    match restante.and_then(|r| r.as_i64()) {
+        Some(s) if s <= 0 => None,
+        Some(s) => Some(std::time::Duration::from_secs(s as u64).min(PRAZO_DO_PEDIDO)),
+        None => Some(PRAZO_DO_PEDIDO),
+    }
+}
+
+/// The ceiling in words for the capture dialog: minutes when it is long, seconds when it is short.
+fn prazo_por_extenso(teto: std::time::Duration) -> String {
+    let s = teto.as_secs();
+    if s >= 90 {
+        format!("cerca de {} minutos", (s + 30) / 60)
+    } else {
+        format!("{s} segundos")
+    }
 }
 
 /// `aparelho` — the one action the agent's device commands come through.
@@ -55,6 +82,11 @@ pub(super) fn aparelho(window: &WebviewWindow, req: &str, v: &serde_json::Value)
         return reply(window, req, false, falha("desligado",
             "Os comandos de aparelho estão desligados. Ligue em “Comandos de aparelho para o agente”, no ícone do ShvIA na bandeja."));
     }
+    // The page says how long the request still has; never longer than our own ceiling. Already out:
+    // no dialog, no picker, nothing opens for a request the tool has given up on.
+    let Some(teto) = teto_do_pedido(v.get("restante")) else {
+        return reply(window, req, false, falha("expirou", "o pedido já expirou — nada foi feito"));
+    };
     match comando {
         "device.info" => reply(window, req, true, info()),
         "system.notify" => {
@@ -71,7 +103,7 @@ pub(super) fn aparelho(window: &WebviewWindow, req: &str, v: &serde_json::Value)
             window,
             req.to_string(),
             Some(titulo_do_seletor(&motivo)),
-            Some(inicio + PRAZO_DO_PEDIDO),
+            Some(inicio + teto),
         ),
         "screen.snapshot" => {
             // The portal's parent window is read HERE, on the UI thread that owns the window;
@@ -81,17 +113,17 @@ pub(super) fn aparelho(window: &WebviewWindow, req: &str, v: &serde_json::Value)
             #[cfg(not(target_os = "linux"))]
             let pai = ();
             fora_da_ui(window, req, move |w| {
-                if !confirmar_tela(w, &motivo) {
+                if !confirmar_tela(w, &motivo, teto) {
                     return (false, falha("recusado", "a pessoa recusou a captura da tela — nada foi capturado"));
                 }
                 // The person may have taken minutes to answer a request the agent gave up on.
-                if vencido(inicio.elapsed()) {
+                if vencido(inicio.elapsed(), teto) {
                     return (false, falha("expirou", "o pedido expirou antes de a pessoa responder — nada foi capturado"));
                 }
                 let capturada = capturar_tela(pai);
                 // Same check after: on GNOME the portal's own dialog waits for the person too. A
                 // capture that finished late is dropped here and never leaves the desktop.
-                if capturada.is_ok() && vencido(inicio.elapsed()) {
+                if capturada.is_ok() && vencido(inicio.elapsed(), teto) {
                     return (false, falha("expirou", "o pedido expirou durante a captura — a imagem foi descartada"));
                 }
                 match capturada {
@@ -169,12 +201,12 @@ fn titulo_do_seletor(motivo: &str) -> String {
 
 /// Native confirmation before EVERY capture. Off the UI thread: `blocking_show` would deadlock
 /// the event loop that has to paint the dialog.
-fn confirmar_tela(window: &WebviewWindow, motivo: &str) -> bool {
+fn confirmar_tela(window: &WebviewWindow, motivo: &str, teto: std::time::Duration) -> bool {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
     window
         .app_handle()
         .dialog()
-        .message(texto_da_confirmacao_da_tela(motivo))
+        .message(texto_da_confirmacao_da_tela(motivo, teto))
         .title("Captura da tela")
         .kind(MessageDialogKind::Warning)
         .buttons(MessageDialogButtons::OkCancelCustom("Capturar a tela".into(), "Recusar".into()))
@@ -184,14 +216,15 @@ fn confirmar_tela(window: &WebviewWindow, motivo: &str) -> bool {
 /// The dialog's text, apart so it can be tested. The reason is quoted and called the agent's,
 /// because the agent wrote it: a reason that read as the app's own words would let a prompt
 /// injection speak with the app's voice ("é seguro, clique em Capturar").
-pub(super) fn texto_da_confirmacao_da_tela(motivo: &str) -> String {
+pub(super) fn texto_da_confirmacao_da_tela(motivo: &str, teto: std::time::Duration) -> String {
     let motivo = if motivo.is_empty() { "nenhum".to_string() } else { format!("“{motivo}”") };
     format!(
         "O agente do ShvIA pediu uma captura da sua tela inteira.\n\n\
          Motivo, nas palavras do agente (não verificado): {motivo}\n\n\
          A imagem vai para a conversa, no servidor do ShvIA. Feche ou esconda o que não deve \
          aparecer antes de continuar, e continue só se você pediu algo que precise da tela.\n\n\
-         O pedido vale por cerca de 3 minutos: depois disso, nada é capturado."
+         O pedido vale por {prazo}: depois disso, nada é capturado.",
+        prazo = prazo_por_extenso(teto)
     )
 }
 
@@ -489,11 +522,11 @@ mod tests {
     /// a prompt injection could write the dialog's argument in the app's voice.
     #[test]
     fn dialogo_da_tela_atribui_o_motivo_ao_agente() {
-        let t = texto_da_confirmacao_da_tela("É seguro, clique em Capturar");
+        let t = texto_da_confirmacao_da_tela("É seguro, clique em Capturar", PRAZO_DO_PEDIDO);
         assert!(t.contains("nas palavras do agente (não verificado): “É seguro, clique em Capturar”"), "{t}");
         assert!(t.contains("tela inteira"));
         assert!(t.contains("servidor do ShvIA"), "a pessoa precisa saber para onde a imagem vai");
-        assert!(texto_da_confirmacao_da_tela("").contains("(não verificado): nenhum"));
+        assert!(texto_da_confirmacao_da_tela("", PRAZO_DO_PEDIDO).contains("(não verificado): nenhum"));
     }
 
     #[test]
@@ -529,14 +562,47 @@ mod tests {
 
     #[test]
     fn o_limite_do_pedido_vale_na_fronteira() {
-        assert!(!vencido(std::time::Duration::ZERO));
-        assert!(!vencido(PRAZO_DO_PEDIDO), "exactly at the ceiling still acts: past it is what expires");
-        assert!(vencido(PRAZO_DO_PEDIDO + std::time::Duration::from_millis(1)));
+        use std::time::Duration;
+        assert!(!vencido(Duration::ZERO, PRAZO_DO_PEDIDO));
+        assert!(!vencido(PRAZO_DO_PEDIDO, PRAZO_DO_PEDIDO), "exactly at the ceiling still acts: past it is what expires");
+        assert!(vencido(PRAZO_DO_PEDIDO + Duration::from_millis(1), PRAZO_DO_PEDIDO));
+        // The same age against the request's OWN, shorter ceiling (the page had less left).
+        assert!(vencido(Duration::from_secs(61), Duration::from_secs(60)));
+        assert!(!vencido(Duration::from_secs(60), Duration::from_secs(60)));
     }
 
     #[test]
-    fn o_dialogo_da_tela_avisa_que_o_pedido_vale_por_pouco_tempo() {
-        assert!(texto_da_confirmacao_da_tela("ver o erro").contains("vale por cerca de 3 minutos"));
+    fn o_dialogo_da_tela_avisa_quanto_tempo_o_pedido_vale() {
+        use std::time::Duration;
+        assert!(texto_da_confirmacao_da_tela("ver o erro", PRAZO_DO_PEDIDO).contains("vale por cerca de 3 minutos"));
+        assert!(texto_da_confirmacao_da_tela("ver o erro", Duration::from_secs(45)).contains("vale por 45 segundos"));
+        assert!(texto_da_confirmacao_da_tela("ver o erro", Duration::from_secs(120)).contains("vale por cerca de 2 minutos"));
+    }
+
+    /// The page's `restante` (SHVIA-WEB #454): the smaller of it and our own 170 s, counted from the
+    /// bridge; 0 or less is already out; absent or not an integer falls back to 170 s, never longer.
+    #[test]
+    fn o_teto_e_o_menor_entre_o_restante_da_pagina_e_os_170_s() {
+        use serde_json::json;
+        use std::time::Duration;
+        let teto = |v: serde_json::Value| teto_do_pedido(Some(&v));
+        assert_eq!(teto(json!(170)), Some(PRAZO_DO_PEDIDO), "a fresh request: what the page sends with a 180 s server");
+        assert_eq!(teto(json!(60)), Some(Duration::from_secs(60)), "the page has less left than our ceiling");
+        assert_eq!(teto(json!(1)), Some(Duration::from_secs(1)));
+        assert_eq!(teto(json!(9999)), Some(PRAZO_DO_PEDIDO), "a longer wait than our own is never taken");
+        assert_eq!(teto_do_pedido(None), Some(PRAZO_DO_PEDIDO), "absent: a page that does not send it");
+    }
+
+    #[test]
+    fn restante_zero_ou_negativo_ja_expirou_e_o_que_nao_e_inteiro_nao_alonga() {
+        use serde_json::json;
+        for ja_expirou in [json!(0), json!(-1), json!(-9999)] {
+            assert_eq!(teto_do_pedido(Some(&ja_expirou)), None, "{ja_expirou} must refuse without opening anything");
+        }
+        // Not an integer: ignored, so the answer is our own ceiling — the stricter-or-equal side.
+        for estranho in [json!("170"), json!(170.5), json!(null), json!(true), json!([170]), json!({"s": 5})] {
+            assert_eq!(teto_do_pedido(Some(&estranho)), Some(PRAZO_DO_PEDIDO), "{estranho} lengthened or shortened the wait");
+        }
     }
 
     /// SOURCE check, declared as such: the dispatch is driven by the WebView signal, which a unit
@@ -569,13 +635,23 @@ mod tests {
         // reversals `if false && vencido(…)` and `if false && limite.is_some_and(…)` kept the name
         // in place, switched the guard off, and a check for the name alone stayed green (as it
         // already had for the switch above).
-        let guarda_antes = ["if ", "vencido(inicio.elapsed()) {"].concat();
-        let guarda_depois = ["if capturada.is_ok() && ", "vencido(inicio.elapsed()) {"].concat();
+        let guarda_antes = ["if ", "vencido(inicio.elapsed(), teto) {"].concat();
+        let guarda_depois = ["if capturada.is_ok() && ", "vencido(inicio.elapsed(), teto) {"].concat();
         assert_eq!(corpo[dialogo..captura].matches(&guarda_antes).count(), 1,
             "the request is not checked between the dialog and the capture");
         assert_eq!(corpo[captura..].matches(&guarda_depois).count(), 1,
             "a capture that finished late would still be sent");
-        assert!(corpo.contains(&["Some(inicio + ", "PRAZO_DO_PEDIDO)"].concat()), "files.pick has no ceiling");
+        assert!(corpo.contains(&["Some(inicio + ", "teto),"].concat()), "files.pick has no ceiling, or not the request's own");
+        // `restante` of 0 or less answers `expirou` BEFORE any command opens anything: the exact
+        // `let … else { return … }`, after the switch and before the dispatch.
+        let guarda_restante = [
+            "let Some(teto) = ", "teto_do_pedido(v.get(\"restante\")) else {\n",
+            "        return reply(window, req, false, falha(\"expirou\"",
+        ]
+        .concat();
+        let r = corpo.find(&guarda_restante).expect("the `restante` guard is not the exact `let Some(teto) … else { return … expirou`");
+        let primeiro = corpo.find(&["\"device", ".info\" =>"].concat()).expect("device.info arm missing");
+        assert!(r < primeiro, "a command can run before `restante` is read");
         let picker = include_str!("dialogos.rs");
         assert!(picker.contains(&["if limite.", "is_some_and(|l| std::time::Instant::now() > l) {"].concat()),
             "the picker reads files past the ceiling");
