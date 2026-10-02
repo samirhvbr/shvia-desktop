@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.12.1 - the Claude runner's hono goes to 4.13.12, past the serveStatic path-bypass fix
+
+Dependabot #93, taken into a versioned commit as `docs/build.md` ("Dependabot") requires. `hono` is not a direct
+dependency of `claude-runner`: it comes through `@modelcontextprotocol/sdk` (`^4.11.4`) and `@hono/node-server`
+(peer `^4`), so only `claude-runner/package-lock.json` changes — 4.13.5 → 4.13.12. 4.13.11 carries the security fix for
+`serveStatic` decoding the request path twice (middleware bypass on static paths); the runner does not import
+`serveStatic`, so this is hygiene, not an exposure. The lockfile's own root `version`, which was left at 1.10.1 (it is
+not one of `sync-version`'s carriers), now matches `claude-runner/package.json`.
+
 ## 1.12.0 - the agent can ask this machine for four device commands, behind a tray switch the page cannot reach
 
 OpenClaw comparison item `aparelho-no`, the desktop half (ADR-039). The agent runs on the server; this release is what
