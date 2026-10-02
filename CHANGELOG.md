@@ -35,6 +35,12 @@ query): the REAL runner was driven against the REAL SDK 0.3.285 (Haiku, a 4 s `s
 right after the call started). Result: `tool_call` → `steer` → `tool_result` → `steer_applied` → ONE `turn_done`, and the
 answer obeyed ("The command printed DONE. BANANA."), the same as on 0.3.258. `prova:politica` and `prova:runner` pass.
 
+### The root npm group follows tauri to 2.12.0
+
+Dependabot #96: `@tauri-apps/api` 2.11.1 → 2.12.0 and `@tauri-apps/cli` 2.11.5 → 2.12.0, with the root lockfile. They go
+with the crate (the CLI and the crate are meant to be the same minor), so this commit comes after the one that moves
+tauri. The shell's own `src/` calls only what `@tauri-apps/api` kept; `npm run build` and the rulers pass.
+
 ## 1.12.1 - the Claude runner's hono goes to 4.13.12, past the serveStatic path-bypass fix
 
 Dependabot #93, taken into a versioned commit as `docs/build.md` ("Dependabot") requires. `hono` is not a direct
