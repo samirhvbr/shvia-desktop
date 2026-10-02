@@ -42,6 +42,11 @@ updates:
       - dependency-name: objc2-web-kit
       - dependency-name: webview2-com
       - dependency-name: windows
+      # 1.12.0 (ADR-039): the screen capture's portal call and its parent window. Same rule:
+      # both are already resolved by tauri's tree (zbus through notify-rust, raw-window-handle
+      # through tauri), and a second copy would not hand its window handle to tauri's types.
+      - dependency-name: zbus
+      - dependency-name: raw-window-handle
 
   # The web shell and the build tools (Vite, TypeScript, the Tauri CLI).
   - package-ecosystem: npm

@@ -2335,3 +2335,114 @@ is the system's own shortcut settings bound to `xdg-open shvia://rapida`. That i
 - **A link that sends the prompt, with a confirmation:** nothing asked for it, and a confirmation
   is what people learn to click through. Filling the composer gets the same result with the
   person's own Enter as the confirmation.
+
+## ADR-039 — The agent may ask this machine for four things, behind a tray switch the page cannot reach
+
+- **Date:** 01/10/2026 · **Status:** **Accepted** — queue item I4 (`aparelho-no`), the desktop half,
+  from the owner's comparison page with OpenClaw. The owner chose the command set ("base + screen,
+  with consent") on 01/10.
+- **Code:** `src-tauri/src/code_bridge/aparelho.rs` (the commands and their consent), `tray.rs`
+  (the switch), `dialogos.rs` (`pick_files_titulo`), `shim.rs` (`aparelho`, `aparelhoStatus`,
+  `recursos.aparelho`)
+
+### Context
+
+OpenClaw pairs devices as **nodes**: a phone or a computer declares commands (`camera.*`,
+`location.get`, `system.notify`, `screen.snapshot`, `system.run`…) and the agent invokes them. Its
+policy has three layers: the node declares, an operator approves the declared surface, and a
+platform allowlist caps it. A short list is allowed by default (`system.notify`, `device.info`), and
+privacy-heavy commands (`camera.snap`, `screen.record`) need an explicit, persistent opt-in
+(`docs/nodes/command-policy.md`).
+
+In ShvIA the agent runs on the server and this app is a window onto the page (ADR-002). The page
+already reaches native notifications (`notify`), files the person picks (`pickFiles`) and saving
+(`saveFile`) through the bridge, for its own features. Nothing lets the **agent** ask for them, and
+nothing on this machine distinguishes "the page wants a file" from "the agent wants a file".
+
+### Decision
+
+**One bridge action, `aparelho(comando, motivo, args)`, and four commands:**
+
+| command | what the agent gets | asks the person |
+|---|---|---|
+| `device.info` | OS, architecture, app version, Linux session type | no — nothing that identifies anyone |
+| `system.notify` | a native notification shown (`{titulo, texto}`) | no |
+| `files.pick` | the files the person picks, as bytes, as `pickFiles` | **the picker is the consent**; its title says the agent asked, and why |
+| `screen.snapshot` | the whole screen as PNG, up to 10 MB | **a native dialog every time**; no "always allow" |
+
+**Three gates, none on the page:**
+
+1. **A tray switch, "Comandos de aparelho para o agente", off by default.** It lives in `tray.json`,
+   which no bridge action writes, so a script on the page — the XSS actor the bridge already
+   defends against — cannot turn it on. Off, every command answers `codigo: 'desligado'`, and
+   `aparelhoStatus()` lets the page say why instead of letting the agent fail silently. Only a
+   literal `true` in the file turns it on.
+2. **A closed list.** Any other name is refused before anything runs (`comando_desconhecido`).
+3. **Consent where the command takes something,** shown in Rust. The capture dialog quotes the
+   agent's reason **as the agent's, unverified** words: the reason is text the agent wrote, and
+   shown bare it would let a prompt injection argue in the app's voice. It also says the image goes
+   to the ShvIA server.
+
+**The capture uses each platform's own mechanism, with no library.** `xcap` 0.9.8 would bring
+PipeWire and xcb to Linux and a second `windows` crate to Windows for one command.
+
+- **Linux:** the XDG desktop portal (`org.freedesktop.portal.Screenshot`) over `zbus`, already in
+  the tree. On X11 the window is passed as the dialog's parent (`x11:<id>`). Measured on GNOME 48
+  (01/10/2026): an empty parent fails at once (response 2 in 0.01 s); with the window's id GNOME
+  shows its own "share" dialog, and after the click the PNG arrived (1 066 705 bytes, 8.7 s with
+  the click). GNOME saves it as `~/Pictures/Screenshot.png`, a fixed name in the person's folder,
+  so the file is deleted once read. On Wayland there is no parent handle without `xdg-foreign`, so
+  the portal is asked **interactively** (GNOME's Shell picker, which needs no parent and lets the
+  person choose the area) — **not measured**, this machine runs X11.
+- **macOS:** `/usr/sbin/screencapture -x -t png` into a temporary file, deleted after reading.
+  macOS asks for the Screen Recording permission the first time; denied, the image holds only the
+  wallpaper and the menu bar. **Not measured**: no Mac here; CI compiles it.
+- **Windows:** PowerShell and .NET's `CopyFromScreen` over the whole virtual screen, into a
+  temporary file, deleted after reading. **Not measured**: CI compiles it; no Windows machine has
+  run it.
+
+### What this ADR does not do
+
+- **The round trip is SHVIA-WEB's.** The agent runs on the server: a tool there has to pause the
+  turn, ask the page, wait for the answer and continue. Until it exists, nothing calls `aparelho`.
+  The contract it builds on is the table above, `aparelhoStatus()` and the error codes
+  (`desligado`, `recusado`, `comando_desconhecido`, `argumento_invalido`, `grande_demais`,
+  `indisponivel`, `falhou`).
+- **Camera, location and clipboard stay out.** A desktop WebView has no reliable location, the
+  camera is the page's own `getUserMedia` (ADR-008), and the clipboard was left out by the owner's
+  choice.
+- **No persistent "always allow" for the screen.** A dialog people learn to click through is not
+  consent; one per capture is the cost of the most private command.
+
+### Consequences
+
+- The tray grows one item. It is on the menu itself, not in a submenu: it is the gate on what the
+  agent can do on this machine.
+- A capture shows two dialogs on GNOME: ours (why) and GNOME's (what). Both are consent, at
+  different layers, and neither can be skipped from the page.
+- `device.info` deliberately omits the host name, the user name and every path.
+
+### How to check it on a running app (Linux X11 done on 01/10; Wayland, macOS and Windows not yet)
+
+Until SHVIA-WEB's tool exists, call the bridge from the page's developer console
+(`window.__shviaCode`), on the app's own window:
+
+1. `__shviaCode.aparelhoStatus()` → `{ligado: false, comandos: [4 names]}`.
+   `__shviaCode.aparelho('device.info')` → rejected with `codigo: 'desligado'`.
+2. Tray → "Comandos de aparelho para o agente" on → `aparelhoStatus().ligado` is `true`, and
+   `aparelho('device.info')` answers the OS, the architecture and the version.
+3. `aparelho('system.notify', '', {texto: 'teste'})` → a native notification.
+4. `aparelho('files.pick', 'o log do erro')` → the picker opens titled "O agente do ShvIA pediu
+   arquivos: o log do erro"; cancel → `{files: [], canceled: true}`.
+5. `aparelho('screen.snapshot', 'ver o erro')` → our dialog quotes the reason; "Recusar" →
+   rejected with `recusado` and nothing captured. Again, "Capturar a tela" → on GNOME its own
+   dialog; Share → `{mimeType: 'image/png', dataBase64, tamanho}`. On macOS the first capture asks
+   for Screen Recording; on Windows nothing else is asked. Nothing is left in `~/Pictures`, the
+   temporary folder or the Desktop.
+
+### Alternatives considered
+
+- **Expose `notify` and `pickFiles` to the agent as they are:** the page could not tell the person
+  that the agent asked, and nothing on the machine could turn the agent off.
+- **A switch in the page's settings:** the page is the actor the switch guards against.
+- **A capture library (`xcap`):** the dependency weight above, for one command.

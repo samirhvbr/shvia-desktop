@@ -1,6 +1,6 @@
 [package]
 name = "shvia-desktop"
-version = "1.11.0"
+version = "1.12.0"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
@@ -103,6 +103,15 @@ webkit2gtk = { version = "2.0", features = ["v2_8"] }
 # Extrai a string (JSON) do `JavascriptResult`/`JSCValue` recebido no message
 # handler. Mesma versão que o `webkit2gtk` já resolve (tipos unificam).
 javascriptcore-rs = "1.1"
+# The agent's `screen.snapshot` (ADR-039) asks the XDG desktop portal over D-Bus. Already in the
+# tree through `tauri-plugin-notification` (notify-rust), with these same default features
+# (`blocking-api` included), so declaring it adds no crate. A capture library would have
+# brought PipeWire and xcb instead (measured: xcap 0.9.8).
+zbus = "5"
+# The portal needs the asking window as its dialog's parent: with an empty parent, GNOME 48
+# fails the capture on the spot (measured 01/10/2026, response 2 in 0.01 s), and with the
+# window's X11 id it shows its dialog. Already in the tree through tauri (0.6.2).
+raw-window-handle = "0.6"
 
 # Ponte do Modo Code no macOS (WKScriptMessageHandler "shviaCode"). Versões
 # CASADAS com o que o wry 0.55 resolve (Cargo.lock: objc2 0.6, web-kit 0.3) —

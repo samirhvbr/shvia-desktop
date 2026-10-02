@@ -77,6 +77,12 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // manda os bytes — ela tem a sessão autenticada, o Rust não. {name, dataBase64}
     // → {saved:true, path} | {saved:false} quando o usuário cancela.
     saveFile: function (o) { return post('saveFile', o || {}); },
+    // The agent's device commands (recursos.aparelho, ADR-039). `comando` is one of
+    // aparelhoStatus().comandos; `motivo` is the agent's reason, shown to the person AS the
+    // agent's; `args` per command ({titulo, texto} for system.notify). Off in the tray, every
+    // command fails with codigo 'desligado'; refused by the person, 'recusado'.
+    aparelho: function (comando, motivo, args) { return post('aparelho', { comando: comando, motivo: motivo || '', args: args || {} }); },
+    aparelhoStatus: function () { return post('aparelhoStatus'); }, // {ligado, comandos:[...]}
     // Item D3: grava a config de um cliente de CLI no host. {client, baseUrl, apiKey, model}
     // → {written:true, path, backup} | {written:false} quando o usuário cancela o diálogo.
     // `client` só aceita 'continue' | 'claude-code' | 'env' — os outros do gerador da web
@@ -225,7 +231,12 @@ pub const BRIDGE_JS: &str = r#"(function () {
     //           `user` message as before: an older runner does not know `steer`, warns that the
     //           message was not recognised, and the correction is LOST. Anna does not know it
     //           either, so the page sends it only to the claude and codex engines.
-    recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true, plano: true, orientar: true },
+    //   aparelho: the agent's device commands (1.12.0, ADR-039) — `aparelho(comando, motivo,
+    //           args)` and `aparelhoStatus()`. The flag says this shell HAS them, not that they
+    //           are on: that is the tray switch, which `aparelhoStatus().ligado` reads and
+    //           nothing on the page can change. Without the flag the page offers the agent no
+    //           device tool at all.
+    recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true, plano: true, orientar: true, aparelho: true },
     // chamados pelo Rust (eval):
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
     _emit: function (evt, sessao, seq) { if (evt && typeof evt === 'object') { if (sessao) evt.sessao = sessao; if (seq) evt.seq = seq; } for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }

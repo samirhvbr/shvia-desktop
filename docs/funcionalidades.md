@@ -276,6 +276,17 @@ page never sends `steer` to an older desktop, whose runner would drop it. Measur
 real runner on 01/10/2026. The page side (sending `steer` while the agent works) is SHVIA-WEB's
 `code-mode.js`; until it ships, nothing on screen sends it.
 
+## Phase 10 — the machine as the agent's extension (1.12.0)
+
+**1.12.0 — device commands, behind a tray switch.** The agent can ask this machine for four
+things through the page: the device's basic data, a native notification, files the person picks
+(the picker's title says the agent asked, and why), and a screen capture, which a native dialog
+confirms every time, quoting the agent's reason as the agent's. Everything is off until the person
+turns on "Comandos de aparelho para o agente" in the tray; nothing on the page can. Code in
+`aparelho.rs`, decision in ADR-039. The Linux capture was measured on GNOME 48; macOS and Windows
+are compiled by CI and not yet run. The agent's side (a tool on the server that asks the page and
+waits) is SHVIA-WEB's; until it ships, nothing calls these commands.
+
 ## Limitações conhecidas
 
 - ⚠️ **Microphone and image paste on Linux** (**ADR-008**, re-measured in `1.6.45`): ADR-008

@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.12.0 - the agent can ask this machine for four device commands, behind a tray switch the page cannot reach
+
+OpenClaw comparison item `aparelho-no`, the desktop half (ADR-039). The agent runs on the server; this release is what
+the machine allows when the page asks on its behalf, through one new bridge action, `aparelho(comando, motivo,
+args)`, and `aparelhoStatus()`. The shell declares `recursos.aparelho`. The round trip (a server tool that pauses the
+turn, asks the page and waits) is SHVIA-WEB's and does not exist yet, so nothing calls these commands today.
+
+- **Four commands, a closed list:** `device.info` (OS, architecture, app version, Linux session type; no host name,
+  user name or path), `system.notify`, `files.pick` (the native picker, titled with the agent's reason: the pick is the
+  consent) and `screen.snapshot` (the whole screen as PNG, up to 10 MB). Any other name is refused before anything runs.
+- **The tray switch "Comandos de aparelho para o agente", off by default.** It lives in `tray.json`, which no bridge
+  action writes, so a script on the page cannot turn it on; only a literal `true` does. Off, every command answers
+  `codigo: 'desligado'`.
+- **A native dialog before every capture,** quoting the agent's reason as the agent's unverified words and saying the
+  image goes to the ShvIA server. No "always allow".
+- **The capture uses each platform's own mechanism, no library** (`xcap` would bring PipeWire and xcb): the XDG portal
+  over `zbus` on Linux (already in the tree), `screencapture` on macOS, .NET's `CopyFromScreen` through PowerShell on
+  Windows. Measured on GNOME 48: with an empty parent window the portal fails at once (response 2), so the window's X11
+  id is passed; after GNOME's own dialog the PNG arrived, and the file GNOME leaves in `~/Pictures/Screenshot.png` is
+  deleted once read. Wayland (interactive portal), macOS and Windows are compiled by CI and not yet run.
+- Tests: the switch is born off and only a literal `true` turns it on; the dialog attributes the reason to the agent;
+  `device.info` carries nothing that identifies the person; X11 passes the window and anything else asks
+  interactively; the portal's answer tells a refusal from a failure; and a source check that the switch guard comes
+  before every command and the dialog before the capture (it first stayed green with `if false && …` in the guard,
+  so it now matches the whole guard). An ignored test captures through the real portal.
+- `zbus` and `raw-window-handle` join the Linux section of `Cargo.toml` and Dependabot's ignore list, like the other
+  crates matched to tauri's tree (`prova:dependabot` refused them until they were there). Neither adds a package to
+  `Cargo.lock`.
+- Docs: ADR-039, `docs/funcionalidades.md` (Phase 10), `.continue/estado-atual.md`.
+
+### ADR-039 says how to check the commands on a running app
+
+Five steps from the page's console (the switch off, then on; each command; refusing and accepting a capture; nothing
+left behind), since nothing on the server calls the commands yet. Linux X11 was checked on 01/10; Wayland, macOS and
+Windows are not.
+
 ## 1.11.0 - both Code-mode engines take a correction in the middle of a turn
 
 OpenClaw comparison item `steer`, the Code-mode half (the site chat's half is SHVIA-WEB 2.111.55). What the person
