@@ -80,7 +80,8 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // The agent's device commands (recursos.aparelho, ADR-039). `comando` is one of
     // aparelhoStatus().comandos; `motivo` is the agent's reason, shown to the person AS the
     // agent's; `args` per command ({titulo, texto} for system.notify). Off in the tray, every
-    // command fails with codigo 'desligado'; refused by the person, 'recusado'.
+    // command fails with codigo 'desligado'; refused by the person, 'recusado'; answered after the
+    // request's ceiling (170 s, under the server's 180 s), 'expirou' and nothing is read or captured.
     aparelho: function (comando, motivo, args) { return post('aparelho', { comando: comando, motivo: motivo || '', args: args || {} }); },
     aparelhoStatus: function () { return post('aparelhoStatus'); }, // {ligado, comandos:[...]}
     // Item D3: grava a config de um cliente de CLI no host. {client, baseUrl, apiKey, model}

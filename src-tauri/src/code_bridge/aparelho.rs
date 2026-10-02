@@ -30,10 +30,27 @@ const MAX_TELA_BYTES: usize = MAX_PICK_BYTES;
 /// GNOME shows the first time an app asks, so a person has time to read it.
 const PRAZO_TELA: std::time::Duration = std::time::Duration::from_secs(90);
 
+/// How long a request may wait on the person before the desktop refuses to act on it (`expirou`).
+///
+/// The server stops waiting after `prazo_s` — 180 s for `files.pick` and `screen.snapshot`
+/// (`config('agent.aparelho.prazo_s')` in SHVIA-WEB) — and the agent moves on. A native dialog cannot
+/// be closed from outside, so it stays on screen: a person who walked away and comes back would
+/// click "Capturar a tela" for a request nobody is waiting for, and the image would be taken (and
+/// posted) for nothing. This ceiling sits BELOW the server's, with a margin for the trip, so the
+/// click of a dead request does nothing. It must stay under that `prazo_s`; ADR-039 says so.
+pub(crate) const PRAZO_DO_PEDIDO: std::time::Duration = std::time::Duration::from_secs(170);
+
+/// Is a request this old past its ceiling? Apart so the boundary can be tested.
+pub(crate) fn vencido(decorrido: std::time::Duration) -> bool {
+    decorrido > PRAZO_DO_PEDIDO
+}
+
 /// `aparelho` — the one action the agent's device commands come through.
 pub(super) fn aparelho(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     let comando = v.get("comando").and_then(|x| x.as_str()).unwrap_or_default();
     let motivo = motivo_limpo(v.get("motivo").and_then(|x| x.as_str()).unwrap_or_default());
+    // The clock of the request starts when it reaches the desktop, before any dialog.
+    let inicio = std::time::Instant::now();
     if !crate::tray::aparelho_ligado(window.app_handle()) {
         return reply(window, req, false, falha("desligado",
             "Os comandos de aparelho estão desligados. Ligue em “Comandos de aparelho para o agente”, no ícone do ShvIA na bandeja."));
@@ -50,7 +67,12 @@ pub(super) fn aparelho(window: &WebviewWindow, req: &str, v: &serde_json::Value)
             notify(window, &serde_json::json!({ "title": titulo, "body": texto }));
             reply(window, req, true, serde_json::json!({ "mostrada": true }));
         }
-        "files.pick" => pick_files_titulo(window, req.to_string(), Some(titulo_do_seletor(&motivo))),
+        "files.pick" => pick_files_titulo(
+            window,
+            req.to_string(),
+            Some(titulo_do_seletor(&motivo)),
+            Some(inicio + PRAZO_DO_PEDIDO),
+        ),
         "screen.snapshot" => {
             // The portal's parent window is read HERE, on the UI thread that owns the window;
             // the capture itself runs off it.
@@ -62,7 +84,17 @@ pub(super) fn aparelho(window: &WebviewWindow, req: &str, v: &serde_json::Value)
                 if !confirmar_tela(w, &motivo) {
                     return (false, falha("recusado", "a pessoa recusou a captura da tela — nada foi capturado"));
                 }
-                match capturar_tela(pai) {
+                // The person may have taken minutes to answer a request the agent gave up on.
+                if vencido(inicio.elapsed()) {
+                    return (false, falha("expirou", "o pedido expirou antes de a pessoa responder — nada foi capturado"));
+                }
+                let capturada = capturar_tela(pai);
+                // Same check after: on GNOME the portal's own dialog waits for the person too. A
+                // capture that finished late is dropped here and never leaves the desktop.
+                if capturada.is_ok() && vencido(inicio.elapsed()) {
+                    return (false, falha("expirou", "o pedido expirou durante a captura — a imagem foi descartada"));
+                }
+                match capturada {
                     Ok(png) if png.len() > MAX_TELA_BYTES => {
                         (false, falha("grande_demais", "a captura passou de 10 MB e não foi enviada"))
                     }
@@ -158,7 +190,8 @@ pub(super) fn texto_da_confirmacao_da_tela(motivo: &str) -> String {
         "O agente do ShvIA pediu uma captura da sua tela inteira.\n\n\
          Motivo, nas palavras do agente (não verificado): {motivo}\n\n\
          A imagem vai para a conversa, no servidor do ShvIA. Feche ou esconda o que não deve \
-         aparecer antes de continuar, e continue só se você pediu algo que precise da tela."
+         aparecer antes de continuar, e continue só se você pediu algo que precise da tela.\n\n\
+         O pedido vale por cerca de 3 minutos: depois disso, nada é capturado."
     )
 }
 
@@ -485,6 +518,27 @@ mod tests {
         }
     }
 
+    /// 🔴 The ceiling sits BELOW the server's `prazo_s` (180 s for the files and the capture), or it
+    /// would protect nothing: the click of a request the agent already gave up on must do nothing.
+    #[test]
+    fn o_prazo_do_pedido_fica_abaixo_do_do_servidor() {
+        const PRAZO_DO_SERVIDOR: std::time::Duration = std::time::Duration::from_secs(180);
+        assert!(PRAZO_DO_PEDIDO < PRAZO_DO_SERVIDOR, "the desktop must stop acting before the server stops waiting");
+        assert!(PRAZO_DO_PEDIDO >= std::time::Duration::from_secs(120), "a ceiling this short refuses people who are reading two dialogs");
+    }
+
+    #[test]
+    fn o_limite_do_pedido_vale_na_fronteira() {
+        assert!(!vencido(std::time::Duration::ZERO));
+        assert!(!vencido(PRAZO_DO_PEDIDO), "exactly at the ceiling still acts: past it is what expires");
+        assert!(vencido(PRAZO_DO_PEDIDO + std::time::Duration::from_millis(1)));
+    }
+
+    #[test]
+    fn o_dialogo_da_tela_avisa_que_o_pedido_vale_por_pouco_tempo() {
+        assert!(texto_da_confirmacao_da_tela("ver o erro").contains("vale por cerca de 3 minutos"));
+    }
+
     /// SOURCE check, declared as such: the dispatch is driven by the WebView signal, which a unit
     /// test cannot reach. It holds the two gates in the arm's order — the switch is read BEFORE
     /// any command runs, and the capture asks BEFORE it captures.
@@ -508,5 +562,22 @@ mod tests {
         let dialogo = corpo.find(&["confirmar", "_tela(w"].concat()).expect("capture dialog missing");
         let captura = corpo.find(&["capturar", "_tela(pai)"].concat()).expect("capture call missing");
         assert!(dialogo < captura, "the screen is captured before the person is asked");
+        // The ceiling: checked after the dialog and BEFORE the capture, and again after it, so a
+        // late image is dropped on the desktop. Counting the checks is what keeps either from being
+        // deleted alone (the second one, `capturada.is_ok() && vencido(…)`, is easy to lose).
+        // The WHOLE guard, `if <condition> {`, not the name inside it: measured on 02/10/2026, the
+        // reversals `if false && vencido(…)` and `if false && limite.is_some_and(…)` kept the name
+        // in place, switched the guard off, and a check for the name alone stayed green (as it
+        // already had for the switch above).
+        let guarda_antes = ["if ", "vencido(inicio.elapsed()) {"].concat();
+        let guarda_depois = ["if capturada.is_ok() && ", "vencido(inicio.elapsed()) {"].concat();
+        assert_eq!(corpo[dialogo..captura].matches(&guarda_antes).count(), 1,
+            "the request is not checked between the dialog and the capture");
+        assert_eq!(corpo[captura..].matches(&guarda_depois).count(), 1,
+            "a capture that finished late would still be sent");
+        assert!(corpo.contains(&["Some(inicio + ", "PRAZO_DO_PEDIDO)"].concat()), "files.pick has no ceiling");
+        let picker = include_str!("dialogos.rs");
+        assert!(picker.contains(&["if limite.", "is_some_and(|l| std::time::Instant::now() > l) {"].concat()),
+            "the picker reads files past the ceiling");
     }
 }
