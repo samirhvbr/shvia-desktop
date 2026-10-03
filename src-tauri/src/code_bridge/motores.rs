@@ -493,9 +493,12 @@ mod tests_motor {
     /// instalador. Uma frase genérica mandaria rodar o script errado.
     #[test]
     fn a_ausencia_de_cada_motor_ensina_o_conserto_certo() {
-        assert!(motor_do_engine("codex").1.contains("codex-runner/install.sh"));
+        // The installer is `install.sh` or, on Windows, `install.ps1`, and the message uses the
+        // OS path separator (measured on a Windows runner, 1.12.4: `codex-runner\install.ps1`).
+        let instalador = |base: &str| format!("{base}{}{INSTALADOR}", std::path::MAIN_SEPARATOR);
+        assert!(motor_do_engine("codex").1.contains(&instalador("codex-runner")));
         assert!(motor_do_engine("codex").1.contains("codex login"));
-        assert!(motor_do_engine("claude").1.contains("claude-runner/install.sh"));
+        assert!(motor_do_engine("claude").1.contains(&instalador("claude-runner")));
         assert!(motor_do_engine("gateway").1.contains("anna"));
         // E nenhuma delas manda o usuário para o instalador do vizinho.
         assert!(!motor_do_engine("codex").1.contains("claude login"));
@@ -679,10 +682,13 @@ mod smoke_codex_ao_vivo {
     #[test]
     fn o_codex_runner_esta_instalado_e_responde() {
         let (exe, erro, _) = motor_do_engine("codex");
-        assert!(resolve_bin(exe).is_some(), "{erro}");
+        // `resolve_runner`, not `resolve_bin`: it is the lookup `spawn` and `engine_status` use. On
+        // Windows the installed runner is `node` + `codex-runner.mjs` under %LOCALAPPDATA%, which
+        // `resolve_bin("codex-runner")` never finds (measured on a Windows runner, 1.12.4).
+        assert!(resolve_runner(exe).is_some(), "{erro}");
 
         let st = engine_status(exe);
-        assert_eq!(st["found"], true, "engine_status discordou do resolve_bin: {st}");
+        assert_eq!(st["found"], true, "engine_status discordou do resolve_runner: {st}");
         let versao = st["version"].as_str().unwrap_or("");
         assert!(
             !versao.is_empty(),
