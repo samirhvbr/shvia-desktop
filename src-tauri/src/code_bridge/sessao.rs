@@ -524,7 +524,9 @@ impl Sidecars {
 
     /// Registra o sidecar da sessão (nova geração), matando o anterior da MESMA chave
     /// (respawn). Devolve a geração desta sessão.
-    #[cfg(test)]
+    // Unix only: its callers are the `/bin/sh` test modules below, which are `#[cfg(unix)]`; on Windows it
+    // would be dead code, and `-D warnings` refuses that (found by the windows jobs, 1.12.4).
+    #[cfg(all(test, unix))]
     fn insert(&self, chave: String, child: Child, stdin: ChildStdin) -> u64 {
         self.insert_com(chave, child, stdin, false, serde_json::json!({}))
     }
