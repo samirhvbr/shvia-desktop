@@ -605,15 +605,20 @@ pub fn como_json(app: &AppHandle) -> serde_json::Value {
 mod tests {
     use super::*;
 
+    // Used by the Unix-only tests below, whose fixture paths are POSIX (`/home/dev`) and so not
+    // absolute on Windows: `dir_valido` rightly refuses them there.
+    #[cfg_attr(windows, allow(dead_code))]
     fn casa() -> PathBuf {
         PathBuf::from("/home/dev")
     }
 
+    #[cfg_attr(windows, allow(dead_code))]
     fn conta(id: &str, dir: &str) -> Conta {
         Conta { id: id.into(), rotulo: "Rótulo".into(), dir: dir.into(), var: Var::ConfigDir }
     }
 
     #[test]
+    #[cfg(unix)] // POSIX fixture paths (/home/dev): not absolute on Windows
     fn a_semente_so_traz_a_conta_cuja_pasta_existe() {
         // Nenhuma das duas no disco: sobra o padrão, e ele sozinho é resposta legítima.
         let so_padrao = semente(&casa(), &|_| false);
@@ -694,6 +699,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)] // POSIX fixture paths (/home/dev): not absolute on Windows
     fn diretorio_fora_da_casa_do_usuario_e_recusado() {
         assert!(dir_valido(&casa(), "/home/dev/.claude-blue3"));
         assert!(!dir_valido(&casa(), "/etc/claude"));
@@ -704,7 +710,21 @@ mod tests {
         assert!(!dir_valido(&casa(), "/home/dev2/.claude-blue3"));
     }
 
+    /// The Windows counterpart of the Unix-only fixture tests: a folder inside the profile is
+    /// accepted; another profile, a path outside it and a relative one are not.
     #[test]
+    #[cfg(windows)]
+    fn diretorio_fora_da_casa_do_usuario_e_recusado_no_windows() {
+        let casa = PathBuf::from(r"C:\Users\dev");
+        assert!(dir_valido(&casa, r"C:\Users\dev\.claude-blue3"));
+        assert!(!dir_valido(&casa, r"C:\Windows\claude"));
+        assert!(!dir_valido(&casa, ".claude-blue3")); // relative
+        assert!(!dir_valido(&casa, ""));
+        assert!(!dir_valido(&casa, r"C:\Users\dev2\.claude-blue3"));
+    }
+
+    #[test]
+    #[cfg(unix)] // POSIX fixture paths (/home/dev): not absolute on Windows
     fn normalizar_descarta_o_invalido_e_garante_o_padrao() {
         let entrada = vec![
             conta("empresa-blue3", "/home/dev/.claude-blue3"),
@@ -752,6 +772,7 @@ mod tests {
     /// `zsh -ic 'whence -f claude-me'`. If the parser stops reading this, detection is
     /// broken for the machine that motivated it.
     #[test]
+    #[cfg(unix)] // POSIX fixture paths (/home/dev): not absolute on Windows
     fn le_a_funcao_como_o_shell_de_verdade_a_devolve() {
         let corpo = "claude-me () { ( [ -f \"$HOME/.config/ai-memory/env\" ] && . \"$HOME/.config/ai-memory/env\"                      CLAUDE_SECURESTORAGE_CONFIG_DIR=\"$HOME/.claude-cred-pessoal\" exec claude \"$@\" ) }";
         let saida = format!("claude-me\u{1f}{corpo}");
@@ -768,6 +789,7 @@ mod tests {
     /// mistake is invisible: the registry would look right and the turn would run with a
     /// blank configuration home under the name the person picked.
     #[test]
+    #[cfg(unix)] // POSIX fixture paths (/home/dev): not absolute on Windows
     fn o_nome_longo_nao_e_lido_como_o_curto() {
         let saida = "a\u{1f}CLAUDE_SECURESTORAGE_CONFIG_DIR=\"$HOME/.cred\" exec claude\n\
                      b\u{1f}CLAUDE_CONFIG_DIR=\"$HOME/.casa\" exec claude";
@@ -801,6 +823,7 @@ mod tests {
 
     /// Sem aspas e com `~` — as duas formas que uma função escrita à mão costuma ter.
     #[test]
+    #[cfg(unix)] // POSIX fixture paths (/home/dev): not absolute on Windows
     fn aceita_sem_aspas_e_com_til() {
         let saida = "a\u{1f}CLAUDE_CONFIG_DIR=~/.claude-x exec claude\n                     b\u{1f}CLAUDE_CONFIG_DIR=$HOME/.claude-y exec claude";
         let c = candidatos_de(saida, &casa(), &|_| false);
@@ -822,6 +845,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)] // POSIX fixture paths (/home/dev): not absolute on Windows
     fn o_json_gravado_nao_carrega_o_padrao_e_guarda_a_selecao() {
         let contas = semente(&casa(), &|_| true);
         let v = para_json(&contas, "pessoal");

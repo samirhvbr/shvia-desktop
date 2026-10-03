@@ -1203,6 +1203,9 @@ mod tests_run {
 
 #[cfg(test)]
 // Split out of `tests_motor` in 1.6.41.
+// Unix only: these spawn `/bin/sh` (as the `#[cfg(unix)]` tests of `tests_encerrar` do). On Windows the
+// `colher` / session choreography is NOT covered by a test (found by the windows-msvc CI job, 1.12.4).
+#[cfg(unix)]
 mod tests_colher {
     use super::*;
 
@@ -1254,6 +1257,8 @@ mod tests_colher {
 // 1.8.0: several sessions per window. Every test runs real processes, because the defects
 // this guards against live in the choreography (who is killed, who receives the line), not
 // in arithmetic.
+// Unix only: the engines here are `/bin/sh` scripts (see `tests_colher`).
+#[cfg(unix)]
 mod tests_sessoes {
     use super::*;
     use std::process::Stdio;
@@ -1406,6 +1411,8 @@ mod tests_sessoes {
 // 1.8.2: an agent survives a new document in its window (ADR-037). The engine side
 // runs real processes, like `tests_sessoes`: who is let go of and who is ended lives in the
 // choreography. The log and the state a bare page needs are read straight from `Registro`.
+// Unix only: the engines here are `/bin/sh` scripts (see `tests_colher`).
+#[cfg(unix)]
 mod tests_retomada {
     use super::*;
     use std::process::Stdio;

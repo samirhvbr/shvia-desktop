@@ -14,9 +14,20 @@ the MSVC build, or a test that fails only on Windows, would have surfaced on the
 - **What it does not do.** It does not run the app, package, or sign anything, and it does not fill the result table of
   `docs/roteiro-validacao-windows.md`: the 45-minute runbook on a Windows machine stays the owner's. The runbook's header now
   says what CI covers since this version.
-- **Not measured before this PR:** `install.ps1` had only been parsed and run against temporary directories on Linux
-  (`prova:instaladores-ps1`); its first run on Windows is this job's first run, and the Windows-only tests had never run.
-  The first run of this job is the measurement; its result is in the pull request.
+- **What its first run measured (03/10/2026, GitHub `windows-latest`).** `install.ps1` ran and installed the Codex runner on
+  Windows for the first time, and `cargo clippy --all-targets -D warnings` passed on the MSVC target. `cargo test` ran 185
+  tests, **163 passed and 21 failed, and all 21 were assumptions of Unix inside the tests, not defects of the app**:
+  - 12 session tests (`tests_colher`, `tests_sessoes`, `tests_retomada`) start `/bin/sh` and `sleep`; they were missing the
+    `#[cfg(unix)]` that the older modules of the same file already have. They are Unix-only now, which means **the session
+    choreography (who is killed, who receives the line, what `colher` reads) has no test on Windows**; porting it to `cmd` is
+    a follow-up, not done here.
+  - 7 `contas_claude` tests use the POSIX fixture `/home/dev`, which is not an absolute path on Windows, so `dir_valido`
+    rightly refused it. They are Unix-only, and a Windows test of `dir_valido` with `C:\Users\dev` replaces the coverage
+    of that one function.
+  - 2 engine tests: one expected `codex-runner/install.sh` in a message that on Windows says `codex-runner\install.ps1`; the
+    smoke test looked the runner up with `resolve_bin`, which never finds it on Windows (the installed runner is `node` +
+    `codex-runner.mjs` under `%LOCALAPPDATA%`), instead of `resolve_runner`, the lookup `spawn` and `engine_status` use.
+  Nothing outside `#[cfg(test)]` code changed.
 
 ## 1.12.3 - a device command the agent stopped waiting for is refused instead of acted on
 
