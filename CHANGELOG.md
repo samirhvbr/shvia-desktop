@@ -1,5 +1,84 @@
 # Changelog
 
+## 1.12.3 - a device command the agent stopped waiting for is refused instead of acted on
+
+Found reading SHVIA-WEB #454 (the server half of the device commands) against ADR-039. The server waits `prazo_s` for
+the page's answer, 180 s for `files.pick` and `screen.snapshot`, and then the agent moves on; the desktop had no clock of
+its own, and a native dialog cannot be closed from outside. A person who left and came back would click "Capturar a tela"
+for a request nobody was waiting for, and the screen was captured and posted for nothing.
+
+- **`PRAZO_DO_PEDIDO` = 170 s, from the moment the request reaches the desktop.** Past it the answer is `expirou`:
+  the capture is not taken if the dialog is answered late, a capture that finishes late (on GNOME the portal's own dialog
+  waits for the person too) is dropped on the desktop and never sent, and the files a late picker returns are not read.
+  It sits below the server's 180 s on purpose and a test holds that relation; the number lives in the other
+  repository, so ADR-039 says it has to move with it.
+- The capture dialog now says the request is valid for about 3 minutes.
+- Tests: the boundary (exactly at the ceiling still acts), the relation to 180 s, the dialog text, and a source check that
+  the request is checked after the dialog and before the capture, again after it, and that both `files.pick` and the
+  picker carry the limit. Five reversals were run one by one; **three stayed green** on the first version of that source
+  check, because `if false && vencido(…)` still contained the name it looked for, so it now requires the exact guard
+  (`if <condition> {`), and every reversal turns a test red.
+- Docs: ADR-039 ("A request has a ceiling of its own", the error list, the running-app check), `docs/funcionalidades.md`.
+
+### The page can hand the desktop the seconds that are left
+
+Asked for by SHVIA-WEB #454, after the two halves were read against each other: a fixed 170 s counted from the bridge
+leaves a margin of `10 s − latency` against the server's 180 s (the server's clock starts at its emit, ours when the
+page hands the request over), so it holds today but not by construction. `aparelho(comando, motivo, args, restante)`
+now takes a fourth argument, an integer in seconds.
+
+- **The ceiling of a request is the smaller of `restante` and 170 s**, counted from the bridge. `restante` of 0 or less
+  answers `expirou` before anything opens: no dialog, no picker, no notification, no info. **Absent, or anything that is
+  not an integer** (a string, a float, `null`), **means 170 s**: the stricter-or-equal side, never a longer wait. A shell
+  older than this one ignores the argument, which is why the page can already send it.
+- The capture dialog says the real time: "cerca de 3 minutos" on a fresh request, seconds when little is left.
+- Tests: the smaller of the two, a `restante` above 170 never lengthens the wait, 0 and negatives are already out, values
+  that are not integers fall back to 170, the dialog text for 170, 120 and 45 s, the boundary against a shorter ceiling,
+  and the source check now also requires the exact `let Some(teto) = … else { return … expirou` guard before any command
+  and `teto` (not the constant) in all three places that count time. **Seven reversals, one by one, each turned a test
+  red.**
+
+## 1.12.2 - tauri goes to 2.12.0 with its plugins and the Windows pair, with no code change
+
+Dependabot #97, #95 and #96 taken into versioned commits, as `docs/build.md` ("Dependabot") requires. The PRs stay open:
+Dependabot closes them by itself when `master` no longer needs them, and closing one by hand would stop it proposing that
+update again.
+
+#97 as proposed does not build: its `Windows (clippy, cross-compiled)` job is red. Reproduced here on
+`x86_64-pc-windows-gnu`: `windows_ipc.rs:88`, `&ICoreWebView2WebMessageReceivedEventHandler: Param<…>` is not satisfied.
+tauri 2.12.0 brings wry 0.57, whose `webview2-com-sys` 0.39 and `windows-core` 0.62 are not the 0.38 and 0.61 our own
+direct dependencies were matched to, so there are two copies of `windows-core` and the handler built from one is passed
+to a call of the other. It is the "alone" failure measured on 24/09 (1.6.49), and the `Cargo.toml` note said the cure: move
+them together with tauri. That is what this does.
+
+- **Moved together:** `tauri` 2.11.6 → 2.12.0, `tauri-build` 2.6.3 → 2.7.1, the plugins (`opener` 2.6.0, `dialog` 2.8.0,
+  `notification` 2.5.0, `autostart` 2.6.0, `window-state` 2.5.0, `updater` 2.13.0, and the two held on a line by `~`:
+  `global-shortcut` 2.3.2 → 2.4.0, `deep-link` 2.4.10 → 2.5.0), plus our own `webview2-com` 0.38 → 0.39 and `windows`
+  0.61 → 0.62. No source file changes: only comments that named wry 0.55 and the old pair.
+- **Checked here:** Windows clippy cross-compiled with `-D warnings` (it was the red job), Linux `cargo test --locked` (196)
+  and clippy, and the `prova:*` rulers. For macOS the crates matched to wry still resolve to one version each
+  (`objc2` 0.6.4, `objc2-web-kit` 0.3.2); compiling it is CI's.
+- Two copies of `windows` 0.61 remain in the tree (`tauri-plugin-opener`, `tauri-winrt-notification`); neither touches the
+  WebView types, so they coexist. The plugins' release notes are about their JavaScript API and `windows-rs`; this app
+  drives them from Rust only.
+- **Not measured:** the Windows bridge has still not run on a Windows machine (the owner's validation covers it), and the
+  quick window's shortcut and the `shvia://` links have still not been exercised in a running app (ADR-038 has the check).
+- ADR-038's consequence about the pinned plugins now says when and how they moved.
+
+### The Claude runner's SDK goes to 0.3.285, and the steer is measured again
+
+Dependabot #95, `@anthropic-ai/claude-agent-sdk` `^0.3.282` → `^0.3.285`, with its lockfile. The steer of 1.11.0 rests on
+the SDK's `streamInput` with `priority: "next"`, so a new SDK is not taken on the unit tests alone (they use a fake
+query): the REAL runner was driven against the REAL SDK 0.3.285 (Haiku, a 4 s `sleep` tool call, the correction sent
+right after the call started). Result: `tool_call` → `steer` → `tool_result` → `steer_applied` → ONE `turn_done`, and the
+answer obeyed ("The command printed DONE. BANANA."), the same as on 0.3.258. `prova:politica` and `prova:runner` pass.
+
+### The root npm group follows tauri to 2.12.0
+
+Dependabot #96: `@tauri-apps/api` 2.11.1 → 2.12.0 and `@tauri-apps/cli` 2.11.5 → 2.12.0, with the root lockfile. They go
+with the crate (the CLI and the crate are meant to be the same minor), so this commit comes after the one that moves
+tauri. The shell's own `src/` calls only what `@tauri-apps/api` kept; `npm run build` and the rulers pass.
+
 ## 1.12.1 - the Claude runner's hono goes to 4.13.12, past the serveStatic path-bypass fix
 
 Dependabot #93, taken into a versioned commit as `docs/build.md` ("Dependabot") requires. `hono` is not a direct

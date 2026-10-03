@@ -5,7 +5,7 @@
 //! O caminho Rust→página (`eval`) já é cross-platform, então aqui é só o canal
 //! página→Rust. Sem IPC Tauri (ADR-001): canal nativo do WebView2.
 //!
-//! Versões CASADAS com o wry 0.55 (Cargo.lock: webview2-com 0.38, windows 0.61)
+//! Versões CASADAS com o wry 0.57 (Cargo.lock: webview2-com 0.39, windows 0.62)
 //! — senão os tipos do `ICoreWebView2` não unificam com o ponteiro que o
 //! `with_webview` entrega. `IsWebMessageEnabled` é `true` por padrão no WebView2,
 //! então `window.chrome.webview` existe sem configuração extra.

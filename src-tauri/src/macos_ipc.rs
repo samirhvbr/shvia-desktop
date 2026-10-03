@@ -4,7 +4,7 @@
 //! (`eval`) já é cross-platform, então aqui é só o canal página→Rust.
 //!
 //! Escrito para **objc2 0.6 / objc2-web-kit 0.3** (versões que o wry 0.55
-//! resolve). O `WKScriptMessageHandler` exige `MainThreadOnly`, então a classe é
+//! resolvia e que o wry 0.57 manteve). O `WKScriptMessageHandler` exige `MainThreadOnly`, então a classe é
 //! declarada como tal (`#[thread_kind = MainThreadOnly]`) e criada com o
 //! `MainThreadMarker` do `with_webview` (que roda na main thread). Sem IPC Tauri
 //! (ADR-001): canal nativo do WebKit, como no Linux.

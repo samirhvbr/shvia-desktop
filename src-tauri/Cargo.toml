@@ -1,6 +1,6 @@
 [package]
 name = "shvia-desktop"
-version = "1.12.1"
+version = "1.12.3"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
@@ -51,7 +51,7 @@ serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
 
 # Pin de compatibilidade (não usamos `time` diretamente): o WebView
-# (wry 0.55 → cookie 0.18.1) chama a API antiga de `Parsable::parse` (1 arg). O
+# (wry → cookie 0.18.1; ainda o mesmo no wry 0.57, medido em 02/10/2026) chama a API antiga de `Parsable::parse` (1 arg). O
 # `time` novo mudou a assinatura (passou a exigir `defaults`), quebrando o
 # `cookie`. Fixamos `time` numa versão compatível. Remover quando wry/cookie
 # subirem para uma versão que aceite o `time` novo.
@@ -77,15 +77,16 @@ tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 # The quick window's global shortcut (1.10.0, ADR-038). Driven only from Rust (`rapida.rs`):
 # no capability declares it, so no page can register or read a system-wide key (ADR-001).
 #
-# Both pinned to the last line built on tauri ^2.10 (`~`, patch releases only). Their next
-# minors (2.4.0 and 2.5.0, 26/09/2026) require tauri ^2.12, which pulls wry 0.57, `windows` 0.62
-# and `webview2-com` 0.39 — the pair measured breaking the Windows build (1.6.49, G3). Measured
-# on 28/09/2026: `cargo add` of the unpinned plugins moved tauri 2.11.6 → 2.12.0 and 60 crates.
-# Move them together with tauri, when the Windows crates are moved and measured.
-tauri-plugin-global-shortcut = "~2.3.2"
+# Both pinned to the line built on tauri ^2.12 (`~`, patch releases only). Until 1.12.2 they sat
+# on the tauri 2.10 line (`~2.3.2`, `~2.4.10`), because their next minors (2.4.0 and 2.5.0,
+# 26/09/2026) need tauri ^2.12, which pulls wry 0.57, `windows` 0.62 and `webview2-com` 0.39 —
+# the pair measured breaking the Windows build ALONE (1.6.49, G3). Moved TOGETHER on 02/10/2026:
+# tauri 2.12.0 + these plugins + `webview2-com` 0.39 + `windows` 0.62 (see the Windows section
+# below), with no code change; the Windows clippy, Linux tests and macOS CI pass.
+tauri-plugin-global-shortcut = "~2.4.0"
 # The `shvia://` scheme (1.10.0, ADR-038). Rust API only, for the same reason: the page never
 # learns which links opened the app, and the routes it can reach are a fixed list (`esquema.rs`).
-tauri-plugin-deep-link = "~2.4.10"
+tauri-plugin-deep-link = "~2.5.0"
 # Auto-update (item D1 — ADR-022). Dirigido SÓ pela API Rust (`src/updater.rs`):
 # a capability não declara `updater:default`, senão a página remota poderia
 # escolher o binário que roda na máquina (ADR-001). É **desktop-only** — no mobile
@@ -126,10 +127,11 @@ objc2-web-kit = "0.3"
 # webview2-com 0.39 → 8, on x86_64-pc-windows-gnu.
 #
 # Ponte do Modo Code no Windows (WebView2 WebMessageReceived "window.chrome.webview").
-# Mesma regra do macOS: versões CASADAS com o wry 0.55 (Cargo.lock: webview2-com
-# 0.38, windows 0.61) p/ o ICoreWebView2 unificar com o with_webview. Só usamos
+# Mesma regra do macOS: versões CASADAS com o wry 0.57 (Cargo.lock: webview2-com
+# 0.39, windows 0.62) p/ o ICoreWebView2 unificar com o with_webview. (Até a 1.12.2 eram
+# 0.38/0.61, casadas com o wry 0.55; subiram JUNTAS com o tauri 2.12.) Só usamos
 # `windows::core::PWSTR` (take_pwstr do webview2-com espera o PWSTR da crate
 # `windows`), então nenhuma feature Win32 extra é necessária.
 [target.'cfg(target_os = "windows")'.dependencies]
-webview2-com = "0.38"
-windows = "0.61"
+webview2-com = "0.39"
+windows = "0.62"
