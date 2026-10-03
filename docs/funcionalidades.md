@@ -284,7 +284,8 @@ things through the page: the device's basic data, a native notification, files t
 confirms every time, quoting the agent's reason as the agent's. Everything is off until the person
 turns on "Comandos de aparelho para o agente" in the tray; nothing on the page can. Code in
 `aparelho.rs`, decision in ADR-039. The Linux capture was measured on GNOME 48; macOS and Windows
-are compiled by CI and not yet run. The agent's side (a tool on the server that asks the page and
+are compiled by CI and not yet run. A request the agent has stopped waiting for (170 s, under the server's
+180 s) is refused when the person finally answers (`expirou`), so nothing is captured or read for nothing. The agent's side (a tool on the server that asks the page and
 waits) is SHVIA-WEB's; until it ships, nothing calls these commands.
 
 ## Limitações conhecidas

@@ -178,12 +178,20 @@ pub(super) fn pick_folder(window: &WebviewWindow, req: String) {
 /// Arquivo acima do teto do servidor (10 MB) sai em `skipped` em vez de derrubar
 /// a seleção inteira — o resto do que foi escolhido continua valendo.
 pub(super) fn pick_files(window: &WebviewWindow, req: String) {
-    pick_files_titulo(window, req, None)
+    pick_files_titulo(window, req, None, None)
 }
 
 /// The same picker with a title of its own. The agent's `files.pick` (ADR-039) uses it to say
 /// who is asking and why: the picker IS that command's consent, so it has to read as a request.
-pub(super) fn pick_files_titulo(window: &WebviewWindow, req: String, titulo: Option<String>) {
+///
+/// `limite` is the moment past which the picked files are NOT read (reply `expirou`): the agent
+/// stopped waiting, and the bytes would travel for nothing. `None` for the page's own attachments.
+pub(super) fn pick_files_titulo(
+    window: &WebviewWindow,
+    req: String,
+    titulo: Option<String>,
+    limite: Option<std::time::Instant>,
+) {
     use base64::Engine;
     use tauri_plugin_dialog::DialogExt;
 
@@ -200,6 +208,13 @@ pub(super) fn pick_files_titulo(window: &WebviewWindow, req: String, titulo: Opt
             reply(&win, &req, true, serde_json::json!({ "files": [], "canceled": true }));
             return;
         };
+        if limite.is_some_and(|l| std::time::Instant::now() > l) {
+            reply(&win, &req, false, serde_json::json!({
+                "erro": "o pedido expirou antes de a pessoa escolher — nenhum arquivo foi lido",
+                "codigo": "expirou",
+            }));
+            return;
+        }
 
         let mut arquivos = Vec::new();
         let mut skipped: Vec<String> = Vec::new();

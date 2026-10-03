@@ -2406,16 +2406,44 @@ PipeWire and xcb to Linux and a second `windows` crate to Windows for one comman
 
 ### What this ADR does not do
 
-- **The round trip is SHVIA-WEB's.** The agent runs on the server: a tool there has to pause the
-  turn, ask the page, wait for the answer and continue. Until it exists, nothing calls `aparelho`.
-  The contract it builds on is the table above, `aparelhoStatus()` and the error codes
-  (`desligado`, `recusado`, `comando_desconhecido`, `argumento_invalido`, `grande_demais`,
-  `indisponivel`, `falhou`).
+- **The round trip is SHVIA-WEB's** (SHVIA-WEB #454): a tool there pauses the turn, asks the page,
+  waits for the answer and continues. The contract it builds on is the table above,
+  `aparelhoStatus()` and the error codes (`desligado`, `recusado`, `expirou`,
+  `comando_desconhecido`, `argumento_invalido`, `grande_demais`, `indisponivel`, `falhou`).
 - **Camera, location and clipboard stay out.** A desktop WebView has no reliable location, the
   camera is the page's own `getUserMedia` (ADR-008), and the clipboard was left out by the owner's
   choice.
 - **No persistent "always allow" for the screen.** A dialog people learn to click through is not
   consent; one per capture is the cost of the most private command.
+
+### A request has a ceiling of its own (1.12.3)
+
+The server stops waiting after `prazo_s` (SHVIA-WEB `config('agent.aparelho.prazo_s')`: 180 s for
+`files.pick` and `screen.snapshot`) and the agent moves on, but a native dialog cannot be closed from
+outside: it stays on screen. Found reading the other half (SHVIA-WEB #454) against this one: a person
+who walked away and comes back would click "Capturar a tela" for a request nobody is waiting for, and
+their screen would be captured and posted for nothing. So the desktop keeps its own clock, from the
+moment the request arrives: `PRAZO_DO_PEDIDO` = **170 s**. Past it, the click does nothing and the
+answer is `expirou`: the capture is not taken when the dialog is answered late, a capture that finishes
+late (GNOME's portal dialog waits for the person too) is dropped on the desktop, and the picked files
+are not read. The capture dialog says the request is valid for about 3 minutes.
+
+**The ceiling has to stay below the server's `prazo_s`** or it protects nothing; a test holds the
+relation to 180 s, written down here because the number lives in the other repository. If SHVIA-WEB
+changes those deadlines, this one moves with them.
+
+**The page can say how long is really left (`restante`, 1.12.3).** A fixed 170 s from the moment the
+request reaches the bridge leaves a margin of `10 s − latency`, not a guarantee: the server's clock
+starts at its emit, ours when the page hands the request over (pointed out when the two halves were
+read against each other, and corrected on the SHVIA-WEB side too). So `aparelho(comando, motivo, args,
+restante)` takes a fourth argument, an integer in seconds: the page computes it as the request's
+`prazo_s` minus what the page already spent minus 10 s for the stream's delivery, which it cannot
+measure. The desktop's ceiling for that request is **the smaller of `restante` and 170 s**, counted
+from the bridge. `restante` of 0 or less answers `expirou` before any dialog, picker or command
+opens (the page already does the same, this is the shell not trusting that it does); **absent, or
+anything that is not an integer, means 170 s**: the stricter-or-equal side, never a longer wait. A
+shell older than 1.12.3 ignores the argument, so the page can send it already. The capture dialog
+says the actual time (`cerca de 3 minutos` on a fresh request, seconds when little is left).
 
 ### Consequences
 
@@ -2437,7 +2465,8 @@ Until SHVIA-WEB's tool exists, call the bridge from the page's developer console
 3. `aparelho('system.notify', '', {texto: 'teste'})` → a native notification.
 4. `aparelho('files.pick', 'o log do erro')` → the picker opens titled "O agente do ShvIA pediu
    arquivos: o log do erro"; cancel → `{files: [], canceled: true}`.
-5. `aparelho('screen.snapshot', 'ver o erro')` → our dialog quotes the reason; "Recusar" →
+5. `aparelho('screen.snapshot', 'ver o erro')` → our dialog quotes the reason (and says the request is
+   valid for about 3 minutes; leave it open past 170 s, click "Capturar a tela" → `expirou`, nothing taken); "Recusar" →
    rejected with `recusado` and nothing captured. Again, "Capturar a tela" → on GNOME its own
    dialog; Share → `{mimeType: 'image/png', dataBase64, tamanho}`. On macOS the first capture asks
    for Screen Recording; on Windows nothing else is asked. Nothing is left in `~/Pictures`, the

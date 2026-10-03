@@ -80,8 +80,12 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // The agent's device commands (recursos.aparelho, ADR-039). `comando` is one of
     // aparelhoStatus().comandos; `motivo` is the agent's reason, shown to the person AS the
     // agent's; `args` per command ({titulo, texto} for system.notify). Off in the tray, every
-    // command fails with codigo 'desligado'; refused by the person, 'recusado'.
-    aparelho: function (comando, motivo, args) { return post('aparelho', { comando: comando, motivo: motivo || '', args: args || {} }); },
+    // command fails with codigo 'desligado'; refused by the person, 'recusado'; answered after the
+    // request's ceiling, 'expirou' and nothing is read or captured. `restante` (optional integer, seconds,
+    // 1.12.3) is how long the page says the request still has; the desktop takes the smaller of it and
+    // its own 170 s, and a `restante` of 0 or less answers 'expirou' without opening anything. Absent
+    // (a page that does not send it) means its own 170 s; an older shell ignores the argument.
+    aparelho: function (comando, motivo, args, restante) { return post('aparelho', { comando: comando, motivo: motivo || '', args: args || {}, restante: restante }); },
     aparelhoStatus: function () { return post('aparelhoStatus'); }, // {ligado, comandos:[...]}
     // Item D3: grava a config de um cliente de CLI no host. {client, baseUrl, apiKey, model}
     // → {written:true, path, backup} | {written:false} quando o usuário cancela o diálogo.

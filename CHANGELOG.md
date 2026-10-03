@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.12.3 - a device command the agent stopped waiting for is refused instead of acted on
+
+Found reading SHVIA-WEB #454 (the server half of the device commands) against ADR-039. The server waits `prazo_s` for
+the page's answer, 180 s for `files.pick` and `screen.snapshot`, and then the agent moves on; the desktop had no clock of
+its own, and a native dialog cannot be closed from outside. A person who left and came back would click "Capturar a tela"
+for a request nobody was waiting for, and the screen was captured and posted for nothing.
+
+- **`PRAZO_DO_PEDIDO` = 170 s, from the moment the request reaches the desktop.** Past it the answer is `expirou`:
+  the capture is not taken if the dialog is answered late, a capture that finishes late (on GNOME the portal's own dialog
+  waits for the person too) is dropped on the desktop and never sent, and the files a late picker returns are not read.
+  It sits below the server's 180 s on purpose and a test holds that relation; the number lives in the other
+  repository, so ADR-039 says it has to move with it.
+- The capture dialog now says the request is valid for about 3 minutes.
+- Tests: the boundary (exactly at the ceiling still acts), the relation to 180 s, the dialog text, and a source check that
+  the request is checked after the dialog and before the capture, again after it, and that both `files.pick` and the
+  picker carry the limit. Five reversals were run one by one; **three stayed green** on the first version of that source
+  check, because `if false && vencido(…)` still contained the name it looked for, so it now requires the exact guard
+  (`if <condition> {`), and every reversal turns a test red.
+- Docs: ADR-039 ("A request has a ceiling of its own", the error list, the running-app check), `docs/funcionalidades.md`.
+
+### The page can hand the desktop the seconds that are left
+
+Asked for by SHVIA-WEB #454, after the two halves were read against each other: a fixed 170 s counted from the bridge
+leaves a margin of `10 s − latency` against the server's 180 s (the server's clock starts at its emit, ours when the
+page hands the request over), so it holds today but not by construction. `aparelho(comando, motivo, args, restante)`
+now takes a fourth argument, an integer in seconds.
+
+- **The ceiling of a request is the smaller of `restante` and 170 s**, counted from the bridge. `restante` of 0 or less
+  answers `expirou` before anything opens: no dialog, no picker, no notification, no info. **Absent, or anything that is
+  not an integer** (a string, a float, `null`), **means 170 s**: the stricter-or-equal side, never a longer wait. A shell
+  older than this one ignores the argument, which is why the page can already send it.
+- The capture dialog says the real time: "cerca de 3 minutos" on a fresh request, seconds when little is left.
+- Tests: the smaller of the two, a `restante` above 170 never lengthens the wait, 0 and negatives are already out, values
+  that are not integers fall back to 170, the dialog text for 170, 120 and 45 s, the boundary against a shorter ceiling,
+  and the source check now also requires the exact `let Some(teto) = … else { return … expirou` guard before any command
+  and `teto` (not the constant) in all three places that count time. **Seven reversals, one by one, each turned a test
+  red.**
+
 ## 1.12.2 - tauri goes to 2.12.0 with its plugins and the Windows pair, with no code change
 
 Dependabot #97, #95 and #96 taken into versioned commits, as `docs/build.md` ("Dependabot") requires. The PRs stay open:
