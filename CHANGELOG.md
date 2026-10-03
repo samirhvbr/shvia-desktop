@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.12.4 - CI builds, lints and tests the real Windows target (MSVC) on a Windows runner
+
+The Windows desktop had never run on Windows, and CI only checked a different target: `plataformas.yml` cross-compiles to
+`x86_64-pc-windows-gnu` from Linux, while the installer is built for `x86_64-pc-windows-msvc`. A break that exists only in
+the MSVC build, or a test that fails only on Windows, would have surfaced on the owner's machine, not in a pull request.
+
+- **A third job, `windows-msvc`, on `windows-latest`.** It installs the Codex runner with `codex-runner/install.ps1`
+  (the smoke test checks the installation, as on macOS), stages the empty sidecar stand-in
+  `anna-x86_64-pc-windows-msvc.exe`, then runs `cargo clippy --locked --all-targets -- -D warnings` and `cargo test --locked`
+  in `src-tauri/`. The path filter is the existing one (`src-tauri/**` and the workflow), so it costs Windows minutes
+  only when the Rust side changes.
+- **What it does not do.** It does not run the app, package, or sign anything, and it does not fill the result table of
+  `docs/roteiro-validacao-windows.md`: the 45-minute runbook on a Windows machine stays the owner's. The runbook's header now
+  says what CI covers since this version.
+- **Not measured before this PR:** `install.ps1` had only been parsed and run against temporary directories on Linux
+  (`prova:instaladores-ps1`); its first run on Windows is this job's first run, and the Windows-only tests had never run.
+  The first run of this job is the measurement; its result is in the pull request.
+
 ## 1.12.3 - a device command the agent stopped waiting for is refused instead of acted on
 
 Found reading SHVIA-WEB #454 (the server half of the device commands) against ADR-039. The server waits `prazo_s` for

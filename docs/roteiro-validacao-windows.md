@@ -3,8 +3,11 @@
 > **Why this exists.** The Windows build did not compile from 0.9.0 to 1.6.8. Since 1.6.8 it
 > compiles, and since 1.6.37 CI cross-checks it on every change to `src-tauri/`. It has
 > **never run on a Windows machine**. CI checks the `x86_64-pc-windows-gnu` target, while the
-> real build is MSVC (`x86_64-pc-windows-msvc`). So this runbook is the first time the MSVC
-> build and the Windows-only code run at all: the WebView2 bridge (`windows_ipc.rs`), the tray,
+> real build is MSVC (`x86_64-pc-windows-msvc`). Since 1.12.4 a `windows-latest` job in
+> `plataformas.yml` also compiles, lints and tests the MSVC target and runs `install.ps1` for the
+> Codex runner, so a compile break or a failing test there shows up in the PR; it does not RUN the
+> app. So this runbook is still the first time the MSVC build and the Windows-only code run
+> for a person: the WebView2 bridge (`windows_ipc.rs`), the tray,
 > engine lookup (`where`, `%LOCALAPPDATA%\Programs`), the runners installed by `install.ps1`
 > (1.6.56–1.6.58), and the updater's installer hand-off.
 > The owner answered "I'll do it — send the runbook" on 23/09/2026.
