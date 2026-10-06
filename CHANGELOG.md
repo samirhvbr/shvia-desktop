@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.13.0 - The app installs the runners the machine is missing, instead of waiting for a button nobody knew to press
+
+The owner updated SHVIA Desktop to the latest version on a second machine, picked Code mode and the Claude Code engine, and
+got an **empty account selector and an empty model catalogue**. The `claude-runner` had never been installed there, and the
+app had never said so: ADR-036 (1.7.1) updated the runners that were installed and left the first install to the
+"Instalar runner" button, in Settings, "the user's consent". The owner's answer, in the session: the app has to install what it
+needs, or the person is left guessing (ADR-040).
+
+- **A missing runner is installed at the start.** In the background, after the update check ADR-036 already did: when the
+  machine has no runner of an engine the app offers (Claude Code, Codex) anywhere, and has Node 18+, the app runs the bundled
+  installer — the same one the button runs, under the same per-runner lock. A notification says it started (about 110 MB to
+  download, 280 MB on disk) and another says it ended. Measured on the real installer from an empty home: **4 s** on this
+  connection, 276 MB on disk (230 MB of it the Agent SDK's native binary), and the installed runner answers `--version`.
+- **Without Node, the person is told, once.** The installer needs Node 18+ and the app cannot install it; "Instale o Node e
+  reabra o ShvIA: ele instala o motor sozinho" is shown once per runner and app version, and the install happens by itself
+  the first start after Node exists. A failed install is tried again at every start (it may have been the network) but told once
+  per app version, the retry does not announce itself, and a success after a failure is told.
+- **What it leaves alone.** A runner found somewhere else (a developer's checkout on PATH) is not installed over: the app
+  installs what is **missing**. `SHVIA_RUNNERS_AUTO=0` turns the first install off, silently, for a metered connection;
+  updating an installed runner (ADR-036) is not covered by it.
+- **`engineStatus` answers `installing`.** While the app installs or updates a runner, `found: false` is "not yet", and the page
+  can say so instead of pointing at a button. (The page's half is SHVIA-WEB's.)
+- **The Arch package** declares `nodejs` and `npm` as optional dependencies and says so after installing. It cannot install
+  the engines itself: the package scripts run as root and the destination is the user's `~/.local`.
+- **Not done, on purpose.** Node is not installed; the login (`claude login`, `codex login`) stays the person's; nothing named
+  `ai-memory` is installed because this app has no such component today (what the owner means by it is an open question); the
+  runner's `node_modules` is not bundled (it would add 230 MB to every package of every platform).
+- **Measured.** 28 tests of the update module, among them the whole startup pass run with the machine passed in (a fresh
+  machine gets both engines and the next start says nothing; no Node tells once per version and installs when Node appears;
+  a repeated failure is silent and the success after it is told; the opt-out installs nothing and asks nothing; a runner
+  elsewhere is untouched; a damaged notice file does not stop the start), `clippy -D warnings` and the whole suite green.
+  The tests that take the process-wide install locks now run one at a time: three of the first runs of the new tests failed
+  with `OcupadoPeloBotao` because another test held the lock. **Not measured:** a real app start on a machine without the runner
+  (the pass is exercised with the machine injected, and the installer by itself, not the two together on a packaged app), macOS and
+  Windows (the same code path, with `install.sh` and `install.ps1`), and what a person with no Node sees on a notification
+  daemon that drops long text.
+
 ## 1.12.4 - CI builds, lints and tests the real Windows target (MSVC) on a Windows runner
 
 The Windows desktop had never run on Windows, and CI only checked a different target: `plataformas.yml` cross-compiles to

@@ -93,7 +93,7 @@ the script reads them, as `build-local.sh` does.
 | # | Do | Expected |
 |---|---|---|
 | 7.1 | Engine **gateway (anna)** — only if you built with `-Anna` | Found (*bundled*). A small task ("liste os arquivos da pasta") answers |
-| 7.2 | Pick engine **Claude (assinatura)** with no runner installed | `claude-runner não encontrado — use o botão Instalar runner ou rode claude-runner\install.ps1 …` |
+| 7.2 | Set `SHVIA_RUNNERS_AUTO=0` (since 1.13.0 the app installs a missing runner at its start, so the message below would never show), restart, then pick engine **Claude (assinatura)** with no runner installed | `claude-runner não encontrado — use o botão Instalar runner ou rode claude-runner\install.ps1 …` |
 | 7.3 | Press **Instalar runner** (or run `.\claude-runner\install.ps1` in PowerShell) | The output ends with `✓ claude-runner instalado em …\shvia-claude-runner (Agent SDK …)`. **No black console window** opens at any point |
 | 7.4 | Engine Claude: a small task ("liste os arquivos da pasta"), then a longer one, and press **Parar** mid-turn | The small one answers. *Parar* stops the turn, and Task Manager shows **no `node.exe` left behind** for it (1.6.57 runs `node` directly, not a `.cmd`) |
 | 7.5 | Run `.\codex-runner\install.ps1`, then pick engine **Codex** | Install ends with `✓ codex-runner … instalado`. Then **one of three, all informative** — write down which: **(a)** it starts and a small task answers; **(b)** "o sandbox do Codex NÃO segurou…": the sandbox does not hold on this Windows, and the engine refuses by design; **(c)** "o comando de controle … não rodou": the proof could not run even inside the project. (b) and (c) are the next item, not a failure of this runbook |

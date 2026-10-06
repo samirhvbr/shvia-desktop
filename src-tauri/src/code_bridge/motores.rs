@@ -433,12 +433,16 @@ pub(super) fn resolve_bin(base: &str) -> Option<PathBuf> {
 /// `--version` com timeout curto: isto é chamado da UI, e um binário travado não
 /// pode segurar a tela.
 pub fn engine_status(base: &str) -> serde_json::Value {
+    // True while the app installs or updates this runner (the start does it since 1.13.0, ADR-040): "not
+    // found" is then "not YET", and the page can say so instead of sending the person to a button.
+    let instalando = super::atualizacao::instalando(base);
     let Some(lancamento) = resolve_runner(base) else {
         return serde_json::json!({
             "found": false,
             "bundled": false,
             "version": null,
             "path": null,
+            "installing": instalando,
         });
     };
 
@@ -466,6 +470,7 @@ pub fn engine_status(base: &str) -> serde_json::Value {
         "bundled": bundled,
         "version": versao,
         "path": lancamento.caminho().to_string_lossy(),
+        "installing": instalando,
     })
 }
 

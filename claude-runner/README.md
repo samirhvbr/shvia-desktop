@@ -21,6 +21,11 @@ assinatura"), não um substituto do `anna`.
 ./install.sh            # → ~/.local/bin/claude-runner (padrão anna)
 ```
 
+**You normally do not run this.** Since SHVIA-DESKTOP 1.13.0 the app installs this runner itself, at its start,
+when the machine has none and has Node 18+ (and keeps it current, 1.7.1): ADR-040 in `docs/decisoes.md`.
+`SHVIA_RUNNERS_AUTO=0` turns the first install off. The script is still what runs — the app, the "Instalar
+runner" button and this command are the same installer.
+
 Pré-requisitos: **Node 18+** e o **Claude Code oficial autenticado**
 (`claude login` ou `claude setup-token`). A assinatura é usada; **sem API key**.
 O runner remove `ANTHROPIC_API_KEY` do próprio processo para garantir o fallback

@@ -191,7 +191,7 @@ gates in order**, and until this phase only the third had any answer on screen.
 
 | gate | before | now |
 |---|---|---|
-| **1 · no runner** | *"run `claude-runner/install.sh`"* — a file only a cloner has | the source rides in the installer (~124 KB) and a button runs `npm ci` · **1.5.16** |
+| **1 · no runner** | *"run `claude-runner/install.sh`"* — a file only a cloner has | the source rides in the installer (~124 KB) and a button runs `npm ci` · **1.5.16** — and since **1.13.0** the app runs that install itself at the start, when the machine has no runner and Node 18+ (ADR-040) |
 | **2 · no login** | `claude auth login` in a terminal; `/login` does not exist in the panel | URL and code field on screen, verdict from `claude auth status` · **1.5.17 → 1.6.0** |
 | **3 · no account** | hand-edited JSON, or `npm run contas` from a clone | Settings detects the shell's aliases and registers the chosen ones · **1.4.28/1.4.29** |
 

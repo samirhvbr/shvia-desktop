@@ -9,6 +9,12 @@ post_install() {
 
   ShvIA Desktop instalado.
 
+  Modo Code: na primeira abertura o app instala sozinho os motores (Claude Code
+  e Codex) em ~/.local, o que baixa uns 110 MB e precisa de Node 18+ e npm:
+      sudo pacman -S nodejs npm
+  Sem eles o app avisa o que falta. Para não instalar, abra o app com
+  SHVIA_RUNNERS_AUTO=0 no ambiente.
+
   Atualização: quem cuida é o pacman, não o app. Para receber as próximas
   versões automaticamente, adicione o repositório em /etc/pacman.conf:
 

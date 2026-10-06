@@ -2120,7 +2120,7 @@ each installed runner with the one it brought (`src-tauri/src/code_bridge/atuali
 
 | installed | action |
 |---|---|
-| not installed | nothing: the first install stays the "Instalar runner" button's, the user's consent |
+| not installed | ~~nothing: the first install stays the "Instalar runner" button's, the user's consent~~ — **superseded by [ADR-040](#adr-040--the-app-installs-the-runners-it-needs-not-only-updates-them) (1.13.0): it installs** |
 | older than the bundled one | reinstall, with the bundled installer, and a native notification |
 | same version, different files | reinstall: the Codex runner changed 8 times with 7 bumps since 09/09 |
 | newer | nothing: a runner installed by hand from a newer checkout is not downgraded |
@@ -2478,3 +2478,80 @@ Until SHVIA-WEB's tool exists, call the bridge from the page's developer console
   that the agent asked, and nothing on the machine could turn the agent off.
 - **A switch in the page's settings:** the page is the actor the switch guards against.
 - **A capture library (`xcap`):** the dependency weight above, for one command.
+
+---
+
+## ADR-040 — The app installs the runners it needs, not only updates them
+
+- **Date:** 06/10/2026 · **Status:** **Accepted**, by the owner's words in the session: *"temos que ter sim a
+  instalação de apps necessários, como ai-memory, claude-runner e etc, senão o usuário vai ficar se batendo sem
+  entender o que está havendo"*. Supersedes the first row of the table in [ADR-036](#adr-036--the-app-keeps-the-installed-runners-current).
+
+### Context
+
+ADR-036 made the app keep **installed** runners current and left the first install to the "Instalar runner"
+button, "the user's consent". The cost of that row, measured on 06/10/2026: the owner updated the app on a second
+machine to the latest version, picked the Code mode and the Claude Code engine, and found the **account selector
+empty and the model catalogue empty**. The `claude-runner` had never been installed there, the app had never said
+so, and the only hint was a sentence pointing to a button in another screen (Settings → Motor Claude Code). The
+person was left guessing what was wrong with an engine the app itself offered. The same ADR had measured the
+mirror case eleven days earlier: a machine that did have the runner, a month behind.
+
+An engine the app lists in its own selector is not "something nobody set up": it is a part of the app that arrived
+without its dependency.
+
+### Decision
+
+At every start, in the background, after the check ADR-036 already did, a runner the app brought that the machine
+**does not have anywhere** is installed with the bundled installer — the same one the button runs, under the same
+per-runner lock (`code_bridge/atualizacao.rs`).
+
+| the machine has | the start does |
+|---|---|
+| no runner of this engine, Node 18+ present | installs; a notification says it started (≈110 MB download, ≈280 MB on disk) and another says it ended |
+| no runner, no usable Node | nothing can install; **one** notification, per runner and per app version, says Node is needed and that the app installs by itself once it is there |
+| no runner, `SHVIA_RUNNERS_AUTO=0` | nothing, and nothing is said: the person turned it off |
+| a runner in a folder the installers do not use (a developer's checkout on PATH) | nothing: the app installs what is **missing**, never over what someone put there on purpose |
+| the app's own install, older or different | updates (ADR-036, unchanged) |
+| an install that failed | tried again at every start (it may have been the network); the failure is told **once** per app version, the retry runs without announcing itself, and a success after a failure is told |
+
+`engineStatus` now answers `installing: true` while the app installs or updates the runner, so the page can say
+"installing" instead of "not installed" in the minutes after a first start.
+
+### What this does NOT do
+
+- **It does not install Node.** A machine without Node is told, in words, once. The installer needs Node and so does
+  the engine.
+- **It does not log anyone in.** `claude login` / `codex login` stay the person's: the app installs the engine, the
+  account is theirs.
+- **It does not touch `ai-memory`.** The owner named it in the same sentence, but there is no `ai-memory` component
+  in this app today (the only trace is `mem.shvia.org` in the page's host allowlist); what the owner means by it, and
+  where it would be installed (each Claude account's hooks, a CLI), is a separate question.
+- **It does not bundle the runner's `node_modules`.** Measured on 06/10/2026: the installed runner is 276 MB, 230 MB of
+  it the Agent SDK's native binary for one OS and architecture. Bundling it would add that to every package of every
+  platform, for a package that is about 80 MB (ADR-036 had already refused this).
+
+### Consequences
+
+- A first start after installing or updating the app may download ≈110 MB in the background and run `npm ci`
+  (measured: **4 s** from an empty home on this machine's connection, **276 MB** on disk, and the installed runner
+  answers `--version`). That is why the start says so, and why `SHVIA_RUNNERS_AUTO=0` exists: a metered connection is
+  the person's to protect.
+- The consent ADR-036 protected is not gone, it moved: the person consents by installing a ShvIA that offers the
+  engine, and the app tells them what it does with that. Anyone who disagrees has the switch.
+- A Linux package (pacman, deb) cannot do this at install time: its scripts run as root and must not write the
+  user's `~/.local` or run `npm`. The start, which runs as the user, is the right place; the package only declares
+  Node as optional and says so after installing.
+- A developer testing the first-install path (the Windows runbook, item 7.2) sets `SHVIA_RUNNERS_AUTO=0` first, or
+  the app installs before they can see the missing-runner message.
+
+### Alternatives
+
+- **Keep ADR-036 and add a button in the Code panel.** Cheaper, and it keeps the click as consent; the owner chose
+  not to: the person should not have to find the problem in order to fix it.
+- **Ask once at the first start.** A dialog the person has to understand before they have seen anything of the
+  app; the notification plus the switch gives the same control later.
+- **Install on the first use of the engine instead of at the start.** Spares the download for someone who never opens
+  Code mode, but the first use then waits minutes with no feedback; the start does the work while the person is
+  still looking at the chat.
+

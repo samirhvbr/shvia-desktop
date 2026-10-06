@@ -3,7 +3,7 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Last updated: **01/10/2026** (version 1.12.0). 1.7.0 = the links to the web repository (ex-1.6.59, #75),
+> Last updated: **06/10/2026** (version 1.13.0). 1.7.0 = the links to the web repository (ex-1.6.59, #75),
 > 1.7.1 = the runners follow the app (ex-1.6.60, #76, ADR-036), 1.7.2/1.7.3 = the Windows build's
 > `--config`, 1.8.0 = several agent sessions per window (`recursos.sessoes`, #79, published 26/09),
 > 1.8.1 = the bipartite Shield identity (published 27/09), 1.8.2 = an agent that survives a reload
@@ -13,7 +13,9 @@
 > yet exercised in a running app — the check is in the ADR). 1.10.2 = the Codex runner forwards the agent's plan (#91, the
 > Tasks tab), 1.11.0 = steering a turn in flight on both runners (`steer` → `steer_applied` /
 > `steer_deferred`); its page side is SHVIA-WEB's `code-mode.js` (#442), 1.12.0 = the agent's device commands
-> behind a tray switch (`recursos.aparelho`, ADR-039; the round trip on the server is SHVIA-WEB's, not built yet). Together with SHVIA-WEB 2.111.22 Code
+> behind a tray switch (`recursos.aparelho`, ADR-039; the round trip on the server is SHVIA-WEB's, not built yet),
+> 1.13.0 = the app installs the runners a machine is missing at its start, instead of leaving the first install to a button
+> (ADR-040, 06/10; `engineStatus` answers `installing`, and the page's wording for it is SHVIA-WEB's, not built yet). Together with SHVIA-WEB 2.111.22 Code
 > mode keeps a project's agent working while another project, Chat, Configurações or a reload is on
 > screen; Plan needs SHVIA-WEB's Plan approval (#382). Nothing else queued from the owner's comparison page
 > on the desktop: I4 (device commands) is this 1.12.0.
