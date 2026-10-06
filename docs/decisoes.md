@@ -2572,7 +2572,7 @@ system default, and the owner, reading the module, was told aliases are not read
 
 ### Decision
 
-Discovery asks the shell for **aliases as well as functions** — `BASH_ALIASES` in bash, `aliases` in zsh — and runs
+Discovery asks the shell for **aliases as well as functions** — `compgen -a` plus the `alias` builtin in bash (not `BASH_ALIASES`: bash 3.2, the macOS one, lacks it), `aliases` in zsh — and runs
 each body through the same narrow parser: a literal assignment, optionally quoted, whose value expands inside `$HOME`
 using only `$HOME` or `~`; anything computed is dropped, never guessed. Nothing else changes: the person's rc file is
 still **never parsed** (the shell answers), the page still sends an **alias name and never a path**, the answer still

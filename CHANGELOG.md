@@ -8,10 +8,11 @@ and `alias claude-b3=…`. Discovery (ADR-033) asked the shell only for **functi
 module's comment said aliases are not read, meaning an rc file is never parsed, and that sentence was read as covering the
 shell's own answer too.
 
-- **Discovery asks the shell for aliases as well** (`BASH_ALIASES` in bash, `aliases` in zsh) and runs each body through the
+- **Discovery asks the shell for aliases as well** (`compgen -a` + `alias` in bash, `aliases` in zsh) and runs each body through the
   same narrow parser as a function's: a literal assignment whose value expands inside `$HOME`; anything computed is dropped.
   Unchanged: the rc file is never parsed, the page sends an alias name and never a path, the person confirms each candidate,
-  and it runs from a button, never at start. ADR-041.
+  and it runs from a button, never at start. ADR-041. The bash side first read `BASH_ALIASES`, which bash 3.2 (the `bash` a Mac
+  ships) does not have — the macOS CI job answered functions and no aliases; `compgen -a` works from bash 2.04.
 - **Measured on the real thing.** The script run against this machine's actual `~/.bashrc` answers exactly `claude-me` and
   `claude-b3` (it answered nothing before). The tests run a **real interactive bash** against a temporary rc file with two
   account aliases, an account function (the old path), an alias that is not an account and one that computes its directory:

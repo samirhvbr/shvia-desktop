@@ -76,7 +76,7 @@ cadastra um deles **pelo alias**.
 🔴 **Aliases entraram na 1.13.1 (ADR-041).** Até ali a pergunta era só por funções — o que o Mac do dono
 tem, no `~/.zshrc`. As máquinas Linux dele definem `claude-me` e `claude-b3` como linhas `alias` no
 `~/.bashrc`, e o botão **não achava nada** numa máquina que tinha as duas contas. O shell responde por
-`BASH_ALIASES` (bash) e `aliases` (zsh); o corpo passa pelo mesmo analisador estreito das funções. O
+`compgen -a` + `alias` (bash — não `BASH_ALIASES`, que o bash 3.2 do macOS não tem) e `aliases` (zsh); o corpo passa pelo mesmo analisador estreito das funções. O
 `.bashrc` continua sem ser lido pelo app: quem responde é o shell, e a pessoa confere cada candidato antes
 de cadastrar.
 

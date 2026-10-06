@@ -324,12 +324,17 @@ pub const SCRIPT_ZSH: &str = concat!(
     "print -r -- \"$a\"$'\\x1f'\"${b//$'\\n'/ }\";; esac; done"
 );
 
-/// The same for **bash**, whose functions live behind `declare` and whose aliases are in the
-/// `BASH_ALIASES` table (filled in an interactive shell, which is what discovery starts).
+/// The same for **bash**, whose functions live behind `declare` and whose aliases are listed by
+/// `compgen -a` and printed by the `alias` builtin (`alias name='body'`, so the wrapper is peeled off).
+///
+/// 🔴 **Not `BASH_ALIASES`.** That table exists only from bash 4.0, and the `bash` a Mac has on its
+/// `PATH` is 3.2 (the last GPLv2 release Apple ships): there `${!BASH_ALIASES[@]}` is empty, the aliases
+/// vanish, and the functions still answer — a half-working discovery that looks like "no aliases". The
+/// macOS CI job found it; `compgen -a` and `alias name` work from bash 2.04 on.
 pub const SCRIPT_BASH: &str = concat!(
     "for f in $(declare -F | awk '{print $3}'); do b=$(declare -f \"$f\"); case $b in ",
     "*CLAUDE_*CONFIG_DIR*) printf '%s\\x1f%s\\n' \"$f\" \"${b//$'\\n'/ }\";; esac; done; ",
-    "for a in \"${!BASH_ALIASES[@]}\"; do b=${BASH_ALIASES[$a]}; case $b in ",
+    "q=\"'\"; for a in $(compgen -a); do b=$(alias \"$a\"); b=${b#alias $a=}; b=${b#$q}; b=${b%$q}; case $b in ",
     "*CLAUDE_*CONFIG_DIR*) printf '%s\\x1f%s\\n' \"$a\" \"${b//$'\\n'/ }\";; esac; done"
 );
 
@@ -424,7 +429,7 @@ pub fn descobrir(home: &Path, existe: &dyn Fn(&Path) -> bool) -> Vec<Candidato> 
 
 /// `descobrir` with the shell and its home passed in, so a test can run a REAL shell against a
 /// temporary rc file: what the shell answers is the half no fixture can stand in for (the first
-/// version of the alias loop was a guess about `BASH_ALIASES` until it ran). `casa_do_filho`
+/// version of the alias loop was a guess about `BASH_ALIASES` until it ran, and that guess was wrong on bash 3.2). `casa_do_filho`
 /// becomes the child's `HOME`; `None` leaves the person's own.
 pub(crate) fn descobrir_com(
     bin: &str,
@@ -889,7 +894,7 @@ mod tests {
     // ── aliases (1.13.1, ADR-041) ───────────────────────────────────────────────────────────────────────
 
     /// 🔴 The shape the owner's LINUX machines answer: the two lines of his `~/.bashrc`, as bash stores
-    /// them in `BASH_ALIASES`. Until 1.13.1 discovery asked only for functions, so a machine that had
+    /// them in bash's alias table. Until 1.13.1 discovery asked only for functions, so a machine that had
     /// both accounts and a perfectly good `claude-me` / `claude-b3` showed an empty selector, and the
     /// detect button found nothing to offer.
     #[test]
@@ -961,8 +966,8 @@ mod tests {
     }
 
     /// 🔴 The measurement the pure tests cannot make: a REAL interactive bash, reading a real rc file, and
-    /// answering through the script. The alias loop was written against `BASH_ALIASES`, and this is
-    /// what proves bash fills it in the shell discovery starts.
+    /// answering through the script. The alias loop first used `BASH_ALIASES`, which bash 3.2 (the macOS
+    /// `bash`) does not have; this is what proves the `compgen -a` version answers in the shell discovery starts.
     #[test]
     #[cfg(unix)]
     fn o_bash_de_verdade_responde_aliases_e_funcoes_e_so_as_de_conta() {
