@@ -69,9 +69,16 @@ conta na tela. Recusa também com o app aberto, que reescreve o registro ao troc
 Faz merge: uma entrada escrita à mão, e o rótulo que você deu, sobrevivem.
 
 
-`claudeAccountsDetect` pergunta ao **shell** quais funções trocam de conta e devolve
-`{alias, var, dir, disponivel}` para cada uma. Meio segundo, medido. `claudeAccountAdd`
-cadastra uma delas **pelo alias**.
+`claudeAccountsDetect` pergunta ao **shell** quais **funções e aliases** trocam de conta e devolve
+`{alias, var, dir, disponivel}` para cada um. Meio segundo, medido. `claudeAccountAdd`
+cadastra um deles **pelo alias**.
+
+🔴 **Aliases entraram na 1.13.1 (ADR-041).** Até ali a pergunta era só por funções — o que o Mac do dono
+tem, no `~/.zshrc`. As máquinas Linux dele definem `claude-me` e `claude-b3` como linhas `alias` no
+`~/.bashrc`, e o botão **não achava nada** numa máquina que tinha as duas contas. O shell responde por
+`BASH_ALIASES` (bash) e `aliases` (zsh); o corpo passa pelo mesmo analisador estreito das funções. O
+`.bashrc` continua sem ser lido pelo app: quem responde é o shell, e a pessoa confere cada candidato antes
+de cadastrar.
 
 ⚠️ **Gesto explícito, nunca o boot.** A semeadura usa `is_dir()`, que é grátis e roda a cada
 abertura; a descoberta sobe um shell **interativo**, que executa a configuração da pessoa.

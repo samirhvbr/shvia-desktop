@@ -34,8 +34,12 @@
 //! in it — that could name a directory would point the agent's credentials wherever it
 //! liked. It names an **ID from a closed list**; this module resolves the ID.
 //!
-//! Shell aliases are **not** read. Parsing someone's `.bashrc` to find out what to run is
-//! the opposite of a closed list.
+//! The person's `.bashrc` and `.zshrc` are **never parsed**: parsing someone's rc file to find out
+//! what to run is the opposite of a closed list. Discovery ASKS THE SHELL — functions and,
+//! since 1.13.1, aliases — which names set an account variable, and the person confirms each
+//! candidate before it is registered. Until 1.13.1 only functions were asked: the owner's
+//! Linux machines define `claude-me` and `claude-b3` as `alias` lines in `~/.bashrc`, and the
+//! detect button found nothing on a machine that had both (ADR-041).
 //!
 //! ## What a profile is, and what it is not
 //!
@@ -296,7 +300,7 @@ pub fn aplicar(cmd: &mut std::process::Command, alvo: Option<&Alvo>) {
 /// A profile the shell knows about and the registry does not yet.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Candidato {
-    /// The shell function's name, as the person types it: `claude-me`, `claude-b3`.
+    /// The shell function's or alias's name, as the person types it: `claude-me`, `claude-b3`.
     pub alias: String,
     pub var: Var,
     pub dir: String,
@@ -304,23 +308,29 @@ pub struct Candidato {
     pub disponivel: bool,
 }
 
-/// The separator between a function's name and its body in [`SCRIPT_ZSH`]/[`SCRIPT_BASH`].
+/// The separator between a function's or alias's name and its body in [`SCRIPT_ZSH`]/[`SCRIPT_BASH`].
 ///
 /// A control character and not `|` or `\t`: the body is arbitrary shell, and any printable
 /// separator is a character the body may legitimately contain.
 const SEP: char = '\u{1f}';
 
-/// Asks **zsh** which of its functions set a Claude account variable, and prints each as
-/// `name<SEP>body`, newlines flattened so one function is one line.
+/// Asks **zsh** which of its functions and aliases set a Claude account variable, and prints each
+/// as `name<SEP>body`, newlines flattened so one definition is one line. A function is what the
+/// owner's Mac has (`~/.zshrc`); an alias is what his Linux machines have (`~/.bashrc`).
 pub const SCRIPT_ZSH: &str = concat!(
     "for f in ${(k)functions}; do b=${functions[$f]}; case $b in (*CLAUDE_*CONFIG_DIR*) ",
-    "print -r -- \"$f\"$'\\x1f'\"${b//$'\\n'/ }\";; esac; done"
+    "print -r -- \"$f\"$'\\x1f'\"${b//$'\\n'/ }\";; esac; done; ",
+    "for a in ${(k)aliases}; do b=${aliases[$a]}; case $b in (*CLAUDE_*CONFIG_DIR*) ",
+    "print -r -- \"$a\"$'\\x1f'\"${b//$'\\n'/ }\";; esac; done"
 );
 
-/// The same for **bash**, whose functions live behind `declare`.
+/// The same for **bash**, whose functions live behind `declare` and whose aliases are in the
+/// `BASH_ALIASES` table (filled in an interactive shell, which is what discovery starts).
 pub const SCRIPT_BASH: &str = concat!(
     "for f in $(declare -F | awk '{print $3}'); do b=$(declare -f \"$f\"); case $b in ",
-    "*CLAUDE_*CONFIG_DIR*) printf '%s\\x1f%s\\n' \"$f\" \"${b//$'\\n'/ }\";; esac; done"
+    "*CLAUDE_*CONFIG_DIR*) printf '%s\\x1f%s\\n' \"$f\" \"${b//$'\\n'/ }\";; esac; done; ",
+    "for a in \"${!BASH_ALIASES[@]}\"; do b=${BASH_ALIASES[$a]}; case $b in ",
+    "*CLAUDE_*CONFIG_DIR*) printf '%s\\x1f%s\\n' \"$a\" \"${b//$'\\n'/ }\";; esac; done"
 );
 
 /// Turns the shell's answer into candidates. **Pure**, because this is the half that can be
@@ -409,10 +419,27 @@ pub fn descobrir(home: &Path, existe: &dyn Fn(&Path) -> bool) -> Vec<Candidato> 
     } else {
         ("zsh", SCRIPT_ZSH)
     };
+    descobrir_com(bin, script, home, None, existe)
+}
+
+/// `descobrir` with the shell and its home passed in, so a test can run a REAL shell against a
+/// temporary rc file: what the shell answers is the half no fixture can stand in for (the first
+/// version of the alias loop was a guess about `BASH_ALIASES` until it ran). `casa_do_filho`
+/// becomes the child's `HOME`; `None` leaves the person's own.
+pub(crate) fn descobrir_com(
+    bin: &str,
+    script: &str,
+    home: &Path,
+    casa_do_filho: Option<&Path>,
+    existe: &dyn Fn(&Path) -> bool,
+) -> Vec<Candidato> {
     // Interactive (`-i`), so it reads rc files — which may prompt or start daemons. Bounded
     // since 1.6.19: unbounded, a prompting rc froze the Settings screen for good.
     let mut shell = crate::processo::comando(bin);
     shell.arg("-ic").arg(script);
+    if let Some(casa) = casa_do_filho {
+        shell.env("HOME", casa);
+    }
     let saida = crate::code_bridge::saida_com_prazo(shell, crate::code_bridge::PRAZO_SHELL_INTERATIVO);
     match saida {
         Ok(o) => candidatos_de(&String::from_utf8_lossy(&o.stdout), home, existe),
@@ -857,5 +884,114 @@ mod tests {
         let (lidas, sel) = do_json(&v);
         assert_eq!(sel, "pessoal");
         assert_eq!(normalizar(&casa(), lidas), contas);
+    }
+
+    // ── aliases (1.13.1, ADR-041) ───────────────────────────────────────────────────────────────────────
+
+    /// 🔴 The shape the owner's LINUX machines answer: the two lines of his `~/.bashrc`, as bash stores
+    /// them in `BASH_ALIASES`. Until 1.13.1 discovery asked only for functions, so a machine that had
+    /// both accounts and a perfectly good `claude-me` / `claude-b3` showed an empty selector, and the
+    /// detect button found nothing to offer.
+    #[test]
+    #[cfg(unix)]
+    fn os_aliases_do_bashrc_do_dono_sao_candidatos() {
+        let saida = format!(
+            "claude-me{SEP}CLAUDE_CONFIG_DIR=\"$HOME/.claude-pessoal\" claude\nclaude-b3{SEP}CLAUDE_CONFIG_DIR=\"$HOME/.claude-blue3\"   claude\n"
+        );
+        let c = candidatos_de(&saida, &casa(), &|_| true);
+        assert_eq!(c.len(), 2, "{c:?}");
+        assert_eq!((c[0].alias.as_str(), c[0].var, c[0].dir.as_str()), ("claude-b3", Var::ConfigDir, "/home/dev/.claude-blue3"));
+        assert_eq!((c[1].alias.as_str(), c[1].var, c[1].dir.as_str()), ("claude-me", Var::ConfigDir, "/home/dev/.claude-pessoal"));
+    }
+
+    /// The other machine's layout: credential profiles, as an alias this time.
+    #[test]
+    #[cfg(unix)]
+    fn um_alias_de_perfil_de_credencial_continua_sendo_credencial() {
+        let saida = format!("claude-me{SEP}CLAUDE_SECURESTORAGE_CONFIG_DIR=$HOME/.claude-cred-pessoal claude");
+        let c = candidatos_de(&saida, &casa(), &|_| true);
+        assert_eq!(c.len(), 1);
+        assert_eq!((c[0].var, c[0].dir.as_str()), (Var::SecureStorage, "/home/dev/.claude-cred-pessoal"));
+    }
+
+    /// An alias that computes its directory, or points outside `$HOME`, is dropped like a function would be.
+    #[test]
+    #[cfg(unix)]
+    fn alias_calculado_ou_fora_do_home_e_descartado() {
+        for corpo in [
+            "CLAUDE_CONFIG_DIR=$(escolher_conta) claude",
+            "CLAUDE_CONFIG_DIR=\"$HOME/$CONTA\" claude",
+            "CLAUDE_CONFIG_DIR=/etc/claude claude",
+            "CLAUDE_CONFIG_DIR=/home/outro/.claude claude",
+        ] {
+            assert!(candidatos_de(&format!("x{SEP}{corpo}"), &casa(), &|_| true).is_empty(), "{corpo}");
+        }
+    }
+
+    /// A temporary `HOME` whose rc file defines what the test needs, for the REAL shell to read.
+    #[cfg(unix)]
+    fn casa_com_rc(nome: &str, arquivo_rc: &str, conteudo: &str) -> PathBuf {
+        let casa = std::env::temp_dir().join(format!("shvia-contas-{nome}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&casa);
+        std::fs::create_dir_all(&casa).unwrap();
+        std::fs::write(casa.join(arquivo_rc), conteudo).unwrap();
+        casa
+    }
+
+    /// The rc content both real-shell tests use: two account aliases, an account FUNCTION (the old path
+    /// must keep working), an alias that is not an account, and one that computes its directory.
+    #[cfg(unix)]
+    const RC_DE_TESTE: &str = concat!(
+        "alias claude-me='CLAUDE_CONFIG_DIR=\"$HOME/.claude-pessoal\" claude'\n",
+        "alias claude-b3='CLAUDE_SECURESTORAGE_CONFIG_DIR=\"$HOME/.claude-cred-blue3\"   claude'\n",
+        "alias ll='ls -l'\n",
+        "alias claude-calc='CLAUDE_CONFIG_DIR=$(pwd)/x claude'\n",
+        "claude-fn () { CLAUDE_CONFIG_DIR=\"$HOME/.claude-funcao\" exec claude \"$@\"; }\n",
+    );
+
+    #[cfg(unix)]
+    fn confere_o_que_o_shell_respondeu(c: &[Candidato], casa: &Path) {
+        let nomes: Vec<&str> = c.iter().map(|x| x.alias.as_str()).collect();
+        assert_eq!(nomes, vec!["claude-b3", "claude-fn", "claude-me"], "{c:?}");
+        let h = casa.to_string_lossy();
+        assert_eq!((c[0].var, c[0].dir.clone()), (Var::SecureStorage, format!("{h}/.claude-cred-blue3")));
+        assert_eq!((c[1].var, c[1].dir.clone()), (Var::ConfigDir, format!("{h}/.claude-funcao")));
+        assert_eq!((c[2].var, c[2].dir.clone()), (Var::ConfigDir, format!("{h}/.claude-pessoal")));
+        assert!(c.iter().all(|x| !x.disponivel), "none of the directories exists in the temporary home");
+    }
+
+    /// 🔴 The measurement the pure tests cannot make: a REAL interactive bash, reading a real rc file, and
+    /// answering through the script. The alias loop was written against `BASH_ALIASES`, and this is
+    /// what proves bash fills it in the shell discovery starts.
+    #[test]
+    #[cfg(unix)]
+    fn o_bash_de_verdade_responde_aliases_e_funcoes_e_so_as_de_conta() {
+        let casa = casa_com_rc("bash", ".bashrc", RC_DE_TESTE);
+        let c = descobrir_com("bash", SCRIPT_BASH, &casa, Some(&casa), &|p| p.is_dir());
+        confere_o_que_o_shell_respondeu(&c, &casa);
+        let _ = std::fs::remove_dir_all(&casa);
+    }
+
+    /// The same for zsh — run where zsh exists (macOS CI, the owner's Mac), said out loud where it does not.
+    #[test]
+    #[cfg(unix)]
+    fn o_zsh_de_verdade_responde_aliases_e_funcoes_e_so_as_de_conta() {
+        if crate::processo::comando("zsh").arg("--version").output().is_err() {
+            eprintln!("SKIPPED (no zsh on this machine): o_zsh_de_verdade_responde_aliases_e_funcoes_e_so_as_de_conta");
+            return;
+        }
+        let casa = casa_com_rc("zsh", ".zshrc", RC_DE_TESTE);
+        let c = descobrir_com("zsh", SCRIPT_ZSH, &casa, Some(&casa), &|p| p.is_dir());
+        confere_o_que_o_shell_respondeu(&c, &casa);
+        let _ = std::fs::remove_dir_all(&casa);
+    }
+
+    /// With no account alias or function the answer is empty, not an error.
+    #[test]
+    #[cfg(unix)]
+    fn um_rc_sem_contas_nao_devolve_candidatos() {
+        let casa = casa_com_rc("vazio", ".bashrc", "alias ll='ls -l'\n");
+        assert!(descobrir_com("bash", SCRIPT_BASH, &casa, Some(&casa), &|_| true).is_empty());
+        let _ = std::fs::remove_dir_all(&casa);
     }
 }

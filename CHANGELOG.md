@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.13.1 - Detecting the Claude Code accounts also finds the ones defined as shell aliases
+
+On the owner's second machine the Code panel's account selector showed only the system default, and the "detect accounts"
+button in Settings found nothing — although `~/.bashrc` has both accounts, as `alias claude-me='CLAUDE_CONFIG_DIR=… claude'`
+and `alias claude-b3=…`. Discovery (ADR-033) asked the shell only for **functions**, which is what the owner's Mac has; the
+module's comment said aliases are not read, meaning an rc file is never parsed, and that sentence was read as covering the
+shell's own answer too.
+
+- **Discovery asks the shell for aliases as well** (`BASH_ALIASES` in bash, `aliases` in zsh) and runs each body through the
+  same narrow parser as a function's: a literal assignment whose value expands inside `$HOME`; anything computed is dropped.
+  Unchanged: the rc file is never parsed, the page sends an alias name and never a path, the person confirms each candidate,
+  and it runs from a button, never at start. ADR-041.
+- **Measured on the real thing.** The script run against this machine's actual `~/.bashrc` answers exactly `claude-me` and
+  `claude-b3` (it answered nothing before). The tests run a **real interactive bash** against a temporary rc file with two
+  account aliases, an account function (the old path), an alias that is not an account and one that computes its directory:
+  only the three account definitions come back, with the right variable and directory. The parser is also pinned against the
+  owner's two alias lines and a credential-profile alias.
+- **Not measured: zsh.** The zsh loop is the function loop with `aliases` for `functions`, and its test runs only where zsh
+  exists (the owner's Mac, macOS CI); on this machine it printed `SKIPPED` and the zsh script has not been run.
+- **Not done.** The selector still shows only the default until the button is pressed once, and the seed is not extended to
+  `~/.claude-cred-*` (that naming is one machine's convention; the alias that uses it says so itself).
+
 ## 1.13.0 - The app installs the runners the machine is missing, instead of waiting for a button nobody knew to press
 
 The owner updated SHVIA Desktop to the latest version on a second machine, picked Code mode and the Claude Code engine, and

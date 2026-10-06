@@ -2555,3 +2555,41 @@ per-runner lock (`code_bridge/atualizacao.rs`).
   Code mode, but the first use then waits minutes with no feedback; the start does the work while the person is
   still looking at the chat.
 
+---
+
+## ADR-041 — Account discovery asks the shell for aliases too
+
+- **Date:** 06/10/2026 · **Status:** **Accepted** (extends [ADR-033](#adr-033--a-conta-do-claude-code-é-um-id-de-lista-fechada-e-o-diretório-vai-no-filho))
+
+### Context
+
+ADR-033's discovery starts the person's interactive shell and asks which **functions** set a Claude account
+variable. That is the shape of the owner's Mac (`~/.zshrc`, measured 09/09/2026). The owner's Linux machines define
+the same two commands, `claude-me` and `claude-b3`, as **`alias`** lines in `~/.bashrc`, and the page's
+"detect accounts" button found nothing there: on 06/10/2026 the second machine's account selector showed only the
+system default, and the owner, reading the module, was told aliases are not read. The module's own comment said so
+(*"Shell aliases are **not** read"*) — written about parsing an rc file, and read as if it covered asking the shell.
+
+### Decision
+
+Discovery asks the shell for **aliases as well as functions** — `BASH_ALIASES` in bash, `aliases` in zsh — and runs
+each body through the same narrow parser: a literal assignment, optionally quoted, whose value expands inside `$HOME`
+using only `$HOME` or `~`; anything computed is dropped, never guessed. Nothing else changes: the person's rc file is
+still **never parsed** (the shell answers), the page still sends an **alias name and never a path**, the answer still
+comes from a deliberate gesture (a button, never the boot), and each candidate is confirmed by the person before it is
+registered.
+
+### Consequences
+
+- On a machine like the owner's Linux ones, the button now offers both accounts, with the right variable per alias
+  (`CLAUDE_CONFIG_DIR` or the credential-profile one).
+- An alias and a function with the same name collapse to one candidate (the function first).
+- A shell that is neither bash nor zsh still gets the zsh script, as before.
+
+### Not done
+
+The selector still shows only the system default until the person presses the button once; whether the Code panel
+should offer that button when it has nothing else is the page's question, not this module's. The seed
+(`~/.claude-blue3`, `~/.claude-pessoal`) is not extended to guess `~/.claude-cred-*`: those names are one machine's
+convention, and the alias that uses them says so itself.
+
