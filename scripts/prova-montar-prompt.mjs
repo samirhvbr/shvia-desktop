@@ -54,7 +54,7 @@ if (!t) {
   process.exit(1);
 }
 const traduzirMensagem = new Function("message", "estado", "modelo", t[1]);
-const traduzir = (msg, est = { sessionId: undefined, sawTextDelta: false }) =>
+const traduzir = (msg, est = { sessionId: undefined, sawTextDelta: false, custoDaSessao: 0 }) =>
   traduzirMensagem(msg, est, "opus");
 
 const falhas = [];
@@ -144,6 +144,40 @@ conferir("custo vai marcado como ESTIMADO (assinatura não fatura por token)",
 conferir("result SEMPRE fecha com turn_done",
   fim.eventos[fim.eventos.length - 1]?.type === "turn_done", fim.eventos);
 
+// 🔴 07/10/2026 — `total_cost_usd` é o custo da SESSÃO até aqui, não o do turno. Saía como o do turno e a
+// página somava: na EOP-2 do dono um turno de 0,5 s e 0 tokens trouxe US$ 15,64 (a história inteira) e a Run
+// parou num teto de US$ 10 que não tinha tocado. O custo do turno é a diferença; total MENOR que o
+// anterior é sessão nova; resultado sem custo não mexe na linha de base.
+const turno1 = traduzir({ type: "result", usage: { input_tokens: 100, output_tokens: 50 }, total_cost_usd: 5 });
+conferir("o 1º turno de uma sessão nova: o custo do turno é o total", turno1.eventos[0]?.cost === 5 && turno1.eventos[0]?.cost_session === 5, turno1.eventos[0]);
+conferir("o evento diz que `cost` já é do turno (cost_scope)", turno1.eventos[0]?.cost_scope === "turn", turno1.eventos[0]);
+conferir("o estado leva o total da sessão ao turno seguinte", turno1.estado.custoDaSessao === 5, turno1.estado);
+const turno2 = traduzir({ type: "result", usage: { input_tokens: 0, output_tokens: 0 }, total_cost_usd: 5 }, turno1.estado);
+conferir("um turno que não gastou nada custa 0, mesmo com a sessão em US$ 5",
+  turno2.eventos[0]?.cost === 0 && turno2.eventos[0]?.cost_session === 5, turno2.eventos[0]);
+const turno3 = traduzir({ type: "result", usage: { input_tokens: 10, output_tokens: 10 }, total_cost_usd: 8.5 }, turno2.estado);
+conferir("o turno seguinte custa só a diferença (8,5 − 5)", turno3.eventos[0]?.cost === 3.5 && turno3.estado.custoDaSessao === 8.5, turno3.eventos[0]);
+const sessaoNova = traduzir({ type: "result", usage: { input_tokens: 1, output_tokens: 1 }, total_cost_usd: 0.4 }, turno3.estado);
+conferir("total menor que o anterior é SESSÃO NOVA: o custo do turno é o total dela",
+  sessaoNova.eventos[0]?.cost === 0.4 && sessaoNova.estado.custoDaSessao === 0.4, sessaoNova.eventos[0]);
+const semCusto = traduzir({ type: "result", usage: { input_tokens: 1, output_tokens: 1 } }, turno3.estado);
+conferir("resultado sem custo vale 0 e NÃO zera a linha de base",
+  semCusto.eventos[0]?.cost === 0 && semCusto.estado.custoDaSessao === 8.5, semCusto);
+const proximoDepoisDoSemCusto = traduzir({ type: "result", usage: { input_tokens: 1, output_tokens: 1 }, total_cost_usd: 9 }, semCusto.estado);
+conferir("…e o turno depois dele custa a diferença certa, não a história inteira",
+  proximoDepoisDoSemCusto.eventos[0]?.cost === 0.5, proximoDepoisDoSemCusto.eventos[0]);
+
+// O que o `runTurn` faz com isso não é função pura — vive no laço de turnos —, então estas três são
+// checagem de FONTE, na forma exata de cada guarda (não basta o nome estar no arquivo): o custo da
+// sessão atravessa o turno e volta, o orçamento do turno é o teto SOBRE o custo da sessão, e o teto de
+// iterações da Run não vira `maxTurns` do SDK.
+conferir("runTurn leva o custo da sessão de um turno ao outro (entra no estado e volta dele)",
+  /let estado = \{ sessionId, sawTextDelta: false, custoDaSessao \};/.test(fonte) && /custoDaSessao = estado\.custoDaSessao;/.test(fonte), null);
+conferir("o orçamento do SDK é o teto sobre o custo da sessão (orcamentoDoTurno), não o teto cru",
+  /const orcamento = orcamentoDoTurno\(RUN\.maxBudgetUsd, custoDaSessao\);/.test(fonte) && /maxBudgetUsd: orcamento \}/.test(fonte) && !/maxBudgetUsd: RUN\.maxBudgetUsd/.test(fonte), null);
+conferir("o teto de iterações da Run NÃO entra nas opções do SDK como maxTurns",
+  !/\.\.\.\(RUN\.maxTurns/.test(fonte) && !/maxTurns: RUN/.test(fonte), null);
+
 // E o erro não pode engolir o fechamento: sem `turn_done`, a tela trava mesmo
 // tendo mostrado o erro.
 const err = traduzir({ type: "result", subtype: "error", result: "estourou" });
@@ -222,4 +256,4 @@ if (falhas.length) {
   for (const f of falhas) console.error(`  ✗ ${f}`);
   process.exit(1);
 }
-console.log("[prova-runner] OK: 8 réguas do montarPrompt + 24 da traduzirMensagem + 3 do `--version` (forma de cada evento, o fallback de texto e o turn_done que destrava a tela).");
+console.log("[prova-runner] OK: 8 réguas do montarPrompt + 35 da traduzirMensagem + 3 do `--version` (forma de cada evento, o fallback de texto e o turn_done que destrava a tela).");

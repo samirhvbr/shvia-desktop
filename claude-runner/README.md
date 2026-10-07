@@ -58,10 +58,24 @@ Block B2 of `docs/code/RUN-20260910.md`. With `--parada host` the runner install
 `stop` ends the turn as always. No answer in 60 s or stdin closed → `stop`. The runner
 never decides; the page does, on behalf of the server's orchestrator (ADR-034).
 
-`--teto-iteracoes N` and `--teto-custo X` go straight to the SDK (`maxTurns`,
-`maxBudgetUsd`). A hit cap comes back as `warn` + `turn_done`, never as a silent end.
-Without the flags nothing changes from 1.4.x. Module: `parada.mjs`, proved by
-`parada.test.mjs` (`node --test claude-runner/`).
+`--teto-custo X` goes to the SDK as `maxBudgetUsd`, **added to what the session had already cost**
+when the turn opened (the SDK counts the session's cost against the budget, and Claude Code restores
+it on `resume`: against the bare cap a session past it could not run another turn). A hit cap comes
+back as `warn` + `turn_done`, never as a silent end. Without the flags nothing changes from 1.4.x.
+
+`--teto-iteracoes N` is **not** an SDK cap since 1.13.2. It is the number of the orchestrator's
+rounds, which the page counts and enforces at every stop; as `maxTurns` it counted the agent's own tool
+rounds, and a Run — one held-open turn — ended on its second iteration with *"Reached maximum number
+of turns (100)"*. The desktop still passes the flag; the runner ignores it.
+
+**The `usage` event carries the turn's cost, not the session's.** The SDK's `total_cost_usd` is the cost
+of the session so far; the runner reports `cost` as the difference from the last result (a total
+below the last one is a new session), `cost_session` as the running total, and marks the event
+`cost_scope: "turn"`. A page that does not know the marker treats `cost` as it always did — as the
+session's — and subtracts it itself (SHVIA-WEB 2.111.108 and later).
+
+Module: `parada.mjs`, proved by `parada.test.mjs` (`node --test claude-runner/`) and, for the event
+translation, by `npm run prova:runner`.
 
 ## Permissão (a regra "nada roda/escreve sem o dev ver")
 

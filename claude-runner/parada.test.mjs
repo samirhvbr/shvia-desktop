@@ -8,6 +8,7 @@ import {
   montarStopRequest,
   normalizarDecisao,
   opcoesDaRun,
+  orcamentoDoTurno,
   saidaDoHook,
 } from "./parada.mjs";
 
@@ -109,20 +110,33 @@ const flags = (lista) => (flag) => {
 };
 
 test("without flags the runner behaves as before 1.5.0: no hook, no caps", () => {
-  assert.deepEqual(opcoesDaRun(flags([])), { parada: false, maxTurns: undefined, maxBudgetUsd: undefined });
+  assert.deepEqual(opcoesDaRun(flags([])), { parada: false, maxBudgetUsd: undefined });
 });
 
-test("the armed run: --parada host and the two caps", () => {
+test("the armed run: --parada host and the cost cap — and NO turn cap from the iteration cap", () => {
   const o = opcoesDaRun(flags(["--parada", "host", "--teto-iteracoes", "100", "--teto-custo", "5"]));
-  assert.deepEqual(o, { parada: true, maxTurns: 100, maxBudgetUsd: 5 });
+  // `--teto-iteracoes` is the orchestrator's rounds; as the SDK's `maxTurns` it counted the agent's
+  // tool rounds and ended a Run on its second iteration (07/10/2026).
+  assert.deepEqual(o, { parada: true, maxBudgetUsd: 5 });
+  assert.equal("maxTurns" in o, false);
+});
+
+test("the turn's budget is the cap ON TOP of what the session already cost", () => {
+  assert.equal(orcamentoDoTurno(undefined, 3), undefined, "no cap, no budget");
+  assert.equal(orcamentoDoTurno(5, 0), 5, "a new session: the cap itself");
+  // The owner's EOP-2, 07/10/2026: a session already at US$ 15.64 and a cap of US$ 10. The bare cap was
+  // below what the session had spent, so every turn ended at once with zero tokens.
+  assert.equal(orcamentoDoTurno(10, 15.64), 25.64);
+  assert.equal(orcamentoDoTurno(10, NaN), 10, "an unreadable cost counts as nothing");
+  assert.equal(orcamentoDoTurno(10, -2), 10);
+  assert.equal(orcamentoDoTurno(0, 5), undefined, "0 is not a cap");
 });
 
 test("an invalid cap is dropped, never coerced", () => {
   // 0 would end every turn before it started; a word is not a number; a negative cost
   // is not a budget. `--parada` with any other value keeps the hook off.
   const o = opcoesDaRun(flags(["--parada", "motor", "--teto-iteracoes", "0", "--teto-custo", "-1"]));
-  assert.deepEqual(o, { parada: false, maxTurns: undefined, maxBudgetUsd: undefined });
-  assert.equal(opcoesDaRun(flags(["--teto-iteracoes", "cem"])).maxTurns, undefined);
-  assert.equal(opcoesDaRun(flags(["--teto-iteracoes", "2.9"])).maxTurns, 2);
+  assert.deepEqual(o, { parada: false, maxBudgetUsd: undefined });
+  assert.equal(opcoesDaRun(flags(["--teto-custo", "cem"])).maxBudgetUsd, undefined);
   assert.equal(opcoesDaRun(flags(["--teto-custo", "0.5"])).maxBudgetUsd, 0.5);
 });
