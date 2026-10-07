@@ -108,18 +108,33 @@ export function encerrarPendentes(pendentes) {
 }
 
 /**
- * Command-line flags → the run options. `--parada host` installs the hook; `--teto-iteracoes`
- * and `--teto-custo` become the SDK caps (`maxTurns`, `maxBudgetUsd`) only when they are
- * positive numbers — a cap of 0 would end every turn before it started, and a word is not
- * a cap. Absent or invalid → no cap, the behaviour before 1.5.0.
+ * The SDK budget of ONE turn: the cap added to what the session had already cost. The SDK counts the
+ * SESSION's cost against `maxBudgetUsd` (Claude Code restores it on `resume`), so the bare cap — what
+ * the runner passed until 1.13.2 — left a session that had cost more than the cap unable to run a turn:
+ * each one ended at once, with zero tokens, on a budget it had not touched. No cap, no budget.
+ */
+export function orcamentoDoTurno(teto, custoDaSessao) {
+  if (!(Number.isFinite(teto) && teto > 0)) return undefined;
+  const ja = Number.isFinite(custoDaSessao) && custoDaSessao > 0 ? custoDaSessao : 0;
+  return ja + teto;
+}
+
+/**
+ * Command-line flags → the run options. `--parada host` installs the hook; `--teto-custo` becomes the
+ * SDK's `maxBudgetUsd` (a positive number only: a word is not a budget, and 0 would end every turn
+ * before it started). Absent or invalid → no cap, the behaviour before 1.5.0.
+ *
+ * `--teto-iteracoes` is read by nobody here since 1.13.2. It is the number of the ORCHESTRATOR's rounds,
+ * which the page counts and enforces at every stop; handed to the SDK as `maxTurns` it counted the
+ * agent's own tool rounds instead, and a Run (one held-open turn) hit "Reached maximum number of
+ * turns (100)" on its second iteration. The desktop still passes the flag (an older page may rely on
+ * its presence); the runner just does not turn it into a cap.
  */
 export function opcoesDaRun(argOf) {
   const parada = argOf("--parada") === "host";
-  const it = Number(argOf("--teto-iteracoes"));
   const custo = Number(argOf("--teto-custo"));
   return {
     parada,
-    maxTurns: Number.isFinite(it) && it >= 1 ? Math.floor(it) : undefined,
     maxBudgetUsd: Number.isFinite(custo) && custo > 0 ? custo : undefined,
   };
 }

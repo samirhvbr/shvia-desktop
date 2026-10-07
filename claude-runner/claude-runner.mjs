@@ -46,7 +46,7 @@ import * as readline from "node:readline";
 import { EDICAO, LEITURA, PATH_ARG, decidir, previa, decidirNoPlano } from "./politica.mjs";
 // The stop handshake of the Run (RUN-20260910, B2) lives in its own pure module for the
 // same reason: it is proved by `parada.test.mjs`, and this file cannot be imported by a test.
-import { encerrarPendentes, esperarDecisao, montarStopRequest, opcoesDaRun, saidaDoHook } from "./parada.mjs";
+import { encerrarPendentes, esperarDecisao, montarStopRequest, opcoesDaRun, orcamentoDoTurno, saidaDoHook } from "./parada.mjs";
 // Steering the turn in flight (1.11.0): pure for the same reason, proved by `orientacao.test.mjs`.
 import { criarOrientacao } from "./orientacao.mjs";
 
@@ -176,7 +176,8 @@ const APROVACAO = (() => {
 
 /**
  * A Run (docs/code/RUN-20260910.md, B2): `--parada host` installs the `Stop` hook that asks
- * the host before a turn ends; `--teto-iteracoes` and `--teto-custo` become the SDK caps.
+ * the host before a turn ends; `--teto-custo` becomes the SDK's budget (`--teto-iteracoes` is the
+ * page's count of orchestrator rounds and no longer an SDK cap: see `parada.mjs`).
  * Without the flags nothing here is installed and the runner behaves as before 1.5.0 —
  * a host that does not know `stop_request` never receives it (embedding.md).
  */
@@ -286,6 +287,10 @@ async function gate(id, toolName, toolInput, motivo, politica = "confirm") {
 
 // ------------------------------------------------------------------ loop de turnos
 let sessionId; // mantém contexto entre turnos (resume)
+// What the SDK has reported as the session's cost so far (`total_cost_usd` is the cost of the SESSION,
+// not of one turn: see `traduzirMensagem`). A process starts a new session, so it starts at zero; it is
+// what a turn's cost is measured against, and what the turn's budget is added to.
+let custoDaSessao = 0;
 let busy = false;
 let stdinClosed = false; // no modo pipe (one-shot), sair após esvaziar a fila
 const queue = [];
@@ -353,14 +358,15 @@ function montarPrompt(text, images) {
  *                   caminho normal.
  *
  * @param {object} message   mensagem do SDK
- * @param {{sessionId: string|undefined, sawTextDelta: boolean}} estado
+ * @param {{sessionId: string|undefined, sawTextDelta: boolean, custoDaSessao?: number}} estado
  * @param {string|undefined} modelo  o `--model` da linha de comando (fallback do rótulo)
- * @returns {{eventos: object[], estado: {sessionId: string|undefined, sawTextDelta: boolean}}}
+ * @returns {{eventos: object[], estado: {sessionId: string|undefined, sawTextDelta: boolean, custoDaSessao: number}}}
  */
 function traduzirMensagem(message, estado, modelo) {
   const eventos = [];
   let sessionId = estado.sessionId;
   let sawTextDelta = estado.sawTextDelta;
+  let custoDaSessaoAgora = estado.custoDaSessao ?? 0;
 
   switch (message?.type) {
     case "system":
@@ -417,10 +423,27 @@ function traduzirMensagem(message, estado, modelo) {
     case "result": {
       const tin = message.usage?.input_tokens ?? 0;
       const tout = message.usage?.output_tokens ?? 0;
+      // 🔴 `total_cost_usd` is the cost of the SESSION so far, not of this turn (the SDK types say
+      // "cumulative"; and Claude Code restores the session's cost on `resume`, which is how every turn
+      // here is opened). Until 1.13.2 it went out as the turn's cost, and the page added it up: on the
+      // owner's EOP-2 a turn of half a second and zero tokens reported US$ 15.64 — the session's whole
+      // history — and the Run stopped on a cap of US$ 10 it had not touched; on SHVIA the Run showed
+      // US$ 289.98 after twelve turns of about US$ 30 each. The turn's cost is the difference, and a
+      // total BELOW the last one is a new session (the cost restarts), whose total is all its own.
+      // A result with no cost leaves the baseline alone: reading it as zero would make the next
+      // turn's whole history look like that turn's.
+      const total = message.total_cost_usd;
+      let custoDoTurno = 0;
+      if (typeof total === "number" && Number.isFinite(total) && total >= 0) {
+        custoDoTurno = total >= custoDaSessaoAgora ? total - custoDaSessaoAgora : total;
+        custoDaSessaoAgora = total;
+      }
       eventos.push({
         type: "usage",
         tokens: tin + tout,
-        cost: message.total_cost_usd ?? 0,
+        cost: custoDoTurno,
+        cost_session: custoDaSessaoAgora, // the page keeps the running total next to it
+        cost_scope: "turn",               // `cost` is already this turn's: an older runner sent the session's under the same name
         estimated: true, // sob assinatura o custo USD é indicativo, não faturado por token
       });
       // ⚠️ O SDK NUNCA manda `subtype: "error"` num `result`. Até a 1.4.38 era o
@@ -453,7 +476,7 @@ function traduzirMensagem(message, estado, modelo) {
     }
   }
 
-  return { eventos, estado: { sessionId, sawTextDelta } };
+  return { eventos, estado: { sessionId, sawTextDelta, custoDaSessao: custoDaSessaoAgora } };
 }
 
 // Whether the turn running now is a PLAN turn (1.9.0). Per turn, never per process: the
@@ -463,6 +486,7 @@ let turnoPlano = false;
 
 async function runTurn(text, images, plano = false) {
   turnoPlano = plano === true;
+  const orcamento = orcamentoDoTurno(RUN.maxBudgetUsd, custoDaSessao);
   const options = {
     cwd: PROJECT_DIR,
     includePartialMessages: true, // deltas de texto via stream_event
@@ -474,10 +498,17 @@ async function runTurn(text, images, plano = false) {
       // as before and no `stop_request` ever leaves this process.
       ...(RUN.parada ? { Stop: [{ hooks: [stopHook] }] } : {}),
     },
-    // The run caps, straight to the SDK. A hit cap comes back as `error_max_turns` /
-    // `error_max_budget_usd`, which `traduzirMensagem` turns into `warn` + `turn_done`.
-    ...(RUN.maxTurns ? { maxTurns: RUN.maxTurns } : {}),
-    ...(RUN.maxBudgetUsd ? { maxBudgetUsd: RUN.maxBudgetUsd } : {}),
+    // The run's cost cap, straight to the SDK. A hit cap comes back as `error_max_budget_usd`, which
+    // `traduzirMensagem` turns into `warn` + `turn_done`. The SDK counts the SESSION's cost against it
+    // (the cost is restored on `resume`), so the cap is added to what the session had already cost when
+    // this turn opened: "this turn may spend this much", as the warning says. Against the bare cap, a
+    // session past US$ 10 could not run another turn.
+    //
+    // There is no turn cap from the Run. `--teto-iteracoes` is the number of the ORCHESTRATOR's rounds,
+    // which the page counts and enforces at every stop; the SDK's `maxTurns` counts the agent's own
+    // tool rounds, and one Run is one held-open turn — a hundred of those is an hour of work, and the
+    // SDK threw "Reached maximum number of turns (100)" on iteration 2 of a Run capped at 100.
+    ...(orcamento ? { maxBudgetUsd: orcamento } : {}),
     ...(MODEL ? { model: MODEL } : {}),
     // `effort` guia a profundidade do raciocínio ('low'…'max'). Só entra quando
     // pedido: sem a flag, vale o default do modelo (`high`) — mandar um valor
@@ -489,7 +520,7 @@ async function runTurn(text, images, plano = false) {
 
   // O estado atravessa as mensagens do turno: `sessionId` para o `resume` do
   // turno seguinte, `sawTextDelta` para o fallback de texto do bloco assistant.
-  let estado = { sessionId, sawTextDelta: false };
+  let estado = { sessionId, sawTextDelta: false, custoDaSessao };
   stopsNoTurno = 0; // `iteration` of the stop_request counts within the turn
 
   consultaAtual = query({ prompt: montarPrompt(text, images), options });
@@ -498,6 +529,7 @@ async function runTurn(text, images, plano = false) {
     const r = traduzirMensagem(message, estado, MODEL);
     estado = r.estado;
     sessionId = estado.sessionId;
+    custoDaSessao = estado.custoDaSessao;
     for (const ev of r.eventos) emit(ev);
   }
 }

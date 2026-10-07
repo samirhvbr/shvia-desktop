@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.13.2 - A Run's cost and caps stop lying: the turn's cost is the difference, the budget sits on top of the session's, and the iteration cap is no longer the SDK's turn cap
+
+The owner's screens of 07/10/2026 showed three things that looked like one: a Run on EOP-2 stopped with "cost cap reached (US$ 15.64 of 10.00)"
+after a turn of half a second and zero tokens; the SHVIA Run showed "US$ 289.98 spent" after twelve turns of a few cents; and an earlier Run ended with
+"Reached maximum number of turns (100)" on its second iteration. Measured in `claude-runner/` and in the SDK's own types, not on the owner's account:
+
+- **`total_cost_usd` is the cost of the session so far, not of the turn.** The SDK types call it cumulative, and Claude Code restores the session's cost on
+  `resume`, which is how the runner opens every turn. It went out as the turn's cost and the page added it up: twelve turns of about US$ 30 each became
+  US$ 289.98, and a turn that did nothing carried the session's whole history. The runner now reports `cost` as the difference from the last result (a total
+  below the last one is a new session), `cost_session` as the running total, and marks the event `cost_scope: "turn"`. A result with no cost leaves the
+  baseline alone: reading it as zero would make the next turn's history look like that turn's.
+- **The cost cap is now added to what the session had already cost.** The SDK counts the session's cost against `maxBudgetUsd`; the runner passed the bare cap,
+  so a session past it could not run another turn. `orcamentoDoTurno(cap, sessão)` is the cap on top of the session's cost when the turn opens: "this turn may spend
+  this much", which is what the warning already said.
+- **The iteration cap is not an SDK cap any more.** `--teto-iteracoes` is the number of the orchestrator's rounds, which the page counts and enforces at every stop.
+  Passed as `maxTurns` it counted the agent's own tool rounds instead, and a Run is one held-open turn: a hundred of them is an hour of work. The desktop still
+  passes the flag; the runner ignores it.
+- **Proved** in Node: `prova:runner` runs the real `traduzirMensagem` over a sequence of results (5, 5, 8.5, 0.4, no cost, 9) and expects 5, 0, 3.5, 0.4, 0, 0.5;
+  `parada.test.mjs` pins the budget on top of the session (US$ 15.64 + 10) and that `opcoesDaRun` returns no turn cap.
+- **Not measured:** against the real SDK on a real account (that would spend the owner's subscription). The delta assumes what the types and the owner's screens
+  show — the same cumulative value on two consecutive turns, one of them with zero tokens — and nothing here reads the SDK's experimental usage call.
+  The turn that is still running does not report its cost until it ends, so inside one held-open Run the page's cost cap can only act at the stops; the SDK budget is what guards inside a turn.
+- **The page needs the matching change** (SHVIA-WEB): an older page treats `cost` as it always did, as the session's. The new page subtracts it itself when
+  the marker is missing, so either order of update works.
+
 ## 1.13.1 - Detecting the Claude Code accounts also finds the ones defined as shell aliases
 
 On the owner's second machine the Code panel's account selector showed only the system default, and the "detect accounts"
