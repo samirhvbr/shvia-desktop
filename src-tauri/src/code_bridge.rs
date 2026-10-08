@@ -45,6 +45,8 @@ use sessao::*;
 mod atualizacao;
 pub(crate) use atualizacao::na_abertura;
 mod aparelho;
+mod pentest;
+pub(crate) use pentest::stop as stop_pentest;
 pub use sessao::Sidecars;
 pub(crate) use motores::{engine_status, versao_do_anna};
 
@@ -145,6 +147,15 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
     let action = v.get("action").and_then(|a| a.as_str()).unwrap_or_default();
     let req = v.get("reqId").and_then(|r| r.as_str()).unwrap_or_default().to_string();
     match action {
+        "startPentest" => fora_da_ui(window, &req, move |w| match pentest::start(w, &v) {
+            Ok(value) => (true, value),
+            Err(error) => (false, serde_json::json!({"error":error})),
+        }),
+        "pentestStatus" => fora_da_ui(window, &req, |w| (true, pentest::status(w))),
+        "stopPentest" => fora_da_ui(window, &req, |w| {
+            pentest::stop(Some(w.label()));
+            (true, serde_json::json!({"stopped":true}))
+        }),
         "spawn" => spawn(window, &req, &v),
         "send" => {
             let ok = send(window, &v);
@@ -605,7 +616,7 @@ mod tests_fora_da_ui {
         for acao in [
             "gitStatus", "listTree", "gitDiff", "readFile", "codexModels", "claudeAuthStatus",
             "claudeAuthLoginStart", "claudeModels", "claudeRunnerInstall", "claudeAccountsDetect",
-            "claudeAccountAdd", "engineStatus",
+            "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "stopPentest",
         ] {
             let chave = format!("\"{acao}\" =>");
             let a = corpo.find(&chave).unwrap_or_else(|| panic!("{acao}: arm not found"));

@@ -4,6 +4,15 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 [`.continue/estado-atual.md`](../.continue/estado-atual.md); decisões em
 [decisoes.md](decisoes.md); como buildar em [build.md](build.md).)
 
+## Controlled local assessments (1.14.0)
+
+The existing native bridge now verifies a WEB assessment grant with Strix, shows
+native consent and selects a private local identity file before starting the
+controlled profile. One local process is supervised, with status and interruption
+controls. The configured HTTPS origin owns authorization; the page cannot supply
+executables, authority URLs or credential paths. See [the implementation contract](PENTEST/authorization.md)
+for the Linux/macOS profile, Windows refusal and pending integrated pilot.
+
 ## Fase 1 — esqueleto andante (validado)
 
 - **Shell fino Tauri 2** (`0.2.0`): janela com título/ícone **ShvIA**,

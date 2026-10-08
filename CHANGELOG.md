@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.14.0 - Confirm controlled assessment execution in the native app
+
+- Inspect the authenticated WEB grant through Strix before native consent and credential selection.
+- Derive the HTTPS authority from the configured server; keep grant files and runtime logs private and supervise one local assessment.
+- Expose process status and interruption through the existing bridge without returning raw output or credential paths.
+- Support Linux and macOS for this initial profile; Windows refuses until its private-file runtime contract is supported.
+
 ## 1.13.2 - A Run's cost and caps stop lying: the turn's cost is the difference, the budget sits on top of the session's, and the iteration cap is no longer the SDK's turn cap
 
 The owner's screens of 07/10/2026 showed three things that looked like one: a Run on EOP-2 stopped with "cost cap reached (US$ 15.64 of 10.00)"
