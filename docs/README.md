@@ -1,5 +1,7 @@
 # Documentação — ShvIA Desktop
 
+- [Native controlled assessments](PENTEST/authorization.md): consent, private authorization handoff and local process supervision.
+
 Índice da documentação técnica **estável** do projeto. Trabalho em andamento
 (WIP) vive em [`../.continue/`](../.continue/) e migra para cá quando amadurece.
 

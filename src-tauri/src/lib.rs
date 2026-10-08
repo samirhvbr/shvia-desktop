@@ -1654,6 +1654,7 @@ pub fn run() {
             event: tauri::WindowEvent::Destroyed,
             ..
         } => {
+            code_bridge::stop_pentest(Some(&label));
             app_handle.state::<code_bridge::Sidecars>().kill_one(&label);
             // The last real window is gone (closed with "close keeps running" off, or after
             // the Code question): the app would end here, as it did before 1.10.0 — but a
@@ -1675,6 +1676,7 @@ pub fn run() {
             }
         }
         tauri::RunEvent::Exit => {
+            code_bridge::stop_pentest(None);
             app_handle.state::<code_bridge::Sidecars>().kill_all();
             // 🔴 O login NÃO mora no mapa de sidecars — é um `static` próprio, porque não é
             // sessão de projeto. Sem esta linha ele sobrevive ao app: um `claude auth login`
