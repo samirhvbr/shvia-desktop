@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.16.1 - Keep offline evidence review compatible with Windows builds
+
+- Compile the metadata projector's JSON macro only on Unix or in tests, preserving the Windows unsupported-operation response without unused imports.
+
 ## 1.16.0 - Review verified local assessment evidence through the native bridge
 
 - Add a path-free review command for the finished execution owned by the window and configured HTTPS authority.
