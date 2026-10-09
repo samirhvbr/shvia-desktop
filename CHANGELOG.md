@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.15.1 - Treat recovered assessment identifiers as CLI data
+
+- Require recorded run names to start with an ASCII letter or digit and bind the resume value to its option. A local history named like a CLI switch cannot change argument parsing.
+- Exercise a matching `--help` directory/record fixture and preserve normal, ambiguous and linked-history coverage.
+
 ## 1.15.0 - Resume the approved local assessment after native confirmation
 
 - Resume only the unique recorded Strix run owned by the same window and configured authority; inspect the live grant again and obtain native consent.
