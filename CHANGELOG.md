@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.15.0 - Resume the approved local assessment after native confirmation
+
+- Resume only the unique recorded Strix run owned by the same window and configured authority; inspect the live grant again and obtain native consent.
+- Keep the original scope, budget and credential path; remove private handoffs on exit and refuse ambiguous or unsafe histories.
+- Show all context-version-2 operations, identities and adapters in the consent dialog, including explicit single-credit mutation and cleanup wording.
+- Terminate the whole supervised process group on forced stop or parent exit, so descendants cannot outlive a resumed controller.
+- Recovery is manual within the same app session. App-restart reconciliation and the integrated operator pilot remain open.
+
 ## 1.14.0 - Confirm controlled assessment execution in the native app
 
 - Inspect the authenticated WEB grant through Strix before native consent and credential selection.

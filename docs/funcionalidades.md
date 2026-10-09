@@ -4,6 +4,14 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 [`.continue/estado-atual.md`](../.continue/estado-atual.md); decisões em
 [decisoes.md](decisoes.md); como buildar em [build.md](build.md).)
 
+## Controlled local assessment recovery (1.15.0)
+
+The owning window can request manual recovery of its unique recorded run. Desktop
+revalidates the live authorization and asks for native consent, then reuses the
+same native-owned credentials and history. The consent lists version-2 cases and
+explicit business effects. Forced stop also kills descendant processes. Recovery
+after restarting the app and a complete interactive pilot remain unvalidated.
+
 ## Controlled local assessments (1.14.0)
 
 The existing native bridge now verifies a WEB assessment grant with Strix, shows
