@@ -152,6 +152,10 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             Err(error) => (false, serde_json::json!({"error":error})),
         }),
         "pentestStatus" => fora_da_ui(window, &req, |w| (true, pentest::status(w))),
+        "reviewPentest" => fora_da_ui(window, &req, |w| match pentest::review(w) {
+            Ok(data) => (true, data),
+            Err(e) => (false, serde_json::json!(e)),
+        }),
         "resumePentest" => fora_da_ui(window, &req, |w| match pentest::resume(w) {
             Ok(value) => (true, value),
             Err(error) => (false, serde_json::json!({"error":error})),
@@ -620,7 +624,7 @@ mod tests_fora_da_ui {
         for acao in [
             "gitStatus", "listTree", "gitDiff", "readFile", "codexModels", "claudeAuthStatus",
             "claudeAuthLoginStart", "claudeModels", "claudeRunnerInstall", "claudeAccountsDetect",
-            "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "stopPentest", "resumePentest",
+            "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "stopPentest", "resumePentest", "reviewPentest",
         ] {
             let chave = format!("\"{acao}\" =>");
             let a = corpo.find(&chave).unwrap_or_else(|| panic!("{acao}: arm not found"));

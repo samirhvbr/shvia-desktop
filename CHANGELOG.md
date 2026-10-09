@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.16.0 - Review verified local assessment evidence through the native bridge
+
+- Add a path-free review command for the finished execution owned by the window and configured HTTPS authority.
+- Bound the offline Strix helper to 20 seconds and 2 MiB, discard stderr, validate the review contract and project only selected metadata.
+- Preserve essential gaps, unresolved effects, stale case results and bounded history; never interpret a process exit as assessment success.
+- Review requires Strix 1.2.21. App-restart recovery, directed execution and interactive pilot acceptance remain separate work.
+
 ## 1.15.1 - Treat recovered assessment identifiers as CLI data
 
 - Require recorded run names to start with an ASCII letter or digit and bind the resume value to its option. A local history named like a CLI switch cannot change argument parsing.

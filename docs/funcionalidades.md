@@ -4,6 +4,15 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 [`.continue/estado-atual.md`](../.continue/estado-atual.md); decisões em
 [decisoes.md](decisoes.md); como buildar em [build.md](build.md).)
 
+## Local assessment evidence review (1.16.0)
+
+The owning window can review its finished assessment with Strix 1.2.21 or later.
+The native bridge verifies the configured HTTPS authority, selects the recorded
+run itself, limits the helper output/time and returns an explicit metadata
+projection. Essential gaps, uncertainty, stale results and history remain visible.
+Review does not run target operations or upload raw artifacts. See
+[the contract](PENTEST/authorization.md#offline-evidence-review).
+
 ## Controlled local assessment recovery (1.15.0)
 
 The owning window can request manual recovery of its unique recorded run. Desktop

@@ -63,6 +63,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
     pentestStatus: function () { return post('pentestStatus'); },
     stopPentest: function () { return post('stopPentest'); },
     resumePentest: function () { return post('resumePentest'); },
+    reviewPentest: function () { return post('reviewPentest'); },
     spawn: function (o) { return post('spawn', o || {}); },   // erro de motor ausente vem {error, codigo} — ver claudeModels;  {projectDir, apiKey, model?, effort?, url?, engine?, modelDoClaude?, accountId?, autonomy?}  autonomy:{stopByHost, maxIterations, maxCostUsd} = a Run (RUN-20260910), só no motor claude;  engine:'claude' = assinatura; modelDoClaude:true = model/effort vieram de claudeModels(), nao do gateway; accountId = perfil de conta (ver claudeAccounts); sessao + retomavel:true + meta:{projectId, rotulo} = a sessão sobrevive a um reload e a página seguinte a retoma (recursos.retomada)
     send:  function (o, sessao) { return post('send', sessao ? { payload: o, sessao: sessao } : { payload: o }); }, // {type:'user',text} | {id,decision}; sessao = which session (recursos.sessoes)
     kill:  function (sessao) { return post('kill', sessao ? { sessao: sessao } : null); }, // sem sessao = a sessão única de antes da 1.8.0
