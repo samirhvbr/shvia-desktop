@@ -225,6 +225,13 @@ selected effort. The bridge requires that catalogue marker, passes `--cwd` and
 The runner sends effort through `turn/start`. Old web pages without the marker must
 reload the matching web update; old desktop builds cannot expose this catalogue.
 
+**A catalogue that cannot be read says why (1.16.2).** `--modelos` writes `{"erro": …}` when `codex`
+cannot be started (ENOENT) or the app-server dies before answering; the desktop reads only `modelos`
+or `erro`, and before 1.16.2 those two failures were `{"type":"error"}` lines it dropped, so the
+picker showed the "update the runner" text for a current runner. `codex` not on PATH is looked for in
+the usual install dirs (`resolverCodex`, `plataforma.mjs`): Homebrew, `/usr/local/bin`, the user's
+`~/.local`, `~/.cargo`, `~/.bun`, `~/.volta`, and nvm's newest Node.
+
 Validation commands: `cd codex-runner && npm test`, `node codex-runner/codex-runner.mjs
 --modelos`, and `cargo test --lib` from `src-tauri` after installing the runner.
 

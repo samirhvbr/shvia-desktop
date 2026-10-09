@@ -36,6 +36,8 @@ test("an app-server that dies before answering `initialize` ends the runner with
   assert.ok(erros(run).some((e) => /encerrou/.test(e.message)), run.stdout);
 });
 
+// In `--modelos` the failure is the `erro` line — the only error line the desktop reads in that mode
+// (1.16.2); a `type: "error"` there was dropped and read as "update the runner".
 test("an app-server that dies mid-request, after the handshake, ends the runner too", () => {
   const run = rodar(`
 const rl = require("node:readline").createInterface({ input: process.stdin });
@@ -46,5 +48,7 @@ rl.on("line", (l) => {
 });`, ["--modelos"]);
   assert.equal(run.error, undefined, "the runner hung on the request the dead process never answered");
   assert.equal(run.status, 1);
-  assert.ok(erros(run).some((e) => /encerrou/.test(e.message)), run.stdout);
+  const linhas = run.stdout.trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  assert.ok(linhas.some((l) => /encerrou/.test(l.erro ?? "")), run.stdout);
+  assert.equal(erros(run).length, 0, "a `type: error` line is not one the desktop reads in --modelos mode");
 });

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.16.2 - The Codex model picker says why it cannot list models, and the runner finds `codex` outside the app's PATH
+
+On a Mac (09/10/2026) the model picker of the Codex engine failed with "Atualize o codex-runner para listar os modelos." while the runner was current. Measured with the owner's own terminal: `codex` was in `/opt/homebrew/bin`, and the same `--modelos` call with a minimal PATH ended in `ENOENT`. Reinstalling the runner made it work; why the app's PATH lacked the directory was not established, so the runner no longer depends on it:
+
+- **`--modelos` answers `{"erro": …}` when it cannot start or loses `codex`.** The desktop reads exactly two kinds of line from that mode, `modelos` and `erro`; the spawn failure and the early exit were written as `{"type":"error"}`, which it drops, and the person saw the "update the runner" fallback instead of "codex não encontrado" or how the app-server died. Outside `--modelos` the same two failures are still the `type: error` lines the bridge matches on (a test holds that).
+- **`codex` that is not on PATH is looked for in the usual install dirs** — `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`, `~/.cargo/bin`, `~/.bun/bin`, `~/.volta/bin` (the list `user_env.rs` already adds to the agents' PATH) and nvm's per-version `bin`, newest Node first (numerically: v9 is older than v20). A `codex` on PATH is used as before, `SHVIA_CODEX_BIN` still wins, and nothing found stays `codex`, so the spawn fails with its own error.
+- **A `codex` found by absolute path starts with its own directory first on the PATH it runs with**, so an npm script (`#!/usr/bin/env node`) finds the `node` beside it even under the minimal PATH.
+- `codex-runner` 1.5.10: the app reinstalls an installed runner older than the bundled one at its start (ADR-036), so this reaches the Mac without a manual install.
+- Tests: `plataforma.test.mjs` (the lookup, per OS, with the machine passed in) and `catalogue.test.mjs` (the runner's real output for a missing `codex` and for one that dies at once, the unchanged `type: error` outside `--modelos`, and the child's PATH). Each piece was switched off in turn and a test went red. Not measured: the app on the Mac itself.
+
 ## 1.16.1 - Keep offline evidence review compatible with Windows builds
 
 - Compile the metadata projector's JSON macro only on Unix or in tests, preserving the Windows unsupported-operation response without unused imports.

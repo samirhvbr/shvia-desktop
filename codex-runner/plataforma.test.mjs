@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { comandosDaProva, resolverCodex } from "./plataforma.mjs";
+import { comandosDaProva, diretoriosDeInstalacao, resolverCodex } from "./plataforma.mjs";
 
 const NPM = "C:\\Users\\joão\\AppData\\Roaming\\npm";
 const JS = path.win32.join(NPM, "node_modules", "@openai", "codex", "bin", "codex.js");
@@ -48,4 +48,44 @@ test("🔴 the proof has a control INSIDE the project and a probe OUTSIDE it, on
   assert.ok(!JSON.stringify(win).includes("/bin/sh"));
   assert.equal(win.controle[3], 'echo x>"C:\\p\\.c" && del /q "C:\\p\\.c"');
   assert.equal(win.prova[3], 'echo x>"C:\\Users\\u\\.x" && del /q "C:\\Users\\u\\.x"');
+});
+
+// ── outside Windows: `codex` that is not on PATH (a Mac, 09/10/2026) ──────────────────────────────
+const comArquivos = (...arquivos) => { const tem = new Set(arquivos); return (p) => tem.has(p); };
+
+test("🔴 codex missing from PATH but in Homebrew's bin gets its absolute path, not a bare `codex`", () => {
+  const r = resolverCodex({ platform: "darwin", env: { PATH: "/usr/bin:/bin", HOME: "/Users/s" }, home: "/Users/s", existe: comArquivos("/opt/homebrew/bin/codex") });
+  assert.deepEqual(r, { comando: "/opt/homebrew/bin/codex", prefixo: [] });
+});
+
+test("a codex on PATH stays `codex`, whatever else is installed", () => {
+  const existe = comArquivos("/usr/bin/codex", "/opt/homebrew/bin/codex");
+  assert.deepEqual(resolverCodex({ platform: "darwin", env: { PATH: "/usr/bin" }, home: "/Users/s", existe }), { comando: "codex", prefixo: [] });
+});
+
+test("the home install dirs are tried after the system ones, in the desktop's own order", () => {
+  const tem = ["/Users/s/.bun/bin/codex", "/Users/s/.cargo/bin/codex"];
+  assert.equal(resolverCodex({ platform: "linux", env: { PATH: "" }, home: "/Users/s", existe: comArquivos(...tem) }).comando, "/Users/s/.cargo/bin/codex");
+  assert.equal(resolverCodex({ platform: "linux", env: { PATH: "" }, home: "/Users/s", existe: comArquivos("/usr/local/bin/codex", ...tem) }).comando, "/usr/local/bin/codex");
+});
+
+test("nvm: the newest Node version's bin wins, numerically (v9 is older than v20)", () => {
+  const nvm = "/Users/s/.nvm/versions/node";
+  const listar = (d) => { assert.equal(d, nvm); return ["v9.11.2", "v20.11.0", "v18.19.1"]; };
+  const existe = comArquivos(`${nvm}/v9.11.2/bin/codex`, `${nvm}/v20.11.0/bin/codex`, `${nvm}/v18.19.1/bin/codex`);
+  assert.equal(resolverCodex({ platform: "darwin", env: { PATH: "" }, home: "/Users/s", existe, listar }).comando, `${nvm}/v20.11.0/bin/codex`);
+});
+
+test("a missing nvm dir (listar throws) is not an error, and nothing found stays `codex`", () => {
+  const listar = () => { throw new Error("ENOENT"); };
+  assert.deepEqual(resolverCodex({ platform: "darwin", env: { PATH: "/usr/bin" }, home: "/Users/s", existe: () => false, listar }), { comando: "codex", prefixo: [] });
+});
+
+test("without HOME only the system dirs are tried", () => {
+  assert.deepEqual(diretoriosDeInstalacao({ home: "", listar: () => ["v20.0.0"] }), ["/opt/homebrew/bin", "/usr/local/bin"]);
+});
+
+test("SHVIA_CODEX_BIN still wins over a codex found in a known dir", () => {
+  const env = { SHVIA_CODEX_BIN: "/custom/codex", PATH: "" };
+  assert.equal(resolverCodex({ platform: "darwin", env, home: "/Users/s", existe: () => true }).comando, "/custom/codex");
 });

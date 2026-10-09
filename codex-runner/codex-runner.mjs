@@ -45,7 +45,7 @@
 //     {"type":"turn_done"} | {"type":"error"|"warn","message"}
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import * as readline from "node:readline";
@@ -112,17 +112,26 @@ const { askForApproval, sandboxMode } = POLITICA;
 // ------------------------------------------------------- the app-server child
 // On Windows the npm `codex` is a `.cmd` that Node cannot spawn without a shell; `resolverCodex`
 // turns it into `node <codex.js>` (plataforma.mjs). Elsewhere this is `codex`, as it was.
-const lancarCodex = resolverCodex({ existe: existsSync });
+const lancarCodex = resolverCodex({ existe: existsSync, listar: readdirSync });
+// A `codex` found by absolute path may be an npm script (`#!/usr/bin/env node`): its own directory
+// goes first on the child's PATH so the `node` beside it is the one the shebang finds, even when
+// the PATH this runner got was the minimal one.
+const envDoCodex = path.isAbsolute(lancarCodex.comando) && process.platform !== "win32"
+  ? { ...process.env, PATH: [path.dirname(lancarCodex.comando), process.env.PATH].filter(Boolean).join(":") }
+  : process.env;
 const child = spawn(lancarCodex.comando, [...lancarCodex.prefixo, "app-server", "--stdio"], {
   cwd: PROJECT_DIR,
   stdio: ["pipe", "pipe", "pipe"],
-  env: process.env,
+  env: envDoCodex,
 });
 
 child.on("error", (e) => {
   // `não encontrado` in the message is what the bridge already matches on to fall
   // back to the gateway engine — same wording as the Claude runner, on purpose.
-  emit({ type: "error", message: `codex não encontrado no PATH (${e.code ?? e.message}).` });
+  const mensagem = `codex não encontrado no PATH (${e.code ?? e.message}).`;
+  // In `--modelos` mode the only line the desktop reads is `modelos` or `erro`: a `type: "error"`
+  // line was dropped and the person saw "Atualize o codex-runner" for a runner that was current.
+  emit(listModels ? { erro: mensagem } : { type: "error", message: mensagem });
   process.exit(1);
 });
 
@@ -200,7 +209,8 @@ const fila = [];
 let encerrando = false;
 child.on("exit", (code, signal) => {
   if (encerrando) return;
-  emit({ type: "error", message: `o app-server do Codex encerrou sem aviso (${signal ?? `código ${code}`}).` });
+  const mensagem = `o app-server do Codex encerrou sem aviso (${signal ?? `código ${code}`}).`;
+  emit(listModels ? { erro: mensagem } : { type: "error", message: mensagem });
   if (fimDoTurno) emit({ type: "turn_done" });
   encerrar(1);
 });
