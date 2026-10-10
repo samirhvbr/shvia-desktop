@@ -2593,3 +2593,95 @@ should offer that button when it has nothing else is the page's question, not th
 (`~/.claude-blue3`, `~/.claude-pessoal`) is not extended to guess `~/.claude-cred-*`: those names are one machine's
 convention, and the alias that uses them says so itself.
 
+## ADR-042 — The agent gets a browser of its own on this machine, and every step in it is the person's to allow
+
+- **Date:** 10/10/2026 · **Status:** **Accepted** — the owner's choice of 06/10/2026 on the OpenClaw
+  comparison page, item `navegador`: *"logged-in work only on my machine, with consent"*. The
+  server half is SHVIA-WEB's (`docs/INFERENCE/NAVEGADOR-LOCAL.md`).
+- **Code:** `src-tauri/src/code_bridge/navegador.rs` (the commands, their consent and the window),
+  `navegador.js` (the script the window runs), `aparelho.rs` (the dispatcher arm and the status),
+  `tray.rs` (the second switch). Measured by `scripts/medir-navegador-local.sh`.
+
+### Context
+
+ADR-039 gave the agent four things from this machine. The thing the OpenClaw page asks for next
+is a browser: open a portal that has no API (a carrier's panel, a supplier, an agency), read it,
+fill it in. The server can already read a **public** page with a headless Chromium (`fetch_url`); what
+it must never hold is a **logged-in session of a person's accounts**. The owner's answer was that
+the logged-in part happens here, and the person is asked.
+
+### Decision
+
+**A window of its own, with a profile of its own, and no way back into the app.** `browser.open`
+creates a window (`agente-navegador`) the person can see, move and close; closing it ends the agent's access.
+The person signs in **by hand**, in that window, so a password never passes through the agent or the
+model. Its cookies live in a folder of the app that only the person can read (`navegador-do-agente/`
+under the app data folder; a separate WKWebView data store on macOS), not in any other browser's
+profile and not in the ShvIA window's.
+
+| command | what the agent gets | asks the person |
+|---|---|---|
+| `browser.open {url}` | the site, and the title and address if the person allowed that site | **once per site** (until the window closes): a native dialog with the address, the reason as the agent's words, and a warning when the address is on the person's own network |
+| `browser.read` | the visible text (20 000 characters), and a numbered list of what can be clicked or typed into (150) | **once per site**, as above; a page the window reached by a redirect is a new site |
+| `browser.click {ref}` | the new position of the window | **every time**: the element as the *page* describes it, the site, the reason |
+| `browser.type {ref, texto}` | the same | **every time**, quoting the text; never into a field that holds a secret |
+| `browser.close` | nothing | no |
+
+**Gates, none of them on the page:**
+
+1. The master switch of ADR-039, **then a second tray switch, "Navegador do agente nesta máquina"**, off by
+   default, written only by that menu. With it off the commands answer `desligado` and are not
+   listed in `aparelhoStatus().comandos`.
+2. A closed list of five names.
+3. **Consent in a native dialog**, as above, with no "always allow". The person's grant of a site dies with the
+   window; a click or a typed text is never granted ahead.
+4. **A secret is never typed.** A field of type `password`, or whose name, id, autocomplete, label or placeholder
+   says password, token, OTP, PIN or card, answers `campo_secreto` before anyone is asked. A field the script
+   does not recognize that is a `password` input is also refused as not editable text: two rules for the same
+   thing (measured: with the first one removed, the second still stops the password and the token slips
+   through, which is why the first one exists).
+
+**No channel from the page to Rust.** The window gets no message handler, no `initialization_script`, no
+label any capability covers, and Tauri's ACL refuses `invoke` from a remote URL (measured: `app.version` and
+`dialog.message` both answered "not allowed" from a page in this window). Every script it runs returns through
+`eval_with_callback`, so a hostile page can **lie about what it shows** and cannot call anything. Three rulers in
+`navegador.rs` hold this shape: no capability covers the label, no handler is registered, the script is
+synchronous and talks to no network.
+
+**What comes back is rebuilt, not forwarded.** `sanear_leitura` writes the answer from the fields it knows,
+with caps (text, elements, labels, link targets); a field the page adds is dropped. A link is described by its
+host and path, **never its query** (magic links and session ids live there). The value of an input is never
+returned, only whether it is filled. Text from a page or from the agent that is quoted in a dialog loses control
+characters and the invisible ones that reorder text.
+
+**The window's own perimeter.** Only `http` and `https` are navigated (`file:`, `shvia:` and `javascript:`
+do nothing, also from a link); a pop-up (`window.open`) is refused; a download is refused; the address the agent
+opens carries no `user:password@`.
+
+**Why `eval_with_callback`, and what it cost to learn.** The result of a script comes back as JSON, only for a
+**synchronous** script (a Promise returns an empty string, measured on WebKitGTK) and an exception is swallowed
+on Windows, so the script answers in every path and a ruler forbids `async`, `await` and `Promise` in it.
+
+### Measured (10/10/2026)
+
+`scripts/medir-navegador-local.sh` runs the built app on a virtual display inside a private D-Bus session and a
+throwaway HOME, with a fake ShvIA page calling the bridge and a robot that clicks the native dialogs: **39 of 39
+checks** on Linux/X11 (WebKitGTK 2.54), including a refused open, a refused click that really did not reach
+the portal, a secret field refused, a pop-up and a `file:` link that did nothing, nothing from a hidden field, a
+password or a cookie in the answer, and the login cookie surviving an app restart. With the consent in `agir`
+removed, or the secret rule removed, the same run fails where it should (a refused click reached the portal; a
+token field was typed into).
+
+**Not measured, and said so:** macOS (a data store identifier, macOS 14 or later; older systems share the default
+store), Windows (compiled and clippy-clean for `x86_64-pc-windows-gnu`; WebView2 never ran), a Wayland session,
+and a real site. A page that checks `isTrusted` on a click will ignore the agent's click.
+
+### Consequences
+
+- A flow with ten clicks asks ten times. That is the price of "with consent"; a per-site "click without asking" is a
+  change to make later, in writing, and not a default.
+- No screenshot yet: the window is shown to the person, and the agent works from the text and the list of
+  elements. A page that is all canvas or image reads empty.
+- Content inside an `<iframe>` is not read. A login that needs a pop-up does not work.
+- The text read goes to the server and into the model: it is untrusted, and the server says so to the model.
+  Which model may see it is the server's rule (`FerramentasNoChat`), as for the screen capture.
