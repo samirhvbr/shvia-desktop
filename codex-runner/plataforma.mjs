@@ -8,15 +8,36 @@ import path from "node:path";
 /**
  * How to start `codex`: `{ comando, prefixo }`, spawned as `comando ...prefixo app-server --stdio`.
  *
- * On Linux and macOS it is `codex`, as before. On Windows the npm install of the Codex CLI is a
+ * On Linux and macOS it is `codex` when that is on PATH, as before. When it is not, the usual
+ * install dirs are tried and the first one that has it gives the absolute path: on a Mac
+ * (09/10/2026) `codex` sat in `/opt/homebrew/bin` and a spawn with a minimal PATH — what an app
+ * launched from the Dock may get — failed with ENOENT. Why the desktop's PATH lacked it was not
+ * established; this makes the runner independent of that. Nothing found stays `codex`: the
+ * spawn then fails with its own, honest error.
+ *
+ * On Windows the npm install of the Codex CLI is a
  * `codex.cmd` shim (`%APPDATA%\npm`), and Node does not run a `.cmd` without a shell: ENOENT,
  * and EINVAL since Node 20.12.2. So the shim is resolved to what it runs — `node` with
  * `node_modules\@openai\codex\bin\codex.js` next to it — and a native `codex.exe` on PATH wins.
  * `SHVIA_CODEX_BIN` still overrides everything, as it did.
+ *
+ * `existe` answers "is there a file here"; `listar` lists a directory (the version managers keep
+ * one `bin` per Node version). Both are passed in so the tests run every OS on any OS.
  */
-export function resolverCodex({ platform = process.platform, env = process.env, existe, node = process.execPath } = {}) {
+export function resolverCodex({
+  platform = process.platform, env = process.env, existe, listar = () => [], home = env.HOME ?? "",
+  node = process.execPath,
+} = {}) {
   if (env.SHVIA_CODEX_BIN) return { comando: env.SHVIA_CODEX_BIN, prefixo: [] };
-  if (platform !== "win32") return { comando: "codex", prefixo: [] };
+  if (platform !== "win32") {
+    const noPath = String(env.PATH ?? "").split(":").filter(Boolean);
+    if (noPath.some((d) => existe(path.posix.join(d, "codex")))) return { comando: "codex", prefixo: [] };
+    for (const d of diretoriosDeInstalacao({ home, listar })) {
+      const bin = path.posix.join(d, "codex");
+      if (existe(bin)) return { comando: bin, prefixo: [] };
+    }
+    return { comando: "codex", prefixo: [] };
+  }
   const dirs = String(env.Path ?? env.PATH ?? "").split(";").filter(Boolean);
   for (const d of dirs) {
     const exe = path.win32.join(d, "codex.exe");
@@ -25,6 +46,29 @@ export function resolverCodex({ platform = process.platform, env = process.env, 
     if (existe(path.win32.join(d, "codex.cmd")) && existe(js)) return { comando: node, prefixo: [js] };
   }
   return { comando: "codex", prefixo: [] };
+}
+
+/**
+ * Where a user-level install of `codex` lands on macOS and Linux, most likely first. The same
+ * list the desktop adds to the agents' PATH (`user_env.rs`), plus nvm's per-version `bin`, newest
+ * first — the shell's PATH is the only thing that knows which of those is the active one.
+ */
+export function diretoriosDeInstalacao({ home, listar }) {
+  const dirs = ["/opt/homebrew/bin", "/usr/local/bin"];
+  if (home) {
+    dirs.push(`${home}/.local/bin`, `${home}/.cargo/bin`, `${home}/.bun/bin`, `${home}/.volta/bin`);
+    const nvm = `${home}/.nvm/versions/node`;
+    let versoes = [];
+    try { versoes = listar(nvm); } catch { /* no nvm here */ }
+    const numero = (v) => String(v).replace(/^v/, "").split(".").map((n) => Number(n) || 0);
+    const maisNovaPrimeiro = (a, b) => {
+      const x = numero(a), y = numero(b);
+      for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (y[i] ?? 0) - (x[i] ?? 0);
+      return 0;
+    };
+    for (const v of [...versoes].sort(maisNovaPrimeiro)) dirs.push(`${nvm}/${v}/bin`);
+  }
+  return dirs;
 }
 
 /**
