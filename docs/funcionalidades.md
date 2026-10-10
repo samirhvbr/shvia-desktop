@@ -4,6 +4,14 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 [`.continue/estado-atual.md`](../.continue/estado-atual.md); decisões em
 [decisoes.md](decisoes.md); como buildar em [build.md](build.md).)
 
+## Private assessment report synchronization (1.22.0)
+
+Fresh native consent explicitly covers report narrative, findings, evidence and
+code. The private outbox uploads stopped reports only after metadata receipts and
+retries identical request bytes until a bound report receipt arrives. Existing
+metadata-only outboxes remain metadata-only. Report generation and downloads run
+on WEB; uploaded does not mean generated. Strix 1.2.27+ is required.
+
 ## Durable assessment history (1.21.0)
 
 Unix assessments can synchronize bounded native metadata to their original HTTPS

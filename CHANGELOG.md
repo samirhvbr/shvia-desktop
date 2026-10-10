@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.22.0 - Synchronize private assessment reports after explicit native consent
+
+- Add separate report-sharing consent for narrative, findings, evidence and code.
+  Legacy metadata outboxes never inherit the expanded consent.
+- Export only stopped native assessments after metadata acknowledgment; persist
+  bounded request bytes and require an exact revision-bound report receipt.
+- Preserve unacknowledged superseded reports privately and retry network failures
+  with identical bytes. Expose upload state without exposing report content.
+- Require Strix 1.2.27+ and WEB report ingestion. Installed-app, translation and
+  PDF delivery remain separately verified operator/deployment acceptance.
+
 ## 1.21.0 - Synchronize durable assessment history with bound acknowledgments
 
 - Persist private outgoing metadata before HTTPS upload and retry it after
