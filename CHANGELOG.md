@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.17.0 - Retest verified private-read evidence after fresh native consent
+
+- Add `retestPentest(localId, baselineRef)` for a vulnerable private-read baseline
+  selected from a fresh native-owned Strix review. Paths, case arguments and
+  credentials remain native-owned; stale/cross-run references and uncertain
+  effects cannot start a retest.
+- Reuse private grant inspection, fresh consent, current HTTPS authority checks
+  and supervised execution. Invoke Strix 1.2.22's deterministic retest without
+  resuming the model or resetting recorded spending.
+- Test the actual Strix baseline/fixed-result contract and selection refusals.
+  This Unix-only, same-session increment does not close restart or GUI pilot acceptance.
+
 ## 1.16.2 - The Codex model picker says why it cannot list models, and the runner finds `codex` outside the app's PATH
 
 On a Mac (09/10/2026) the model picker of the Codex engine failed with "Atualize o codex-runner para listar os modelos." while the runner was current. Measured with the owner's own terminal: `codex` was in `/opt/homebrew/bin`, and the same `--modelos` call with a minimal PATH ended in `ENOENT`. Reinstalling the runner made it work; why the app's PATH lacked the directory was not established, so the runner no longer depends on it:
