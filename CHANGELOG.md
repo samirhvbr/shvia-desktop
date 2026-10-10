@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.19.0 - The agent gets a browser of its own on this machine, and every step in it is the person's to allow
+
+- Add `browser.open`, `.read`, `.click`, `.type` and `.close` to the device commands, behind a second tray
+  switch ("Navegador do agente nesta máquina", off by default, written only by that menu). The window is
+  the agent's own, with a profile of its own where the person signs in by hand; closing it ends the access.
+- Ask the person in a native dialog: once per site for opening and reading (the grant dies with the window),
+  and every time for each click and each typed text, quoting the agent's reason as the agent's words. A field
+  that holds a secret is never typed into.
+- Give the window no way back into the app: no message handler, no capability, no initialization script. A
+  script's answer returns through `eval_with_callback`, is rebuilt from known fields with caps, never carries an
+  input's value or a link's query, and a pop-up, a download and any scheme but `http`/`https` do nothing.
+- Measure it against the real app on a virtual display (`scripts/medir-navegador-local.sh`, 39 of 39 on
+  Linux/X11), with the consent and the secret rule removed one at a time to see the run fail. Not run on
+  macOS, Windows or Wayland. Decision in ADR-042.
+
 ## 1.18.0 - Recover the latest native assessment after restart without adopting orphan processes
 
 - Persist a private, versioned native descriptor with the original authority,

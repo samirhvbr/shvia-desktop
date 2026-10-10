@@ -69,6 +69,9 @@ pub struct Prefs {
     /// The agent's device commands (ADR-039). Off by default, and only this menu turns it on:
     /// no bridge action writes this file, so a script on the page cannot.
     pub aparelho: bool,
+    /// The agent's own browser on this machine (ADR-042), a second switch under the first. Off by
+    /// default, same rule: only this menu writes it.
+    pub navegador: bool,
 }
 
 impl Default for Prefs {
@@ -77,7 +80,7 @@ impl Default for Prefs {
         // entrega nada — o alerta de preço continua não chegando com a janela fechada,
         // que é o buraco inteiro. E é o comportamento que o macOS já tinha; o default
         // faz os outros dois SOs pararem de divergir.
-        Self { close_to_tray: true, avisou: false, aparelho: false }
+        Self { close_to_tray: true, avisou: false, aparelho: false, navegador: false }
     }
 }
 
@@ -118,6 +121,7 @@ impl Prefs {
             // Only a literal `true` turns it on: a missing field, a wrong type or a hand edit
             // gone wrong leaves the agent without the machine, which is the safe side.
             aparelho: v.get("aparelho").and_then(|x| x.as_bool()).unwrap_or(false),
+            navegador: v.get("navegador").and_then(|x| x.as_bool()).unwrap_or(false),
         }
     }
 }
@@ -127,7 +131,7 @@ fn gravar(app: &AppHandle, p: Prefs) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    let json = serde_json::json!({ "close_to_tray": p.close_to_tray, "avisou": p.avisou, "aparelho": p.aparelho });
+    let json = serde_json::json!({ "close_to_tray": p.close_to_tray, "avisou": p.avisou, "aparelho": p.aparelho, "navegador": p.navegador });
     // Falha de escrita é silenciosa de propósito: a preferência volta ao default no
     // próximo boot, e um diálogo de erro para isso interromperia o usuário por nada.
     let _ = std::fs::write(path, json.to_string());
@@ -150,6 +154,12 @@ pub fn desligar_recolher(app: &AppHandle) {
 /// every call, like the rest of this menu: the switch the person sees is the one that applies.
 pub fn aparelho_ligado(app: &AppHandle) -> bool {
     ler(app).aparelho
+}
+
+/// Is the agent allowed to open its own browser on this machine (ADR-042)? A second switch: the
+/// device commands being on does not turn it on.
+pub fn navegador_ligado(app: &AppHandle) -> bool {
+    ler(app).navegador
 }
 
 /// Monta o menu da bandeja **lendo o estado real** a cada chamada.
@@ -199,6 +209,17 @@ fn montar_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         None::<&str>,
     )?;
 
+    // ADR-042. Next to the first and not inside it: a browser the agent can read and click in
+    // is a bigger thing than a notification, and it gets its own click.
+    let navegador = CheckMenuItem::with_id(
+        app,
+        "tray-agent-browser",
+        "Navegador do agente nesta máquina",
+        true,
+        prefs.navegador,
+        None::<&str>,
+    )?;
+
     // On GTK the predefined `quit` is dropped silently (see the app menu in lib.rs), so
     // until 1.6.9 the Linux tray had no way to quit. A plain item handled below instead.
     #[cfg(target_os = "linux")]
@@ -220,6 +241,7 @@ fn montar_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &autostart,
             &recolher,
             &aparelho,
+            &navegador,
             &PredefinedMenuItem::separator(app)?,
             &sair,
         ],
@@ -364,6 +386,12 @@ fn tratar_menu(app: &AppHandle, id: &str) {
             gravar(app, p);
             recarregar_menu(app);
         }
+        "tray-agent-browser" => {
+            let mut p = ler(app);
+            p.navegador = !p.navegador;
+            gravar(app, p);
+            recarregar_menu(app);
+        }
         _ => {}
     }
 }
@@ -483,6 +511,19 @@ mod tests {
         assert!(do_str(r#"{"aparelho":true}"#).aparelho);
         for errado in [r#"{"aparelho":"true"}"#, r#"{"aparelho":1}"#, r#"{"aparelho":null}"#] {
             assert!(!do_str(errado).aparelho, "{errado} turned the commands on");
+        }
+    }
+
+    /// 🔴 The agent's browser is OFF until the person turns it on (ADR-042), and turning the device
+    /// commands on does not turn it on.
+    #[test]
+    fn o_navegador_do_agente_nasce_desligado_e_so_um_true_literal_liga() {
+        assert!(!Prefs::default().navegador);
+        assert!(!do_str("{}").navegador);
+        assert!(!do_str(r#"{"aparelho":true}"#).navegador, "the device switch must not carry the browser's");
+        assert!(do_str(r#"{"navegador":true}"#).navegador);
+        for errado in [r#"{"navegador":"true"}"#, r#"{"navegador":1}"#, r#"{"navegador":null}"#] {
+            assert!(!do_str(errado).navegador, "{errado} turned the browser on");
         }
     }
 

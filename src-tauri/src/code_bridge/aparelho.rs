@@ -63,7 +63,7 @@ pub(crate) fn teto_do_pedido(restante: Option<&serde_json::Value>) -> Option<std
 }
 
 /// The ceiling in words for the capture dialog: minutes when it is long, seconds when it is short.
-fn prazo_por_extenso(teto: std::time::Duration) -> String {
+pub(super) fn prazo_por_extenso(teto: std::time::Duration) -> String {
     let s = teto.as_secs();
     if s >= 90 {
         format!("cerca de {} minutos", (s + 30) / 60)
@@ -88,7 +88,7 @@ pub(super) fn aparelho(window: &WebviewWindow, req: &str, v: &serde_json::Value)
         return reply(window, req, false, falha("expirou", "o pedido já expirou — nada foi feito"));
     };
     match comando {
-        "device.info" => reply(window, req, true, info()),
+        "device.info" => reply(window, req, true, info(crate::tray::navegador_ligado(window.app_handle()))),
         "system.notify" => {
             let args = v.get("args").cloned().unwrap_or_default();
             let texto = args.get("texto").and_then(|x| x.as_str()).unwrap_or_default();
@@ -142,6 +142,17 @@ pub(super) fn aparelho(window: &WebviewWindow, req: &str, v: &serde_json::Value)
                 }
             });
         }
+        // The browser family (ADR-042): its own switch after the one above, then the same
+        // `restante` ceiling, then everything it does is asked of the person one step at a time.
+        c if navegador::COMANDOS.contains(&c) => {
+            if !crate::tray::navegador_ligado(window.app_handle()) {
+                return reply(window, req, false, falha("desligado",
+                    "O navegador do agente está desligado. Ligue em “Navegador do agente nesta máquina”, no ícone do ShvIA na bandeja."));
+            }
+            let comando = c.to_string();
+            let args = v.get("args").cloned().unwrap_or_default();
+            fora_da_ui(window, req, move |w| navegador::executar(w, &comando, &motivo, &args, inicio, teto));
+        }
         _ => reply(window, req, false, falha("comando_desconhecido", "comando de aparelho que este app não tem")),
     }
 }
@@ -150,20 +161,34 @@ pub(super) fn aparelho(window: &WebviewWindow, req: &str, v: &serde_json::Value)
 /// changes nothing: it is how the page tells the person to turn the switch on, instead of
 /// letting the agent fail without a reason.
 pub(super) fn status(window: &WebviewWindow) -> serde_json::Value {
+    let navegador = crate::tray::navegador_ligado(window.app_handle());
     serde_json::json!({
         "ligado": crate::tray::aparelho_ligado(window.app_handle()),
-        "comandos": COMANDOS,
+        // The browser family has its own switch; its commands are listed only while it is on,
+        // and the flag lets the page say which switch to turn.
+        "navegador": navegador,
+        "comandos": comandos_ativos(navegador),
     })
 }
 
-fn falha(codigo: &str, msg: &str) -> serde_json::Value {
+/// The commands this build answers right now: the four device commands, plus the browser's
+/// five while its switch is on.
+fn comandos_ativos(navegador: bool) -> Vec<&'static str> {
+    let mut v = COMANDOS.to_vec();
+    if navegador {
+        v.extend(navegador::COMANDOS);
+    }
+    v
+}
+
+pub(super) fn falha(codigo: &str, msg: &str) -> serde_json::Value {
     serde_json::json!({ "erro": msg, "codigo": codigo })
 }
 
 /// What `device.info` tells the agent. Deliberately little: the OS, the architecture, the app's
 /// version and, on Linux, the session type — what changes how the other commands behave. No
 /// host name, no user name, no paths: those identify a person, and the agent does not need them.
-fn info() -> serde_json::Value {
+fn info(navegador: bool) -> serde_json::Value {
     // Only Linux adds a field; elsewhere `mut` is unused, which `-D warnings` refuses (measured
     // by the Windows cross-check, which Linux's own clippy cannot see).
     #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
@@ -171,7 +196,7 @@ fn info() -> serde_json::Value {
         "so": std::env::consts::OS,
         "arquitetura": std::env::consts::ARCH,
         "versaoDoApp": env!("CARGO_PKG_VERSION"),
-        "comandos": COMANDOS,
+        "comandos": comandos_ativos(navegador),
     });
     #[cfg(target_os = "linux")]
     {
@@ -538,7 +563,7 @@ mod tests {
     /// `device.info` gives away nothing that identifies the person.
     #[test]
     fn info_nao_carrega_nome_de_maquina_nem_de_pessoa() {
-        let i = info();
+        let i = info(false);
         let texto = i.to_string();
         for campo in ["so", "arquitetura", "versaoDoApp", "comandos"] {
             assert!(i.get(campo).is_some(), "{campo} ausente: {texto}");
