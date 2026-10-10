@@ -4,6 +4,15 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 [`.continue/estado-atual.md`](../.continue/estado-atual.md); decisões em
 [decisoes.md](decisoes.md); como buildar em [build.md](build.md).)
 
+## Durable assessment history (1.21.0)
+
+Unix assessments can synchronize bounded native metadata to their original HTTPS
+server after explicit native consent. Private outgoing snapshots survive restart;
+receipts bind scan, revision and request bytes before data is acknowledged. Strix
+1.2.26 exports stopped/crashed accounting without changing evidence. Partial and
+unknown states remain visible; no raw evidence or target/model credentials upload.
+See [the authorization contract](PENTEST/authorization.md).
+
 ## Cooperative assessment control (1.20.0)
 
 The owning Unix window can read bounded live telemetry, request operator pause

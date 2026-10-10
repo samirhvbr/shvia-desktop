@@ -1147,6 +1147,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07bbe89c50d7a535e539b8c17bc0b49bdb77747034daa8087407d655f3f7cc1d"
 dependencies = [
  "futures-core",
+ "futures-sink",
 ]
 
 [[package]]
@@ -3173,6 +3174,7 @@ checksum = "219c5811de6525e5416c7d5d53bb656d3afdbc6c5af816e0802bcfa42dbdc1c3"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "http",
@@ -3664,7 +3666,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "shvia-desktop"
-version = "1.20.0"
+version = "1.21.0"
 dependencies = [
  "base64 0.23.1",
  "javascriptcore-rs",
@@ -3673,8 +3675,11 @@ dependencies = [
  "objc2-foundation",
  "objc2-web-kit",
  "raw-window-handle",
+ "reqwest",
+ "rustls",
  "serde",
  "serde_json",
+ "sha2",
  "socket2",
  "tauri",
  "tauri-build",

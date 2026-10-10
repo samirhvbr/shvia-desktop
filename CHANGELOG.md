@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.21.0 - Synchronize durable assessment history with bound acknowledgments
+
+- Persist private outgoing metadata before HTTPS upload and retry it after
+  disconnect or app restart without resetting assessment identity or spending.
+- Read live accounting from the native controller and stopped/crashed accounting
+  through Strix's bounded offline exporter; retain unknown and partial provenance.
+- Clear a pending snapshot only after a receipt matches its authority, assessment,
+  scan, revision and exact request digest. Reject redirects and changed authorities.
+- Include metadata synchronization in native consent and expose only safe sync
+  status to the page. Windows remains unsupported for controlled assessments.
+
 ## 1.20.0 - Control live assessments through private native IPC
 
 - Keep the real Unix socket fixture within macOS path limits.
