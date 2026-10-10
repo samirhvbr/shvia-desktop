@@ -11,6 +11,8 @@
 - Give the window no way back into the app: no message handler, no capability, no initialization script. A
   script's answer returns through `eval_with_callback`, is rebuilt from known fields with caps, never carries an
   input's value or a link's query, and a pop-up, a download and any scheme but `http`/`https` do nothing.
+- Bound the wait for a page by what is left of the request after the person answers, and hold the worst reading under
+  110 000 characters, the server's answer endpoint taking 128 KB.
 - Measure it against the real app on a virtual display (`scripts/medir-navegador-local.sh`, 39 of 39 on
   Linux/X11), with the consent and the secret rule removed one at a time to see the run fail. Not run on
   macOS, Windows or Wayland. Decision in ADR-042.

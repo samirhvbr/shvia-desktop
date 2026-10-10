@@ -91,6 +91,13 @@ fn carga_terminou() {
     ESTADO.1.notify_all();
 }
 
+/// What is left of the request's ceiling, so a wait that comes after the person's answer cannot
+/// carry the reply past the moment the server stopped waiting (it counts from its own emit, and
+/// the page already took 10 s off for the delivery). Apart so the boundary can be tested.
+fn resto_do_pedido(inicio: Instant, teto: Duration) -> Duration {
+    teto.saturating_sub(inicio.elapsed())
+}
+
 /// Waits for a load to finish after the count was `desde`. `true` when one did.
 fn esperar_carga(desde: u64, prazo: Duration) -> bool {
     let limite = Instant::now() + prazo;
@@ -550,7 +557,9 @@ fn abrir(
     };
     let _ = win.show();
     let _ = win.unminimize();
-    let carregou = esperar_carga(antes, PRAZO_CARGA);
+    // The person may have taken minutes over the dialog: the wait for the page is bounded by what
+    // is left of the request, not by its own 25 s.
+    let carregou = esperar_carga(antes, PRAZO_CARGA.min(resto_do_pedido(inicio, teto)));
     if carregou {
         std::thread::sleep(ASSENTAR);
     }
@@ -660,7 +669,7 @@ fn agir(
             "impressao": texto_de(&d, "impressao", 600),
         }),
     )?;
-    let navegou = esperar_carga(antes, PRAZO_NAVEGACAO);
+    let navegou = esperar_carga(antes, PRAZO_NAVEGACAO.min(resto_do_pedido(inicio, teto)));
     if navegou {
         std::thread::sleep(ASSENTAR);
     }
@@ -844,6 +853,34 @@ mod tests {
         assert!(s.get("cookies").is_none() && s.get("inesperado").is_none());
         assert!(s["elementos"][0].get("valorSecreto").is_none());
         assert_eq!(s["elementos"][0]["preenchido"], true);
+    }
+
+    /// The server's answer endpoint takes 128 KB (`ChatAparelhoController`, SHVIA-WEB). A reading that
+    /// came back larger was refused with a 422 and the waiting tool waited out its whole ceiling, so
+    /// the worst page this module can send is measured against that number, with room to spare.
+    #[test]
+    fn a_pior_leitura_cabe_no_que_o_servidor_aceita() {
+        const LIMITE_DO_SERVIDOR: usize = 131_072;
+        let elementos: Vec<serde_json::Value> = (1..=1000)
+            .map(|n| serde_json::json!({ "ref": n, "tag": "a", "tipo": "text", "rotulo": "é".repeat(500), "destino": "d".repeat(500), "secreto": true, "preenchido": true }))
+            .collect();
+        let pior = serde_json::json!({
+            "url": "u".repeat(5000), "titulo": "t".repeat(5000), "texto": "é".repeat(200_000),
+            "textoCortado": true, "elementos": elementos, "totalElementos": 1_000_000,
+        });
+        let json = sanear_leitura(&pior).to_string();
+        // The page serializes with `JSON.stringify`, which keeps non-ASCII as it is; the server counts characters.
+        let caracteres = json.chars().count();
+        assert!(caracteres <= 110_000, "the worst reading is {caracteres} characters, too close to the server's {LIMITE_DO_SERVIDOR}");
+    }
+
+    #[test]
+    fn o_que_resta_do_pedido_nunca_e_negativo_e_encolhe() {
+        let agora = Instant::now();
+        let cheio = resto_do_pedido(agora, Duration::from_secs(170));
+        assert!(cheio <= Duration::from_secs(170) && cheio > Duration::from_secs(169));
+        assert_eq!(resto_do_pedido(agora - Duration::from_secs(200), Duration::from_secs(170)), Duration::ZERO);
+        assert_eq!(PRAZO_CARGA.min(Duration::ZERO), Duration::ZERO, "no time left, no wait for the page");
     }
 
     #[test]

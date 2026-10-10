@@ -2683,5 +2683,10 @@ and a real site. A page that checks `isTrusted` on a click will ignore the agent
 - No screenshot yet: the window is shown to the person, and the agent works from the text and the list of
   elements. A page that is all canvas or image reads empty.
 - Content inside an `<iframe>` is not read. A login that needs a pop-up does not work.
+- The size of a reading is coupled to the server: the worst page `sanear_leitura` can write (20 000 characters of text and
+  150 elements) stays under 110 000 characters, and SHVIA-WEB's answer endpoint takes 128 KB. At the old 64 KB a large page
+  came back 422 and the waiting tool waited out its whole ceiling; a test here holds our side of that number. After the
+  person answers a dialog, the wait for a page to load is bounded by what is left of the request, so a late answer cannot
+  carry the reply past the moment the server stopped waiting.
 - The text read goes to the server and into the model: it is untrusted, and the server says so to the model.
   Which model may see it is the server's rule (`FerramentasNoChat`), as for the screen capture.
