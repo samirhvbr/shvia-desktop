@@ -1,6 +1,6 @@
 [package]
 name = "shvia-desktop"
-version = "1.20.0"
+version = "1.21.0"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
@@ -53,7 +53,7 @@ uuid = { version = "1", features = ["v4"] }
 # Compatibility pin: wry/cookie 0.18.1 uses the older one-argument parse API.
 # Keep the measured 0.3.55 until that dependency accepts newer time releases.
 # The native control projector also uses its RFC3339 parser.
-time = { version = "=0.3.55", features = ["parsing"] }
+time = { version = "=0.3.55", features = ["parsing", "formatting"] }
 tauri-plugin-autostart = "2"
 
 [target.'cfg(unix)'.dependencies]
@@ -61,6 +61,10 @@ tauri-plugin-autostart = "2"
 libc = "0.2"
 # Bounded Unix socket connection; already present in the locked dependency tree.
 socket2 = "0.6"
+# Native-only history upload and content acknowledgments; already in the lockfile.
+reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "rustls-no-provider"] }
+sha2 = "0.10"
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 # Persiste tamanho/posição das janelas entre reinícios (F2). É **DESKTOP-only** —
 # no mobile a WebView é tela cheia e não existe o conceito de geometria de janela.

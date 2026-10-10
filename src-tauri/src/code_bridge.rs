@@ -47,6 +47,8 @@ pub(crate) use atualizacao::na_abertura;
 mod aparelho;
 mod pentest;
 pub(crate) use pentest::stop as stop_pentest;
+#[cfg(unix)]
+pub(crate) use pentest::sync_background as pentest_sync_background;
 pub use sessao::Sidecars;
 pub(crate) use motores::{engine_status, versao_do_anna};
 
