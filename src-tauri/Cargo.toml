@@ -1,6 +1,6 @@
 [package]
 name = "shvia-desktop"
-version = "1.17.0"
+version = "1.18.0"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
@@ -59,6 +59,10 @@ uuid = { version = "1", features = ["v4"] }
 # windows-gnu). The pin stays exact on purpose: Dependabot proposes each move, and each is measured.
 time = "=0.3.55"
 tauri-plugin-autostart = "2"
+
+[target.'cfg(unix)'.dependencies]
+# Private POSIX files, controller locks and conservative process-liveness checks.
+libc = "0.2"
 
 # Persiste tamanho/posição das janelas entre reinícios (F2). É **DESKTOP-only** —
 # no mobile a WebView é tela cheia e não existe o conceito de geometria de janela.

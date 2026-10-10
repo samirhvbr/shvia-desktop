@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.18.0 - Recover the latest native assessment after restart without adopting orphan processes
+
+- Persist a private, versioned native descriptor with the original authority,
+  grant, credential path and launch generation, atomically synced before spawn.
+- Restore only verified finished or definitely absent controllers; refuse live
+  or ambiguous PIDs and held runtime locks. Never signal a stored PID, reset
+  spending, replay uncertain effects or execute automatically on restoration.
+- Keep one native supervisor per configuration directory, require fresh consent
+  for execution, and expose recovered/blocked status without private paths.
+- Exercise real process death, kernel locks, evidence preservation, corrupt and
+  linked descriptors, cross-authority refusal and zero dispatch on storage failure.
+  Unix-only; installed-app interaction remains separate acceptance.
+
 ## 1.17.0 - Retest verified private-read evidence after fresh native consent
 
 - Add `retestPentest(localId, baselineRef)` for a vulnerable private-read baseline

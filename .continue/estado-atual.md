@@ -3,7 +3,7 @@
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Last updated: **10/10/2026** (version 1.17.0). Native directed private-read retest, offline evidence review, same-session recovery and version-2 case consent are implemented; see [the contract](../docs/PENTEST/authorization.md) for the supported profile and pending restart recovery and integrated pilot. 1.7.0 = the links to the web repository (ex-1.6.59, #75),
+> Last updated: **10/10/2026** (version 1.18.0). Native restart recovery, directed private-read retest, offline evidence review and version-2 case consent are implemented; see [the contract](../docs/PENTEST/authorization.md) for the supported profile and conservative orphan refusal and pending integrated pilot. 1.7.0 = the links to the web repository (ex-1.6.59, #75),
 > 1.7.1 = the runners follow the app (ex-1.6.60, #76, ADR-036), 1.7.2/1.7.3 = the Windows build's
 > `--config`, 1.8.0 = several agent sessions per window (`recursos.sessoes`, #79, published 26/09),
 > 1.8.1 = the bipartite Shield identity (published 27/09), 1.8.2 = an agent that survives a reload

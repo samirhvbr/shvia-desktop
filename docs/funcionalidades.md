@@ -4,6 +4,15 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 [`.continue/estado-atual.md`](../.continue/estado-atual.md); decisões em
 [decisoes.md](decisoes.md); como buildar em [build.md](build.md).)
 
+## Restart recovery (1.18.0)
+
+The latest controlled Unix assessment can be restored from a private durable
+native descriptor after restarting the app. Recovery preserves its authority,
+identity, budget and uncertain effects, refuses live or ambiguous orphan
+processes, and requires fresh native consent before execution. A saved PID is
+never signaled. See [the recovery contract](PENTEST/authorization.md#restart-and-orphan-reconciliation-1180).
+This source capability does not establish installed-app pilot acceptance.
+
 ## Directed private-read retest (1.17.0)
 
 The native bridge selects a vulnerable baseline from a fresh verified review,
