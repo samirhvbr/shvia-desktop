@@ -1,0 +1,123 @@
+<!doctype html><html><head><meta charset="utf-8"><title>ShvIA (falso, para medição)</title></head>
+<body>
+<p>Página que faz o papel do ShvIA: chama a ponte do app como a página de verdade chamaria.</p>
+<script>
+var L = function (k, v) { return fetch('/log?k=' + encodeURIComponent(k) + '&v=' + encodeURIComponent(typeof v === 'string' ? v : JSON.stringify(v))); };
+var passou = function (nome, cond, detalhe) { return L(cond ? 'PASSOU' : 'FALHOU', nome + (detalhe === undefined ? '' : ' :: ' + JSON.stringify(detalhe).slice(0, 700))); };
+var modo = function (m) { return fetch('/modo?v=' + m); };
+var esperar = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+
+async function main() {
+  for (var i = 0; i < 100 && !window.__shviaCode; i++) await esperar(100);
+  var S = window.__shviaCode;
+  if (!S) { await L('FALHOU', 'a ponte do app nao apareceu nesta pagina'); return; }
+  var cenario = (await (await fetch('/cenario')).text()).trim();
+  // aparelho() resolves on success and REJECTS with {erro, codigo} on failure.
+  var A = function (c, m, a) {
+    return S.aparelho(c, m, a || {}, 170).then(function (r) { return { ok: true, r: r }; }, function (e) { return { ok: false, e: e }; });
+  };
+  var ref = function (itens, pred) { var x = itens.filter(pred)[0]; return x ? x.ref : null; };
+
+  var st = await S.aparelhoStatus();
+  await L('status', st);
+
+  if (cenario === 'desligado') {
+    var d = await A('browser.open', 'teste', { url: 'http://127.0.0.1:8765/pagina.html' });
+    await passou('com a chave do navegador desligada: codigo desligado', !d.ok && d.e.codigo === 'desligado', d);
+    await passou('a lista de comandos nao traz browser.* com a chave desligada', st.comandos.indexOf('browser.open') < 0 && st.navegador === false, st);
+    await L('FIM', cenario); return;
+  }
+
+  if (cenario === 'cookie') {
+    var o = await A('browser.open', 'ver se o login ficou', { url: 'http://127.0.0.1:8765/vazia.html' });
+    await passou('abre a pagina vazia', o.ok, o);
+    await L('FIM', cenario); return;
+  }
+
+  // ---- cenario completo
+  await passou('status: as duas chaves ligadas e 9 comandos', st.ligado === true && st.navegador === true && st.comandos.length === 9 && st.comandos.indexOf('browser.type') >= 0, st);
+
+  var f = await A('browser.open', 'x', { url: 'file:///etc/passwd' });
+  await passou('recusa file:', !f.ok && f.e.codigo === 'argumento_invalido', f);
+  var j = await A('browser.open', 'x', { url: 'javascript:alert(1)' });
+  await passou('recusa javascript:', !j.ok && j.e.codigo === 'argumento_invalido', j);
+  var c = await A('browser.open', 'x', { url: 'https://banco.com@evil.example/' });
+  await passou('recusa usuario@ no endereco', !c.ok && c.e.codigo === 'argumento_invalido', c);
+
+  var sj = await A('browser.read', 'x');
+  await passou('ler sem janela: sem_janela', !sj.ok && sj.e.codigo === 'sem_janela', sj);
+
+  await modo('recusar');
+  var rec = await A('browser.open', 'ver o painel', { url: 'http://127.0.0.1:8765/pagina.html' });
+  await passou('abrir com a pessoa recusando: recusado', !rec.ok && rec.e.codigo === 'recusado', rec);
+  await esperar(500);
+
+  await modo('aceitar');
+  var ab = await A('browser.open', 'ver a fatura de setembro', { url: 'http://127.0.0.1:8765/pagina.html' });
+  await passou('abrir: carregou, host e titulo', ab.ok && ab.r.carregou === true && ab.r.host === '127.0.0.1:8765' && ab.r.titulo === 'Painel da operadora', ab);
+
+  var lei = await A('browser.read', 'ler o painel');
+  await passou('ler sem nova pergunta (site ja permitido): ok', lei.ok, lei);
+  if (!lei.ok) { await L('FIM', cenario); return; }
+  var r = lei.r, txt = JSON.stringify(r);
+  await passou('texto visivel presente', r.texto.indexOf('Seu saldo é R$ 42,00') >= 0, r.texto);
+  await passou('texto oculto (display:none) ausente', r.texto.indexOf('texto oculto') < 0, r.texto);
+  await passou('a leitura nao carrega senha, token, campo oculto nem cookie', ['segredo-123', 'tok-ABC', 'tokenoculto', 'abc123'].every(function (x) { return txt.indexOf(x) < 0; }), txt.slice(0, 400));
+  await passou('o valor do usuario nao sai, so se esta preenchido', txt.indexOf('samir') < 0, null);
+  await passou('endereco sem query', r.url === 'http://127.0.0.1:8765/pagina.html', r.url);
+  var itens = r.elementos;
+  var rUsuario = ref(itens, function (e) { return e.rotulo === 'Usuário'; });
+  var rSenha = ref(itens, function (e) { return e.rotulo === 'Senha'; });
+  var rToken = ref(itens, function (e) { return e.rotulo === 'Token da API'; });
+  var rEntrar = ref(itens, function (e) { return e.rotulo === 'Entrar'; });
+  var rExcluir = ref(itens, function (e) { return e.rotulo === 'Excluir conta'; });
+  var rFaturas = ref(itens, function (e) { return e.rotulo === 'Ver faturas'; });
+  var rArq = ref(itens, function (e) { return e.rotulo === 'Abrir arquivo local'; });
+  await passou('lista os elementos clicaveis e campos', [rUsuario, rSenha, rToken, rEntrar, rExcluir, rFaturas, rArq].every(function (x) { return x !== null; }), itens.map(function (e) { return e.ref + ':' + e.rotulo; }));
+  await passou('o link diz para onde vai, sem query', itens.filter(function (e) { return e.ref === rFaturas; })[0].destino === '127.0.0.1:8765/faturas.html', itens);
+  await passou('senha e token sao marcados secretos; usuario nao', itens.filter(function (e) { return e.ref === rSenha; })[0].secreto === true && itens.filter(function (e) { return e.ref === rToken; })[0].secreto === true && itens.filter(function (e) { return e.ref === rUsuario; })[0].secreto === false, itens);
+  await passou('nao lista o campo oculto', itens.every(function (e) { return e.tipo !== 'hidden'; }), itens);
+
+  var ds = await A('browser.type', 'entrar', { ref: rSenha, texto: 'minha-senha' });
+  await passou('digitar em senha: campo_secreto (sem pergunta)', !ds.ok && ds.e.codigo === 'campo_secreto', ds);
+  var dt = await A('browser.type', 'chave', { ref: rToken, texto: 'xyz' });
+  await passou('digitar em token_api: campo_secreto', !dt.ok && dt.e.codigo === 'campo_secreto', dt);
+
+  var du = await A('browser.type', 'preencher o usuario', { ref: rUsuario, texto: 'maria' });
+  await passou('digitar no usuario (pessoa aceita)', du.ok && du.r.feito === true, du);
+
+  await modo('recusar');
+  var cx = await A('browser.click', 'apagar a conta', { ref: rExcluir });
+  await passou('clicar com a pessoa recusando: recusado', !cx.ok && cx.e.codigo === 'recusado', cx);
+  await esperar(500);
+
+  await modo('aceitar');
+  var ce = await A('browser.click', 'entrar', { ref: rEntrar });
+  await passou('clicar em Entrar (pessoa aceita): feito e titulo novo', ce.ok && ce.r.feito === true && ce.r.titulo === 'clicou', ce);
+
+  var ca = await A('browser.click', 'abrir arquivo', { ref: rArq });
+  await passou('link para file: nao navega (a janela segue na pagina)', ca.ok && ca.r.navegou === false && ca.r.url === 'http://127.0.0.1:8765/pagina.html', ca);
+
+  var cf = await A('browser.click', 'ver faturas', { ref: rFaturas });
+  await passou('clicar no link: navegou', cf.ok && cf.r.navegou === true && cf.r.titulo === 'Faturas', cf);
+
+  var velho = await A('browser.click', 'de novo', { ref: rEntrar });
+  await passou('ref de uma pagina que ja saiu: desatualizado', !velho.ok && velho.e.codigo === 'desatualizado', velho);
+
+  var l2 = await A('browser.read', 'ler as faturas');
+  await passou('ler a segunda pagina', l2.ok && l2.r.texto.indexOf('Outubro: R$ 99,90 (em aberto)') >= 0, l2);
+
+  var fe = await A('browser.close', '');
+  await passou('fechar', fe.ok && fe.r.fechada === true, fe);
+  var l3 = await A('browser.read', 'x');
+  await passou('depois de fechar: sem_janela', !l3.ok && l3.e.codigo === 'sem_janela', l3);
+
+  var re = await A('browser.open', 'abrir de novo', { url: 'http://127.0.0.1:8765/pagina.html' });
+  await passou('reabrir pergunta de novo (as concessoes morreram com a janela)', re.ok, re);
+  await esperar(1500);
+  await A('browser.close', '');
+  await L('FIM', cenario);
+}
+main().catch(function (e) { L('FALHOU', 'excecao no cenario: ' + (e && e.message ? e.message : e)); });
+</script>
+</body></html>
