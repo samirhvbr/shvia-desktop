@@ -13,8 +13,11 @@ async function main() {
   if (!S) { await L('FALHOU', 'a ponte do app nao apareceu nesta pagina'); return; }
   var cenario = (await (await fetch('/cenario')).text()).trim();
   // aparelho() resolves on success and REJECTS with {erro, codigo} on failure.
+  // Every answer is also logged whole (`dump`), so the exact JSON the app sends can become the server's fixtures.
   var A = function (c, m, a) {
-    return S.aparelho(c, m, a || {}, 170).then(function (r) { return { ok: true, r: r }; }, function (e) { return { ok: false, e: e }; });
+    return S.aparelho(c, m, a || {}, 170).then(
+      function (r) { L('dump', { c: c, ok: true, r: r }); return { ok: true, r: r }; },
+      function (e) { L('dump', { c: c, ok: false, e: e }); return { ok: false, e: e }; });
   };
   var ref = function (itens, pred) { var x = itens.filter(pred)[0]; return x ? x.ref : null; };
 
