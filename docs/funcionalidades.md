@@ -4,6 +4,15 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 [`.continue/estado-atual.md`](../.continue/estado-atual.md); decisões em
 [decisoes.md](decisoes.md); como buildar em [build.md](build.md).)
 
+## Directed private-read retest (1.17.0)
+
+The native bridge selects a vulnerable baseline from a fresh verified review,
+checks the owning run and current HTTPS authority, and asks for native consent
+before invoking Strix 1.2.22's deterministic private-read retest. Original
+evidence and spending remain intact; paths and credentials stay native-owned.
+This supports Unix within the current app session. Restart reconciliation and
+the installed-app pilot remain open; see [the contract](PENTEST/authorization.md).
+
 ## Local assessment evidence review (1.16.0)
 
 The owning window can review its finished assessment with Strix 1.2.21 or later.
