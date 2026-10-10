@@ -1,6 +1,6 @@
 [package]
 name = "shvia-desktop"
-version = "1.18.0"
+version = "1.20.0"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
@@ -50,19 +50,17 @@ serde_json = "1"
 # Token de capacidade da ponte nativa (per-sessão, anti-iframe). Só v4 (CSPRNG).
 uuid = { version = "1", features = ["v4"] }
 
-# Pin de compatibilidade (não usamos `time` diretamente): o WebView
-# (wry → cookie 0.18.1; ainda o mesmo no wry 0.57, medido em 02/10/2026) chama a API antiga de `Parsable::parse` (1 arg). O
-# `time` novo mudou a assinatura (passou a exigir `defaults`), quebrando o
-# `cookie`. Fixamos `time` numa versão compatível. Remover quando wry/cookie
-# subirem para uma versão que aceite o `time` novo.
-# 1.6.47: `=0.3.55` measured compatible with cookie 0.18.1 (cargo test, clippy on Linux and
-# windows-gnu). The pin stays exact on purpose: Dependabot proposes each move, and each is measured.
-time = "=0.3.55"
+# Compatibility pin: wry/cookie 0.18.1 uses the older one-argument parse API.
+# Keep the measured 0.3.55 until that dependency accepts newer time releases.
+# The native control projector also uses its RFC3339 parser.
+time = { version = "=0.3.55", features = ["parsing"] }
 tauri-plugin-autostart = "2"
 
 [target.'cfg(unix)'.dependencies]
 # Private POSIX files, controller locks and conservative process-liveness checks.
 libc = "0.2"
+# Bounded Unix socket connection; already present in the locked dependency tree.
+socket2 = "0.6"
 
 # Persiste tamanho/posição das janelas entre reinícios (F2). É **DESKTOP-only** —
 # no mobile a WebView é tela cheia e não existe o conceito de geometria de janela.

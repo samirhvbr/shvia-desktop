@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.20.0 - Control live assessments through private native IPC
+
+- Keep the real Unix socket fixture within macOS path limits.
+
+- Bind Unix control discovery to the known native child, launch generation and
+  configured HTTPS authority; keep tokens and paths out of browser responses.
+- Add bounded live metadata, cooperative operator pause and fresh native consent
+  for revision-bound operator/test acknowledgment. Preserve other pause reasons,
+  spending, scope and live authorization; process restart stays separate.
+- Forward optional pause-every-N configuration and require Strix 1.2.25+.
+  Exercise private socket exchange, wrong generations, malformed metadata and
+  unknown-cost projection. Installed-app pilot remains separate acceptance.
+
 ## 1.18.0 - Recover the latest native assessment after restart without adopting orphan processes
 
 - Persist a private, versioned native descriptor with the original authority,

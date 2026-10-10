@@ -4,6 +4,14 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 [`.continue/estado-atual.md`](../.continue/estado-atual.md); decisões em
 [decisoes.md](decisoes.md); como buildar em [build.md](build.md).)
 
+## Cooperative assessment control (1.20.0)
+
+The owning Unix window can read bounded live telemetry, request operator pause
+and acknowledge one operator/test pause with fresh native consent. Private Unix
+IPC binds the known Strix child and launch generation; tokens, socket paths and
+raw output never reach the page. Budget and other pause reasons remain unchanged.
+Requires Strix 1.2.25+. See [the control contract](PENTEST/authorization.md#cooperative-native-control-1200).
+
 ## Restart recovery (1.18.0)
 
 The latest controlled Unix assessment can be restored from a private durable
