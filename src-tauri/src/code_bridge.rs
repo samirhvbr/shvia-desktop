@@ -45,6 +45,7 @@ use sessao::*;
 mod atualizacao;
 pub(crate) use atualizacao::na_abertura;
 mod aparelho;
+mod navegador;
 mod pentest;
 pub(crate) use pentest::stop as stop_pentest;
 #[cfg(unix)]

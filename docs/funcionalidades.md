@@ -357,6 +357,13 @@ are compiled by CI and not yet run. A request the agent has stopped waiting for 
 180 s) is refused when the person finally answers (`expirou`), so nothing is captured or read for nothing. The agent's side (a tool on the server that asks the page and
 waits) is SHVIA-WEB's; until it ships, nothing calls these commands.
 
+**1.23.0 — the agent's own browser on this machine.** A second tray switch, "Navegador do agente nesta máquina",
+lets the agent open a window of its own (with its own profile, where the person signs in by hand), read it, and click
+or type in it. The person allows each **site** once and each **click and typed text** every time, in a native dialog
+that quotes the agent's reason as the agent's; a password or token field is never typed into. The window cannot call
+back into the app. Code in `navegador.rs` and `navegador.js`, decision in ADR-042, measured on Linux by
+`scripts/medir-navegador-local.sh` (39 of 39); macOS and Windows are not run.
+
 ## Limitações conhecidas
 
 - ⚠️ **Microphone and image paste on Linux** (**ADR-008**, re-measured in `1.6.45`): ADR-008
