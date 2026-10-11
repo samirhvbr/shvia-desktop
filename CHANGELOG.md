@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.19.0 - The agent gets a browser of its own on this machine, and every step in it is the person's to allow
+## 1.23.0 - The agent gets a browser of its own on this machine, and every step in it is the person's to allow
 
 - Add `browser.open`, `.read`, `.click`, `.type` and `.close` to the device commands, behind a second tray
   switch ("Navegador do agente nesta máquina", off by default, written only by that menu). The window is
@@ -16,6 +16,42 @@
 - Measure it against the real app on a virtual display (`scripts/medir-navegador-local.sh`, 39 of 39 on
   Linux/X11), with the consent and the secret rule removed one at a time to see the run fail. Not run on
   macOS, Windows or Wayland. Decision in ADR-042.
+
+## 1.22.0 - Synchronize private assessment reports after explicit native consent
+
+- Add separate report-sharing consent for narrative, findings, evidence and code.
+  Legacy metadata outboxes never inherit the expanded consent.
+- Export only stopped native assessments after metadata acknowledgment; persist
+  bounded request bytes and require an exact revision-bound report receipt.
+- Preserve unacknowledged superseded reports privately and retry network failures
+  with identical bytes. Expose upload state without exposing report content.
+- Require Strix 1.2.27+ and WEB report ingestion. Installed-app, translation and
+  PDF delivery remain separately verified operator/deployment acceptance.
+
+## 1.21.0 - Synchronize durable assessment history with bound acknowledgments
+
+- Persist private outgoing metadata before HTTPS upload and retry it after
+  disconnect or app restart without resetting assessment identity or spending.
+- Read live accounting from the native controller and stopped/crashed accounting
+  through Strix's bounded offline exporter; retain unknown and partial provenance.
+- Clear a pending snapshot only after a receipt matches its authority, assessment,
+  scan, revision and exact request digest. Reject redirects and changed authorities.
+- Include metadata synchronization in native consent and expose only safe sync
+  status to the page. Windows remains unsupported for controlled assessments.
+
+## 1.20.0 - Control live assessments through private native IPC
+
+- Keep the real Unix socket fixture within macOS path limits.
+
+- Bind Unix control discovery to the known native child, launch generation and
+  configured HTTPS authority; keep tokens and paths out of browser responses.
+- Add bounded live metadata, cooperative operator pause and fresh native consent
+  for revision-bound operator/test acknowledgment. Preserve other pause reasons,
+  spending, scope and live authorization; process restart stays separate.
+- Forward optional pause-every-N configuration and require Strix 1.2.25+.
+  Exercise private socket exchange, wrong generations, malformed metadata and
+  unknown-cost projection. Installed-app pilot remains separate acceptance.
+
 
 ## 1.18.0 - Recover the latest native assessment after restart without adopting orphan processes
 

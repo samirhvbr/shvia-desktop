@@ -1599,6 +1599,8 @@ pub fn run() {
             // navegação, e sem isto o servidor configurado seria tratado como link
             // externo e abriria no navegador do SO.
             server::load(app.handle());
+            #[cfg(unix)]
+            code_bridge::pentest_sync_background(app.handle());
             build_shvia_window(app.handle(), "main", WebviewUrl::App("index.html".into()))?;
             // Depois da janela: o updater espera 20 s antes da primeira checagem,
             // mas agendar antes de haver janela deixaria um diálogo nativo sem

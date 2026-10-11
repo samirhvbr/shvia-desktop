@@ -48,6 +48,8 @@ mod aparelho;
 mod navegador;
 mod pentest;
 pub(crate) use pentest::stop as stop_pentest;
+#[cfg(unix)]
+pub(crate) use pentest::sync_background as pentest_sync_background;
 pub use sessao::Sidecars;
 pub(crate) use motores::{engine_status, versao_do_anna};
 
@@ -153,6 +155,15 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             Err(error) => (false, serde_json::json!({"error":error})),
         }),
         "pentestStatus" => fora_da_ui(window, &req, |w| (true, pentest::status(w))),
+        "pentestLive" => fora_da_ui(window, &req, move |w| match pentest::live(w, &v, "status") {
+            Ok(data) => (true, data), Err(e) => (false, serde_json::json!(e)),
+        }),
+        "pausePentest" => fora_da_ui(window, &req, move |w| match pentest::live(w, &v, "pause") {
+            Ok(data) => (true, data), Err(e) => (false, serde_json::json!(e)),
+        }),
+        "continuePentest" => fora_da_ui(window, &req, move |w| match pentest::live(w, &v, "resume") {
+            Ok(data) => (true, data), Err(e) => (false, serde_json::json!(e)),
+        }),
         "reviewPentest" => fora_da_ui(window, &req, |w| match pentest::review(w) {
             Ok(data) => (true, data),
             Err(e) => (false, serde_json::json!(e)),
@@ -629,7 +640,7 @@ mod tests_fora_da_ui {
         for acao in [
             "gitStatus", "listTree", "gitDiff", "readFile", "codexModels", "claudeAuthStatus",
             "claudeAuthLoginStart", "claudeModels", "claudeRunnerInstall", "claudeAccountsDetect",
-            "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "stopPentest", "resumePentest", "reviewPentest", "retestPentest",
+            "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "stopPentest", "resumePentest", "reviewPentest", "retestPentest", "pentestLive", "pausePentest", "continuePentest",
         ] {
             let chave = format!("\"{acao}\" =>");
             let a = corpo.find(&chave).unwrap_or_else(|| panic!("{acao}: arm not found"));

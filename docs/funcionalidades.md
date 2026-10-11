@@ -4,6 +4,31 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 [`.continue/estado-atual.md`](../.continue/estado-atual.md); decisões em
 [decisoes.md](decisoes.md); como buildar em [build.md](build.md).)
 
+## Private assessment report synchronization (1.22.0)
+
+Fresh native consent explicitly covers report narrative, findings, evidence and
+code. The private outbox uploads stopped reports only after metadata receipts and
+retries identical request bytes until a bound report receipt arrives. Existing
+metadata-only outboxes remain metadata-only. Report generation and downloads run
+on WEB; uploaded does not mean generated. Strix 1.2.27+ is required.
+
+## Durable assessment history (1.21.0)
+
+Unix assessments can synchronize bounded native metadata to their original HTTPS
+server after explicit native consent. Private outgoing snapshots survive restart;
+receipts bind scan, revision and request bytes before data is acknowledged. Strix
+1.2.26 exports stopped/crashed accounting without changing evidence. Partial and
+unknown states remain visible; no raw evidence or target/model credentials upload.
+See [the authorization contract](PENTEST/authorization.md).
+
+## Cooperative assessment control (1.20.0)
+
+The owning Unix window can read bounded live telemetry, request operator pause
+and acknowledge one operator/test pause with fresh native consent. Private Unix
+IPC binds the known Strix child and launch generation; tokens, socket paths and
+raw output never reach the page. Budget and other pause reasons remain unchanged.
+Requires Strix 1.2.25+. See [the control contract](PENTEST/authorization.md#cooperative-native-control-1200).
+
 ## Restart recovery (1.18.0)
 
 The latest controlled Unix assessment can be restored from a private durable
@@ -332,7 +357,7 @@ are compiled by CI and not yet run. A request the agent has stopped waiting for 
 180 s) is refused when the person finally answers (`expirou`), so nothing is captured or read for nothing. The agent's side (a tool on the server that asks the page and
 waits) is SHVIA-WEB's; until it ships, nothing calls these commands.
 
-**1.19.0 — the agent's own browser on this machine.** A second tray switch, "Navegador do agente nesta máquina",
+**1.23.0 — the agent's own browser on this machine.** A second tray switch, "Navegador do agente nesta máquina",
 lets the agent open a window of its own (with its own profile, where the person signs in by hand), read it, and click
 or type in it. The person allows each **site** once and each **click and typed text** every time, in a native dialog
 that quotes the agent's reason as the agent's; a password or token field is never typed into. The window cannot call
