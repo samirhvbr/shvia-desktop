@@ -4,7 +4,7 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 [`.continue/estado-atual.md`](../.continue/estado-atual.md); decisões em
 [decisoes.md](decisoes.md); como buildar em [build.md](build.md).)
 
-## Local assessment viewer (1.26.0)
+## Local assessment viewer (1.26.1)
 
 `openPentestViewer()` asks native consent before requesting the selected local
 run in a separate OS browser. The server binds to loopback only, one child is

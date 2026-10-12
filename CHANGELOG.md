@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.26.1 - Keep viewer shutdown available during native consent
+
+Release the viewer lifecycle lock before opening the native consent dialog. Window destruction can close its viewer without waiting for that dialog, and application exit is published before acquiring the close lock. Recheck native run ownership before spawning after consent.
+
 ## 1.26.0 - Open the native assessment viewer through explicit local consent
 
 - Add `openPentestViewer()` for the owning trusted HTTPS window. The native
