@@ -1,5 +1,6 @@
 # Documentação — ShvIA Desktop
 
+- [Controlled assessment compatibility](pentest-compatibility.md): installed runtime preflight and supported version pairs.
 - [Native controlled assessments](PENTEST/authorization.md): consent, private authorization handoff and local process supervision.
 
 Índice da documentação técnica **estável** do projeto. Trabalho em andamento

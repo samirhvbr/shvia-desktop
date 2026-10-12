@@ -4,6 +4,14 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 [`.continue/estado-atual.md`](../.continue/estado-atual.md); decisões em
 [decisoes.md](decisoes.md); como buildar em [build.md](build.md).)
 
+## Assessment runtime compatibility (1.25.0)
+
+The native bridge reports the installed Strix version and refuses unsupported
+runtime/platform pairs before consent. Start, resume and retest repeat the check,
+and the approval names the installed version. Supported baseline: Linux/macOS,
+Desktop 1.25.x within 1.x and Strix 1.2.29 or later within 1.x. See
+[the compatibility contract](pentest-compatibility.md).
+
 ## Private assessment report synchronization (1.22.0)
 
 Fresh native consent explicitly covers report narrative, findings, evidence and
