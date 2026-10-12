@@ -1,5 +1,6 @@
 # Documentação — ShvIA Desktop
 
+- [Local assessment viewer](pentest-viewer.md): separate OS browser, native consent and private session boundary.
 - [Controlled assessment compatibility](pentest-compatibility.md): installed runtime preflight and supported version pairs.
 - [Native controlled assessments](PENTEST/authorization.md): consent, private authorization handoff and local process supervision.
 

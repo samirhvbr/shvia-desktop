@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.26.0 - Open the native assessment viewer through explicit local consent
+
+- Add `openPentestViewer()` for the owning trusted HTTPS window. The native
+  application selects its run, checks ownership/runtime and asks before opening
+  Strix's viewer separately in the operating system browser.
+- Bind only to 127.0.0.1 on an ephemeral port. No WEB session, run path, viewer
+  session URL or token reaches the browser bridge. Never embed or proxy the viewer.
+  Its capability URL remains local to the OS browser; raw stdout/stderr is dropped.
+- Retain one viewer process, refuse duplicate launches and stop/reap it when the
+  owner window or app closes. The response records a request, not proof of a GUI
+  launch. Command/real-child lifecycle regressions cover the native boundary.
+
 ## 1.25.0 - Verify the installed assessment runtime before native consent
 
 - Add the authenticated `pentestCompatibility()` bridge action, reporting native

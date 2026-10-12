@@ -4,6 +4,13 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 [`.continue/estado-atual.md`](../.continue/estado-atual.md); decisões em
 [decisoes.md](decisoes.md); como buildar em [build.md](build.md).)
 
+## Local assessment viewer (1.26.0)
+
+`openPentestViewer()` asks native consent before requesting the selected local
+run in a separate OS browser. The server binds to loopback only, one child is
+retained, and owner-window/app closure stops it. The WEB page receives no path
+or viewer session capability. See [the viewer boundary](pentest-viewer.md).
+
 ## Assessment runtime compatibility (1.25.0)
 
 The native bridge reports the installed Strix version and refuses unsupported
