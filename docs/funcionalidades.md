@@ -357,6 +357,13 @@ are compiled by CI and not yet run. A request the agent has stopped waiting for 
 180 s) is refused when the person finally answers (`expirou`), so nothing is captured or read for nothing. The agent's side (a tool on the server that asks the page and
 waits) is SHVIA-WEB's; until it ships, nothing calls these commands.
 
+**1.24.0 — the assessment consent names the model and who pays.** When the web authorization approves a model, the
+native dialog for starting, resuming and retesting shows it as `Modelo: provider/model` with the payer: the person,
+using the credentials on this computer (marked "not verified" when the installed Strix could not check). The app
+refuses before asking if the machine has no credentials for that model, if the source is not `local`, or if the name
+is not a plain `provider/model`. Without an approved model the line says the one configured locally in Strix. The
+model itself is pinned by the Strix process, not by the app: the app passes no model and no key.
+
 **1.23.0 — the agent's own browser on this machine.** A second tray switch, "Navegador do agente nesta máquina",
 lets the agent open a window of its own (with its own profile, where the person signs in by hand), read it, and click
 or type in it. The person allows each **site** once and each **click and typed text** every time, in a native dialog

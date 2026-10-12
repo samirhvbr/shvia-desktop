@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.24.0 - The consent for an assessment names the model and who pays for it
+
+- Show the approved model in the native consent for starting, resuming and retesting an assessment, with the
+  payer spelled out: the person, with the credentials on this computer. The installed Strix reports whether it
+  can pay for that model (`available`, `unknown`), and the dialog says "not verified" for the second.
+- Refuse before asking when the machine has no credentials for the approved model, when the source is one this
+  build does not know (a later gateway source), or when the model name is not a plain `provider/model`. A person
+  is never asked to approve something the run would not do.
+- Keep the old wording when the authorization approves no model: "the one configured locally in Strix". Nothing
+  changes for servers that do not send the block.
+- The Strix side is 1.2.29; this build needs it only to see the line, and an older Strix simply sends none.
+
 ## 1.23.0 - The agent gets a browser of its own on this machine, and every step in it is the person's to allow
 
 - Add `browser.open`, `.read`, `.click`, `.type` and `.close` to the device commands, behind a second tray
