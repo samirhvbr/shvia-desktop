@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.26.1 - The Strix version check compares the fork build it was written to compare
+
+- Ask `strix --fork-version` instead of `strix --version`. The old flag prints the upstream package version
+  (`strix 1.7.0` on every fork build), which sits inside the `1.2.29 <= v < 2.0.0` range the 1.25.0 gate used,
+  so the gate accepted every build, including ones that predate the controlled profile. Measured against the
+  real wrapper on the development machine before changing it. The fixtures had been written in the shape the
+  check expected, not the shape the binary prints, which is why nothing failed.
+- Raise the minimum to Strix 1.2.30, the first build that answers the flag. A Strix that does not know it, prints
+  anything but `X.Y.Z`, or exits with an error is refused as too old; the old `strix X.Y.Z` shape is refused too.
+- Start the two refusals with stable codes (`E_STRIX_TOO_OLD`, `E_STRIX_VERSION_UNKNOWN`) that the WEB page
+  translates into its own text. Add the codes `E_MODEL_CREDENTIALS_MISSING` and `E_INFERENCE_SOURCE_UNSUPPORTED`
+  to the 1.24.0 model refusals, which had none.
+- A fake Strix that answers the fork build only to `--fork-version` fails the test when the flag is reverted
+  (checked by reverting it).
+
 ## 1.26.0 - Open the native assessment viewer through explicit local consent
 
 - Add `openPentestViewer()` for the owning trusted HTTPS window. The native

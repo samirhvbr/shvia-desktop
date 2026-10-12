@@ -16,7 +16,8 @@ or viewer session capability. See [the viewer boundary](pentest-viewer.md).
 The native bridge reports the installed Strix version and refuses unsupported
 runtime/platform pairs before consent. Start, resume and retest repeat the check,
 and the approval names the installed version. Supported baseline: Linux/macOS,
-Desktop 1.25.x within 1.x and Strix 1.2.29 or later within 1.x. See
+Desktop 1.25.x within 1.x and Strix 1.2.30 or later within 1.x (1.26.1 fixed the probe, which
+in 1.25.0 read the upstream version and so accepted any build). See
 [the compatibility contract](pentest-compatibility.md).
 
 ## Private assessment report synchronization (1.22.0)
