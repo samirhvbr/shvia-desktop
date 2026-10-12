@@ -61,6 +61,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // sessão do agente
     startPentest: function (o) { return post('startPentest', o || {}); },
     pentestStatus: function () { return post('pentestStatus'); },
+    pentestCompatibility: function () { return post('pentestCompatibility'); },
     pentestLive: function () { return post('pentestLive'); },
     pausePentest: function (localId) { return post('pausePentest', { localId: localId }); },
     continuePentest: function (o) { return post('continuePentest', o || {}); },

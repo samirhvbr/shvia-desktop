@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.25.0 - Verify the installed assessment runtime before native consent
+
+- Add the authenticated `pentestCompatibility()` bridge action, reporting native
+  app/runtime versions and platform. Require Strix 1.2.29 or later in the 1.x
+  series; missing, malformed, prerelease and unreviewed major versions fail
+  closed. Controlled execution remains limited to Linux/macOS.
+- Starting, resuming and retesting repeat the runtime check before consent.
+  The installed version is shown in the native approval, and WEB can refuse
+  an incompatible pair before issuing a new grant. No target/provider call is
+  made by the version probe, and runtime output is never forwarded as an error.
+- Parser and actual subprocess fixtures cover supported/refused versions and
+  nonzero process status. Installed-app acceptance remains separately gated.
+
 ## 1.24.0 - The consent for an assessment names the model and who pays for it
 
 - Show the approved model in the native consent for starting, resuming and retesting an assessment, with the
