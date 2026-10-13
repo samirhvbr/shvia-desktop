@@ -63,7 +63,7 @@ libc = "0.2"
 socket2 = "0.6"
 # Native-only history upload and content acknowledgments; already in the lockfile.
 reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "rustls-no-provider"] }
-sha2 = "0.10"
+sha2 = "0.11"
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 # Persiste tamanho/posição das janelas entre reinícios (F2). É **DESKTOP-only** —
