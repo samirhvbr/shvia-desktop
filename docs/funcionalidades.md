@@ -4,6 +4,15 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 [`.continue/estado-atual.md`](../.continue/estado-atual.md); decisões em
 [decisoes.md](decisoes.md); como buildar em [build.md](build.md).)
 
+## Account plan limits for the Usage tab (1.27.0)
+
+`claudeUsage({accountId})` and `codexUsage()` (`recursos.uso`) give ShvIA Web's Usage
+tab the plan limits of each Claude profile and of the Codex account, read by the
+engine's own client through `claude-runner --uso` and `codex-runner --uso`, always
+as percent used. A credential-only profile reads with a configuration home of its
+own in the app's cache, because the client's usage cache is otherwise shared between
+accounts. See [the usage contract](code/USO-DAS-CONTAS.md).
+
 ## Local assessment viewer (1.26.1)
 
 `openPentestViewer()` asks native consent before requesting the selected local

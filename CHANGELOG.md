@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.27.0 - The state documents record the account usage read
+
+- `docs/funcionalidades.md` gains the 1.27.0 entry (each account's plan limits for the Usage tab) and
+  `.continue/estado-atual.md` is dated 13/10/2026 at 1.27.0. The freshness proof (F-22) refused the branch while
+  both still said 1.26.2.
+
 ## 1.27.0 - The bridge serves claudeUsage and codexUsage, with a usage home of its own per credential-only profile
 
 - New bridge methods for ShvIA Web's Usage tab, offered under `recursos.uso`: `claudeUsage({accountId})` runs
