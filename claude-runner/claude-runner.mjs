@@ -149,6 +149,35 @@ if (process.argv.includes("--modelos")) {
   process.exit();
 }
 
+/**
+ * `--uso`: the plan limits of the account this runner was started under (the desktop sets the
+ * profile's variables), as `{type:'uso', plano, janelas}`, and exit. Feeds the Usage tab.
+ *
+ * A control request like `--modelos`: no turn, no tokens. `persistSession: false` keeps the read out
+ * of the session list. The client caches this answer in its configuration home, so a profile that
+ * moves only the credential key (`CLAUDE_SECURESTORAGE_CONFIG_DIR`) must also get a home of its own
+ * from the desktop — measured 13/10/2026: without it the second account got the first one's numbers.
+ */
+if (process.argv.includes("--uso")) {
+  const { metodoDeUso, normalizarUso } = await import("./uso.mjs");
+  const q = query({ prompt: "", options: { cwd: PROJECT_DIR, settingSources: [], persistSession: false } });
+  try {
+    const metodo = metodoDeUso(q);
+    if (!metodo) {
+      emit({ type: "erro", codigo: "uso_indisponivel", message: "esta versão do Claude Code não lê o uso do plano" });
+      process.exitCode = 2;
+    } else {
+      emit(normalizarUso(await q[metodo]({ skipBehaviors: true })));
+    }
+  } catch (e) {
+    emit({ type: "erro", message: `não consegui ler o uso do plano: ${e?.message ?? e}` });
+    process.exitCode = 2;
+  } finally {
+    await q.interrupt?.().catch(() => {});
+  }
+  process.exit();
+}
+
 // ------------------------------------------------- gates pendentes (tool_use_id → resolve)
 const pendingGates = new Map();
 

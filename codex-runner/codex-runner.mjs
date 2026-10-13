@@ -104,6 +104,13 @@ const catalogueTimeout = listModels ? setTimeout(() => {
   emit({ erro: "Tempo esgotado ao consultar modelos do Codex." });
   encerrar(1);
 }, 20000) : null;
+// `--uso`: the account's plan limits for the Usage tab (see `uso.mjs`), then exit. Like the
+// catalogue, a control request: no thread, no turn, no sandbox probe.
+const lerUso = process.argv.includes("--uso");
+const usoTimeout = lerUso ? setTimeout(() => {
+  emit({ erro: "Tempo esgotado ao ler o uso do Codex." });
+  encerrar(1);
+}, 20000) : null;
 // `--aprovacao` is accepted and IGNORED, on purpose: the bridge passes it to every
 // engine, and refusing to start over a flag that cannot change anything would break
 // the spawn for no gain. The engine has one policy; see POLITICA for why.
@@ -131,7 +138,7 @@ child.on("error", (e) => {
   const mensagem = `codex não encontrado no PATH (${e.code ?? e.message}).`;
   // In `--modelos` mode the only line the desktop reads is `modelos` or `erro`: a `type: "error"`
   // line was dropped and the person saw "Atualize o codex-runner" for a runner that was current.
-  emit(listModels ? { erro: mensagem } : { type: "error", message: mensagem });
+  emit(listModels || lerUso ? { erro: mensagem } : { type: "error", message: mensagem });
   process.exit(1);
 });
 
@@ -210,7 +217,7 @@ let encerrando = false;
 child.on("exit", (code, signal) => {
   if (encerrando) return;
   const mensagem = `o app-server do Codex encerrou sem aviso (${signal ?? `código ${code}`}).`;
-  emit(listModels ? { erro: mensagem } : { type: "error", message: mensagem });
+  emit(listModels || lerUso ? { erro: mensagem } : { type: "error", message: mensagem });
   if (fimDoTurno) emit({ type: "turn_done" });
   encerrar(1);
 });
@@ -438,6 +445,24 @@ if (listModels) {
   } catch (e) {
     emit({ erro: e.message });
     encerrar(1);
+  }
+}
+
+if (lerUso) {
+  const { normalizarUso } = await import("./uso.mjs");
+  // Quiet: a refusal comes back as `{erro}` for the line below to name, not as a timeline error.
+  // No params: the vendored schema predates them, and every version accepts the bare request.
+  const r = await pedir("account/rateLimits/read", null, { silencioso: true });
+  clearTimeout(usoTimeout);
+  if (!r || r.erro) {
+    // -32601 is JSON-RPC's "method not found": a Codex older than the usage read.
+    const semMetodo = r?.erro?.code === -32601;
+    emit({ erro: semMetodo ? "esta versão do Codex não lê o uso do plano" : String(r?.erro?.message ?? "o Codex não respondeu à leitura de uso"),
+      codigo: semMetodo ? "uso_indisponivel" : "uso_falhou" });
+    encerrar(1);
+  } else {
+    emit(normalizarUso(r));
+    encerrar(0);
   }
 }
 

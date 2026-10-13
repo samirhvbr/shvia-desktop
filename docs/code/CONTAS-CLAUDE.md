@@ -156,6 +156,13 @@ escolheu — e sob assinatura isso gasta a cota da conta errada.
 
 ---
 
+## The plan limits of each account (1.27.0)
+
+The Usage tab reads each account's plan limits through the same profile resolution
+(`claudeUsage({accountId})`). A credential-only profile gets a configuration home of its own for
+that read, in the app's cache, because the client's usage cache otherwise answers every such profile
+with the last account's numbers — measured, and written up in [USO-DAS-CONTAS.md](USO-DAS-CONTAS.md).
+
 ## O "Conectar meu CLI" segue o perfil também
 
 `cli_config.rs` ([ADR-026](../decisoes.md#adr-026)) grava as três variáveis `ANTHROPIC_*`

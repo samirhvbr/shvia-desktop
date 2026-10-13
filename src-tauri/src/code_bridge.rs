@@ -270,6 +270,31 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             let out = codex_models();
             (out.get("modelos").is_some(), out)
         }),
+        /* The Usage tab (1.27.0): the plan limits of an account, read by the engine's own client.
+         *
+         * `claudeUsage` resolves the account the same way `claudeModels` does — an unknown ID or a
+         * vanished directory spawns nothing — and gives a credential-only profile a configuration
+         * home of its own in the app's cache (`casa_para_uso`), because the client's usage cache
+         * lives in that home and is otherwise shared between accounts. */
+        "claudeUsage" => {
+            let id = v.get("accountId").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+            fora_da_ui(window, &req, move |w| {
+                let (contas, _) = crate::contas_claude::registro(w.app_handle());
+                match crate::contas_claude::resolver(&contas, &id) {
+                    Ok(alvo) => {
+                        let cache = w.app_handle().path().app_cache_dir().ok();
+                        let casa = cache.as_deref().and_then(|c| crate::contas_claude::casa_para_uso(alvo.as_ref(), &id, c));
+                        let out = claude_usage(alvo.as_ref(), casa.as_deref());
+                        (out.get("erro").is_none(), out)
+                    }
+                    Err(e) => (false, serde_json::json!({ "erro": e.mensagem(), "codigo": e.codigo() })),
+                }
+            });
+        }
+        "codexUsage" => fora_da_ui(window, &req, |_| {
+            let out = codex_usage();
+            (out.get("erro").is_none(), out)
+        }),
         /* Portão 2: o login, conduzido pela tela (1.5.17).
          *
          * `claudeAuthStatus` é leitura pura e sem cota — o `claude auth status --json` é
@@ -646,7 +671,7 @@ mod tests_fora_da_ui {
         let corpo = &fonte[ini..];
         let despacho = ["fora_da", "_ui("].concat();
         for acao in [
-            "gitStatus", "listTree", "gitDiff", "readFile", "codexModels", "claudeAuthStatus",
+            "gitStatus", "listTree", "gitDiff", "readFile", "codexModels", "claudeAuthStatus", "claudeUsage", "codexUsage",
             "claudeAuthLoginStart", "claudeModels", "claudeRunnerInstall", "claudeAccountsDetect",
             "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "openPentestViewer", "pentestCompatibility", "stopPentest", "resumePentest", "reviewPentest", "retestPentest", "pentestLive", "pausePentest", "continuePentest",
         ] {

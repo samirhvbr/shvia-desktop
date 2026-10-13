@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.27.0 - The state documents record the account usage read
+
+- `docs/funcionalidades.md` gains the 1.27.0 entry (each account's plan limits for the Usage tab) and
+  `.continue/estado-atual.md` is dated 13/10/2026 at 1.27.0. The freshness proof (F-22) refused the branch while
+  both still said 1.26.2.
+
+## 1.27.0 - The bridge serves claudeUsage and codexUsage, with a usage home of its own per credential-only profile
+
+- New bridge methods for ShvIA Web's Usage tab, offered under `recursos.uso`: `claudeUsage({accountId})` runs
+  `claude-runner --uso` under the account's profile, resolved like `claudeModels` (an unknown ID or a vanished
+  directory spawns nothing); `codexUsage()` runs `codex-runner --uso`. Both answer `{type:'uso', plano, janelas}` or
+  `{erro, codigo}` in one shape, and an installed runner from before `--uso` is `runner_sem_uso`, never a reading
+  of zero. Both run off the UI thread, pinned by `bracos_lentos_saem_da_thread_da_interface`.
+- 🔴 A profile on `CLAUDE_SECURESTORAGE_CONFIG_DIR` moves only the credential key, and the Claude Code client
+  caches the limits in the configuration home every such profile shares (`cachedUsageUtilization` in
+  `.claude.json`). Measured on 13/10/2026: read one after the other, `claude-b3` answered with `claude-me`'s
+  numbers to the microsecond. Its read now runs with `CLAUDE_CONFIG_DIR` set to a home of its own in the app's
+  cache (`<cache>/uso-claude/<id>`, `contas_claude::casa_para_uso`), and the two accounts read 4%/6% and 65%/76%.
+  The home is never the profile's directory: a first trial pointed it there and the client wrote a whole
+  configuration home into the person's folder; that folder was restored from its backup.
+- `docs/code/USO-DAS-CONTAS.md` documents the contract, the two sources and the cache; `CONTAS-CLAUDE.md` links it.
+
+## 1.27.0 - Both runners read their account's plan limits with --uso
+
+- `claude-runner --uso` asks the Agent SDK's `/usage` reader, with `skipBehaviors`, for the plan limits of the
+  account it was started under, and prints `{type:'uso', plano, janelas}`. A control request like `--modelos`: no
+  turn, no tokens, and `persistSession: false` keeps it out of the session list. The reader is experimental and
+  its name says it will change, so `uso.mjs` finds it by presence; without one the runner answers
+  `uso_indisponivel`. Only documented fields are read (five hours, weekly, the server's per-model windows such as
+  "Fable", extra usage when on); the code-named buckets the answer also carries never leave the runner.
+- `codex-runner --uso` asks the app-server `account/rateLimits/read` and prints the same shape. Each window is named
+  by its LENGTH, never by its slot: measured on a `prolite` plan, `primary` was the weekly window and `secondary`
+  was null, so "primary = five hours" would have labelled a weekly number wrong.
+- Every window is percent USED (`utilization`, `usedPercent`), the way both sources give it.
+- `uso.mjs` rides in `install.sh`, `install.ps1` and the bundle for both runners; `uso.test.mjs` for each joins
+  `prova:politica`, on the answers two Claude accounts and one Codex account gave on 13/10/2026.
+
+## 1.27.0 - The installer proof also reads dynamic imports
+
+- `scripts/prova-instalador-copia-os-imports.mjs` follows `import("./x.mjs")` as well as `import … from
+  "./x.mjs"`. The runners load modules with `await import()` (the SDK already, and `uso.mjs` from the next
+  commit on), and a module loaded that way was invisible to the ruler: it could be left out of `install.sh`,
+  `install.ps1` or the bundled resources and the proof stayed green. Checked by making it fail first: with the
+  next commit's `uso.mjs` and the old installers it now names the file on both lists.
+
 ## 1.26.2 - The Strix version check compares the fork build it was written to compare
 
 - Ask `strix --fork-version` instead of `strix --version`. The old flag prints the upstream package version
