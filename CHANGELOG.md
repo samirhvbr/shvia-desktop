@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.27.0 - The installer proof also reads dynamic imports
+
+- `scripts/prova-instalador-copia-os-imports.mjs` follows `import("./x.mjs")` as well as `import … from
+  "./x.mjs"`. The runners load modules with `await import()` (the SDK already, and `uso.mjs` from the next
+  commit on), and a module loaded that way was invisible to the ruler: it could be left out of `install.sh`,
+  `install.ps1` or the bundled resources and the proof stayed green. Checked by making it fail first: with the
+  next commit's `uso.mjs` and the old installers it now names the file on both lists.
+
 ## 1.26.2 - The Strix version check compares the fork build it was written to compare
 
 - Ask `strix --fork-version` instead of `strix --version`. The old flag prints the upstream package version

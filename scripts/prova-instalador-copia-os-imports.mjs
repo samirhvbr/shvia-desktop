@@ -56,7 +56,10 @@ for (const runner of RUNNERS) {
     vistos.add(arq);
     let txt;
     try { txt = readFileSync(arq, 'utf8'); } catch { continue; }
-    for (const m of txt.matchAll(/from\s+["']\.\/([A-Za-z0-9_.-]+\.mjs)["']/g)) {
+    /* `import("./x.mjs")` counts as much as `import … from "./x.mjs"`: the runner loads the SDK
+     * and `uso.mjs` dynamically, and until 1.27.0 this ruler only read the static form, so a
+     * module loaded with `await import()` could be left out of the installers with it green. */
+    for (const m of txt.matchAll(/(?:from\s+|import\s*\(\s*)["']\.\/([A-Za-z0-9_.-]+\.mjs)["']/g)) {
       const nome = m[1];
       if (nome.endsWith('.test.mjs')) continue;
       precisa.add(nome);
