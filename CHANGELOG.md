@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.27.0 - Both runners read their account's plan limits with --uso
+
+- `claude-runner --uso` asks the Agent SDK's `/usage` reader, with `skipBehaviors`, for the plan limits of the
+  account it was started under, and prints `{type:'uso', plano, janelas}`. A control request like `--modelos`: no
+  turn, no tokens, and `persistSession: false` keeps it out of the session list. The reader is experimental and
+  its name says it will change, so `uso.mjs` finds it by presence; without one the runner answers
+  `uso_indisponivel`. Only documented fields are read (five hours, weekly, the server's per-model windows such as
+  "Fable", extra usage when on); the code-named buckets the answer also carries never leave the runner.
+- `codex-runner --uso` asks the app-server `account/rateLimits/read` and prints the same shape. Each window is named
+  by its LENGTH, never by its slot: measured on a `prolite` plan, `primary` was the weekly window and `secondary`
+  was null, so "primary = five hours" would have labelled a weekly number wrong.
+- Every window is percent USED (`utilization`, `usedPercent`), the way both sources give it.
+- `uso.mjs` rides in `install.sh`, `install.ps1` and the bundle for both runners; `uso.test.mjs` for each joins
+  `prova:politica`, on the answers two Claude accounts and one Codex account gave on 13/10/2026.
+
 ## 1.27.0 - The installer proof also reads dynamic imports
 
 - `scripts/prova-instalador-copia-os-imports.mjs` follows `import("./x.mjs")` as well as `import … from
