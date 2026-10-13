@@ -131,6 +131,15 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // diferentes, e uma lista carregada sob outra conta é um alvo que o turno vai recusar.
     codexModels: function () { return post('codexModels', {}); },
     claudeModels: function (o) { return post('claudeModels', o || {}); },
+    // The Usage tab (recursos.uso, 1.27.0): an account's plan limits, read by the engine's own client.
+    // → {type:'uso', plano, janelas:[{chave, nome, minutos, usado, renova}], semJanelas?} | {erro, codigo}
+    //   chave: 'cinco_horas' | 'semanal' | 'semanal_modelo' (nome = the server's label, e.g. 'Fable')
+    //          | 'credito_extra' | 'janela' (minutos = its length); usado = PERCENT USED, 0-100 or null
+    //   codigo: 'uso_indisponivel' (this engine version cannot read it) | 'runner_sem_uso' (an old
+    //           runner ignored the flag) | 'uso_falhou' — and an absent engine's own codes.
+    // {accountId} picks the Claude profile, like claudeModels. No tokens: a control request.
+    claudeUsage: function (o) { return post('claudeUsage', o || {}); },
+    codexUsage: function () { return post('codexUsage', {}); },
     // Perfis de conta do Claude Code desta máquina (ADR-033).
     // → {contas:[{id,rotulo,disponivel,motivo}], selecionada}
     //
@@ -251,7 +260,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
     //           are on: that is the tray switch, which `aparelhoStatus().ligado` reads and
     //           nothing on the page can change. Without the flag the page offers the agent no
     //           device tool at all.
-    recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true, plano: true, orientar: true, aparelho: true },
+    recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true, plano: true, orientar: true, aparelho: true, uso: true },
     // chamados pelo Rust (eval):
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
     _emit: function (evt, sessao, seq) { if (evt && typeof evt === 'object') { if (sessao) evt.sessao = sessao; if (seq) evt.seq = seq; } for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }

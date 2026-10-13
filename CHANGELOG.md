@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.27.0 - The bridge serves claudeUsage and codexUsage, with a usage home of its own per credential-only profile
+
+- New bridge methods for ShvIA Web's Usage tab, offered under `recursos.uso`: `claudeUsage({accountId})` runs
+  `claude-runner --uso` under the account's profile, resolved like `claudeModels` (an unknown ID or a vanished
+  directory spawns nothing); `codexUsage()` runs `codex-runner --uso`. Both answer `{type:'uso', plano, janelas}` or
+  `{erro, codigo}` in one shape, and an installed runner from before `--uso` is `runner_sem_uso`, never a reading
+  of zero. Both run off the UI thread, pinned by `bracos_lentos_saem_da_thread_da_interface`.
+- 🔴 A profile on `CLAUDE_SECURESTORAGE_CONFIG_DIR` moves only the credential key, and the Claude Code client
+  caches the limits in the configuration home every such profile shares (`cachedUsageUtilization` in
+  `.claude.json`). Measured on 13/10/2026: read one after the other, `claude-b3` answered with `claude-me`'s
+  numbers to the microsecond. Its read now runs with `CLAUDE_CONFIG_DIR` set to a home of its own in the app's
+  cache (`<cache>/uso-claude/<id>`, `contas_claude::casa_para_uso`), and the two accounts read 4%/6% and 65%/76%.
+  The home is never the profile's directory: a first trial pointed it there and the client wrote a whole
+  configuration home into the person's folder; that folder was restored from its backup.
+- `docs/code/USO-DAS-CONTAS.md` documents the contract, the two sources and the cache; `CONTAS-CLAUDE.md` links it.
+
 ## 1.27.0 - Both runners read their account's plan limits with --uso
 
 - `claude-runner --uso` asks the Agent SDK's `/usage` reader, with `skipBehaviors`, for the plan limits of the

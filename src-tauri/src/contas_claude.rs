@@ -295,6 +295,32 @@ pub fn aplicar(cmd: &mut std::process::Command, alvo: Option<&Alvo>) {
     }
 }
 
+/// Where the Usage tab's read of a profile keeps the client's configuration home (1.27.0).
+///
+/// 🔴 The Claude Code client caches the plan limits in its configuration home
+/// (`cachedUsageUtilization` in `.claude.json`). A [`Var::SecureStorage`] profile moves only the
+/// credential key, so every such profile shares that home — and, measured on 13/10/2026, the second
+/// account read answered with the FIRST one's numbers, to the microsecond. The read therefore runs
+/// with a home of its own, here in the app's cache, and never in the profile's directory, which
+/// belongs to the person. A [`Var::ConfigDir`] profile already has its own home, and the default
+/// account has no other: both return `None`.
+pub fn casa_para_uso(alvo: Option<&Alvo>, id: &str, cache: &Path) -> Option<PathBuf> {
+    let a = alvo?;
+    if a.var != Var::SecureStorage {
+        return None;
+    }
+    // The ID comes from the registry, but it becomes a path component: nothing but [A-Za-z0-9_-].
+    let seguro: String = id
+        .trim()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    if seguro.is_empty() {
+        return None;
+    }
+    Some(cache.join("uso-claude").join(seguro))
+}
+
 // ── descoberta: perguntar ao shell, nunca ler o `.zshrc` ─────────────────────────
 
 /// A profile the shell knows about and the registry does not yet.
@@ -636,6 +662,18 @@ pub fn como_json(app: &AppHandle) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_leitura_de_uso_so_isola_o_perfil_que_divide_a_casa() {
+        let cache = Path::new("/cache");
+        let so_chave = Alvo { var: Var::SecureStorage, dir: PathBuf::from("/home/p/.claude-cred-b3") };
+        let casa_inteira = Alvo { var: Var::ConfigDir, dir: PathBuf::from("/home/p/.claude-b3") };
+        assert_eq!(casa_para_uso(Some(&so_chave), "claude-b3", cache), Some(PathBuf::from("/cache/uso-claude/claude-b3")));
+        assert_eq!(casa_para_uso(Some(&casa_inteira), "claude-b3", cache), None);
+        assert_eq!(casa_para_uso(None, "", cache), None);
+        // Never inside the profile's own directory, and never a path the ID could steer.
+        assert_eq!(casa_para_uso(Some(&so_chave), "../../etc", cache), Some(PathBuf::from("/cache/uso-claude/______etc")));
+    }
 
     // Used by the Unix-only tests below, whose fixture paths are POSIX (`/home/dev`) and so not
     // absolute on Windows: `dir_valido` rightly refuses them there.

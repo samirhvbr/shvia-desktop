@@ -50,6 +50,78 @@ pub(super) fn claude_models(conta: Option<&crate::contas_claude::Alvo>) -> serde
     }
 }
 
+/// Plan limits of a Claude account for the Usage tab (1.27.0): `claude-runner --uso`, under the same
+/// profile resolution as `claude_models` and `spawn`.
+///
+/// `casa` is the configuration home the read runs with, from `contas_claude::casa_para_uso`: a
+/// profile that moves only the credential key shares the client's usage cache with every other such
+/// profile, and without a home of its own the second account reads the first one's numbers
+/// (measured 13/10/2026). The read is a control request: no turn, no tokens.
+pub(super) fn claude_usage(conta: Option<&crate::contas_claude::Alvo>, casa: Option<&std::path::Path>) -> serde_json::Value {
+    super::atualizacao::esperar_instalacao("claude-runner");
+    let Some(lancamento) = resolve_runner("claude-runner") else {
+        return serde_json::json!({ "erro": erro_runner_ausente(), "codigo": COD_RUNNER_AUSENTE });
+    };
+    let mut cmd = lancamento.comando();
+    cmd.arg("--uso");
+    if let Some(p) = crate::user_env::sidecar_path() {
+        cmd.env("PATH", p);
+    }
+    crate::contas_claude::aplicar(&mut cmd, conta);
+    if let Some(c) = casa {
+        if let Err(e) = std::fs::create_dir_all(c) {
+            return serde_json::json!({ "erro": format!("não consegui preparar a leitura de uso: {e}"), "codigo": "uso_falhou" });
+        }
+        cmd.env("CLAUDE_CONFIG_DIR", c);
+    }
+    match saida_com_prazo(cmd, PRAZO_CATALOGO) {
+        Ok(o) => resposta_de_uso(&String::from_utf8_lossy(&o.stdout)),
+        Err(e) => serde_json::json!({ "erro": format!("falha ao ler o uso: {e}"), "codigo": "uso_falhou" }),
+    }
+}
+
+/// Plan limits of the Codex account for the Usage tab (1.27.0): `codex-runner --uso`.
+pub(super) fn codex_usage() -> serde_json::Value {
+    super::atualizacao::esperar_instalacao("codex-runner");
+    let Some(lancamento) = resolve_runner("codex-runner") else {
+        return serde_json::json!({ "erro": erro_codex_ausente(), "codigo": COD_CODEX_AUSENTE });
+    };
+    let mut cmd = lancamento.comando();
+    cmd.arg("--uso");
+    if let Some(p) = crate::user_env::sidecar_path() {
+        cmd.env("PATH", p);
+    }
+    match saida_com_prazo(cmd, PRAZO_CATALOGO) {
+        Ok(o) => resposta_de_uso(&String::from_utf8_lossy(&o.stdout)),
+        Err(e) => serde_json::json!({ "erro": format!("falha ao ler o uso do Codex: {e}"), "codigo": "uso_falhou" }),
+    }
+}
+
+/// The one answer the page reads from a runner's `--uso`: the `{type:"uso"}` line as it came, or an
+/// error in one shape (`{erro, codigo}`) whichever runner wrote it — the Claude runner says
+/// `{type:"erro", message}`, the Codex one `{erro}`.
+///
+/// No `uso` line and no error is an installed runner from BEFORE `--uso`: it ignored the flag. That is
+/// `runner_sem_uso` — "update the engine" — and never a reading of zero.
+pub(super) fn resposta_de_uso(saida: &str) -> serde_json::Value {
+    for linha in saida.lines() {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(linha.trim()) else { continue };
+        let tipo = v.get("type").and_then(|t| t.as_str());
+        if tipo == Some("uso") {
+            return v;
+        }
+        let erro = v
+            .get("erro")
+            .and_then(|e| e.as_str())
+            .or_else(|| if tipo == Some("erro") { v.get("message").and_then(|m| m.as_str()) } else { None });
+        if let Some(e) = erro {
+            let codigo = v.get("codigo").and_then(|c| c.as_str()).unwrap_or("uso_falhou");
+            return serde_json::json!({ "erro": e, "codigo": codigo });
+        }
+    }
+    serde_json::json!({ "erro": "o motor instalado não lê o uso do plano", "codigo": "runner_sem_uso" })
+}
+
 /// Query the same runner and PATH used for Codex turns. The runner bounds the request.
 pub(super) fn codex_models() -> serde_json::Value {
     super::atualizacao::esperar_instalacao("codex-runner");
@@ -477,6 +549,20 @@ pub fn engine_status(base: &str) -> serde_json::Value {
 #[cfg(test)]
 mod tests_motor {
     use super::*;
+
+    /// The page reads one shape from both runners' `--uso` (1.27.0), and an old runner that ignored the
+    /// flag is said, never shown as an empty reading.
+    #[test]
+    fn a_resposta_de_uso_tem_uma_forma_so() {
+        let claude = "{\"type\":\"warn\",\"message\":\"x\"}\n{\"type\":\"uso\",\"plano\":\"max\",\"janelas\":[]}\n";
+        assert_eq!(resposta_de_uso(claude)["plano"], "max");
+        let erro_claude = "{\"type\":\"erro\",\"codigo\":\"uso_indisponivel\",\"message\":\"m\"}";
+        assert_eq!(resposta_de_uso(erro_claude), serde_json::json!({ "erro": "m", "codigo": "uso_indisponivel" }));
+        let erro_codex = "{\"erro\":\"Tempo esgotado\"}";
+        assert_eq!(resposta_de_uso(erro_codex), serde_json::json!({ "erro": "Tempo esgotado", "codigo": "uso_falhou" }));
+        let antigo = "{\"type\":\"ready\"}\nlixo\n";
+        assert_eq!(resposta_de_uso(antigo)["codigo"], "runner_sem_uso");
+    }
 
     /// 🔴 O mapa tem de ser UM. Até 09/09/2026 a decisão morava em dois `if`
     /// independentes — `engineStatus` e `spawn` — e com dois motores eles não tinham
