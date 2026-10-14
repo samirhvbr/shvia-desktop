@@ -245,3 +245,44 @@ installed runner at start (ADR-036).
 What `model/list` offers on a ChatGPT plan, measured the same day with codex-cli 0.142.4:
 `gpt-5.5`, efforts `low`/`medium`/`high`/`xhigh`. With `includeHidden: true` there is only
 `codex-auto-review` besides it. One model in the selector is Codex's offer, not a defect.
+
+## External sandbox (1.28.0)
+
+The promise above ("inside the project it writes freely, and to step outside it has to ask") rests on Codex's own
+sandbox stopping a write outside the workspace. A host that already confines the process by other means cannot
+always run that sandbox, and the Workspace's runner container is the case that forced this.
+
+🔬 **Measured on 14/10/2026** (codex 0.162.1, Docker 29.9 on Linux 6.12, the same flags the Workspace gives a runner:
+`no-new-privileges`, an unprivileged UID, the engines directory mounted read-only). On Linux Codex's sandbox is
+bubblewrap, and the app-server refuses the legacy Landlock path on its own (*"filesystem-restricted execution requires
+bubblewrap to isolate app-server sockets"*, exit 101). bubblewrap needs user and mount namespaces:
+
+| container security profile | `bwrap --unshare-user …` |
+|---|---|
+| Docker default (seccomp + AppArmor) | `No permissions to create a new namespace` |
+| `seccomp=unconfined` | `Failed to make / slave: Permission denied` |
+| `seccomp=unconfined` **and** `apparmor=unconfined` | works |
+
+The only profile where Codex's sandbox runs is the one that removes the container's own sandbox, and the container is
+what keeps an agent's code off the host. The Workspace therefore keeps its container and tells Codex that the sandbox is
+outside: protocol `externalSandbox` ("the process is already in an external sandbox"), a documented policy of the
+app-server schema.
+
+What the runner does with `SHVIA_CODEX_SANDBOX_EXTERNO=<directory>` (an absolute path without `..`; anything else stops
+the engine with a message, exit 3, because a typo that silently turned the mode off would leave the runner with a
+sandbox that cannot start):
+
+| | default | external mode |
+|---|---|---|
+| `thread/start` sandbox | `workspace-write` | `danger-full-access` |
+| `approvalPolicy` | `on-request` | `on-request` — `never` still never reaches the wire |
+| every `turn/start` | no override (a plan turn: `readOnly`) | `externalSandbox`, network `restricted` |
+| startup proof | a write into `$HOME` under `workspaceWrite` must be refused | a write into `<directory>` under `externalSandbox` must be refused; the control inside the project must succeed |
+| plan turn | read-only by Codex's sandbox | refused with an `error` and a `turn_done` |
+
+The proof is still a measurement of the host's guarantee, not a trust in it: if `<directory>` accepts the write the
+engine does not start (exit 3), as it does when Codex's sandbox does not hold. What the proof does **not** show is the
+whole boundary — only that one path the host swore is read-only is read-only; the rest is the host's mounts (for the
+Workspace: the project's line read-only, the agent's worktree the only writable path, an egress allowlist).
+
+The default is unchanged, and `externo.test.mjs` runs both modes against a fake app-server.
