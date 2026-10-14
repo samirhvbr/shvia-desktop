@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.28.0 - Take rustls 0.23.46, which fixes three advisories that turned the CI red
+
+- `cargo deny` started failing on 14/10/2026 on `rustls` 0.23.45: RUSTSEC-2026-0346 (the `Debug` impls of client session values expose TLS secrets),
+  RUSTSEC-2026-0347 (buffered application data is sent to the outer server after an ECH rejection) and RUSTSEC-2026-0348 (Brotli certificate
+  decompression can allocate up to 1 GiB before authentication). The last green master run was the day before; the advisories are newer than the
+  code, so every branch inherited the red.
+- `cargo update -p rustls --precise 0.23.46` (the patched release), and nothing else moves in `Cargo.lock`.
+
 ## 1.28.0 - The Codex runner can run where a container is the boundary
 
 - `codex-runner` reads `SHVIA_CODEX_SANDBOX_EXTERNO=<directory>`. With it, the thread starts with `danger-full-access`,
