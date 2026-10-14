@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.28.0 - The terminal of the subscription connect is 1000 columns wide
+
+- The first version made the terminal 500 columns wide. The client wraps a long line at the terminal's width, the sign-in
+  URL it shows carries PKCE values and can run to a few hundred characters, and a URL cut at a wrap would be offered to
+  the person as a link that does not work. 1000 columns hold the URL and the token on one line with room to spare;
+  `docs/code/ASSINATURA-NO-WORKSPACE.md` and the terminal test say the same number.
+
 ## 1.28.0 - The Claude client for the subscription connect starts in the person's home
 
 - `claude setup-token` now starts in the person's home directory (when `HOME` names one), not wherever the app was launched

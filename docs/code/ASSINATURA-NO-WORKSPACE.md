@@ -81,7 +81,7 @@ What is not proved is the real client's output on the owner's machine. The runbo
 `claude auth login` was driven with pipes (`login.rs`: it has a plain prompt). `setup-token` is an Ink
 screen: it wants a terminal for the keyboard input of its paste prompt, and draws with escape codes.
 The shell opens one (`openpty`), makes it the client's controlling terminal (`setsid` + `TIOCSCTTY`),
-and makes it 500 columns wide: the client wraps a long line at the terminal's width, and a token cut by
+and makes it 1000 columns wide: the client wraps a long line at the terminal's width, and a token cut by
 a wrap is the one thing that must never be handed on. If a wrap happens anyway, the lines between the
 client's own labels are joined; without the labels, a run that a wrap may have cut is refused.
 

@@ -21,9 +21,10 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// The terminal is wide on purpose: the client wraps a long line at the terminal's width, and a token cut by
-/// a wrap is the one thing this module must never hand on. 500 columns hold the URL and the token on one line.
+/// a wrap is the one thing this module must never hand on. 1000 columns hold the sign-in URL (a few hundred characters,
+/// longer with its PKCE values) and the token on one line.
 const LINHAS: u16 = 50;
-const COLUNAS: u16 = 500;
+const COLUNAS: u16 = 1000;
 
 /// How much of the screen is kept. The client redraws a spinner while it waits, so the stream grows without
 /// bound for as long as the person takes; only the end of it matters, and the end is what is kept.
@@ -492,7 +493,7 @@ mod tests {
         .expect("abre");
         let tela = tela_inteira(&sessao);
         assert!(!tela.contains("SEMTTY"), "{tela}");
-        assert!(tela.contains("tamanho=50 500"), "a largura é a que impede a quebra do token: {tela}");
+        assert!(tela.contains("tamanho=50 1000"), "a largura é a que impede a quebra do token: {tela}");
         assert!(tela.contains("tty=/dev/"), "{tela}");
         assert!(tela.contains("TERM=xterm-256color"), "{tela}");
         assert!(tela.contains("ctty=sim"), "o terminal é o de controle: sem isso o Ink não liga o modo cru: {tela}");
