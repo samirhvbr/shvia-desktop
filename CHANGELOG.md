@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.28.0 - The Claude client for the subscription connect starts in the person's home
+
+- `claude setup-token` now starts in the person's home directory (when `HOME` names one), not wherever the app was launched
+  from: the client reads the configuration of the directory it runs in, and a repository the app was started from is not
+  the person's choice for this. A `HOME` that is not a directory leaves the working directory alone instead of failing the
+  start. Proved by a stand-in that prints its working directory.
+
 ## 1.28.0 - The pseudo-terminal opens the same way on macOS and Linux
 
 - `openpty` takes its terminal-settings and window-size pointers as `*const` in libc's Linux declaration and as `*mut` in

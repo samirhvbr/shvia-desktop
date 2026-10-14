@@ -14,6 +14,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::process::CommandExt;
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -65,7 +66,7 @@ pub(super) fn ambiente_do_filho(origem: &[(String, String)], path: Option<&str>)
 /// The command, with that environment and the account the person picked. `programa` and `args` are
 /// parameters so a test can start a stand-in; the bridge passes the `claude` it found and `setup-token`.
 pub(super) fn montar_comando(
-    programa: &std::path::Path,
+    programa: &Path,
     args: &[&str],
     conta: Option<&crate::contas_claude::Alvo>,
     origem: &[(String, String)],
@@ -76,6 +77,14 @@ pub(super) fn montar_comando(
     cmd.env_clear();
     for (k, v) in ambiente_do_filho(origem, path) {
         cmd.env(k, v);
+    }
+    // The person's home, not wherever the app was started from: the client reads the configuration of the directory
+    // it runs in, and a repository the app happened to be launched from is not the person's choice here.
+    if let Some((_, casa)) = origem.iter().find(|(k, _)| k == "HOME") {
+        let casa = Path::new(casa);
+        if casa.is_absolute() && casa.is_dir() {
+            cmd.current_dir(casa);
+        }
     }
     crate::contas_claude::aplicar(&mut cmd, conta);
     cmd
@@ -525,6 +534,20 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn o_cliente_comeca_na_casa_da_pessoa() {
+        let casa = pasta_de_teste("casa");
+        let origem = [("PATH".to_string(), "/usr/bin:/bin".to_string()), ("HOME".to_string(), casa.display().to_string())];
+        let sessao = abrir_sessao(montar_comando(Path::new("sh"), &["-c", "pwd -P"], None, &origem, None)).expect("abre");
+        let tela = tela_inteira(&sessao);
+        let esperado = std::fs::canonicalize(&casa).unwrap();
+        assert!(tela.contains(&esperado.display().to_string()), "começou em outro lugar: {tela}");
+        // A HOME that is not a directory leaves the working directory alone instead of failing the start.
+        let ruim = [("PATH".to_string(), "/usr/bin:/bin".to_string()), ("HOME".to_string(), "/nao/existe/mesmo".to_string())];
+        assert!(abrir_sessao(montar_comando(Path::new("sh"), &["-c", "true"], None, &ruim, None)).is_ok());
+        let _ = std::fs::remove_dir_all(&casa);
     }
 
     /// SOURCE check, declared as such: the environment is cleared before it is filled. A test that exercises the
