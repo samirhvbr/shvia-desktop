@@ -8,9 +8,12 @@ import {
   PEDIDOS_QUE_BLOQUEIAM,
   decisaoParaResposta,
   ehDecisao,
+  lerSandboxExterno,
   pedidoParaGate,
   POLITICA,
+  POLITICA_EXTERNA,
   politicaValida,
+  SANDBOX_EXTERNO_DO_TURNO,
   traduzirNotificacao,
   sandboxDoTurno,
 } from "./protocolo.mjs";
@@ -291,4 +294,33 @@ test("the agent's plan leaves the runner as plan_update, whole, for ShvIA's Task
   });
   // A malformed notification still gives an event with an empty plan, never a throw.
   assert.deepEqual(traduzirNotificacao({ method: "turn/plan/updated", params: {} }).plan, []);
+});
+
+// ── The external sandbox mode (1.28.0): the host's container is the boundary ──────────────────────
+
+test("`danger-full-access` is a valid policy ONLY where the host declared the external mode", () => {
+  assert.equal(politicaValida(POLITICA_EXTERNA), false, "without the declaration it is still the fence-less mode this ruler exists for");
+  assert.equal(politicaValida(POLITICA_EXTERNA, { externo: true }), true);
+  assert.equal(politicaValida({ askForApproval: "never", sandboxMode: "danger-full-access" }, { externo: true }), false,
+    "`never` is refused in the external mode too: the approval cards are not given up");
+  assert.equal(POLITICA_EXTERNA.askForApproval, "on-request");
+});
+
+test("the declaration is a directory path, or nothing, or an error that stops the engine", () => {
+  assert.equal(lerSandboxExterno({}), null);
+  assert.equal(lerSandboxExterno({ SHVIA_CODEX_SANDBOX_EXTERNO: "" }), null, "set but empty is off, like unset");
+  assert.deepEqual(lerSandboxExterno({ SHVIA_CODEX_SANDBOX_EXTERNO: "/opt/shvia/motores" }), { fora: "/opt/shvia/motores" });
+  assert.deepEqual(lerSandboxExterno({ SHVIA_CODEX_SANDBOX_EXTERNO: "/opt/shvia/motores///" }), { fora: "/opt/shvia/motores" }, "a trailing slash does not change where the proof writes");
+  for (const ruim of ["motores", "./motores", "/a/../etc", "C:\\x", "/a\0b"]) {
+    assert.ok(lerSandboxExterno({ SHVIA_CODEX_SANDBOX_EXTERNO: ruim }).erro, `${JSON.stringify(ruim)} must be an error, not a silent "mode off"`);
+  }
+});
+
+test("every turn of the external mode carries the externalSandbox policy, plan flag or not", () => {
+  for (const args of [{}, { plano: true }, { anteriorFoiPlano: true }, { politicaDaThread: { type: "dangerFullAccess" } }]) {
+    assert.deepEqual(sandboxDoTurno({ ...args, externo: true }), SANDBOX_EXTERNO_DO_TURNO, JSON.stringify(args));
+  }
+  assert.equal(SANDBOX_EXTERNO_DO_TURNO.type, "externalSandbox");
+  assert.equal(SANDBOX_EXTERNO_DO_TURNO.networkAccess, "restricted");
+  assert.equal(Object.isFrozen(SANDBOX_EXTERNO_DO_TURNO), true, "a shared policy object must not be mutable by a caller");
 });

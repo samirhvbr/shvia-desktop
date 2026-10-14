@@ -29,7 +29,7 @@ pub fn bridge_token() -> &'static str {
 /// script injetado (BRIDGE_JS e PRICE_ALERT_NOTIFY_JS). Chamado no `on_page_load`.
 pub fn inject_token(js: &str) -> String {
     js.replace("__SHVIA_BRIDGE_TOKEN__", bridge_token())
-        // `recursos.assinatura` (1.28.0) is true where the shell can give the client a terminal: Unix. The
+        // `recursos.assinatura` (1.29.0) is true where the shell can give the client a terminal: Unix. The
         // methods exist everywhere, the capability does not, and the page asks the capability.
         .replace("__SHVIA_ASSINATURA__", if cfg!(unix) { "true" } else { "false" })
 }
@@ -179,7 +179,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // colado nada.
     claudeAuthLoginCode: function (o) { return post('claudeAuthLoginCode', o || {}); },    // {codigo} → {entregue} | {erro, codigo}
     claudeAuthLoginCancel: function () { return post('claudeAuthLoginCancel'); },
-    // Connects the Claude subscription to ShvIA from this machine (recursos.assinatura, 1.28.0): runs
+    // Connects the Claude subscription to ShvIA from this machine (recursos.assinatura, 1.29.0): runs
     // `claude setup-token` for the account on a terminal of its own, reads the one-year token off the screen
     // and sends it to the configured server — the token NEVER reaches the page. {accountId?, accessToken}
     // → {fluxo} | {erro, codigo}; the panel's access token is what the page already uses to talk to the server.

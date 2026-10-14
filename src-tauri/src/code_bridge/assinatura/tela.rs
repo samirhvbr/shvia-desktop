@@ -1,4 +1,4 @@
-//! Reading the screen `claude setup-token` draws: the token it prints and the URL it shows (1.28.0).
+//! Reading the screen `claude setup-token` draws: the token it prints and the URL it shows (1.29.0).
 //!
 //! Everything here is pure, so the cases that matter run as fixtures without a process: a screen with
 //! colour and cursor codes, a token the terminal wrapped in two, a token that is still arriving, the

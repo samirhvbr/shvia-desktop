@@ -1,4 +1,4 @@
-//! Running `claude setup-token` under a pseudo-terminal, and ending it (1.28.0).
+//! Running `claude setup-token` under a pseudo-terminal, and ending it (1.29.0).
 //!
 //! The client is an Ink screen: it draws on a terminal, wants raw keyboard input for the code a browser
 //! may show, and prints the token once, as part of a frame. Pipes would not do (that is how `claude auth

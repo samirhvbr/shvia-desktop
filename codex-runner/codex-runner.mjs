@@ -60,8 +60,12 @@ import {
   PEDIDOS_QUE_BLOQUEIAM,
   decisaoParaResposta,
   ehDecisao,
+  lerSandboxExterno,
+  MOTIVO_SEM_PLANO_EXTERNO,
   pedidoParaGate,
   POLITICA,
+  POLITICA_EXTERNA,
+  SANDBOX_EXTERNO_DO_TURNO,
   traduzirNotificacao,
   sandboxDoTurno,
 } from "./protocolo.mjs";
@@ -114,7 +118,14 @@ const usoTimeout = lerUso ? setTimeout(() => {
 // `--aprovacao` is accepted and IGNORED, on purpose: the bridge passes it to every
 // engine, and refusing to start over a flag that cannot change anything would break
 // the spawn for no gain. The engine has one policy; see POLITICA for why.
-const { askForApproval, sandboxMode } = POLITICA;
+// 🔴 EXTERNAL SANDBOX (1.28.0, see `POLITICA_EXTERNA` in protocolo.mjs): a host whose container is the
+// boundary declares it with `SHVIA_CODEX_SANDBOX_EXTERNO=<a directory it guarantees read-only>`. Codex's own
+// sandbox (bubblewrap) cannot run inside such a container, and the proof below measures the host's guarantee
+// instead. Unset, nothing here changes.
+const EXTERNO = lerSandboxExterno(process.env);
+// The read-only directory of a valid declaration, or null (mode off, or a declaration the proof will refuse).
+const EXTERNO_FORA = EXTERNO && !EXTERNO.erro ? EXTERNO.fora : null;
+const { askForApproval, sandboxMode } = EXTERNO_FORA ? POLITICA_EXTERNA : POLITICA;
 
 // ------------------------------------------------------- the app-server child
 // On Windows the npm `codex` is a `.cmd` that Node cannot spawn without a shell; `resolverCodex`
@@ -244,6 +255,14 @@ async function garantirThread() {
 }
 
 async function rodarTurno(texto, plano = false) {
+  // A plan turn is read-only by Codex's own sandbox, which the external mode does not run: refused, said
+  // so, and the queue goes on. Nothing was started, so the runner is not busy.
+  if (EXTERNO_FORA && plano === true) {
+    emit({ type: "error", message: MOTIVO_SEM_PLANO_EXTERNO });
+    emit({ type: "turn_done" });
+    drenar();
+    return;
+  }
   ocupado = true;
   turnoIdentificado = new Promise((resolve) => { avisarTurno = resolve; });
   try {
@@ -252,7 +271,7 @@ async function rodarTurno(texto, plano = false) {
     emit({ type: "model", model: MODEL || "codex", server: "chatgpt" });
     const acabou = new Promise((resolve) => { fimDoTurno = resolve; });
     // A PLAN turn runs read-only, and the next one gets the thread's own policy back.
-    const sandboxPolicy = sandboxDoTurno({ plano, anteriorFoiPlano: ultimoFoiPlano, politicaDaThread });
+    const sandboxPolicy = sandboxDoTurno({ plano, anteriorFoiPlano: ultimoFoiPlano, politicaDaThread, externo: !!EXTERNO_FORA });
     const inicio = await pedir("turn/start", {
       threadId: tid, input: [{ type: "text", text: texto }],
       ...(EFFORT ? { effort: EFFORT } : {}),
@@ -504,7 +523,13 @@ async function provarQueOSandboxSegura() {
   //
   // `os.homedir()`, not `$HOME`: on Windows the home is `USERPROFILE` and `$HOME` is unset, and
   // the old fallback, `/root`, is not a home anywhere a user runs this.
-  const alvo = path.join(os.homedir(), `.shvia-sandbox-probe-${process.pid}`);
+  //
+  // In the EXTERNAL mode (1.28.0) the target is a file inside the directory the host swore is read-only,
+  // and the policy is the one the turns run under: the proof asks the question that mode answers — does
+  // the container refuse a write outside the project — not whether Codex's own sandbox does.
+  const alvo = EXTERNO_FORA
+    ? path.join(EXTERNO_FORA, `.shvia-sandbox-probe-${process.pid}`)
+    : path.join(os.homedir(), `.shvia-sandbox-probe-${process.pid}`);
   const { controle, prova } = comandosDaProva({
     fora: alvo,
     dentro: path.join(PROJECT_DIR, `.shvia-sandbox-controle-${process.pid}`),
@@ -512,7 +537,7 @@ async function provarQueOSandboxSegura() {
   const executar = (command) => pedir("command/exec", {
     command,
     cwd: PROJECT_DIR,
-    sandboxPolicy: { type: "workspaceWrite", networkAccess: false },
+    sandboxPolicy: EXTERNO_FORA ? SANDBOX_EXTERNO_DO_TURNO : { type: "workspaceWrite", networkAccess: false },
     timeoutMs: 15000,
   });
 
@@ -561,9 +586,11 @@ async function provarQueOSandboxSegura() {
   if (r.exitCode === 0) {
     emit({
       type: "error",
-      message:
-        "o sandbox do Codex NÃO segurou uma escrita fora do projeto — a garantia deste motor "
-        + "(fronteira com cartão) não vale nesta máquina, então ele não sobe.",
+      message: EXTERNO_FORA
+        ? `a pasta que o host declarou somente leitura (${EXTERNO_FORA}) aceitou uma escrita — o contêiner não está `
+          + "confinando este motor, então ele não sobe."
+        : "o sandbox do Codex NÃO segurou uma escrita fora do projeto — a garantia deste motor "
+          + "(fronteira com cartão) não vale nesta máquina, então ele não sobe.",
     });
     return false;
   }
@@ -614,6 +641,12 @@ async function avisarSobreSegredosNaPasta() {
       + `(${achados.join(", ")}). O motor Codex LÊ sem perguntar — ele não tem cartão para `
       + `leitura. Troque de motor ou tire o arquivo da pasta antes de começar.`,
   });
+}
+
+if (EXTERNO?.erro) {
+  emit({ type: "error", message: EXTERNO.erro });
+  try { child.kill(); } catch { /* já foi */ }
+  process.exit(3);
 }
 
 if (!(await provarQueOSandboxSegura())) {

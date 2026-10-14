@@ -1,4 +1,4 @@
-//! Handing the token to the ShvIA server the app is configured for (1.28.0).
+//! Handing the token to the ShvIA server the app is configured for (1.29.0).
 //!
 //! The request is the one Settings → Engines already makes — `PUT /api/auth/me/claude-subscription` with the
 //! person's session — made here so the token never has to be in the page. The destination is the server the

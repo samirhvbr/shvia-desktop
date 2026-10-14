@@ -1684,7 +1684,7 @@ pub fn run() {
             // sessão de projeto. Sem esta linha ele sobrevive ao app: um `claude auth login`
             // pendurado, sem tela nenhuma para entregar o código, esperando até o teto.
             code_bridge::cancelar_login();
-            // Same for the Claude subscription flow (1.28.0): a `claude setup-token` waiting on a browser sign-in.
+            // Same for the Claude subscription flow (1.29.0): a `claude setup-token` waiting on a browser sign-in.
             code_bridge::cancelar_assinatura();
         }
         _ => {}

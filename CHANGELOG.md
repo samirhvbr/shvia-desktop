@@ -1,20 +1,20 @@
 # Changelog
 
-## 1.28.0 - The terminal of the subscription connect is 1000 columns wide
+## 1.29.0 - The terminal of the subscription connect is 1000 columns wide
 
 - The first version made the terminal 500 columns wide. The client wraps a long line at the terminal's width, the sign-in
   URL it shows carries PKCE values and can run to a few hundred characters, and a URL cut at a wrap would be offered to
   the person as a link that does not work. 1000 columns hold the URL and the token on one line with room to spare;
   `docs/code/ASSINATURA-NO-WORKSPACE.md` and the terminal test say the same number.
 
-## 1.28.0 - The Claude client for the subscription connect starts in the person's home
+## 1.29.0 - The Claude client for the subscription connect starts in the person's home
 
 - `claude setup-token` now starts in the person's home directory (when `HOME` names one), not wherever the app was launched
   from: the client reads the configuration of the directory it runs in, and a repository the app was started from is not
   the person's choice for this. A `HOME` that is not a directory leaves the working directory alone instead of failing the
   start. Proved by a stand-in that prints its working directory.
 
-## 1.28.0 - The pseudo-terminal opens the same way on macOS and Linux
+## 1.29.0 - The pseudo-terminal opens the same way on macOS and Linux
 
 - `openpty` takes its terminal-settings and window-size pointers as `*const` in libc's Linux declaration and as `*mut` in
   its macOS one, so the first version of the call (a `&` and a null `*const`) could not compile on the Mac. The call now
@@ -22,13 +22,13 @@
   error on Linux. The FFI calls of the terminal (`openpty`, `fcntl`, `setsid`, `TIOCSCTTY`, `kill`) were also checked
   against `aarch64-apple-darwin` and `x86_64-unknown-linux-gnu` in a scratch crate on the same libc.
 
-## 1.28.0 - ADR-043, the funcionalidades list and the state document record the Claude subscription connect
+## 1.29.0 - ADR-043, the funcionalidades list and the state document record the Claude subscription connect
 
 - `docs/decisoes.md` gains ADR-043 (the token is made by the desktop and goes to the server without passing the page,
-  with the alternatives that were refused), `docs/funcionalidades.md` the 1.28.0 entry, and `.continue/estado-atual.md`
-  is dated 14/10/2026 at 1.28.0 (the freshness proof, F-22, reads both).
+  with the alternatives that were refused), `docs/funcionalidades.md` the 1.29.0 entry, and `.continue/estado-atual.md`
+  is dated 14/10/2026 at 1.29.0 (the freshness proof, F-22, reads both).
 
-## 1.28.0 - The bridge connects the Claude subscription to ShvIA: setup-token on a terminal of its own, the token straight to the server
+## 1.29.0 - The bridge connects the Claude subscription to ShvIA: setup-token on a terminal of its own, the token straight to the server
 
 - New bridge methods, offered under `recursos.assinatura` (Linux and macOS; the capability is `false` on Windows):
   `claudeSubscriptionConnect({accountId?, accessToken})`, `claudeSubscriptionCode({codigo})` and
@@ -57,6 +57,31 @@
   terminal, the whole flow, wrap, timeout, cancel, a client that ignores TERM, the code typed into the terminal), and on
   a local server for the request. **Not run: the sign-in itself**, which needs the person's browser: the runbook is
   `docs/code/ASSINATURA-NO-WORKSPACE.md`. `cargo clippy --target x86_64-pc-windows-gnu` passes with the capability off.
+
+## 1.28.0 - Take rustls 0.23.46, which fixes three advisories that turned the CI red
+
+- `cargo deny` started failing on 14/10/2026 on `rustls` 0.23.45: RUSTSEC-2026-0346 (the `Debug` impls of client session values expose TLS secrets),
+  RUSTSEC-2026-0347 (buffered application data is sent to the outer server after an ECH rejection) and RUSTSEC-2026-0348 (Brotli certificate
+  decompression can allocate up to 1 GiB before authentication). The last green master run was the day before; the advisories are newer than the
+  code, so every branch inherited the red.
+- `cargo update -p rustls --precise 0.23.46` (the patched release), and nothing else moves in `Cargo.lock`.
+
+## 1.28.0 - The Codex runner can run where a container is the boundary
+
+- `codex-runner` reads `SHVIA_CODEX_SANDBOX_EXTERNO=<directory>`. With it, the thread starts with `danger-full-access`,
+  every turn runs under the protocol's `externalSandbox` policy (network restricted) and the startup proof is aimed at
+  that directory, which the host guarantees is read-only: a write inside the project must succeed and a write into the
+  directory must be refused, or the engine does not start (exit 3). A declaration that is not an absolute path without
+  `..` also stops the engine with a message. A plan turn is refused, with an `error` and a `turn_done`, because a plan
+  turn is read-only by the sandbox this mode does not run. Without the variable nothing changes.
+- Why: Codex's Linux sandbox is bubblewrap, and measured on 14/10/2026 it cannot run in the Workspace's runner
+  container unless both the seccomp and the AppArmor profile are removed (default: `No permissions to create a new
+  namespace`; seccomp off alone: `Failed to make / slave: Permission denied`), which would take away the container's
+  own sandbox. See `docs/code/MOTOR-CODEX-20260909.md#external-sandbox-1280`.
+- `codex-runner/externo.test.mjs` runs the real runner against a fake app-server in both modes (the thread, the turns,
+  the proof's target and policy, a host that lies, a plan turn, a bad declaration, the picker not broken by a bad
+  declaration, the default unchanged), and `protocolo.test.mjs` gains the three pure checks. The runner's own version is
+  1.6.0.
 
 ## 1.27.0 - The state documents record the account usage read
 

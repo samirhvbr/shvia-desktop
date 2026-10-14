@@ -1,4 +1,4 @@
-//! Connecting the person's Claude subscription to ShvIA from this machine (1.28.0, `recursos.assinatura`).
+//! Connecting the person's Claude subscription to ShvIA from this machine (1.29.0, `recursos.assinatura`).
 //!
 //! `claude setup-token` makes the one-year token the Workspace runs Claude Code on. Until now the person ran it
 //! in a terminal and pasted what it printed into Settings → Engines. This module does both steps: it runs the

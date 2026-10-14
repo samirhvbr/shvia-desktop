@@ -1,6 +1,6 @@
 # Connecting the Claude subscription to ShvIA from the desktop
 
-> Since 1.28.0. The page half is ShvIA Web's Settings → Engines (`docs/API/CLAUDE-NO-WORKSPACE.md`
+> Since 1.29.0. The page half is ShvIA Web's Settings → Engines (`docs/API/CLAUDE-NO-WORKSPACE.md`
 > there). This document is the desktop half: how `claude setup-token` is run and its token handed to
 > the server without ever being in the page, and what was and was not proved.
 

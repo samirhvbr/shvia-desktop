@@ -40,7 +40,7 @@ use motores::*;
 mod login;
 use login::*;
 pub use login::cancelar_login;
-// The Claude subscription token, made by `claude setup-token` here and handed to the server (1.28.0). Not glob-imported:
+// The Claude subscription token, made by `claude setup-token` here and handed to the server (1.29.0). Not glob-imported:
 // its names (`Falha`, `Evento`) are its own, and the arms below address it by path.
 mod assinatura;
 pub use assinatura::cancelar_assinatura;
@@ -366,7 +366,7 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             cancelar_login();
             reply(window, &req, true, serde_json::json!({ "cancelado": true }));
         }
-        /* Conectar a assinatura do Claude ao ShvIA a partir daqui (1.28.0, `recursos.assinatura`).
+        /* Conectar a assinatura do Claude ao ShvIA a partir daqui (1.29.0, `recursos.assinatura`).
          *
          * 🔴 O token NUNCA sobe à página: o `claude setup-token` roda aqui, num terminal que o Rust abre, o token
          * é lido da tela dele e vai direto ao servidor configurado (`assinatura.rs`). A página manda o id da conta
