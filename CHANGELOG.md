@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.28.0 - ADR-043, the funcionalidades list and the state document record the Claude subscription connect
+
+- `docs/decisoes.md` gains ADR-043 (the token is made by the desktop and goes to the server without passing the page,
+  with the alternatives that were refused), `docs/funcionalidades.md` the 1.28.0 entry, and `.continue/estado-atual.md`
+  is dated 14/10/2026 at 1.28.0 (the freshness proof, F-22, reads both).
+
 ## 1.28.0 - The bridge connects the Claude subscription to ShvIA: setup-token on a terminal of its own, the token straight to the server
 
 - New bridge methods, offered under `recursos.assinatura` (Linux and macOS; the capability is `false` on Windows):

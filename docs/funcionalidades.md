@@ -4,6 +4,15 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 [`.continue/estado-atual.md`](../.continue/estado-atual.md); decisões em
 [decisoes.md](decisoes.md); como buildar em [build.md](build.md).)
 
+## Claude subscription connected from the desktop (1.28.0)
+
+`claudeSubscriptionConnect({accountId?, accessToken})`, `claudeSubscriptionCode({codigo})` and
+`claudeSubscriptionCancel()` (`recursos.assinatura`, Linux and macOS) let ShvIA Web's Settings → Engines connect the
+person's Claude subscription without the copy and paste: the shell runs `claude setup-token` on a pseudo-terminal
+after a native confirmation, reads the one-year token off the client's screen and puts it on the configured server.
+The token never reaches the page; the page hears phases (`claude_assinatura` events). See
+[the contract and the runbook](code/ASSINATURA-NO-WORKSPACE.md) and [ADR-043](decisoes.md).
+
 ## Account plan limits for the Usage tab (1.27.0)
 
 `claudeUsage({accountId})` and `codexUsage()` (`recursos.uso`) give ShvIA Web's Usage
