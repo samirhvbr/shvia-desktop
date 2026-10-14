@@ -180,9 +180,13 @@ fn sinal_ao_grupo(pid: u32, sinal: libc::c_int) {
 fn abrir_pty() -> std::io::Result<(OwnedFd, OwnedFd)> {
     let mut mestre: libc::c_int = -1;
     let mut escravo: libc::c_int = -1;
-    let tamanho = libc::winsize { ws_row: LINHAS, ws_col: COLUNAS, ws_xpixel: 0, ws_ypixel: 0 };
-    // SAFETY: both out-pointers are valid for the call, and openpty accepts a null name and a null termios.
-    let r = unsafe { libc::openpty(&mut mestre, &mut escravo, std::ptr::null_mut(), std::ptr::null(), &tamanho) };
+    // Raw `*mut` pointers on purpose: libc declares the terminal-settings and window-size parameters `*const` on
+    // Linux and `*mut` on macOS, and a mutable pointer coerces to both (a `&mut` argument would be a clippy error on
+    // Linux, and a `&` one does not compile on macOS).
+    let mut tamanho = libc::winsize { ws_row: LINHAS, ws_col: COLUNAS, ws_xpixel: 0, ws_ypixel: 0 };
+    let tamanho: *mut libc::winsize = &mut tamanho;
+    // SAFETY: every pointer is valid for the call, and openpty accepts a null name and a null termios.
+    let r = unsafe { libc::openpty(&mut mestre, &mut escravo, std::ptr::null_mut(), std::ptr::null_mut(), tamanho) };
     if r != 0 {
         return Err(std::io::Error::last_os_error());
     }

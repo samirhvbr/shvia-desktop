@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.28.0 - The pseudo-terminal opens the same way on macOS and Linux
+
+- `openpty` takes its terminal-settings and window-size pointers as `*const` in libc's Linux declaration and as `*mut` in
+  its macOS one, so the first version of the call (a `&` and a null `*const`) could not compile on the Mac. The call now
+  passes mutable raw pointers, which coerce to both, and the `unsafe` block says why a `&mut` argument would be a clippy
+  error on Linux. The FFI calls of the terminal (`openpty`, `fcntl`, `setsid`, `TIOCSCTTY`, `kill`) were also checked
+  against `aarch64-apple-darwin` and `x86_64-unknown-linux-gnu` in a scratch crate on the same libc.
+
 ## 1.28.0 - ADR-043, the funcionalidades list and the state document record the Claude subscription connect
 
 - `docs/decisoes.md` gains ADR-043 (the token is made by the desktop and goes to the server without passing the page,
