@@ -1,13 +1,23 @@
 # Build & Empacotamento — ShvIA Desktop
 
-Como gerar os instaladores do app. **O build de release é LOCAL** (na sua máquina) **por
-decisão de arquitetura** — não por falta de cota: a conta é GitHub Enterprise (50.000
-min/mês), mas continua valendo a ressalva de custo por trás da decisão original: runners
-**macOS consomem minutos a 10x** em Actions, então empacotar as 3 plataformas via matriz
-`tauri-action` ainda pesa desproporcionalmente no orçamento, mesmo com Enterprise. Build
-local incremental, com o cache do cargo, também é mais rápido para iteração. O ShvIA
-Desktop é **shell fino** (Tauri 2, sem sidecar), então é direto: `tauri build`. (Testes,
-diferente do build de release, já rodam via CI — ver seção abaixo.)
+Release installers are built **locally on each target OS**, through the versioned
+`build-local` wrappers. The shared application interface comes from ShvIA Web; the
+package also contains native Rust capabilities, the optional `anna` sidecar and the
+Claude/Codex runner resources. A direct `tauri build` does not perform all the wrapper's
+staging, credential preflight, manifest and publication steps.
+
+> **Source review — 2026-10-15, baseline `983f2aa` (1.29.0).** This guide was checked against
+> build scripts, manifests and workflows. No installer was built, signed, notarized,
+> uploaded or accepted on a real device during this review. Credential files were not
+> inspected. External credential-setup UI steps below retain their original context;
+> this review checked the scripts' selection logic, not Apple's current account screens.
+
+**Historical release policy:** the CI packaging matrix was removed in 0.4.6 for cost.
+The later Enterprise decision recorded 50,000 minutes/month and a 10x macOS multiplier;
+those figures are historical account/pricing notes, not a current billing audit. The
+current workflows run verification and create the GitHub version record; they do not
+package or sign release installers. Restoring that pipeline is a separate architecture
+decision.
 
 ## TL;DR
 
@@ -18,10 +28,39 @@ diferente do build de release, já rodam via CI — ver seção abaixo.)
 | **Windows** | `.\build-local.ps1` (ou duplo-clique `build-local.cmd`) | `.msi` + `-setup.exe` |
 
 Saída em `src-tauri/target/release/bundle/`. Opções (Linux/macOS): `--skip-npm-ci`,
-`--bundles <deb|appimage|rpm|dmg|app>`. Windows: `-SkipNpmCi`.
+`--bundles <deb|appimage|rpm|dmg|app>`, `--anna <path>`, `--no-anna`, `--no-sign`,
+`--skip-git-pull`, `--force` and `--publish`. Windows uses PowerShell parameters:
+`-SkipNpmCi`, `-SkipGitPull`, `-Anna <path>`, `-NoAnna`, `-NoSign`; it has no publish/reuse
+switch. These are different scripts, not interchangeable command-line syntaxes.
 
 > ⚠️ **Cross-build não rola:** cada SO se builda **no próprio SO**. Para cobrir os
 > 3, rode o `build-local` em cada máquina (1 Linux, 1 macOS, 1 Windows).
+
+The platform CI can cross-check Windows GNU Rust from Linux, but that is not the Windows
+MSVC installer build. The native WebView, packaging tools and release acceptance still
+belong to the target OS. See [the Windows acceptance runbook](roteiro-validacao-windows.md).
+
+## What is packaged and what must exist at runtime
+
+| Component | Build input | Runtime boundary |
+|---|---|---|
+| Local shell | Root `npm ci`, TypeScript and Vite (`npm run build`) | Offline/loading/settings shell; the main application page is remote |
+| Native app | `src-tauri/Cargo.toml`, `Cargo.lock` and OS-specific Tauri dependencies | WebView and OS permissions; capabilities differ by OS |
+| SHVIA engine | `scripts/stage-anna.mjs`, then `bundle.externalBin` | Optional `anna` executable matching the build host's target triple; not a Python/PyInstaller backend built here |
+| Claude runner | Bundled `.mjs`/`.json` and installers under `claude-runner/` | Node, runner installation, SDK and authorized Claude credentials; see [runner README](../claude-runner/README.md) |
+| Codex runner | Bundled modules/installers/schema under `codex-runner/` | Node, installed runner and Codex CLI/app-server/login; see [runner README](../codex-runner/README.md) |
+
+`stage-anna.mjs` selects `--from`, then `SHVIA_ANNA_BIN`, then `anna` on PATH. It probes
+`--version`, checks the minimum supported version and stages the target-named executable.
+The minimum is defined in the script; a version merely printed in an old build log is not
+a compatibility check. Absence removes a stale staged binary, and the wrappers override
+`externalBin` with an empty list. `--no-anna`/`-NoAnna` therefore means **no bundled SHVIA
+engine**, not that every other local/remote Code engine disappears. An independently
+installed engine can still be discovered at runtime.
+
+No configured application sidecar in `tauri.conf.json` uses Python/PyInstaller. The old F2
+proposal and Python probe scripts do not establish such an installed backend. Do not add
+a `pip` packaging step to this build on the strength of that proposal.
 
 ## Targets por SO
 
@@ -33,7 +72,7 @@ Saída em `src-tauri/target/release/bundle/`. Opções (Linux/macOS): `--skip-np
 
 ## Pré-requisitos
 
-- **Comum:** Node 20.19+ or 22.12+ (what `vite` 8 requires, since 1.6.49), Rust (`rustup default stable`).
+- **Comum:** Node 20.19+ or 22.12+ (the locked Vite requirement; CI uses Node 22), npm and stable Rust. Local runner requirements are additional to the Tauri build toolchain.
 - **Linux (Debian/Ubuntu):**
   `sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf`
 - **Linux (Arch):**
@@ -41,6 +80,42 @@ Saída em `src-tauri/target/release/bundle/`. Opções (Linux/macOS): `--skip-np
   (`base-devel` traz `makepkg` + `fakeroot`, que empacotam o `.pkg.tar.zst`)
 - **macOS:** `xcode-select --install`.
 - **Windows:** Rust + MSVC ("Desktop development with C++") e WebView2 (já vem no Win 11).
+
+Check the WebView2 runtime on the actual Windows machine; the documented MSVC toolchain
+and a compiled crate do not prove the WebView/clipboard/microphone or installer works there.
+On Linux, install the WebKitGTK development packages for compilation and provide the
+runtime packages required by the produced package. The VM workaround below is a runtime
+workaround, not evidence of desktop/GPU acceptance.
+
+## Local verification before packaging
+
+Run Node scripts from the repository root. Rust's manifest is under **`src-tauri/`**:
+use `--manifest-path src-tauri/Cargo.toml` from the root, or change into that directory
+before running Cargo. A bare root-level `cargo clippy` has no manifest to use.
+
+```bash
+npm ci
+npm run prova:bump
+npm run prova:doc
+npm run prova:politica
+npm run prova:runner-version
+```
+
+For Rust checks, first stage a usable `anna` with `npm run anna:stage`, and install the
+Codex runner as described by its [README](../codex-runner/README.md). The suite contains an
+installed-runner `--version` smoke check. Then:
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml --locked
+cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
+```
+
+A clean checkout has no `src-tauri/binaries/` because those files are ignored. CI prepares
+an inert `anna-<triple>` stand-in before Rust tests; it never packages that file. Its separate
+no-sidecar compile check uses `TAURI_CONFIG='{"bundle":{"externalBin":[]}}'`. Do not ship a
+stand-in or mistake that compile override for a working Code engine. The full preparation,
+PowerShell prerequisites and additional packaging/signing contract proofs live in
+[ci.yml](../.github/workflows/ci.yml) and [plataformas.yml](../.github/workflows/plataformas.yml).
 
 ## Versão
 
@@ -144,8 +219,14 @@ Delivery is **local-first**, as in SHVTERM: users get the installers from the se
 files it just sent to the server — installers, their `.sha256`, and `release.json` — to the
 Release of the same version (`gh release upload <version> … --clobber`). Before that, every
 Release had 0 assets (finding f121), and nothing recorded which installers were published for
-which OS: the server's `release.json` is overwritten by each publish. The repository is
-private, so the assets are too; the cost is the storage, accepted by the owner on 23/09/2026.
+which OS: the server's `release.json` is overwritten by each publish. The repository was
+confirmed **public** through GitHub metadata on 2026-10-15; do not treat Release assets as
+private storage. The earlier storage-cost decision was recorded on 23/09/2026.
+
+The [Release workflow](../.github/workflows/release.yml) creates the version's GitHub record
+when `version.md` changes on the default branch. That is separate from producing installers,
+publishing them to the download server and accepting an installed update. A Release entry
+alone does not prove that every OS has an artifact or that the server serves it.
 
 ## Assinatura / notarização
 
@@ -162,8 +243,12 @@ On macOS, `build-local.sh` does it by itself:
 2. **Notarizes + staples.** It picks the notarization credential (below) and exports it;
    `tauri build` uploads the app to Apple, waits for the verdict and staples the `.app`, and
    the script does the same for the `.dmg`.
-3. **Verifies.** At the end it runs `codesign --verify`, `spctl` (Gatekeeper) and
-   `stapler validate`. `--publish` refuses a build that fails them (1.6.22).
+3. **Reports verification.** At the end it runs `codesign --verify`, `spctl` (Gatekeeper)
+   and `stapler validate`. The publish gate is narrower: it requires strict `codesign`
+   verification for an available `.app` and a stapled ticket for an available `.dmg`.
+   `spctl` and the `.app` ticket check in the earlier reporting function do not themselves
+   abort publication. See the gate boundary below; this source review did not certify
+   any artifact's Developer ID, notarization or Gatekeeper acceptance.
 
 **The credential: an App Store Connect API key (since 1.6.39).** Until 1.6.38 it was the
 app-specific password of the Apple ID. That password went to `notarytool` as `--password`, on
@@ -180,7 +265,9 @@ The order `build-local.sh` follows (`escolhe_credencial_de_notarizacao`):
    guess: set `APPLE_API_KEY`.
 3. Otherwise, the old app-specific password in the keychain (service `shvia-notarize`),
    with a warning each build.
-4. Otherwise, the build is signed but not notarized, and `--publish` refuses it.
+4. Otherwise, an available signing identity can sign the build without notarization.
+   The normal DMG publish path then fails its ticket check; an app-only publish has the
+   narrower gate described above and must not be called notarization-verified.
 
 When the key is used, `APPLE_ID`/`APPLE_PASSWORD` are **unset**, even if `signing.env`
 exported them, so Tauri is never left to choose between two credentials. A half-configured
@@ -381,6 +468,11 @@ O `.sig` **não** sobe: o conteúdo dele já está embutido no `release.json`.
 
 ### `signing.env`: opcional (as credenciais já são resolvidas sozinhas)
 
+**This file loader belongs to `build-local.sh` (macOS/Linux).** The Windows PowerShell
+script resolves the updater key from its environment or `~/.shvia/updater.key` and
+`updater.pass`; it does not source a POSIX `signing.env`/`build.env`. Signing credentials
+are release-machine inputs, never files to inspect or include in a documentation review.
+
 Com `~/.shvia/updater.key` + `~/.shvia/updater.pass` no lugar, **não é preciso arquivo
 de credenciais nenhum** — esta seção existe para quem precisa apontar outro destino de
 publicação, outra chave, ou guardar a senha no keychain do Mac.
@@ -505,41 +597,66 @@ both. Until then the ordering is harmless, because nothing is signed.
 
 ## CI (GitHub Actions) — testes sim, matriz de release ainda não
 
-**Testes/lint rodam via CI** desde 01–02/09/2026 (`.github/workflows/ci.yml`, achado G-24).
-A **matriz de build/release** (mac/win/linux via `tauri-action` + Release + updater) foi
-**removida na 0.4.6 por custo** e segue de fora por decisão, mesmo com a conta em GitHub
-Enterprise (50.000 min/mês) — o motivo que resta é o multiplicador: runners **macOS contam
-10x** os minutos, o que pesa numa matriz de release rodando a cada tag. O SHVTERM tem a
-referência pronta (`.github/workflows/main.yml`: matriz mac/win/linux via `tauri-action` +
-Release + updater). Se compensar trazer essa matriz de volta (releases assinados/auto-update
-centralizados via CI), é decisão de arquitetura a tomar separadamente — não consequência
-automática do upgrade de plano.
+**Checks have run through CI since 01–02/09/2026** (finding G-24). The current
+[ci.yml](../.github/workflows/ci.yml) runs on pushes to the default branches, pull requests
+and manual dispatch. On Ubuntu it prepares Node 22, stable Rust/Clippy and Tauri system
+dependencies, then runs:
+
+- Runner policy/protocol tests, the runner module-load probe, a real SDK shell-directory
+  regression and the PowerShell installer checks.
+- Version carriers, the pre-commit guard, document-version freshness and the installer,
+  manifest, updater-key, Apple-signing, notarization, reuse, no-sidecar and publication
+  contract proofs named by `package.json`.
+- An installed Codex-runner smoke check through `cargo test --locked`, Clippy with
+  `--locked --all-targets -- -D warnings`, a no-sidecar `cargo check --locked`, and
+  `cargo-deny check` for advisories, bans, licenses and sources.
+
+The workflow file is the complete gate list; the description above is not a claim that
+the latest remote run passed. Several packaging proofs use temporary files, fake tools or
+local HTTP servers. They exercise contracts without producing a signed release.
+
+**The release matrix remains absent.** Historically, mac/win/linux `tauri-action`
+packaging was removed in 0.4.6 for cost; the Enterprise/10x discussion below records the
+owner's September decision rather than current account billing. Restoring CI packaging,
+signing and updater publication requires a separate architecture decision. GitHub's
+version-record workflow already exists and should not be confused with that missing
+installer pipeline.
 
 ### Platforms (1.6.37)
 
-`ci.yml` runs on ubuntu, so the code behind `cfg(target_os = "windows")` and
+**Historical gap closed by the platform workflow:** `ci.yml` runs on Ubuntu, so the code behind `cfg(target_os = "windows")` and
 `cfg(target_os = "macos")` — `windows_ipc.rs`, `macos_ipc.rs`, and the gates in `lib.rs`,
 `tray.rs`, `updater.rs` and others — was never compiled in CI. The Windows build did not compile
-from 0.9.0 to 1.6.8, two months, and nothing said so. `.github/workflows/plataformas.yml` runs
-when `src-tauri/**` changes:
+from 0.9.0 to 1.6.8, two months, and nothing said so.
+[plataformas.yml](../.github/workflows/plataformas.yml) now runs on matching pushes/PRs
+when `src-tauri/**` or that workflow changes, and by manual dispatch:
 
-- **Windows** — `cargo clippy --target x86_64-pc-windows-gnu -D warnings` on ubuntu, with
+- **Windows GNU** — `cargo clippy --locked --target x86_64-pc-windows-gnu --all-targets -- -D warnings` on Ubuntu, with
   MinGW-w64: `tauri-build` compiles the icon and manifest resource with
   `x86_64-w64-mingw32-windres` (through `embed-resource`) even for a check.
-- **macOS** — `cargo clippy -D warnings` and `cargo test` on `macos-latest`, the platform the
+- **macOS** — `cargo clippy --locked --all-targets -- -D warnings` and `cargo test --locked` on `macos-latest`, the platform the
   releases are built on.
+- **Windows MSVC** (since 1.12.4) — Clippy with the same locked/all-targets/warnings gate
+  and `cargo test --locked` on `windows-latest`, matching the installer toolchain.
 
-Minutes are not the limit (the owner's answer on 23/09/2026: Enterprise), macOS included at 10x;
-the path filter is what keeps the cost to changes that can break these builds. It compiles,
-lints and tests. It does not package or sign; release builds stay local.
+All three Cargo jobs run from `src-tauri`. The macOS/MSVC jobs install the Codex runner
+before its smoke test, and each platform prepares its own sidecar stand-in. None opens
+the GUI or runs an installed update. [Windows acceptance](roteiro-validacao-windows.md)
+and [microphone/clipboard acceptance](roteiro-microfone-e-colar.md) remain separate.
+
+The owner's answer on 23/09/2026 was Enterprise, macOS included at the then-recorded 10x
+multiplier; the path filter was chosen to scope checks to changes that can affect native
+code. This review did not recheck plan, pricing or quota. The platform jobs compile, lint
+and test; they do not package or sign, and release builds stay local.
 
 ### Dependabot (1.6.35)
 
 `.github/dependabot.yml` watches every manifest: `cargo` in `src-tauri/`, `npm` at the root and
 in `claude-runner/` and `codex-runner/`, and the workflows' `github-actions`, weekly on Monday
 morning (São Paulo time). Patch and minor updates come grouped, one PR per directory; each major comes
-alone. Vulnerability alerts and Dependabot security updates are switched on in the repository
-settings (23/09/2026). The owner chose "complete" over "security + patch/minor only".
+alone. Vulnerability alerts and security updates were recorded enabled in the repository
+settings on 23/09/2026; this review checked the versioned configuration, not the current
+settings. The owner chose "complete" over "security + patch/minor only".
 
 **A Dependabot PR is a proposal, never a merge.** Its commit is `Bump x from a to b`, with no
 version and no CHANGELOG entry. Merging it as it is breaks the commit rule and publishes no

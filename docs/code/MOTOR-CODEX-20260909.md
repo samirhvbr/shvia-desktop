@@ -1,5 +1,13 @@
 # Codex as a third Code-mode engine — what was measured on 09/09/2026
 
+> **Current-scope note — 2026-10-15:** the opening status and live measurements below
+> describe 2026-09-09. The Desktop bridge, Codex selector, sessions and runner are now
+> implemented; see [current capabilities](../project-state.md) and
+> [the runner contract](../../codex-runner/README.md). Later sections retain their own
+> dates, including external sandbox support. The original “not started” paragraph is
+> historical evidence, not today's product status.
+
+
 > **Status: slice 1 (the runner) built and proven live; slices 2 and 3 not started.**
 > The bridge (`code_bridge.rs`) does not know the `codex` engine yet, and the web UI
 > still shows a two-state toggle. Nothing in this document is reachable from the

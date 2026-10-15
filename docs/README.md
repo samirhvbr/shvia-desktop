@@ -1,50 +1,71 @@
-# Documentação — ShvIA Desktop
+# ShvIA Desktop documentation
 
-- [Local assessment viewer](pentest-viewer.md): separate OS browser, native consent and private session boundary.
-- [Controlled assessment compatibility](pentest-compatibility.md): installed runtime preflight and supported version pairs.
-- [Native controlled assessments](PENTEST/authorization.md): consent, private authorization handoff and local process supervision.
+Start with the current capability map, then choose the contract or operator check for the
+task. The 2026-10-15 review describes source, not installed-device acceptance. Work not yet
+produced stays in [`.continue/`](../.continue/); historical designs and dated measurements
+remain evidence of the decisions they led to.
 
-Índice da documentação técnica **estável** do projeto. Trabalho em andamento
-(WIP) vive em [`../.continue/`](../.continue/) e migra para cá quando amadurece.
+## Current product and architecture
 
-## Páginas
+| Document | What it answers |
+|---|---|
+| [project-state.md](project-state.md) | What Desktop does today, Web/Workspace boundaries, requirements, platform support and acceptance limits |
+| [documentation-review-20261015.md](documentation-review-20261015.md) | What the documentation review corrected, what remains uncertain and what needs a separate decision |
+| [funcionalidades.md](funcionalidades.md) | Current capability summary and the chronological implementation record; old behavior is labeled when superseded |
+| [arquitetura.md](arquitetura.md) | Shared Web UI, native bridge, trust boundary, local/remote sessions, persistence, updater and assessment architecture |
+| [build.md](build.md) | Development and local packaging/signing/publication; CI checks and release/deployment are separate stages |
+| [brand.md](brand.md) | Shield identity and canonical desktop sources; changing an asset does not distribute an installed build |
+| [decisoes.md](decisoes.md) | Architecture decision records and the measured reasons behind them |
 
-| Documento | Conteúdo |
-|-----------|----------|
-| [funcionalidades.md](funcionalidades.md) | **O que o app já faz** — registro estável das funcionalidades implementadas, por versão. |
-| [build.md](build.md) | **Build & empacotamento** — CI dos 3 SOs + scripts locais (`build-local.*`). |
-| [decisoes.md](decisoes.md) | **ADRs** — decisões de arquitetura registradas (formato Architecture Decision Record). |
-| [arquitetura.md](arquitetura.md) | Arquitetura técnica detalhada: camadas, fluxo de auth, CSP/IPC, build/empacotamento. |
-| [roteiro-fundacao.md](roteiro-fundacao.md) | Passo-a-passo da fundação (F0/F1) — comandos concretos para iniciar. |
-| [roteiro-microfone-e-colar.md](roteiro-microfone-e-colar.md) | **Microphone and image paste on Linux (the owner runs it)**: what WebKitGTK exposes, measured without a person by `scripts/sonda-webkitgtk.py`, and the two-minute check that only a person can do, with the native workarounds if it fails (1.6.45). |
-| [roteiro-validacao-windows.md](roteiro-validacao-windows.md) | **Windows validation (the owner runs it)**: the first time the MSVC build runs on a Windows machine. About 45 minutes, with an expected result per step and a report table; it names three gaps found while writing it (1.6.44). |
-| [code/MOTOR-CLAUDE-DIAGNOSTICO.md](code/MOTOR-CLAUDE-DIAGNOSTICO.md) | **O motor Claude Code não responde** — runbook por sintoma: o comando que separa "é o app" de "é o login da máquina", em qual cofre cada forma de logar grava, e por que o seletor de contas pode mostrar uma opção só. |
-| [code/MOTOR-CODEX-20260909.md](code/MOTOR-CODEX-20260909.md) | **Medição** do Codex como terceiro motor do Modo Code (09/09/2026), com proveniência 🔬 ao vivo / 📋 schema: por que o `exec` foi recusado, as três políticas em que o gate NÃO disparou, a medição M que provou a fronteira, e os cinco defeitos que só o processo real revelou. Fatia 1 (o runner) existe; a ponte e a UI não. |
-| [code/CONTAS-CLAUDE.md](code/CONTAS-CLAUDE.md) | Perfis de **conta do Claude Code** no Modo Code (ADR-033): o registro local, o contrato da ponte e onde o `CLAUDE_CONFIG_DIR` é aplicado. |
-| [code/CONTAS-CLAUDE-proposta-20260905.md](code/CONTAS-CLAUDE-proposta-20260905.md) | **Archived:** the proposal that became CONTAS-CLAUDE.md (05/09/2026), with its diagram. Kept for the reasoning behind ADR-033. Moved out of the route repository on 08/09/2026. |
-| [code/MODO-CODE-20260709.md](code/MODO-CODE-20260709.md) | Spec do **Modo Code** (09/07/2026) — o desenho que a ponte nativa implementa. |
-| [code/RUN-20260910.md](code/RUN-20260910.md) | **The Run in Code mode** (10/09/2026) — design, contracts and build plan for turns that continue by themselves: where a turn ends today (the eight answers), the three tiers (rule → orchestrator profile → human), the `stop_request` handshake, the `/orchestrate` endpoint, the run state machine, and the blocks to queue. Proposal; nothing implemented. Screen: [code/modo-code-run-mockup.html](code/modo-code-run-mockup.html). Decision: ADR-034. |
-| [code/RUN-ORCHESTRATOR.md](code/RUN-ORCHESTRATOR.md) | **B9, prepared (the owner runs it)**: five real runs with the rule only, across the three engines, on a throwaway clone; the sheet that counts false continues and needless asks, and the proposed reading for Q5 (1.6.44). |
-| [code/F0-mapa.md](code/F0-mapa.md) | **Histórico:** o mapeamento F0 do Modo Code, de 09/07/2026. O cabeçalho ainda diz *"aguardando ratificação"* — foi ratificado pelos fatos: a ponte existe desde a 1.1.x e passou pelos achados F-12, F-13 e F-15. Fica como registro do que se sabia antes de escrever o código. |
+## Code engines, accounts and remote work
 
-## Convenções de docs
+| Document | What it answers |
+|---|---|
+| [code/CONTAS-CLAUDE.md](code/CONTAS-CLAUDE.md) | Local Claude profile registry, UI registration, account variables, child-process resolution and historical Linux/macOS measurements |
+| [code/USO-DAS-CONTAS.md](code/USO-DAS-CONTAS.md) | Claude/Codex plan-limit reads, percentage used, cache isolation and unknown readings |
+| [code/ASSINATURA-NO-WORKSPACE.md](code/ASSINATURA-NO-WORKSPACE.md) | Native half of connecting a Claude subscription to ShvIA: Unix PTY, consent and private delivery; requires a compatible Web caller, separate from the existing manual token form |
+| [code/MOTOR-CLAUDE-DIAGNOSTICO.md](code/MOTOR-CLAUDE-DIAGNOSTICO.md) | Separate runner, official-client login and profile problems when local Claude does not answer |
+| [code/MOTOR-CODEX-20260909.md](code/MOTOR-CODEX-20260909.md) | Codex runner protocol and sandbox proof, with dated measurements and the later external-container sandbox contract; the Desktop bridge and model selector are implemented |
+| [code/RUN-20260910.md](code/RUN-20260910.md) | Run design and implemented contracts: rules, orchestrator, held stop, caps and UI. Its dated status records B0–B8 delivered, with B9's real-run measurement separate |
+| [code/RUN-ORCHESTRATOR.md](code/RUN-ORCHESTRATOR.md) | B9 operator protocol: five real runs across three engines and a sheet for false continues/unnecessary asks; a prepared protocol is not an executed result |
+| [Web Remote Code](https://github.com/samirhvbr/shvia-web/blob/master/docs/FRONTEND/REMOTE-CODE.md) | Shared screen, remote project creation, screen takeover, files/diffs and approved GitHub publication; owned by the Web repository |
 
-- **Uma frase declarativa, depois código/lista** no topo de cada página. Sem
-  "neste guia vamos explorar…".
-- **Nomes de arquivo em kebab-case minúsculo.** Ordem vive neste índice, não no
-  nome do arquivo.
-- **Decisões vão em [decisoes.md](decisoes.md)** (ADR). Não relitigar direção já
-  decidida dentro de um how-to — linkar o ADR.
-- **Sem doc, sem deploy.** Função nova vira doc aqui antes de entrar.
+The Desktop's local Claude profiles and the Web's remote subscription connection are different
+credentials. Codex's runner can support an external container boundary without establishing a
+shipped remote Codex option in ShvIA Web. Refer to each component's current capability map.
 
-## Mapa de repositórios
+## Controlled assessment
 
-- **Este repo** — cliente desktop (Tauri 2).
-- **ShvIA** (`/Users/samir/x/IA`) — servidor Laravel, fonte da verdade
-  (`https://ai.shvia.org`).
-- **SHVTERM** (`/Users/samir/Projetos/SHVTERM`) — base técnica (Tauri), repo irmão.
-- **`archive/claude-fork`** — snapshot do fork Claude Desktop descartado.
+| Document | What it answers |
+|---|---|
+| [PENTEST/authorization.md](PENTEST/authorization.md) | Native authorization, local process supervision, recovery, telemetry, review/retest and private report/history synchronization |
+| [pentest-compatibility.md](pentest-compatibility.md) | Installed runtime preflight, Unix support, fork-version check and reviewed version pairs |
+| [pentest-viewer.md](pentest-viewer.md) | Viewer in the OS browser, native consent, private session capability and lifecycle |
 
-## Product identity
+## Acceptance and historical foundations
 
-See [Portal artwork and regeneration](brand.md).
+| Document | Scope |
+|---|---|
+| [roteiro-validacao-windows.md](roteiro-validacao-windows.md) | Windows installed-app validation protocol, expected results and report table; read its dated findings separately from later implementations |
+| [roteiro-microfone-e-colar.md](roteiro-microfone-e-colar.md) | Linux microphone/image-paste checks that need the person and real OS input; WebKit capability discovery alone does not prove capture/paste |
+| [roteiro-fundacao.md](roteiro-fundacao.md) | Historical F0/F1 foundation commands; use the current build guide for today's setup |
+| [code/MODO-CODE-20260709.md](code/MODO-CODE-20260709.md) | Original Code-mode specification, retained for protocol/design history |
+| [code/F0-mapa.md](code/F0-mapa.md) | Historical discovery before the native Code bridge; its pending-ratification wording is not current implementation status |
+| [code/CONTAS-CLAUDE-proposta-20260905.md](code/CONTAS-CLAUDE-proposta-20260905.md) | Archived proposal behind ADR-033, with its diagram; the active profile contract is CONTAS-CLAUDE.md |
+
+## Documentation conventions
+
+- Begin with the document's purpose and current scope. Label proposed work, dated observations
+  and installed acceptance separately from implementation.
+- New filenames use lowercase kebab-case. Existing names stay stable so links keep working.
+- Record decisions in [decisoes.md](decisoes.md), then link them from the operational contract.
+- A changed feature carries its documentation in the same delivery; update this index when a
+  document is added. Keep known limits beside the capability they qualify.
+
+## Repository boundaries
+
+This repository owns the Tauri client, Rust bridge and local runners.
+[ShvIA Web](https://github.com/samirhvbr/shvia-web) owns Laravel and the shared interface;
+[ShvIA Workspace](https://github.com/samirhvbr/shvia-workspace) owns remote repositories and
+execution. SHVTERM was the technical foundation, not a merged application. The discarded
+Claude Desktop fork remains historical under `archive/claude-fork`.

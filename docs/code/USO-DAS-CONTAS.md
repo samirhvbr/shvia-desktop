@@ -2,6 +2,11 @@
 
 > Since 1.27.0. The page side is ShvIA Web's Usage tab in the Code panel (`docs/FRONTEND/ABA-USO.md`
 > there). This document is the desktop half: how an account's plan limits are read, and why that way.
+>
+> **Scope reviewed on 2026-10-15:** these are the official clients and local account profiles
+> of the computer running Desktop. The read does not query a remote Workspace engine's
+> subscription token or prove which account a remote session uses. The Web's ShvIA daily API
+> meter is another source. No live account read was performed by this documentation review.
 
 ## What the page can ask
 
@@ -57,8 +62,11 @@ app's cache, the two accounts read their own numbers and the profile folders are
 gets one.
 
 Known limit: the default account still shares `~/.claude` with every credential-only profile the
-person runs by hand, so its cached answer can be another account's. The page labels each reading
-with the account it asked for; it cannot see a cache it does not own.
+person runs by hand, so its cached answer can be another account's. The Web's Usage tab hides
+the default card beside named profiles unless that default is the account in use. That avoids
+the duplicate card; it does not repair the default client's shared cache or verify its identity.
+Details and the 14/10/2026 measurement belong to
+[the Web Usage tab contract](https://github.com/samirhvbr/shvia-web/blob/master/docs/FRONTEND/ABA-USO.md).
 
 ## Tests
 

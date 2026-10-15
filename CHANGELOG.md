@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.29.1 - Document the current ShvIA Desktop product and its native boundaries
+
+- Reconcile the English/Portuguese entrypoints, product/architecture map, feature history, account guides, brand, build instructions and mirrored agent contracts with the current Tauri/Rust client and three coding-engine paths.
+- Document server versus installed-shell responsibilities, local/remote Code, platform support, session lifecycle, updater/compatibility behavior, native state, subscription handoff and assessment prerequisites. Preserve historical decisions and distinguish implemented source from installed acceptance.
+- Add the dated documentation review with remaining acceptance work and code candidates for owner decisions. No application logic, dependency versions, installers or runtime configuration change; only documentation and synchronized version metadata.
+
 ## 1.29.0 - The terminal of the subscription connect is 1000 columns wide
 
 - The first version made the terminal 500 columns wide. The client wraps a long line at the terminal's width, the sign-in
