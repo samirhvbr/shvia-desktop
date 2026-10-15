@@ -4,6 +4,16 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 [`.continue/estado-atual.md`](../.continue/estado-atual.md); decisões em
 [decisoes.md](decisoes.md); como buildar em [build.md](build.md).)
 
+## Private CLI configuration replacement (1.29.2)
+
+Native CLI configuration writes no longer create or refresh adjacent `.shvia-bak` files.
+The original remains until a complete private file is synced and renamed into place;
+read errors and changes detected before replacement abort instead of overwriting blindly.
+Unix replacements use 0600, macOS staging removes inherited ACLs before writing bytes,
+and Windows creation uses a protected DACL. Existing backups are left untouched. There is
+no persistent undo copy after success, and snapshot revalidation is not a concurrent-write
+lock. See [the ADR-026 security update](decisoes.md#credential-file-replacement-2026-10-15).
+
 ## Claude subscription connected from the desktop (1.29.0)
 
 `claudeSubscriptionConnect({accountId?, accessToken})`, `claudeSubscriptionCode({codigo})` and

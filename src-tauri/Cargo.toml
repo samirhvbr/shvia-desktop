@@ -1,6 +1,6 @@
 [package]
 name = "shvia-desktop"
-version = "1.29.0"
+version = "1.29.2"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
@@ -135,9 +135,9 @@ objc2-web-kit = "0.3"
 # Ponte do Modo Code no Windows (WebView2 WebMessageReceived "window.chrome.webview").
 # Mesma regra do macOS: versões CASADAS com o wry 0.57 (Cargo.lock: webview2-com
 # 0.39, windows 0.62) p/ o ICoreWebView2 unificar com o with_webview. (Até a 1.12.2 eram
-# 0.38/0.61, casadas com o wry 0.55; subiram JUNTAS com o tauri 2.12.) Só usamos
-# `windows::core::PWSTR` (take_pwstr do webview2-com espera o PWSTR da crate
-# `windows`), então nenhuma feature Win32 extra é necessária.
+# 0.38/0.61, casadas com o wry 0.55; subiram JUNTAS com o tauri 2.12.)
+# IPC types stay aligned with wry; private CLI credential files additionally use
+# the Win32 security and filesystem APIs enabled below.
 [target.'cfg(target_os = "windows")'.dependencies]
 webview2-com = "0.39"
-windows = "0.62"
+windows = { version = "0.62", features = ["Win32_Security_Authorization", "Win32_Storage_FileSystem"] }

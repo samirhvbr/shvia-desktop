@@ -102,7 +102,8 @@ pub const BRIDGE_JS: &str = r#"(function () {
     aparelho: function (comando, motivo, args, restante) { return post('aparelho', { comando: comando, motivo: motivo || '', args: args || {}, restante: restante }); },
     aparelhoStatus: function () { return post('aparelhoStatus'); }, // {ligado, comandos:[...]}
     // Item D3: grava a config de um cliente de CLI no host. {client, baseUrl, apiKey, model}
-    // → {written:true, path, backup} | {written:false} quando o usuário cancela o diálogo.
+    // → {written:true, path, backup:null} | {written:false} when native consent is cancelled.
+    // Credential-bearing old contents stay in memory; no persistent backup is created.
     // `client` só aceita 'continue' | 'claude-code' | 'env' — os outros do gerador da web
     // não produzem arquivo.
     writeCliConfig: function (o) { return post('writeCliConfig', o || {}); },
