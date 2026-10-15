@@ -2690,3 +2690,58 @@ and a real site. A page that checks `isTrusted` on a click will ignore the agent
   carry the reply past the moment the server stopped waiting.
 - The text read goes to the server and into the model: it is untrusted, and the server says so to the model.
   Which model may see it is the server's rule (`FerramentasNoChat`), as for the screen capture.
+
+## ADR-043 — The Claude subscription token is made by the desktop and goes to the server without passing the page
+
+- **Date:** 14/10/2026 · **Status:** **Accepted** (extends [ADR-033](#adr-033--a-conta-do-claude-code-é-um-id-de-lista-fechada-e-o-diretório-vai-no-filho): the page names an id from a closed list; and ADR-026: the page proposes values, the native side acts)
+
+### Context
+
+The owner decided on 13–14/10/2026 that Claude Code can run in a Workspace project on the person's own subscription,
+with the one-year token `claude setup-token` prints, kept encrypted by ShvIA. The first delivery (SHVIA-WEB 2.114.42)
+asked the person to run that command in a terminal and paste its output into Settings → Engines. The desktop is where
+the person already has the client installed and signed in, so the owner asked for a button that does both steps
+("botão conectar Claude ao Workspace no Desktop").
+
+### Decision
+
+1. **The shell runs `claude setup-token` on a pseudo-terminal it opens**, with the profile's account variable and a lean
+   environment, and reads the token off the screen the client draws. Not pipes: the installed client (2.1.300, read and
+   not run) renders an Ink screen with a paste prompt, which wants a terminal; the login the shell already drives
+   (`claude auth login`) is a different command with a plain prompt.
+2. **The token goes from the shell to the server and nowhere else**: `PUT /api/auth/me/claude-subscription` on the
+   configured server (HTTPS, or this machine), with the panel's token the page hands over. The page is told phases
+   (`aguardando`, `enviando`, `conectado`, `falhou`, `cancelado`), a sign-in URL from Claude's own hosts, a code and a
+   message — a closed set of fields built in one place.
+3. **A native dialog comes first**, naming the profile and the server; the page cannot answer it (the rule of the login,
+   ADR-033's `confirmar_login`).
+4. **Ending a flow signals the client's process group by id**, TERM then KILL, at 15 minutes, on cancel and when the app
+   quits.
+
+### Alternatives considered
+
+- **Return the token to the page and let the page `PUT` it** (the page already has `authFetch`). Simpler: no HTTP client in
+  the shell and no panel token handed to it. Rejected: the secret that opens a subscription would pass through the surface
+  a script injected into the server's origin runs in, and the flow would die with the page — a person who goes elsewhere in
+  the app while the browser is open would end up not connected.
+- **Read the client's stored credentials** (`~/.claude`, the keychain). Not the one-year token (the stored one is the
+  short-lived access token that refreshes), and ADR-033's rule stands: credentials are never read, copied or moved here.
+- **Replay the client's OAuth flow in the shell.** It would present the shell as the client's OAuth application.
+- **Pipes instead of a terminal.** The Ink screen needs raw keyboard input for its paste prompt.
+
+### Consequences
+
+- **No Windows yet.** The capability is `false` there (`recursos.assinatura`) and the paste path in Settings → Engines
+  stays. A ConPTY needs a dependency this app does not have; it is a separate decision.
+- **The identity that is connected is whichever account the person authorises in the browser.** `setup-token` stores
+  nothing on disk, so the profile only decides which configuration and policy the client reads.
+- **The client's wording is not a contract.** The reader takes the token between the client's own labels and falls back to
+  a run of the right shape; when neither works the flow ends in `sem_token` and the paste path still works. The runbook in
+  `docs/code/ASSINATURA-NO-WORKSPACE.md` is the proof that a new client still says it.
+- The shell now holds the panel's token for the length of a flow (up to 15 minutes). It is the page's own token, handed to
+  the same origin's native side, and the shell keeps it only in the flow.
+
+### Not measured
+
+The sign-in itself: it needs the person's browser. Everything around it is proved on fixtures of the client's screen and on
+stand-ins (see the doc's *What was read, and what was NOT run*).

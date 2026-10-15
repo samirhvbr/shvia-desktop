@@ -29,6 +29,9 @@ pub fn bridge_token() -> &'static str {
 /// script injetado (BRIDGE_JS e PRICE_ALERT_NOTIFY_JS). Chamado no `on_page_load`.
 pub fn inject_token(js: &str) -> String {
     js.replace("__SHVIA_BRIDGE_TOKEN__", bridge_token())
+        // `recursos.assinatura` (1.29.0) is true where the shell can give the client a terminal: Unix. The
+        // methods exist everywhere, the capability does not, and the page asks the capability.
+        .replace("__SHVIA_ASSINATURA__", if cfg!(unix) { "true" } else { "false" })
 }
 
 /// O shim injetado em cada página (`on_page_load`). Define `window.__shviaCode`
@@ -176,6 +179,18 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // colado nada.
     claudeAuthLoginCode: function (o) { return post('claudeAuthLoginCode', o || {}); },    // {codigo} → {entregue} | {erro, codigo}
     claudeAuthLoginCancel: function () { return post('claudeAuthLoginCancel'); },
+    // Connects the Claude subscription to ShvIA from this machine (recursos.assinatura, 1.29.0): runs
+    // `claude setup-token` for the account on a terminal of its own, reads the one-year token off the screen
+    // and sends it to the configured server — the token NEVER reaches the page. {accountId?, accessToken}
+    // → {fluxo} | {erro, codigo}; the panel's access token is what the page already uses to talk to the server.
+    // Progress arrives through onEvent as {type:'claude_assinatura', fluxo, fase, url?, codigo?, mensagem?},
+    // fase 'aguardando' (url = the sign-in page, when the client showed one) | 'enviando' | 'conectado' | 'falhou' | 'cancelado'.
+    // codigo: 'cancelado' (the person said no in the native dialog, nothing was opened) | 'cli_ausente' | 'spawn_falhou' |
+    // 'pty_falhou' | 'sessao_invalida' | 'servidor_inseguro' | 'nao_suportado' | the account codes of claudeAccounts.
+    claudeSubscriptionConnect: function (o) { return post('claudeSubscriptionConnect', o || {}); },
+    // The code the browser showed, for a browser that could not hand it back by itself. {codigo} → {entregue} | {erro, codigo}
+    claudeSubscriptionCode: function (o) { return post('claudeSubscriptionCode', o || {}); },
+    claudeSubscriptionCancel: function () { return post('claudeSubscriptionCancel'); },
     claudeRunnerInstall: function () { return post('claudeRunnerInstall'); },
     claudeAccountsDetect: function () { return post('claudeAccountsDetect'); },
     // Cadastra um candidato pelo ALIAS — a página nunca manda caminho. {alias, rotulo?}
@@ -260,7 +275,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
     //           are on: that is the tray switch, which `aparelhoStatus().ligado` reads and
     //           nothing on the page can change. Without the flag the page offers the agent no
     //           device tool at all.
-    recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true, plano: true, orientar: true, aparelho: true, uso: true },
+    recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true, plano: true, orientar: true, aparelho: true, uso: true, assinatura: __SHVIA_ASSINATURA__ },
     // chamados pelo Rust (eval):
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
     _emit: function (evt, sessao, seq) { if (evt && typeof evt === 'object') { if (sessao) evt.sessao = sessao; if (seq) evt.seq = seq; } for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }

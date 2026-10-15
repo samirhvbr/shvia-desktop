@@ -1,5 +1,63 @@
 # Changelog
 
+## 1.29.0 - The terminal of the subscription connect is 1000 columns wide
+
+- The first version made the terminal 500 columns wide. The client wraps a long line at the terminal's width, the sign-in
+  URL it shows carries PKCE values and can run to a few hundred characters, and a URL cut at a wrap would be offered to
+  the person as a link that does not work. 1000 columns hold the URL and the token on one line with room to spare;
+  `docs/code/ASSINATURA-NO-WORKSPACE.md` and the terminal test say the same number.
+
+## 1.29.0 - The Claude client for the subscription connect starts in the person's home
+
+- `claude setup-token` now starts in the person's home directory (when `HOME` names one), not wherever the app was launched
+  from: the client reads the configuration of the directory it runs in, and a repository the app was started from is not
+  the person's choice for this. A `HOME` that is not a directory leaves the working directory alone instead of failing the
+  start. Proved by a stand-in that prints its working directory.
+
+## 1.29.0 - The pseudo-terminal opens the same way on macOS and Linux
+
+- `openpty` takes its terminal-settings and window-size pointers as `*const` in libc's Linux declaration and as `*mut` in
+  its macOS one, so the first version of the call (a `&` and a null `*const`) could not compile on the Mac. The call now
+  passes mutable raw pointers, which coerce to both, and the `unsafe` block says why a `&mut` argument would be a clippy
+  error on Linux. The FFI calls of the terminal (`openpty`, `fcntl`, `setsid`, `TIOCSCTTY`, `kill`) were also checked
+  against `aarch64-apple-darwin` and `x86_64-unknown-linux-gnu` in a scratch crate on the same libc.
+
+## 1.29.0 - ADR-043, the funcionalidades list and the state document record the Claude subscription connect
+
+- `docs/decisoes.md` gains ADR-043 (the token is made by the desktop and goes to the server without passing the page,
+  with the alternatives that were refused), `docs/funcionalidades.md` the 1.29.0 entry, and `.continue/estado-atual.md`
+  is dated 14/10/2026 at 1.29.0 (the freshness proof, F-22, reads both).
+
+## 1.29.0 - The bridge connects the Claude subscription to ShvIA: setup-token on a terminal of its own, the token straight to the server
+
+- New bridge methods, offered under `recursos.assinatura` (Linux and macOS; the capability is `false` on Windows):
+  `claudeSubscriptionConnect({accountId?, accessToken})`, `claudeSubscriptionCode({codigo})` and
+  `claudeSubscriptionCancel()`. Progress comes back as `{type:'claude_assinatura', fluxo, fase}` events
+  (`aguardando` with the sign-in URL once the client showed one, `enviando`, `conectado`, `falhou` with a code, `cancelado`).
+  Settings → Engines in ShvIA Web uses them to replace "run `claude setup-token`, copy, paste" with a button.
+- 🔴 **The token never reaches the page.** The shell runs `claude setup-token` for the chosen profile on a
+  pseudo-terminal it opens (`openpty`, `setsid`, `TIOCSCTTY`, 500 columns wide so the client cannot wrap the token),
+  reads the token off the screen the client draws, and `PUT`s it to `/api/auth/me/claude-subscription` on the server
+  the app is configured for, with the panel token the page hands over. A native dialog names the profile and the
+  server first, and the page cannot answer it. What the page is told is a closed set of fields built in one place
+  (`para_json`): the flow number, the phase, the sign-in URL (only from Claude's own hosts), a code and a message.
+- The reader (`tela.rs`) takes the token between the client's own labels, so a terminal that wrapped it still gives it
+  back whole, and refuses a run that a wrap may have cut when the labels are gone. It applies the same format rule as
+  the server (`sk-ant-oat` + two digits + 20 to 500 characters); an API key where a token should be is not sent.
+- The client gets a lean environment (an allowlist: `HOME`, a locale, `XDG_*`, the desktop and D-Bus variables it opens
+  the browser with, proxy and certificate variables, the person's real `PATH`, `TERM`): `ANTHROPIC_API_KEY`,
+  `CLAUDE_CODE_OAUTH_TOKEN`, a cloud credential or a ShvIA token the app was launched with do not reach it. A flow ends
+  at 15 minutes, on cancel and when the app quits, by a TERM then a KILL to the client's **process group** by id, so
+  what the client started goes with it.
+- The delivery accepts HTTPS (or this machine) only, follows no redirect, tells 401, 422, 429, 5xx and a network
+  failure apart, and tries a network failure or a 5xx again after a pause. The token's type (`Segredo`) has no
+  `Display`, a `Debug` that prints a mark, and overwrites its bytes on drop; a ruler reads the module's source and
+  fails on any print or log.
+- Proved here on fixtures of the client's screen and on stand-ins that draw it (a real terminal and controlling
+  terminal, the whole flow, wrap, timeout, cancel, a client that ignores TERM, the code typed into the terminal), and on
+  a local server for the request. **Not run: the sign-in itself**, which needs the person's browser: the runbook is
+  `docs/code/ASSINATURA-NO-WORKSPACE.md`. `cargo clippy --target x86_64-pc-windows-gnu` passes with the capability off.
+
 ## 1.28.0 - Take rustls 0.23.46, which fixes three advisories that turned the CI red
 
 - `cargo deny` started failing on 14/10/2026 on `rustls` 0.23.45: RUSTSEC-2026-0346 (the `Debug` impls of client session values expose TLS secrets),

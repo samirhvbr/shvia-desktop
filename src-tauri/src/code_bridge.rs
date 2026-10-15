@@ -40,6 +40,10 @@ use motores::*;
 mod login;
 use login::*;
 pub use login::cancelar_login;
+// The Claude subscription token, made by `claude setup-token` here and handed to the server (1.29.0). Not glob-imported:
+// its names (`Falha`, `Evento`) are its own, and the arms below address it by path.
+mod assinatura;
+pub use assinatura::cancelar_assinatura;
 mod sessao;
 use sessao::*;
 mod atualizacao;
@@ -362,6 +366,56 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             cancelar_login();
             reply(window, &req, true, serde_json::json!({ "cancelado": true }));
         }
+        /* Conectar a assinatura do Claude ao ShvIA a partir daqui (1.29.0, `recursos.assinatura`).
+         *
+         * 🔴 O token NUNCA sobe à página: o `claude setup-token` roda aqui, num terminal que o Rust abre, o token
+         * é lido da tela dele e vai direto ao servidor configurado (`assinatura.rs`). A página manda o id da conta
+         * e o token de acesso do painel (o que ela já tem para falar com o servidor), e recebe só eventos
+         * `{type:'claude_assinatura', fluxo, fase}`. Antes de tudo, o diálogo nativo (como no login): o
+         * servidor e o perfil à vista, e a página não responde por ele. */
+        "claudeSubscriptionConnect" => {
+            let id = v.get("accountId").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+            let acesso = v.get("accessToken").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+            fora_da_ui(window, &req, move |w| {
+                let (contas, _) = crate::contas_claude::registro(w.app_handle());
+                match crate::contas_claude::resolver(&contas, &id) {
+                    Ok(alvo) => {
+                        // O servidor primeiro: perguntar por um fluxo que não pode terminar é pergunta que não devia existir.
+                        let servidor = match assinatura::servidor_do_envio() {
+                            Ok(s) => s,
+                            Err(f) => return (false, serde_json::json!({ "erro": f.mensagem, "codigo": f.codigo })),
+                        };
+                        let perfil = crate::contas_claude::achar(&contas, &id)
+                            .map(|c| c.rotulo.clone())
+                            .unwrap_or_default();
+                        if !assinatura::confirmar_assinatura(w, &perfil, &servidor) {
+                            return (false, serde_json::json!({
+                                "erro": "conexão cancelada — nada foi aberto",
+                                "codigo": "cancelado",
+                            }));
+                        }
+                        match assinatura::iniciar_assinatura(w, alvo.as_ref(), &acesso) {
+                            Ok(fluxo) => (true, serde_json::json!({ "fluxo": fluxo })),
+                            Err(f) => (false, serde_json::json!({ "erro": f.mensagem, "codigo": f.codigo })),
+                        }
+                    }
+                    Err(e) => (false, serde_json::json!({ "erro": e.mensagem(), "codigo": e.codigo() })),
+                }
+            });
+        }
+        // O código que o navegador mostrou, para quem o navegador não devolveu sozinho. Escrito no terminal do
+        // cliente e esquecido: nem guardado, nem devolvido à página.
+        "claudeSubscriptionCode" => {
+            let codigo = v.get("codigo").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+            fora_da_ui(window, &req, move |_| match assinatura::entregar_codigo_da_assinatura(&codigo) {
+                Ok(()) => (true, serde_json::json!({ "entregue": true })),
+                Err(f) => (false, serde_json::json!({ "erro": f.mensagem, "codigo": f.codigo })),
+            });
+        }
+        "claudeSubscriptionCancel" => {
+            assinatura::cancelar_assinatura();
+            reply(window, &req, true, serde_json::json!({ "cancelado": true }));
+        }
         "claudeModels" => {
             // A conta é resolvida ANTES de rodar o binário: id desconhecido ou pasta que
             // sumiu não spawnam nada. Falhar aqui é mais barato e mais honesto que subir um
@@ -672,7 +726,7 @@ mod tests_fora_da_ui {
         let despacho = ["fora_da", "_ui("].concat();
         for acao in [
             "gitStatus", "listTree", "gitDiff", "readFile", "codexModels", "claudeAuthStatus", "claudeUsage", "codexUsage",
-            "claudeAuthLoginStart", "claudeModels", "claudeRunnerInstall", "claudeAccountsDetect",
+            "claudeAuthLoginStart", "claudeSubscriptionConnect", "claudeSubscriptionCode", "claudeModels", "claudeRunnerInstall", "claudeAccountsDetect",
             "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "openPentestViewer", "pentestCompatibility", "stopPentest", "resumePentest", "reviewPentest", "retestPentest", "pentestLive", "pausePentest", "continuePentest",
         ] {
             let chave = format!("\"{acao}\" =>");
