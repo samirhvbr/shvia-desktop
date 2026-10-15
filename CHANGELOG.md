@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.28.0 - Take rustls 0.23.46, which fixes three advisories that turned the CI red
+
+- `cargo deny` started failing on 14/10/2026 on `rustls` 0.23.45: RUSTSEC-2026-0346 (the `Debug` impls of client session values expose TLS secrets),
+  RUSTSEC-2026-0347 (buffered application data is sent to the outer server after an ECH rejection) and RUSTSEC-2026-0348 (Brotli certificate
+  decompression can allocate up to 1 GiB before authentication). The last green master run was the day before; the advisories are newer than the
+  code, so every branch inherited the red.
+- `cargo update -p rustls --precise 0.23.46` (the patched release), and nothing else moves in `Cargo.lock`.
+
+## 1.28.0 - The Codex runner can run where a container is the boundary
+
+- `codex-runner` reads `SHVIA_CODEX_SANDBOX_EXTERNO=<directory>`. With it, the thread starts with `danger-full-access`,
+  every turn runs under the protocol's `externalSandbox` policy (network restricted) and the startup proof is aimed at
+  that directory, which the host guarantees is read-only: a write inside the project must succeed and a write into the
+  directory must be refused, or the engine does not start (exit 3). A declaration that is not an absolute path without
+  `..` also stops the engine with a message. A plan turn is refused, with an `error` and a `turn_done`, because a plan
+  turn is read-only by the sandbox this mode does not run. Without the variable nothing changes.
+- Why: Codex's Linux sandbox is bubblewrap, and measured on 14/10/2026 it cannot run in the Workspace's runner
+  container unless both the seccomp and the AppArmor profile are removed (default: `No permissions to create a new
+  namespace`; seccomp off alone: `Failed to make / slave: Permission denied`), which would take away the container's
+  own sandbox. See `docs/code/MOTOR-CODEX-20260909.md#external-sandbox-1280`.
+- `codex-runner/externo.test.mjs` runs the real runner against a fake app-server in both modes (the thread, the turns,
+  the proof's target and policy, a host that lies, a plan turn, a bad declaration, the picker not broken by a bad
+  declaration, the default unchanged), and `protocolo.test.mjs` gains the three pure checks. The runner's own version is
+  1.6.0.
+
 ## 1.27.0 - The state documents record the account usage read
 
 - `docs/funcionalidades.md` gains the 1.27.0 entry (each account's plan limits for the Usage tab) and

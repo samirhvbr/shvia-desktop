@@ -4,6 +4,16 @@ Registro estável do que o app **já faz**, por versão. (WIP e pendências vive
 [`.continue/estado-atual.md`](../.continue/estado-atual.md); decisões em
 [decisoes.md](decisoes.md); como buildar em [build.md](build.md).)
 
+## The Codex runner where a container is the boundary (1.28.0)
+
+`SHVIA_CODEX_SANDBOX_EXTERNO=<directory>` makes `codex-runner` start its thread with `danger-full-access`, run
+every turn under the protocol's `externalSandbox` policy and aim its startup proof at that directory, which the
+host guarantees is read-only: a write inside the project must succeed and a write into the directory must be
+refused. Without the variable nothing changes. The Workspace's runner container sets it, because Codex's own
+Linux sandbox (bubblewrap) cannot run inside a container that keeps Docker's default security profile. A plan
+turn is refused there, since a plan turn is read-only by that same sandbox. See
+[the Codex engine](code/MOTOR-CODEX-20260909.md#external-sandbox-1280).
+
 ## Account plan limits for the Usage tab (1.27.0)
 
 `claudeUsage({accountId})` and `codexUsage()` (`recursos.uso`) give ShvIA Web's Usage

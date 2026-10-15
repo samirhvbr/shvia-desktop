@@ -64,10 +64,72 @@ export const POLITICA = Object.freeze({
  * `never` must never reach the wire. Kept as a function so the ruler has something
  * to bite: if someone later reintroduces a level picker, this is the invariant that
  * has to survive it.
+ *
+ * `danger-full-access` is refused too, EXCEPT in the external mode below: there the host has
+ * declared that something else confines the process, and the startup ruler measures it.
  */
-export function politicaValida(p) {
-  return !!p && p.askForApproval !== "never" && p.sandboxMode !== "danger-full-access";
+export function politicaValida(p, { externo = false } = {}) {
+  return !!p && p.askForApproval !== "never" && (externo || p.sandboxMode !== "danger-full-access");
 }
+
+/**
+ * 🔴 EXTERNAL SANDBOX (1.28.0) — for a host whose own container is the boundary.
+ *
+ * The runner's promise above rests on Codex's sandbox stopping a write outside the project. On
+ * Linux that sandbox is bubblewrap (`landlock` alone is refused by the app-server: *"filesystem-
+ * restricted execution requires bubblewrap to isolate app-server sockets"*), and bubblewrap needs
+ * to create user and mount namespaces. Measured on 14/10/2026 in the Workspace's runner container
+ * (Docker 29, `no-new-privileges`):
+ *
+ *   default seccomp                       bwrap: No permissions to create a new namespace
+ *   seccomp=unconfined                    bwrap: Failed to make / slave: Permission denied
+ *   seccomp=unconfined + apparmor=unconfined   works
+ *
+ * The only configuration where Codex's sandbox runs is the one that takes the CONTAINER's own
+ * sandbox away, and the container is what keeps an agent's code off the host. So there the container
+ * is the boundary and Codex is told so: `SHVIA_CODEX_SANDBOX_EXTERNO=<dir>` names a directory the
+ * host guarantees is read-only (the Workspace passes its read-only engines mount). The runner then
+ *
+ *   - starts the thread with `danger-full-access` and runs every turn under the protocol's
+ *     `externalSandbox` policy ("the process is already in an external sandbox"), network restricted;
+ *   - REPLACES the startup proof by the same measurement aimed at the host's guarantee: a write
+ *     inside the project must succeed, and a write into `<dir>` must be refused. A host that lied
+ *     (the directory is writable) stops the engine before the first turn, exactly like a sandbox
+ *     that did not hold;
+ *   - refuses PLAN turns: a plan turn is read-only by Codex's own sandbox, which this mode does not
+ *     run. Saying so is better than a plan turn that writes.
+ *
+ * Without the variable nothing changes: the default is Codex's own sandbox.
+ */
+export const POLITICA_EXTERNA = Object.freeze({
+  askForApproval: "on-request",
+  sandboxMode: "danger-full-access",
+});
+
+/** The policy every turn runs under in the external mode. */
+export const SANDBOX_EXTERNO_DO_TURNO = Object.freeze({ type: "externalSandbox", networkAccess: "restricted" });
+
+/**
+ * Reads `SHVIA_CODEX_SANDBOX_EXTERNO`.
+ *  - unset or empty → `null`: the mode is off.
+ *  - an absolute path → `{ fora }`.
+ *  - anything else → `{ erro }`: a typo must stop the engine, not silently run without the mode (the
+ *    sandbox would then be Codex's own, which fails in the very hosts that set this variable) or,
+ *    worse, with the proof aimed at a relative path.
+ */
+export function lerSandboxExterno(env = process.env) {
+  const bruto = env?.SHVIA_CODEX_SANDBOX_EXTERNO;
+  if (bruto === undefined || bruto === "") return null;
+  if (typeof bruto !== "string" || !bruto.startsWith("/") || bruto.includes("\0") || bruto.includes("..")) {
+    return { erro: "SHVIA_CODEX_SANDBOX_EXTERNO precisa ser um caminho absoluto, sem `..`, de uma pasta que o host garante só de leitura." };
+  }
+  return { fora: bruto.replace(/\/+$/, "") || "/" };
+}
+
+/** Why a plan turn does not run in the external mode. */
+export const MOTIVO_SEM_PLANO_EXTERNO =
+  "o modo Plano é somente leitura pelo sandbox do próprio Codex, e neste ambiente o sandbox é o contêiner: "
+  + "o turno não foi executado. Use outro nível de aprovação.";
 
 /** The SHVIA decisions, as the host sends them on stdin. */
 const APROVA = new Set(["approve", "always"]);
@@ -308,7 +370,10 @@ export function ehDecisao(msg) {
  * roots). A policy typed here would silently drop those. `workspaceWrite` with defaults is only
  * the fallback for a server that did not report it.
  */
-export function sandboxDoTurno({ plano = false, anteriorFoiPlano = false, politicaDaThread = null } = {}) {
+export function sandboxDoTurno({ plano = false, anteriorFoiPlano = false, politicaDaThread = null, externo = false } = {}) {
+  // The external mode has one policy for every turn that runs; a plan turn is refused by the runner
+  // before it gets here (see `MOTIVO_SEM_PLANO_EXTERNO`), so `plano` is not read.
+  if (externo) return SANDBOX_EXTERNO_DO_TURNO;
   if (plano === true) return { type: "readOnly" };
   if (anteriorFoiPlano) return politicaDaThread && typeof politicaDaThread === "object" ? politicaDaThread : { type: "workspaceWrite" };
   return null;
