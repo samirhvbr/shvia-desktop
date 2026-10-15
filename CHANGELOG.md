@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.29.2 - Replace CLI credential files atomically without adjacent backups
+
+- Stop creating or updating plaintext `.shvia-bak` copies. Merge from an in-memory snapshot, reject unreadable/invalid files and detected consent-time changes, and preserve the original until a complete private temporary can replace it atomically.
+- Create private permissions before credential bytes are written: Unix 0600, macOS staging without inherited ACLs, and a protected Windows DACL. Refuse symbolic links/reparse points; retain `backup: null` in the bridge response and explain the updated behavior in native consent.
+- Add filesystem regressions for failed/partial writes, conflicts, existing backups, permissions, invalid files and links, plus macOS inherited-ACL and Windows DACL checks. Preserve historical ADR-026 with a dated security update. Existing user backups are not removed, and no credentials are read or migrated by this delivery.
+
 ## 1.29.0 - The terminal of the subscription connect is 1000 columns wide
 
 - The first version made the terminal 500 columns wide. The client wraps a long line at the terminal's width, the sign-in

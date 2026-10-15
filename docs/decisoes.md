@@ -1281,6 +1281,9 @@ apareceu ao ter de **explicar por escrito** o que o painel checaria e por quê.
 
 ## ADR-026 — A config de CLI é escrita pelo nativo; a página só propõe valores
 
+> **Security update (2026-10-15):** the original backup and permission policy below
+> is superseded by [Credential-file replacement](#credential-file-replacement-2026-10-15).
+
 - **Data:** 28/07/2026 · **Status:** Aceito · **Item:** **D3** do
   [comparativo 9router × hermes](https://github.com/samirhvbr/shvia-web/blob/master/docs/comparativos/9router-hermes.md)
 
@@ -1369,6 +1372,45 @@ cabeçalho.
 
 Em arquivo que **já existia** não mexemos na permissão: mudar o modo de um arquivo de
 configuração de alguém é atrevimento e pode quebrar o que o lê com outro usuário.
+
+#### Credential-file replacement (2026-10-15)
+
+CLI configurations can contain keys for ShvIA and other providers. Creating an adjacent
+`.shvia-bak` retained a second plaintext credential file, and writing directly could
+truncate the only working configuration on failure. The earlier backup and permission
+policy above is retained as the historical decision, with these changes:
+
+- The previous contents are held in memory for merging and for detecting changes while
+  native consent is open. A missing file is distinguished from unreadable files, invalid
+  UTF-8, directories and symbolic links. Invalid JSON still aborts the merge.
+- No new `.shvia-bak` is created or updated. Existing backups are left untouched; this
+  change does not scan or delete the user's files. The bridge keeps `backup: null` for
+  compatibility, and the native consent dialog no longer promises a retained backup.
+- The complete new file is written to an exclusive temporary on the same filesystem,
+  synced and renamed over the destination. Errors before replacement preserve the
+  original and attempt to remove the temporary. A changed or newly created destination
+  detected before replacement aborts the request and asks for consent again.
+- Unix files are private (`0600`) before credential bytes are written, including when
+  replacing an older `0644` configuration. On macOS, the temporary file is created inside
+  a new staging directory after its inherited ACL has been removed; this prevents an
+  inherited ACL from exposing an otherwise `0600` file. On Windows, `CREATE_NEW` receives
+  a protected DACL granting full access only to the owner and SYSTEM. The replacement
+  retains those permissions rather than the old destination's broader permissions.
+- Symbolic-link components and Windows reparse points (including junctions) are rejected.
+  Unix directory descriptors anchor reading, staging and replacement. Windows directory
+  handles deny delete sharing while the operation runs. Dotfile managers that configure
+  these files through symbolic links must use a regular configuration file for this action.
+
+The original remains available until the rename succeeds; there is no persistent undo
+copy after success. This is not a lock against another process editing the same file at
+the exact instant of replacement. An abrupt process or machine stop can leave a private
+staging file; the application does not search for or remove files from earlier runs.
+
+Focused regression tests cover preservation of unrelated settings, failures after partial
+writes, existing backups, consent-time edits and file creation, invalid files and link
+rejection. Platform-specific tests inspect macOS inherited ACLs and Windows protected
+DACLs before writing any credential bytes. Compilation and these filesystem tests do not
+replace acceptance of the native dialog and a real CLI connection in an installed app.
 
 ### Consequências
 

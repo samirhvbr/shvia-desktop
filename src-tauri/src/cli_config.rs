@@ -29,14 +29,15 @@
 //! ([`crate::is_server_host`]): a lista embutida mais o servidor configurado pelo dono da
 //! máquina (item D4). É o mesmo teste que decide se um link abre dentro do app.
 //!
-//! ## Detecta, mescla, desfaz
+//! ## Detect, merge and replace
 //!
 //! - **Detecta**: o diretório do cliente existe? Se não, o cliente provavelmente não está
 //!   instalado, e criar `~/.continue/` para quem não usa o Continue é sujeira.
 //! - **Mescla**: mexe **só** no que é nosso — a entrada de modelo chamada `ShvIA`, ou as
 //!   três variáveis `ANTHROPIC_*`. O resto do arquivo volta intacto. Sobrescrever seria
 //!   apagar a configuração de outros provedores que a pessoa levou tempo montando.
-//! - **Desfaz**: cópia `.shvia-bak` antes de gravar, e o caminho dela volta na resposta.
+//! - **Replace**: retain the original until a private file can replace it atomically.
+//!   Previous credentials stay in memory, without a `.shvia-bak` copy.
 //!
 //! ## E o usuário confirma, no nativo
 //!
@@ -47,6 +48,8 @@
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use tauri::{Manager, WebviewWindow};
+
+mod storage;
 
 /// Teto do que a página pode mandar em cada campo. Chave de API e id de modelo são
 /// curtos; um valor de 10 KB só existe para tentar alguma coisa.
@@ -135,8 +138,8 @@ impl Cliente {
 #[derive(Debug)]
 struct Escrita {
     conteudo: String,
-    /// Já havia arquivo? Decide backup e permissão.
-    existia: bool,
+    /// Snapshot for merge/consent validation; never persisted as a backup.
+    anterior: Option<String>,
 }
 
 /// Entrada do dispatch da ponte (`action: "writeCliConfig"`).
@@ -283,7 +286,8 @@ fn base_confiavel(base: &str) -> bool {
 
 /// Lê o arquivo atual e delega a regra para [`montar_puro`].
 fn montar(cliente: Cliente, destino: &Path, base: &str, chave: &str, modelo: &str) -> Result<Escrita, String> {
-    let atual = std::fs::read_to_string(destino).ok();
+    let atual = storage::read(destino)
+        .map_err(|e| format!("não deu para ler a configuração; use um arquivo e pastas sem links simbólicos: {e}"))?;
 
     montar_puro(cliente, destino, atual.as_deref(), base, chave, modelo)
 }
@@ -300,8 +304,6 @@ fn montar_puro(
     chave: &str,
     modelo: &str,
 ) -> Result<Escrita, String> {
-    let existia = atual.is_some();
-
     let conteudo = match cliente {
         Cliente::Env => {
             // Arquivo nosso: reescrito inteiro, e é justamente por isso que ele não é o
@@ -357,15 +359,14 @@ fn montar_puro(
         }
     };
 
-    Ok(Escrita { conteudo, existia })
+    Ok(Escrita { conteudo, anterior: atual.map(str::to_owned) })
 }
 
 /// Lê o JSON existente, ou começa de um objeto vazio.
 ///
 /// **Arquivo com JSON inválido aborta** em vez de ser substituído: um `config.json` que o
 /// usuário estava editando e deixou com uma vírgula sobrando não pode ser trocado por um
-/// arquivo novo — ele perderia tudo, e o backup não ajudaria porque ele não sabe que
-/// existe um.
+/// arquivo novo — ele perderia tudo.
 fn json_existente(atual: Option<&str>, destino: &Path) -> Result<Value, String> {
     match atual {
         None => Ok(json!({})),
@@ -394,8 +395,8 @@ fn confirmar_e_gravar(window: &WebviewWindow, req: String, cliente: Cliente, des
         "Vou gravar a configuração do {} em:\n\n{}\n\n{}",
         cliente.rotulo(),
         caminho_txt,
-        if escrita.existia {
-            "O arquivo já existe: só as entradas do ShvIA serão trocadas, e faço uma cópia de segurança antes."
+        if escrita.anterior.is_some() {
+            "O arquivo já existe: as entradas do ShvIA serão trocadas. O original será preservado até a gravação concluir. Não será criada cópia de segurança com credenciais."
         } else {
             "O arquivo será criado."
         },
@@ -415,50 +416,22 @@ fn confirmar_e_gravar(window: &WebviewWindow, req: String, cliente: Cliente, des
                 return;
             }
 
-            match gravar(&destino, &escrita) {
-                Ok(backup) => crate::code_bridge::reply(
+            match gravar(&destino, &escrita, !cliente.exige_diretorio()) {
+                Ok(()) => crate::code_bridge::reply(
                     &win,
                     &req,
                     true,
-                    json!({ "written": true, "path": destino.display().to_string(), "backup": backup }),
+                    json!({ "written": true, "path": destino.display().to_string(), "backup": null }),
                 ),
                 Err(e) => crate::code_bridge::reply(&win, &req, false, json!({ "error": e })),
             }
         });
 }
 
-/// Grava, com backup. Devolve o caminho do backup, se houve.
-fn gravar(destino: &Path, escrita: &Escrita) -> Result<Option<String>, String> {
-    if let Some(dir) = destino.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| format!("não deu para criar {}: {e}", dir.display()))?;
-    }
-
-    // Backup ANTES de escrever, e com nome fixo: um `.bak` por gravação encheria a pasta
-    // do usuário, e o que ele quer desfazer é sempre a última.
-    let mut backup = None;
-    if escrita.existia {
-        let bak = destino.with_extension(format!(
-            "{}shvia-bak",
-            destino.extension().map(|_| "").unwrap_or("")
-        ));
-        let bak = if bak == *destino { destino.with_extension("shvia-bak") } else { bak };
-        if std::fs::copy(destino, &bak).is_ok() {
-            backup = Some(bak.display().to_string());
-        }
-    }
-
-    std::fs::write(destino, &escrita.conteudo).map_err(|e| format!("não deu para gravar: {e}"))?;
-
-    // Arquivo NOVO com credencial dentro nasce 0600. Em arquivo que já existia não
-    // mexemos na permissão: mudar o modo de um arquivo de configuração de alguém é
-    // atrevimento, e pode quebrar o que lê aquilo com outro usuário.
-    #[cfg(unix)]
-    if !escrita.existia {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(destino, std::fs::Permissions::from_mode(0o600));
-    }
-
-    Ok(backup)
+/// Replace only after the complete private file is synced. No old credential copy.
+fn gravar(destino: &Path, escrita: &Escrita, criar_pasta: bool) -> Result<(), String> {
+    storage::write(destino, escrita.anterior.as_deref(), &escrita.conteudo, criar_pasta)
+        .map_err(|e| format!("não deu para gravar a configuração com segurança: {e}"))
 }
 
 #[cfg(test)]
@@ -569,7 +542,7 @@ mod tests {
     /// Arquivo ausente ou vazio começa de um objeto novo — é o caso da primeira vez.
     #[test]
     fn arquivo_ausente_ou_vazio_comeca_do_zero() {
-        assert!(!montar_com(Cliente::Continue, None).expect("ausente").existia);
+        assert!(montar_com(Cliente::Continue, None).expect("ausente").anterior.is_none());
         assert!(montar_com(Cliente::Continue, Some("   ")).expect("vazio").conteudo.contains("ShvIA"));
     }
 
