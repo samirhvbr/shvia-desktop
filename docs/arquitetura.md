@@ -264,7 +264,7 @@ consent rules; the agent's browser uses a separate profile and cannot call back 
 These are distinct from Code's approval level.
 
 Controlled assessment uses the installed SHVIA Strix fork on Linux/macOS. The current probe
-requires a plain fork version `1.2.30 <= version < 2.0.0`, using `--fork-version` before native
+requires a plain fork version `1.2.39 <= version < 2.0.0`, using `--fork-version` before native
 consent; Windows is refused. Start, resume and retest repeat the check. Private saved-run and
 authorization identity stay native-owned. The viewer opens separately in the OS browser after
 consent, and its capability URL is not returned to the Web page. See
