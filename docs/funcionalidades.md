@@ -30,6 +30,14 @@ record follows below. Work not yet produced stays in
   takeover are separate lifecycles. The architecture's persistence table says which state stays
   on this computer and which service owns the rest.
 
+## The server name in the assessment consent (1.30.0)
+
+An assessment operation may carry the DNS name its site is known by next to the literal IP that was authorized (Strix
+1.2.39, `docs/PENTEST/server-name.md` in the Strix fork): the connection still goes to the IP, and the name sets the TLS server
+name, the certificate check and the `Host` header. Because it changes what the approver agrees to, the native
+confirmation prints it on the operation's line (`nome do servidor (SNI e Host): app.example.com`) and refuses a name that is
+not a canonical lowercase ASCII DNS name. The supported pair becomes Desktop **1.30.0+** and Strix **1.2.39+ within 1.x**.
+
 ## Claude subscription connected from the desktop (1.29.0)
 
 `claudeSubscriptionConnect({accountId?, accessToken})`, `claudeSubscriptionCode({codigo})` and
@@ -76,7 +84,7 @@ The native bridge reports the installed Strix version and refuses unsupported
 runtime/platform pairs before consent. Start, resume and retest repeat the check,
 and the approval names the installed version. Supported baseline: Linux/macOS,
 Desktop **1.26.2+ within 1.x** for the corrected fork-build probe and Strix **1.2.30+ within
-1.x**. The feature began in 1.25.0, whose probe read the upstream version and incorrectly
+1.x** (1.30.0 raised the Strix floor to **1.2.39**, the first build that accepts a server name). The feature began in 1.25.0, whose probe read the upstream version and incorrectly
 accepted other fork builds; 1.26.2 corrected it. Unknown, prerelease and unreviewed major
 versions are refused. See
 [the compatibility contract](pentest-compatibility.md).

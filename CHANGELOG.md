@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.30.0 - The assessment consent names the server an operation presents over its pinned IP
+
+- Strix 1.2.39 lets an operation carry `server_name`, the DNS name its site is known by, next to the literal IP that
+  was authorized (the IP stays the only authority; the name only sets the TLS server name, the certificate check and the
+  `Host` header). That changes what the approver is agreeing to, so the native confirmation now prints it on the
+  operation's line: `home: GET https://203.0.113.10/ — nome do servidor (SNI e Host): app.example.com`. Only a canonical
+  lowercase ASCII DNS name is shown; anything else (uppercase, a port, an IP literal, a control character, a non-string)
+  refuses the confirmation with `Nome do servidor inválido na resposta do Strix.` instead of printing server-supplied text.
+- The supported Strix moves from 1.2.30 to **1.2.39 within 1.x**: an older build rejects a context that carries a name,
+  and an older Desktop would not show it. Refusals keep their stable codes (`E_STRIX_TOO_OLD`,
+  `E_STRIX_VERSION_UNKNOWN`) and now say 1.2.39.
+- Tests: the canonical-name table, the confirmation with and without a name (the line without a name is byte-for-byte what it
+  was), the refusals, and the compatibility boundary at 1.2.38 / 1.2.39.
+
 ## 1.29.1 - Document the current ShvIA Desktop product and its native boundaries
 
 - Reconcile the English/Portuguese entrypoints, product/architecture map, feature history, account guides, brand, build instructions and mirrored agent contracts with the current Tauri/Rust client and three coding-engine paths.
