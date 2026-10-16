@@ -1,9 +1,19 @@
-# Portal identity
+# Shield identity
 
-The approved Portal artwork is maintained in the SHVIA-WEB repository under `brand/atual`. Its `brand/versao1` directory preserves the former graphics with hashes and source commits. The palette is cyan `#34B3EC` and navy `#0B0F17`; no gradients or glow.
+The active Desktop identity is **Shield**, as documented in [the canonical desktop brand
+source](../brand/README.md). The current editable sources are `brand/shield-app.svg` and
+`brand/shield-symbol.svg`; their native exports include `brand/shvia-desktop-icon-1024.png`,
+`brand/shvia-mark.png` and `src-tauri/icons/`. The shared Web brand lives in that repository's
+`brand/atual/`.
 
-Run SHVIA-WEB `brand/tools/export.cjs <workspace-root>` with Node and the `sharp` package available through NODE_PATH, then `brand/tools/export-native.py <workspace-root>` with Python and Pillow. The export tool updates sibling desktop, mobile, site and Workspace checkouts, so check their status before running it. Do not run the exporter against unrelated work in progress.
+The mark uses a graphite/titanium shield, cobalt hemisphere and connection nodes. The palette
+and source ownership are maintained in the brand README above; use it rather than an older
+Portal export recipe. `brand/versao2-portal/` preserves the previous identity for history.
 
-Desktop uses a rounded cyan tile, a transparent monochrome tray template, and the Portal splash symbol. Mobile uses an opaque square iOS source, transparent Android adaptive foreground in the safe center zone, and cyan backgrounds. Browser favicons use a separate drawing with an enlarged core on the 16-pixel grid.
+The previous version of this page described Portal cyan/navy assets and a cross-repository
+export command. That described the earlier identity, not the current sources. This
+2026-10-15 documentation review changes no image, icon or exporter.
 
-Updating source assets does not replace installed applications or submit store builds. Rebuild and distribute through the existing release process. Site social images are rendered by `bin/make-images.sh` in the site repository after editing its OG templates.
+Updating source artwork does not replace an installed application. Native icon generation,
+packaging, signing/notarization, a repository release and distribution remain separate
+operations; follow [the build and publication guide](build.md).

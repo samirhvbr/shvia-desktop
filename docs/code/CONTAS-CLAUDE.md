@@ -1,17 +1,44 @@
-# Contas do Claude Code no Modo Code
+# Local Claude Code accounts in Code mode
 
-> **Estado:** implementado na 1.4.16 (Linux); em macOS o seletor não oferece perfil nenhum
-> — ver "macOS: a variável que separa as contas do dono é outra" e a proposta em
-> [`.continue/contas-claude-macos.md`](../../.continue/contas-claude-macos.md).
-> Decisão e alternativas em
+> **Current scope, reviewed on 2026-10-15, Desktop 1.29.0:** the registry supports both
+> `CLAUDE_CONFIG_DIR` and `CLAUDE_SECURESTORAGE_CONFIG_DIR`, and the Web account settings can
+> discover shell functions/aliases and register a profile through the native bridge. The
+> macOS section below records an **08/09/2026 measurement before those additions**, not a
+> current platform-wide absence of profiles. This source review did not verify a person's
+> installed client, accounts or login.
+>
+> Decisions and alternatives:
 > [ADR-033](../decisoes.md#adr-033--a-conta-do-claude-code-é-um-id-de-lista-fechada-e-o-diretório-vai-no-filho).
 > Supersedes the proposal of 05/09/2026, archived beside this file as
 > [CONTAS-CLAUDE-proposta-20260905.md](CONTAS-CLAUDE-proposta-20260905.md).
 
-O motor **Claude Code (assinatura)** ([ADR-014](../decisoes.md#adr-014)) roda com o login
-que o cliente oficial guardou. Quem tem mais de uma conta — uma da empresa, uma pessoal —
-troca entre elas por `CLAUDE_CONFIG_DIR`. No terminal isso são dois aliases; no Modo Code
-passou a ser o seletor **CONTA**, ao lado do MODELO.
+The local **Claude Code subscription** engine uses the official client's saved login.
+People with several accounts can choose a profile in **ACCOUNT** beside MODEL. Each profile
+records which variable it sets: `CLAUDE_CONFIG_DIR` moves the whole client home;
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` moves the credential namespace while sharing configuration.
+The existing file format below preserves that distinction instead of inferring it from a path.
+
+This is **local** account selection. The profile registry stays on this computer; it does not
+connect that subscription to the remote Workspace or upload the client's login. The separate
+[subscription connection contract](ASSINATURA-NO-WORKSPACE.md) describes the native handoff
+capability and the Web's manual token path. Neither a profile label nor `disponivel: true`
+proves the account's identity, plan or valid authentication.
+
+## Register a local profile
+
+1. With a compatible desktop and shared Web page, open **Settings → Account → Claude Code
+   accounts** and ask it to discover profiles. Discovery executes the person's interactive
+   bash/zsh setup, so it is an explicit action, never a boot task.
+2. Check the candidate's alias/function, variable and directory, choose it and give it a label.
+   The page sends **alias and label**, not an arbitrary path; Rust resolves the candidate again.
+3. Select the resulting account in local Code. A missing directory stays visible with its
+   reason. A valid directory without a login still requires authenticating the official client.
+4. Changing account in a live Code session restarts that engine session. Saved transcript
+   remains a reading record; it is not submitted as another account's context.
+
+If no supported candidate is found, inspect the shell setup rather than treating the default
+entry as proof that no other login exists. Manual registry editing and `npm run contas` remain
+advanced paths below; edit with the app closed so it does not overwrite the registry.
 
 ---
 
@@ -61,7 +88,7 @@ descartada, como qualquer outra que não passa na validação.
 
 ### Descobrir os perfis em vez de digitá-los
 
-**Enquanto a tela não existe**, `npm run contas` faz esse cadastro pela linha de comando: ele
+**Advanced CLI path:** `npm run contas` performs the same registration from a repository clone; it
 pergunta ao shell, mostra o que achou e só grava com `--aplicar`. Ele **recusa** num app
 anterior à 1.4.28 — antes dela o campo `var` não existe, e um perfil de credencial seria
 aplicado como `CLAUDE_CONFIG_DIR`, entregando ao cliente uma casa em branco com o nome da
@@ -103,9 +130,8 @@ vazia inventada por nós listaria como conta e falharia no primeiro turno.
 filho não recebe `CLAUDE_CONFIG_DIR` e o CLI usa o default dele. Apagá-lo do arquivo não o
 remove da lista — sem ele não haveria caminho de volta ao comportamento de antes.
 
-**Outra máquina, outro caminho:** acrescente a entrada à mão e reabra o app. As regras que
-o arquivo tem de obedecer, conferidas a **cada leitura** (a regra pode ter endurecido desde
-que alguém escreveu ali):
+**Another computer, another local registry:** discover/register the local candidate there, or
+edit the registry with the app closed and reopen it. Every read validates the following rules:
 
 | campo | regra |
 |---|---|
@@ -131,9 +157,13 @@ Ações do `window.__shviaCode` (shim in `src-tauri/src/code_bridge/shim.rs` sin
 | `claudeAccountSelect(id)` | `{accountId}` | `{selecionada}` · `{erro,codigo}` |
 | `claudeModels({accountId})` | `{accountId}` | `{modelos:[…]}` · `{erro,codigo}` |
 | `spawn({…, accountId})` | `{accountId}` | `{ok:true, accountId, accountLabel}` |
+| `claudeAccountsDetect()` | — | `{candidatos:[{alias,var,dir,disponivel}]}` |
+| `claudeAccountAdd({alias,rotulo?})` | A discovered alias and optional label | The registered account or `{erro,codigo}` |
 
-**Nenhum caminho atravessa a ponte** — nem na entrada, nem na resposta, nem na mensagem de
-erro. A página manda um `id`; quem traduz é o Rust.
+The page cannot supply an arbitrary credential path to account selection or spawn: it sends
+an ID, which Rust resolves. **Discovery deliberately returns candidate paths** so the person can
+check what was found before registering. Registration sends the alias; Rust performs the same
+resolution again. The earlier claim that no path crossed in either direction was too broad.
 
 **A capacidade é declarada por presença:** `recursos.conta` no shim. Ausência é a resposta
 "não" — é assim que uma casca antiga com uma página nova continua com a régua de antes, em
@@ -190,12 +220,10 @@ como consolo seria escrever numa conta que o usuário não escolheu.
 
 ## Onde a conta é aplicada
 
-`contas_claude::resolver` é a **única** tradução id→diretório, e `contas_claude::aplicar`
-põe `CLAUDE_CONFIG_DIR` no `Command` do filho. Os dois pontos que sobem um `claude-runner`
-passam por ela:
-
-1. `claude_models(conta_dir)` — o `--modelos`, que pergunta o catálogo ao SDK;
-2. o ramo `is_claude` do `spawn` — o turno.
+`contas_claude::resolver` resolves an ID to its directory **and variable**, and
+`contas_claude::aplicar` sets that variable on the child command. Catalog discovery and local
+spawn share this resolution, as do the relevant status/login and usage paths. A usage read may
+also receive its own cache home, explained below; it does not change the profile's meaning.
 
 Enquanto o `claude_models` não pedia conta nenhuma, os dois eram caminhos independentes até
 o mesmo binário, e nada obrigava a concordarem. O catálogo **é** por assinatura: discordar
@@ -260,6 +288,14 @@ oficial, na hora do turno, porque é ele que sabe. Nada aqui tenta adivinhar iss
 ---
 
 ## 🔬 macOS: the variable that separates the owner's accounts is another one
+
+> **Historical measurement, 08/09/2026.** The account list and client behavior described in
+> this section belong to that machine and version at that date. The registry now records
+> `var` (since 1.4.28), UI registration exists, and alias discovery was added in 1.13.1.
+> The credential-keying and blank-home failure cases below explain why those changes were
+> necessary; they are not a current claim that macOS cannot select a profile. The unfinished
+> proposal in [`.continue/contas-claude-macos.md`](../../.continue/contas-claude-macos.md) retains
+> its own proposed scope and is not the current registry contract.
 
 Measured 08/09/2026 on the owner's Mac (macOS 25.6, `claude` 2.1.265 arm64, Agent SDK
 0.3.258). The section above was measured on **Linux**; this one contradicts part of it, and

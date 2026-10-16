@@ -4,6 +4,12 @@
 > there). This document is the desktop half: how `claude setup-token` is run and its token handed to
 > the server without ever being in the page, and what was and was not proved.
 
+> **Cross-repository review, 2026-10-15:** the Desktop bridge is implemented in 1.29.0.
+> The Web baseline reviewed alongside it (`25704dbc`) does not yet call these native methods;
+> its manual subscription-token flow is separate. A compatible Web page must invoke the
+> capability before the automatic connection button is available. This contract and its
+> fixtures do not establish that the hosted Settings screen or a real sign-in used it.
+
 ## What the page can ask
 
 Capability by presence: `recursos.assinatura` in the bridge — **true on Linux and macOS, false on

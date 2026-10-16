@@ -7,7 +7,8 @@
   para poder ser byte-idêntico nos dois (achado F-21).
 -->
 > **Leia também:** [README.md](README.md) (visão geral + decisão de arquitetura) ·
-> [.continue/estado-atual.md](.continue/estado-atual.md) (onde paramos) ·
+> [docs/project-state.md](docs/project-state.md) (current capabilities and boundaries) ·
+> [.continue/estado-atual.md](.continue/estado-atual.md) (dated working-state notes) ·
 > [.continue/escopo-projeto.md](.continue/escopo-projeto.md) (escopo e fases) ·
 > [docs/decisoes.md](docs/decisoes.md) (ADRs).
 
@@ -29,12 +30,14 @@ Para só inspecionar antes: `git fetch && git status`.
 
 ## O que é este repo
 
-Cliente **desktop multiplataforma** (Tauri 2) do **ShvIA** — a plataforma de IA
-da Blue3 hospedada em `https://ai.shvia.org`. **Shell fino:** a janela carrega
-o ShvIA web (Blade) remoto; o servidor é a fonte da verdade (dados, senhas,
-permissões). Detalhes e o porquê em [README.md](README.md) e
-[docs/decisoes.md](docs/decisoes.md). **Não confundir** com o repo Laravel do
-ShvIA (`/Users/samir/x/IA`) — aquele é o servidor, este é o cliente.
+**Cross-platform desktop client** (Tauri 2) for ShvIA. The main window loads the remote
+ShvIA Web interface; Rust supplies the native bridge, OS integration and local engine
+sessions. The server owns accounts, shared records and server-side permissions; the client
+also maintains native settings, authorized folders, engine accounts and session state.
+The small web shell does not mean local execution is absent. See [README.md](README.md),
+[the current capability map](docs/project-state.md) and [decisions](docs/decisoes.md).
+The Laravel server is the separate
+[shvia-web repository](https://github.com/samirhvbr/shvia-web), not this repository.
 
 ---
 
@@ -66,36 +69,68 @@ Format: `X.Y.Z - description in English (US)`, the same sentence as the `CHANGEL
 
 - **Nenhum banco roda aqui.** Sem MySQL, sem SQLite, sem Postgres no cliente — a
   regra do ShvIA ("MariaDB/MySQL, nunca SQLite") é satisfeita por construção.
-- **Nenhum segredo do servidor mora neste repo.** A pipeline de build/empacotamento/assinatura
-  (matriz macOS/Windows/Linux) foi removida na 0.4.6 por custo e o build de release segue
-  **100% local por decisão** — não por falta de cota: a conta migrou para GitHub Enterprise
-  (50.000 min/mês), mas runners macOS consomem minutos a **10x** (ver `docs/build.md`), então
-  trazer a matriz de volta é uma escolha de arquitetura à parte, não consequência automática do
-  upgrade. Testes (Rust/lint) já rodam via `.github/workflows/ci.yml` desde 01–02/09/2026.
-  Enquanto o build de release for local, **não há "secrets de CI"** onde guardar credencial de
-  assinatura. Onde elas vivem hoje: no macOS, the notarization credential is an App Store
+- **Server secrets do not belong in this repository.** Release packaging/signing is local
+  by decision. CI runs checks, including platform-specific Rust; it does not build signed
+  installers. The GitHub Release workflow records the version, and local publication uploads
+  installers separately. See [docs/build.md](docs/build.md).
+  **Historical rationale:** the release matrix was removed in 0.4.6 for cost; the later
+  Enterprise decision recorded 50,000 minutes/month and a 10x macOS multiplier. Those are
+  dated account/pricing notes, not a current quota or billing audit. Restoring a release
+  matrix remains a separate architecture decision.
+  Signing credentials are resolved on release machines, not supplied by the current CI
+  workflows. On macOS, the notarization credential is an App Store
   Connect API key in `~/.shvia/` since 1.6.39 (the app-specific password in the **keychain**,
-  service `shvia-notarize`, is the fallback — see `docs/build.md`); no Windows, o certificado no **repositório de
-  certificados do SO** (ou um `.pfx` fora da árvore do repo), apontado por
-  `SHVIA_WIN_CERT_THUMBPRINT` / `SHVIA_WIN_PFX` em variável de ambiente da sessão.
-  Nunca versionadas (ver `.gitignore`).
-- **Auth é cookie de sessão same-origin** (a janela navega o FQDN real). Não
-  inventar fluxo de token na F1 — o login é a tela do próprio ShvIA.
+  service `shvia-notarize`, is the fallback — see `docs/build.md`). The owner's recorded
+  Windows policy is no Authenticode certificate (23/09/2026); the script still accepts
+  `SHVIA_WIN_CERT_THUMBPRINT` / `SHVIA_WIN_PFX` if a certificate is introduced. That path has
+  the documented signing-order risk E14 and is not certified by compilation. Never version
+  credentials or read `signing.env`/private key files during a source review.
+- **The Web login uses a same-origin session cookie** because the window navigates to the
+  real FQDN. The F1 decision rejected a separate login token flow for that page. Native
+  engine logins and delegated Workspace connections now have their own implemented paths;
+  do not confuse those credentials with the browser session. See
+  [engine accounts](docs/code/CONTAS-CLAUDE.md) and
+  [Workspace subscription connection](docs/code/ASSINATURA-NO-WORKSPACE.md).
 
 ---
 
 ## Stack & runtimes
 
 - **Tauri 2** (Rust) + WebView nativo do SO (WKWebView / WebView2 / WebKitGTK).
-- Casca web mínima (Vite/TS). Sidecar Python (PyInstaller) entra na **F2**.
-- Três ecossistemas: `npm` (casca) · `cargo` (Rust) · `pip` (sidecar).
-- Comandos úteis (após o scaffolding da F1):
+- **Vite/TypeScript** builds the small local shell. Node 22 is used in CI; the locked Vite
+  runtime requires Node 20.19+ or 22.12+.
+- **The configured sidecar is `anna`**, staged by `scripts/stage-anna.mjs` into
+  `src-tauri/binaries/anna-<target-triple>` and declared in `bundle.externalBin`.
+  Claude/Codex runner modules and installers are bundled as resources. Their SDK/CLI,
+  installed engine, credentials and OS capabilities remain separate runtime requirements.
+- **The Python/PyInstaller F2 sidecar was a proposal, not the current build.** This
+  repository's application bundler does not configure that proposed backend; Python probe
+  scripts do not make it an installed runtime component. No `pip` step belongs in the
+  normal Tauri build described here.
+- Commands below run **from the repository root**. Before Rust checks or `tauri dev`, stage
+  a usable `anna` with `npm run anna:stage` (or its explicit `--from` path). A clean clone
+  has no staged sidecar because binaries are ignored. CI uses an inert stand-in for tests;
+  it must never be distributed. Its separate no-sidecar `cargo check` uses `TAURI_CONFIG`.
   ```bash
+  npm ci
+  npm run prova:bump
+  npm run prova:doc
+  npm run prova:politica
+  npm run prova:runner-version
+  cargo test --manifest-path src-tauri/Cargo.toml --locked
+  cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
   npm run tauri dev          # roda o app em dev
-  cargo clippy               # lint do Rust
   npm run build              # build da casca web
-  npx tauri build            # empacota (pesado — pede confirmação)
   ```
+- `cargo test` includes an installed `codex-runner --version` smoke check. Follow the
+  appropriate runner installer and OS prerequisites before treating a missing runtime as a
+  product regression. The exact preparation and complete gate list live in
+  [.github/workflows/ci.yml](.github/workflows/ci.yml) and
+  [.github/workflows/plataformas.yml](.github/workflows/plataformas.yml).
+- For release bundles, use the platform's `build-local` wrapper in
+  [docs/build.md](docs/build.md). It stages engines, synchronizes versions and performs
+  the signing/preflight steps that a direct `npx tauri build` bypasses. Build, signature,
+  publication and installed acceptance are distinct results.
 
 ---
 
@@ -116,8 +151,8 @@ Format: `X.Y.Z - description in English (US)`, the same sentence as the `CHANGEL
 - Escopo e plano de fases: [.continue/escopo-projeto.md](.continue/escopo-projeto.md)
 - Arquitetura técnica: [docs/arquitetura.md](docs/arquitetura.md)
 - Roteiro de fundação (F0/F1): [docs/roteiro-fundacao.md](docs/roteiro-fundacao.md)
-- Base técnica (colher ativos): SHVTERM em `/Users/samir/Projetos/SHVTERM`
-- Servidor/fonte da verdade: ShvIA em `/Users/samir/x/SHVIA/SHVIA-WEB` (`https://ai.shvia.org`)
+- Historical foundation source: SHVTERM (the original machine paths in early notes are not portable setup instructions).
+- Server/API: [shvia-web](https://github.com/samirhvbr/shvia-web); the default configured service is `https://ai.shvia.org`.
 
 ---
 
