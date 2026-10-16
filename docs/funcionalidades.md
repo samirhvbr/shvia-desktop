@@ -30,6 +30,12 @@ record follows below. Work not yet produced stays in
   takeover are separate lifecycles. The architecture's persistence table says which state stays
   on this computer and which service owns the rest.
 
+## The report digest after the sha2 0.11 bump (1.30.1)
+
+The SHA-256 the assessment report synchronization sends and compares (`request_sha256`) is written out as lowercase hex
+byte by byte, because `sha2` 0.11 returns a type with no `LowerHex`. The string is the same 64 characters as with 0.10,
+and a test pins it to the FIPS 180-2 vectors.
+
 ## The server name in the assessment consent (1.30.0)
 
 An assessment operation may carry the DNS name its site is known by next to the literal IP that was authorized (Strix
