@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.30.1 - The report digest builds with sha2 0.11 again
+
+- The `sha2` 0.10 → 0.11 bump (#134) was merged with red checks and broke the build of master and of every local
+  release build: `Sha256::digest` now returns a `hybrid_array::Array`, which has no `LowerHex`, so the
+  `format!("{:x}", …)` in `code_bridge/pentest/sync.rs` stopped compiling (`E0277`). The digest is now written out byte by byte
+  as lowercase hex, which is the same 64-character string as before.
+- That string is compared byte for byte with what the server acknowledges (`request_sha256`), so it now has a test against the
+  FIPS 180-2 vectors for `abc` and the empty input: a change of case, padding or length would reject every report retry.
+
 ## 1.30.0 - The assessment consent names the server an operation presents over its pinned IP
 
 - Strix 1.2.39 lets an operation carry `server_name`, the DNS name its site is known by, next to the literal IP that
