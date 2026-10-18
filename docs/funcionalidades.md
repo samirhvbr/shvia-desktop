@@ -30,6 +30,20 @@ record follows below. Work not yet produced stays in
   takeover are separate lifecycles. The architecture's persistence table says which state stays
   on this computer and which service owns the rest.
 
+## Native consent for a scope-only assessment (1.30.3)
+
+The native consent builder required the approved policy to be exactly version 2 — every
+WEB-authorized assessment had to be the controlled, identity-bound profile, with its fixed
+operations, identities and cases. It now also accepts a version-1 policy with no context at
+all: a scope-only authorization (PENTEST "quick start"), where the agent runs with its full
+toolset, confined only to the policy's own approved network destination. The consent for
+this profile names the target, the approved IP/port and any DNS name pinned to it, instead
+of the operation/identity/case lists that do not exist for it; it never asks for a
+credentials file (`needs_credentials` is always `false`). A version-1 policy that carries a
+context, or a version-2 one that does not, is refused before anything else is read. See
+[open-scan-authorization.md in the fork](https://github.com/samirhvbr/strix/blob/master/docs/PENTEST/open-scan-authorization.md)
+for the WEB-handoff contract this consumes; the WEB side that issues one does not exist yet.
+
 ## Private CLI configuration replacement (1.30.2)
 
 Native CLI configuration writes no longer create or refresh adjacent `.shvia-bak` files.
