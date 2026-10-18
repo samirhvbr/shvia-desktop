@@ -1,54 +1,66 @@
-# Arquitetura — ShvIA Desktop
+# Architecture — ShvIA Desktop
 
-Shell fino em Tauri 2 que carrega o ShvIA web (Blade) hospedado; o servidor
-Laravel é a fonte da verdade. Decisões e o porquê em [decisoes.md](decisoes.md).
+ShvIA Desktop loads the hosted ShvIA Web interface and adds native capabilities through a
+Rust bridge. The server owns accounts and shared application data; local engines, authorized
+folders, browser profiles and assessment artifacts remain on the computer. See
+[the current capability map](project-state.md) and [the decision records](decisoes.md).
 
----
-
-## Camadas
-
-```
-┌─────────────────────────── App Desktop (Tauri 2) ──────────────────────────┐
-│                                                                            │
-│  src-tauri/ (Rust)                          src/ (casca web mínima, Vite)  │
-│  ─────────────────                          ─────────────────────────────  │
-│  • criação da janela + branding             • bootstrap/splash             │
-│  • tray/menubar + autostart ✅               • tela offline + auto-retry    │
-│  • deep-link  shvia://                        • config de URL (1º run)      │
-│  • updater (latest.json)                                                    │
-│  • store (URL servidor + estado janela)                                    │
-│  • notifications de SO                                                      │
-│  • single-instance                                                         │
-│                                                                            │
-│            WebView nativo (WKWebView / WebView2 / WebKitGTK)                │
-│            ───────────────────────────────────────────────                 │
-│            navega ──► https://ai.shvia.org  (UI Blade do ShvIA)         │
-│                                                                            │
-│  [F2] sidecar/ (Python, PyInstaller) — opcional:                           │
-│        keychain de token · SSO handoff · chamadas a /api/v1                 │
-└────────────────────────────────────────────────────────────────────────────┘
-                         │ HTTPS (cookie de sessão; SSE em /chat)
-                         ▼
-        Servidor ShvIA (Laravel 13 + MariaDB + Postgres RAG) — FONTE DA VERDADE
-```
+> **Reviewed against source on 2026-10-15, Desktop 1.29.0.** This describes implementation
+> contracts, not a deployed server or installed-client acceptance. Dated measurements below
+> retain their original scope. The original Python-sidecar/F2 sketch is superseded: there is
+> no Python `sidecar/` in the current app. Native services are Rust; local Code uses anna and
+> the Node-based Claude/Codex runners.
 
 ---
 
-## Fluxo de autenticação (F1)
+## Layers
 
-1. App abre → WebView navega o servidor configurado (padrão `https://ai.shvia.org`
-   — ver [Endereço do servidor](#endereço-do-servidor-item-d4)).
-2. Usuário cai na **tela de login Breeze** do próprio ShvIA.
-3. Login → ShvIA seta **cookie de sessão Sanctum** (guard `web`) para o FQDN.
-4. Toda navegação/requisição subsequente vai **autenticada** (como num browser).
-5. **Persistência:** o WebView guarda o cookie; validar que sobrevive ao
-   **restart** do app (incl. "remember me"/lifetime de sessão).
+```
+Local bootstrap (src/, Vite/TypeScript)
+  └─ Rust server configuration and TCP reachability probe
+      └─ Native WebView navigates to the configured ShvIA server
+          ├─ Shared Blade/JavaScript UI, Web session and API token
+          ├─ HTTPS → ShvIA Web (Laravel, MariaDB, inference gateway)
+          └─ Custom native bridge → Rust capability dispatch
+              ├─ Authorized local folder → anna / claude-runner / codex-runner
+              ├─ Native file dialogs, notifications, device and browser actions
+              └─ Controlled Strix assessment → private local artifacts/outbox
 
-**Bearer token (`/api/v1`)** não autentica rotas Blade — só serve para **ações
-nativas** que falem com a API (F2+, via sidecar + keychain).
+Remote Code is a separate path owned by the Web UI:
+  shared Code screen → ShvIA Web work channel → Workspace service → remote files/engine
 
-**Deep-link SSO `shvia://`** (F2) é a **única origem não-FQDN**; exige
-`SANCTUM_STATEFUL_DOMAINS` / handoff de cookie. Tratar explicitamente.
+Rust also owns windows/tray, quick window, shvia:// navigation, autostart,
+window state, server.json and the update client.
+```
+
+The active Web knowledge retrieval is in MariaDB. A separate PostgreSQL/pgvector path in
+the Web repository is dormant CLI functionality; it is not a Desktop runtime dependency.
+
+---
+
+## Authentication and navigation
+
+1. The WebView navigates to the configured server (default `https://ai.shvia.org`).
+2. The server's own sign-in page establishes the Web session cookie for that origin.
+3. The shared Web UI also uses its panel Bearer token for API calls. The native shell does not
+   implement a second account database or a general token vault.
+4. Local Claude/Codex engines use their official clients' authentication. Choosing a local
+   Claude profile resolves a local ID to the environment of that child process; it does not
+   sign the ShvIA account into that provider.
+
+`shvia://` is a closed navigation scheme (`esquema.rs`): bring the app forward, toggle the quick
+window, open Chat with an optional **unsent** prompt, or open a settings section. It is not an
+implemented SSO token/cookie handoff. A link cannot select a server, execute a request or approve
+a gate. The configured server remains the destination authority.
+
+The native capability for connecting Claude for **remote** Workspace execution is a different
+credential flow: when called by a compatible Web page, `claude setup-token` runs after native
+confirmation on Linux/macOS, and the shell sends the
+token to the configured ShvIA server without exposing it to the page. The server encrypts its
+copy. The reviewed Web source (`25704dbc`) has the manual token form but does not call these
+native methods yet. Windows uses that paste path. See
+[the subscription contract](code/ASSINATURA-NO-WORKSPACE.md) and
+[local account profiles](code/CONTAS-CLAUDE.md).
 
 ---
 
@@ -71,11 +83,17 @@ nativas** que falem com a API (F2+, via sidecar + keychain).
   agora que existe um `invoke_handler`: o ACL do Tauri recusa `invoke` vindo de
   página remota, então um servidor comprometido **não** consegue chamar
   `shvia_server_set` e se tornar o destino permanente do app.
-- **Segredos** (chaves de assinatura/updater) **nunca** no repo. Enquanto o build de
-  release for local por decisão (ver `docs/build.md`), não há "secrets de CI" onde
-  guardá-los para esse fluxo: no macOS a senha de notarização vive no **keychain** da
-  máquina; no Windows o certificado vive no **repositório de certificados do SO** (ou
-  um `.pfx` fora da árvore do repo), apontado por variável de ambiente da sessão.
+- **Build credentials stay outside the repository.** Local release builds use the operator's
+  signing material. macOS prefers an App Store Connect API key for notarization; the historical
+  keychain password is a fallback. Windows uses its certificate store or a `.pfx` outside the
+  tree. The current paths and publication checks belong to [build.md](build.md).
+
+The generic Tauri `invoke` boundary above is separate from the **custom Code bridge**. The
+trusted configured origin receives `window.__shviaCode`; every message carries the process's
+bridge token (`code_bridge/shim.rs`). File actions and local spawn require a folder authorized
+by the native picker (`code_bridge/cerca.rs`). Native confirmations and tray switches guard the
+specific device, browser, login and assessment actions. Changing the configured server changes
+which origin receives those capabilities; the remote UI is therefore part of the trust boundary.
 
 ---
 
@@ -102,8 +120,9 @@ bloqueio real do item; (2) o primeiro request do WebKit "frio" custava 5-6 s ant
 de qualquer resposta ([ADR-012](decisoes.md#adr-012--timeout-do-ping-de-alcance-o-cold-start-do-webkitgtk-custa-5-6-s)),
 o que forçava timeout de 15 s — agora são **4 s**.
 
-**Alcance ≠ identidade:** o probe abre um TCP e fecha. Não valida certificado nem
-confere que é um ShvIA — escopo declarado, entra com o cliente HTTP do D1.
+**Reachability is not identity:** the probe opens TCP and closes it. It does not validate a
+certificate or establish that the host is ShvIA. Navigation and the updater make their own
+HTTPS requests; a successful TCP probe alone is not an application-health check.
 
 **O host configurado vira INTERNO** (`is_server_host`), logo recebe as pontes
 nativas: Modo Code, notificação, badge, gate de versão. É decisão de confiança
@@ -117,8 +136,12 @@ persistência), [`src/main.ts`](../src/main.ts) (estados da casca),
 
 ### Pointing the app at DEV (`dev.shvia.org`)
 
-`https://dev.shvia.org` has been live since 24/09/2026. It is a DEV copy of SHVIA-WEB on the
-production host, with a database of its own. Before testing against it:
+> **Historical environment snapshot, 2026-09-24.** The facts in the next three bullets were
+> recorded for that DEV installation; this source review did not verify its current data,
+> credentials, branch, integrations or workers. Confirm them with the operator before using it.
+
+`https://dev.shvia.org` was recorded as a DEV copy of SHVIA-WEB on the production host, with a
+database of its own:
 
 - **Its data is a copy of production** (taken 24/09/2026), with every credential the app
   encrypts cleared: BYOK provider keys, OAuth, GitHub and bot tokens, and the CPF. Log in with
@@ -154,16 +177,18 @@ No DEV build is needed: the address is configuration, the mechanism above.
 
 What changes while DEV is configured: DEV becomes an internal host and gets the native bridges
 (Code mode, notifications, badge), and `ai.shvia.org` stays internal too (`SERVER_HOSTS`). The
-login is DEV's own, because the session cookie belongs to each origin. **Updates keep coming
-from production**, because the updater's endpoint is compiled in (`tauri.conf.json`,
-`plugins.updater.endpoints`).
+login is DEV's own, because the session cookie belongs to each origin. **Update checks follow
+the configured server too:** `updater::endpoint` rebuilds the endpoint from `server::load()`.
+The compiled `tauri.conf.json` endpoint is a default, not a promise that DEV receives production
+updates. The selected server must serve compatible signed update artifacts.
 
 ---
 
 ## IPC / bridge
 
-- O WebView remoto (Blade) roda no FQDN do ShvIA; o bridge JS↔Rust fica
-  disponível só onde habilitado por capability.
+- The remote WebView uses the configured ShvIA origin. The custom JS/Rust bridge is injected
+  into trusted internal hosts, with its own token and action checks; generic Tauri plugin
+  capabilities remain unavailable to the remote page.
 - Eventos da página → **notificação de SO + contagem no ícone** via
   `tauri-plugin-notification` e `set_badge_count`, ponteados pelo shim
   `NATIVE_NOTIFY_JS` (injetado em `on_page_load`), que faz *polling* de
@@ -176,9 +201,9 @@ from production**, because the updater's endpoint is compiled in (`tauri.conf.js
   - **Clique→navegar não existe**, e não é dívida: o `desktop.rs` do plugin não tem
     callback de ação. **Windows não tem badge** (`set_badge_count` é `Unsupported`
     lá). Ver [ADR-017](decisoes.md#adr-017--notificação-badge-no-ícone-entra-cliquenavegar-não-é-possível-com-o-plugin).
-- **Gate de versão** (`VERSION_GATE_JS`): lê `version.clients.desktop` do
-  `/api/v1/health` e, se este build está abaixo do `min_version` que o servidor
-  declara, mostra tarja dispensável com o motivo e o changelog. **Avisa, nunca
+- **Version gate** (`VERSION_GATE_JS`): reads `clients.desktop` from the authenticated
+  `/api/v1/version`, falling back to the older `/api/v1/health` shape, and when this build is
+  below the server's `min_version`, shows a dismissible banner with the reason and changelog. **Avisa, nunca
   bloqueia** — a casca é fina e o cliente velho quase sempre funciona. Dispensar é
   lembrado por versão DO SERVIDOR, então o aviso volta se o servidor subir pedindo
   outra coisa. Pré-requisito do auto-update (D1). Ver
@@ -196,12 +221,55 @@ path used from outside (`code_bridge::handle_message`, `::reply`, `::Sidecars`, 
 | `code_bridge/sessao.rs` | one engine process per session of a window (`Sidecars`, keyed by window + `sessao` since 1.8.0), `spawn`, `send`, ending it; what survives a reload since 1.8.2 (`Registro`: the numbered log, busy state, open requests; `soltar_janela`, `listar`, `anexar`, ADR-037) |
 | `code_bridge/motores.rs` | which binary each engine is, finding it, catalogues, exit codes, installing the runner |
 | `code_bridge/login.rs` | the Claude Code login driven from the screen, and its native confirmation |
+| `code_bridge/assinatura.rs`, `code_bridge/assinatura/` | connecting a Claude subscription to the configured server; native consent, Unix PTY, bounded screen parser and private token delivery |
+| `code_bridge/atualizacao.rs` | installing missing runners and updating installed runners from bundled sources |
 | `code_bridge/cerca.rs` | the fence (ADR-031) and the project→folder bindings |
 | `code_bridge/painel.rs` | the folder panel: `git status`, tree, diff, file read |
 | `code_bridge/dialogos.rs` | the native pick/save dialogs |
+| `contas_claude.rs` | local account registry, alias/function discovery, child environment and isolated usage cache |
+| `code_bridge/aparelho.rs` | tray-enabled device info, notifications, native file picking and consented screen capture |
+| `code_bridge/navegador.rs`, `code_bridge/navegador.js` | the agent's separate browser/profile, site and interaction confirmations |
+| `code_bridge/pentest.rs`, `code_bridge/pentest/` | controlled assessments, runtime compatibility, consent, recovery, telemetry, review/retest, private sync and external viewer |
 
 Each file's tests sit at its end. The source rulers read the file that holds what they check:
 the dispatch rulers read `code_bridge.rs`, the login rulers read `login.rs`.
+
+### Engine sessions and responsibility for background work
+
+Local sessions are keyed by window and session name, with at most eight per window. Switching
+projects can park an agent while the shared Web screen keeps serving its events. A session
+spawned with `retomavel: true` survives a document reload: Rust buffers numbered events and the
+next page calls `sessions()` and `attach(session, since)`.
+
+- The log holds up to 8 MB per session; `attach` reports `lacuna` if earlier output was dropped.
+- Without an attached page, a gate waiting or a turn ending produces a native notice after
+  15 seconds. A working agent is not ended merely because its page is absent. An idle detached
+  session ends after ten minutes; ended records remain for up to 30 minutes.
+- Closing a window ends its local sessions; quitting ends all of them. Reload recovery does
+  not imply survival of an app restart, a different computer or a closed window.
+- The Web screen owns approval decisions, the queue, Run and transcript recording. Rust
+  keeping an engine process alive does not supply a server worker for subsequent gates/turns.
+
+Remote sessions live in the Workspace service. ShvIA Web's composed bridge can display them
+in this same Code screen and transfer screen ownership between devices. A saved Code transcript
+is a server-side reading record, not a local folder upload or proof of a live engine. The
+[Web Remote Code contract](https://github.com/samirhvbr/shvia-web/blob/master/docs/FRONTEND/REMOTE-CODE.md)
+owns this distinction.
+
+### Device, browser and assessment boundaries
+
+Device actions and the agent's browser have separate native tray switches, off until the person
+enables them. Screen capture, file picking and browser interactions follow their specific native
+consent rules; the agent's browser uses a separate profile and cannot call back into the app.
+These are distinct from Code's approval level.
+
+Controlled assessment uses the installed SHVIA Strix fork on Linux/macOS. The current probe
+requires a plain fork version `1.2.39 <= version < 2.0.0`, using `--fork-version` before native
+consent; Windows is refused. Start, resume and retest repeat the check. Private saved-run and
+authorization identity stay native-owned. The viewer opens separately in the OS browser after
+consent, and its capability URL is not returned to the Web page. See
+[authorization](PENTEST/authorization.md), [compatibility](pentest-compatibility.md) and
+[viewer lifecycle](pentest-viewer.md). Source checks do not replace the installed operator pilot.
 
 ---
 
@@ -235,45 +303,63 @@ the dispatch rulers read `code_bridge.rs`, the login rulers read `login.rs`.
   `spawn` e na sonda `command -v`. Ver
   [ADR-030](decisoes.md#adr-030--o-sidecar-recebe-o-path-do-shell-de-login-não-o-do-launchd).
 - **Assinatura:**
-  - **macOS** — Developer ID + `notarytool` + `stapler`, com a senha de app no
-    **keychain** (serviço `shvia-notarize`), nunca no repo.
+  - **macOS** — Developer ID, `notarytool` and `stapler`; the App Store Connect API key is
+    preferred for notarization, with the historical keychain password as fallback. See [build.md](build.md).
   - **Windows** (item D9) — `signtool` no `.msi` **e** no `-setup.exe`, com
     timestamp RFC3161 (`/tr`). Sem `/tr` a assinatura expira junto com o
     certificado. Credencial por env: `SHVIA_WIN_CERT_THUMBPRINT` (preferido — a
     chave privada não vira arquivo) ou `SHVIA_WIN_PFX` + senha.
   - **Linux** — sem assinatura hoje. O `.AppImage` e o `.deb` saem crus.
-  - Em qualquer SO, **sem credencial o build segue e avisa** — mas avisa em amarelo,
-    porque build não assinado que parece normal é o que faz alguém publicar e
-    descobrir pelo relato do usuário.
+  - A local unsigned build and a publishable artifact are different results. The publication
+    script checks signing, updater keys and the manifest; an unsigned macOS build is refused
+    for publication. See [build.md](build.md) for the exact per-platform checks.
 - **Checksums e manifesto** (item D9, `scripts/release-manifest.mjs`): um `.sha256`
   ao lado de cada instalador e o **`release.json`** na raiz, que é o manifesto que o
-  auto-update (D1) vai ler. Ele **mescla** por plataforma — build por máquina
+  update server reads. Ele **mescla** por plataforma — build por máquina
   significa que sobrescrever apagaria a entrada dos outros SOs — e **avisa quais
   faltam**. O hash é calculado **depois** de assinar, porque assinar altera os bytes.
   `release.json` é **gitignorado**: artefato de build, não fonte. Ver
   [ADR-020](decisoes.md#adr-020--checksums-e-releasejson-saem-do-build-local-assinatura-no-windows).
-- **Auto-update:** **ainda não existe** — é o item **D1**, e o `release.json` acima é
-  o pré-requisito dele.
+- **Auto-update exists** (`updater.rs`, ADR-022): it checks the configured server, asks before
+  installation/restart and verifies the updater signature. Automatic checks are quiet on
+  failure; manual checks respond with their outcome. Package-manager and bundle limitations
+  have specific instructions (including Arch/pacman). Publishing a GitHub Release alone does
+  not publish the update server's manifest or installers.
 
 ---
 
-## Compatibilidade de versão de servidor (F3)
+## Client/server compatibility
 
-No launch, o app lê o campo `version` de `GET /api/v1/health` e compara com a
-**versão mínima de servidor** que ele exige. Divergência → aviso "atualize o
-servidor / atualize o app". Isso desacopla as cadências de release do desktop e
-do Laravel.
+The server declares the minimum **Desktop** build in `clients.desktop.min_version`; the app
+compares its own build and warns without blocking. It does not enforce a general minimum
+server release. The shared Web UI checks individual bridge methods and `recursos` flags,
+because the page, installed shell and runners update independently. A capability flag says
+the shell implements a path; it does not prove the external client is installed or logged in.
+
+The authenticated `/api/v1/version` is the primary source. `/api/v1/health` is a fallback
+for older servers and may require a health token on an installation; a failed read must not
+be reported as a confirmed compatible server.
 
 ---
 
-## Persistência local (o que mora no cliente)
+## Local persistence
 
-| Dado | Onde | Por quê |
-|------|------|---------|
-| URL do servidor | `tauri-plugin-store` (JSON) | Configurável no 1º run. |
-| Estado da janela (tamanho/posição) | `tauri-plugin-store` | UX. |
-| Cookie de sessão | partição do WebView | Auth (ADR-005). |
-| Cache de assets | WebView | Performance. |
-| Token Bearer (F2, opcional) | **keychain do SO** | Ações nativas na API. |
+| Data | Location / owner | Boundary |
+|---|---|---|
+| Configured server | App config `server.json` (`server.rs`) | Per computer; invalid input falls back to the built-in server |
+| Window size/position | `tauri-plugin-window-state` | Quick window is excluded from normal window-state restore |
+| Quick-window shortcut and dismissed update | App config `janela-rapida.json`, `updater.json` | Native preferences, not account settings on the server |
+| Web session cookie, panel token and cached assets | WebView origin storage | Web authentication; not a native keychain token vault |
+| Authorized folder roots and project bindings | App config `pastas-autorizadas.json`, `modo-code-bindings.json` | A server project ID maps to a path on this computer only |
+| Claude profile registry | App config `contas-claude.json` | IDs, labels, directories and variable names; no provider credential in this registry |
+| Official-client credentials/history | Claude/Codex client's own storage | Local engine authentication and context; ownership remains with those clients |
+| Credential-profile usage cache | App cache `uso-claude/<account id>` | Isolates the usage read; it does not move the person's configuration home |
+| Live local sessions and replay log | Rust process memory | Reload continuity within a window, not app-restart persistence |
+| Page snapshot, queue and unsent Code transcript | Web `sessionStorage` / `localStorage`, by their contracts | Client state/outboxes; saved transcript blocks are also stored on ShvIA Web |
+| Agent-browser profile | App data `navegador-do-agente` outside macOS; dedicated WebKit data-store ID on macOS | Separate site cookies/logins, not the ShvIA window's profile |
+| Controlled assessment | Private app config `pentest/` | Grants, recovery descriptor, runs/artifacts and outgoing snapshots; upload requires its native consent/receipt contract |
 
-**Nada relacional. Nenhum SQLite. Nenhum segredo do servidor.**
+No relational database runs in this client. That does not mean it is stateless: local files,
+client credentials, browser state and private assessment artifacts have their own lifecycles.
+The Workspace's remote filesystem is a separate service; it is not a synchronized copy of every
+authorized folder on this computer.

@@ -1,10 +1,39 @@
 # Changelog
 
-## 1.29.2 - Replace CLI credential files atomically without adjacent backups
+## 1.30.2 - Replace CLI credential files atomically without adjacent backups
 
 - Stop creating or updating plaintext `.shvia-bak` copies. Merge from an in-memory snapshot, reject unreadable/invalid files and detected consent-time changes, and preserve the original until a complete private temporary can replace it atomically.
 - Create private permissions before credential bytes are written: Unix 0600, macOS staging without inherited ACLs, and a protected Windows DACL. Refuse symbolic links/reparse points; retain `backup: null` in the bridge response and explain the updated behavior in native consent.
 - Add filesystem regressions for failed/partial writes, conflicts, existing backups, permissions, invalid files and links, plus macOS inherited-ACL and Windows DACL checks. Preserve historical ADR-026 with a dated security update. Existing user backups are not removed, and no credentials are read or migrated by this delivery.
+
+## 1.30.1 - The report digest builds with sha2 0.11 again
+
+- The `sha2` 0.10 → 0.11 bump (#134) was merged with red checks and broke the build of master and of every local
+  release build: `Sha256::digest` now returns a `hybrid_array::Array`, which has no `LowerHex`, so the
+  `format!("{:x}", …)` in `code_bridge/pentest/sync.rs` stopped compiling (`E0277`). The digest is now written out byte by byte
+  as lowercase hex, which is the same 64-character string as before.
+- That string is compared byte for byte with what the server acknowledges (`request_sha256`), so it now has a test against the
+  FIPS 180-2 vectors for `abc` and the empty input: a change of case, padding or length would reject every report retry.
+
+## 1.30.0 - The assessment consent names the server an operation presents over its pinned IP
+
+- Strix 1.2.39 lets an operation carry `server_name`, the DNS name its site is known by, next to the literal IP that
+  was authorized (the IP stays the only authority; the name only sets the TLS server name, the certificate check and the
+  `Host` header). That changes what the approver is agreeing to, so the native confirmation now prints it on the
+  operation's line: `home: GET https://203.0.113.10/ — nome do servidor (SNI e Host): app.example.com`. Only a canonical
+  lowercase ASCII DNS name is shown; anything else (uppercase, a port, an IP literal, a control character, a non-string)
+  refuses the confirmation with `Nome do servidor inválido na resposta do Strix.` instead of printing server-supplied text.
+- The supported Strix moves from 1.2.30 to **1.2.39 within 1.x**: an older build rejects a context that carries a name,
+  and an older Desktop would not show it. Refusals keep their stable codes (`E_STRIX_TOO_OLD`,
+  `E_STRIX_VERSION_UNKNOWN`) and now say 1.2.39.
+- Tests: the canonical-name table, the confirmation with and without a name (the line without a name is byte-for-byte what it
+  was), the refusals, and the compatibility boundary at 1.2.38 / 1.2.39.
+
+## 1.29.1 - Document the current ShvIA Desktop product and its native boundaries
+
+- Reconcile the English/Portuguese entrypoints, product/architecture map, feature history, account guides, brand, build instructions and mirrored agent contracts with the current Tauri/Rust client and three coding-engine paths.
+- Document server versus installed-shell responsibilities, local/remote Code, platform support, session lifecycle, updater/compatibility behavior, native state, subscription handoff and assessment prerequisites. Preserve historical decisions and distinguish implemented source from installed acceptance.
+- Add the dated documentation review with remaining acceptance work and code candidates for owner decisions. No application logic, dependency versions, installers or runtime configuration change; only documentation and synchronized version metadata.
 
 ## 1.29.0 - The terminal of the subscription connect is 1000 columns wide
 

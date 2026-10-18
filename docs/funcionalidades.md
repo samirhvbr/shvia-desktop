@@ -1,10 +1,36 @@
-# Funcionalidades implementadas — ShvIA Desktop
+# Implemented features — ShvIA Desktop
 
-Registro estável do que o app **já faz**, por versão. (WIP e pendências vivem em
-[`.continue/estado-atual.md`](../.continue/estado-atual.md); decisões em
-[decisoes.md](decisoes.md); como buildar em [build.md](build.md).)
+The current capability map is [project-state.md](project-state.md); the dated implementation
+record follows below. Work not yet produced stays in
+[`.continue/estado-atual.md`](../.continue/estado-atual.md), decisions in
+[decisoes.md](decisoes.md), and packaging/publication instructions in [build.md](build.md).
 
-## Private CLI configuration replacement (1.29.2)
+> **Source review, 2026-10-15, Desktop 1.29.0.** A versioned entry records what changed at
+> that time. It is not a claim that the same limit still holds or that every supported OS has
+> installed-app acceptance. Later entries and the current contracts supersede earlier behavior.
+> This documentation review did not exercise a real engine, account login, OS dialog or deployment.
+
+## Reading the current product
+
+- The app shares ShvIA Web's interface and adds native integration. **Local Code** runs anna,
+  Claude Code or Codex beside an authorized folder. **Remote Code** runs through the Web's
+  Workspace channel; local file bindings and provider profiles are not uploaded for it.
+- The installed shell declares capabilities by method/flag presence. A new Web page with an
+  older shell, runner or external official client can offer fewer operations. Node.js is needed
+  for the Claude/Codex runners, not for ordinary hosted Chat.
+- Local agents can keep working while another project is on screen, and resumable sessions
+  survive a document reload. Closing the owning window ends its local sessions. The Web screen
+  still serves approvals, queue, Run and transcript recording; a live child process alone does
+  not provide unattended progress through its next gate.
+- Native device/browser actions, assessment execution and subscription connection have their
+  own switches, consent and platform limits. Code's approval level does not substitute for
+  those native gates. Use [architecture](arquitetura.md) for their boundaries and
+  [the capability map](project-state.md) for the platform/acceptance matrix.
+- Reload continuity, server-side transcript, app-restart assessment recovery and remote-session
+  takeover are separate lifecycles. The architecture's persistence table says which state stays
+  on this computer and which service owns the rest.
+
+## Private CLI configuration replacement (1.30.2)
 
 Native CLI configuration writes no longer create or refresh adjacent `.shvia-bak` files.
 The original remains until a complete private file is synced and renamed into place;
@@ -14,14 +40,33 @@ and Windows creation uses a protected DACL. Existing backups are left untouched.
 no persistent undo copy after success, and snapshot revalidation is not a concurrent-write
 lock. See [the ADR-026 security update](decisoes.md#credential-file-replacement-2026-10-15).
 
+## The report digest after the sha2 0.11 bump (1.30.1)
+
+The SHA-256 the assessment report synchronization sends and compares (`request_sha256`) is written out as lowercase hex
+byte by byte, because `sha2` 0.11 returns a type with no `LowerHex`. The string is the same 64 characters as with 0.10,
+and a test pins it to the FIPS 180-2 vectors.
+
+## The server name in the assessment consent (1.30.0)
+
+An assessment operation may carry the DNS name its site is known by next to the literal IP that was authorized (Strix
+1.2.39, `docs/PENTEST/server-name.md` in the Strix fork): the connection still goes to the IP, and the name sets the TLS server
+name, the certificate check and the `Host` header. Because it changes what the approver agrees to, the native
+confirmation prints it on the operation's line (`nome do servidor (SNI e Host): app.example.com`) and refuses a name that is
+not a canonical lowercase ASCII DNS name. The supported pair becomes Desktop **1.30.0+** and Strix **1.2.39+ within 1.x**.
+
 ## Claude subscription connected from the desktop (1.29.0)
 
 `claudeSubscriptionConnect({accountId?, accessToken})`, `claudeSubscriptionCode({codigo})` and
 `claudeSubscriptionCancel()` (`recursos.assinatura`, Linux and macOS) let ShvIA Web's Settings → Engines connect the
-person's Claude subscription without the copy and paste: the shell runs `claude setup-token` on a pseudo-terminal
+person's Claude subscription without the copy and paste when a **compatible Web page calls these methods**: the shell runs `claude setup-token` on a pseudo-terminal
 after a native confirmation, reads the one-year token off the client's screen and puts it on the configured server.
 The token never reaches the page; the page hears phases (`claude_assinatura` events). See
 [the contract and the runbook](code/ASSINATURA-NO-WORKSPACE.md) and [ADR-043](decisoes.md).
+
+This is the implemented **native half**. The reviewed Web source (`25704dbc`) has the manual
+subscription-token form but does not call these native methods yet; installing Desktop 1.29.0
+alone does not create the Web button or establish the complete sign-in flow. Its real-client
+and installed-app acceptance remain separate.
 
 ## The Codex runner where a container is the boundary (1.28.0)
 
@@ -54,8 +99,10 @@ or viewer session capability. See [the viewer boundary](pentest-viewer.md).
 The native bridge reports the installed Strix version and refuses unsupported
 runtime/platform pairs before consent. Start, resume and retest repeat the check,
 and the approval names the installed version. Supported baseline: Linux/macOS,
-Desktop 1.25.x within 1.x and Strix 1.2.30 or later within 1.x (1.26.2 fixed the probe, which
-in 1.25.0 read the upstream version and so accepted any build). See
+Desktop **1.26.2+ within 1.x** for the corrected fork-build probe and Strix **1.2.30+ within
+1.x** (1.30.0 raised the Strix floor to **1.2.39**, the first build that accepts a server name). The feature began in 1.25.0, whose probe read the upstream version and incorrectly
+accepted other fork builds; 1.26.2 corrected it. Unknown, prerelease and unreviewed major
+versions are refused. See
 [the compatibility contract](pentest-compatibility.md).
 
 ## Private assessment report synchronization (1.22.0)
@@ -98,8 +145,9 @@ The native bridge selects a vulnerable baseline from a fresh verified review,
 checks the owning run and current HTTPS authority, and asks for native consent
 before invoking Strix 1.2.22's deterministic private-read retest. Original
 evidence and spending remain intact; paths and credentials stay native-owned.
-This supports Unix within the current app session. Restart reconciliation and
-the installed-app pilot remain open; see [the contract](PENTEST/authorization.md).
+At 1.17.0 this supported Unix within the current app session. Restart reconciliation was
+added in 1.18.0 above; a complete installed-app pilot remains separate evidence. See
+[the contract](PENTEST/authorization.md).
 
 ## Local assessment evidence review (1.16.0)
 
@@ -115,8 +163,9 @@ Review does not run target operations or upload raw artifacts. See
 The owning window can request manual recovery of its unique recorded run. Desktop
 revalidates the live authorization and asks for native consent, then reuses the
 same native-owned credentials and history. The consent lists version-2 cases and
-explicit business effects. Forced stop also kills descendant processes. Recovery
-after restarting the app and a complete interactive pilot remain unvalidated.
+explicit business effects. Forced stop also kills descendant processes. At 1.15.0, restart
+recovery was not implemented; 1.18.0 added the reconciliation contract above. A complete
+interactive pilot remains separate from those source capabilities.
 
 ## Controlled local assessments (1.14.0)
 
@@ -127,13 +176,15 @@ controls. The configured HTTPS origin owns authorization; the page cannot supply
 executables, authority URLs or credential paths. See [the implementation contract](PENTEST/authorization.md)
 for the Linux/macOS profile, Windows refusal and pending integrated pilot.
 
-## Fase 1 — esqueleto andante (validado)
+## Phase 1 — historical foundation and validation
 
 - **Shell fino Tauri 2** (`0.2.0`): janela com título/ícone **ShvIA**,
   `identifier` `cloud.blue3.shvia`. Uma casca local (`index.html` + `src/main.ts`)
   mostra um splash e **redireciona o WebView para `https://ai.shvia.org`** — daí
   a UI é o próprio Blade do ShvIA ("mesmas funções", ADR-002). **Menor privilégio:**
   nenhum comando nativo exposto à página remota; `withGlobalTauri: false`.
+  **Historical boundary:** today's custom native bridge is described in
+  [architecture](arquitetura.md); generic remote Tauri `invoke` stays restricted.
 - **`version.md` como fonte única** (`0.2.0`): `scripts/sync-version.mjs` propaga a
   versão para `package.json`/`tauri.conf.json`/`Cargo.toml`/lock files (hook
   `prebuild`).
@@ -152,7 +203,9 @@ for the Linux/macOS profile, Windows refusal and pending integrated pilot.
 - **Multi-janela** (`0.3.0`): menu `Arquivo → Nova janela` (`Ctrl/Cmd+N`) abre
   janelas extras (`win-*`) que **compartilham a sessão** (cookie) — conversas/
   projetos lado a lado. `Ctrl/Cmd+W` fecha; `Ctrl/Cmd+Q` sai.
-- **Portal branding** (`1.5.12`): cyan/navy Portal app icon, transparent monochrome tray template and matching splash symbol. Canonical artwork and historical snapshots live in SHVIA-WEB `brand/`; see [brand.md](brand.md) for regeneration.
+- **Portal branding** (`1.5.12`, historical): cyan/navy app icon, monochrome tray and matching
+  splash. **Shield superseded Portal**; [brand.md](brand.md) points to the active desktop
+  sources and archived Portal assets.
 - **Estado da janela persistido** + **links externos no navegador** (`0.4.0`): as
   janelas são criadas **no Rust** (`build_shvia_window`); `tauri-plugin-window-state`
   guarda tamanho/posição entre reinícios, e `on_navigation` manda origens fora de
@@ -164,7 +217,8 @@ for the Linux/macOS profile, Windows refusal and pending integrated pilot.
   e é clicável p/ recarregar.
 - **Empacotamento local** (`0.4.5`): `tauri build` gera os instaladores
   (`.deb`/`.AppImage`/`.rpm` validados). Scripts `build-local.{sh,ps1,cmd}` cobrem os
-  3 SOs — ver [build.md](build.md). (CI/Actions omitida de propósito, por custo.)
+  3 SOs — ver [build.md](build.md). Release packaging remains local; tests/lint were later
+  added to CI. The historical packaging validation is not acceptance of every current OS build.
 - **Menu `Ajuda → Sobre o ShvIA Desktop`** (`0.5.3`): modal "Sobre" (estilo
   Help → About do VS Code) com o **build do desktop** (`version.md`) separado da
   **versão do ShvIA no servidor** — o rodapé da sidebar
@@ -177,7 +231,7 @@ for the Linux/macOS profile, Windows refusal and pending integrated pilot.
   visual pelos design tokens do ShvIA (`var(--token, fallback)`), Esc/backdrop
   fecham, `prefers-reduced-motion` respeitado.
 
-## Phase 3 — Modo Code and the bridge (1.0 → 1.4)
+## Local Code, the bridge and session capabilities
 
 > Written in English per `~/.claude/CLAUDE.md` (02/09/2026). The sections above predate that
 > rule and stay in Portuguese until they are next edited.
@@ -189,8 +243,9 @@ for the Linux/macOS profile, Windows refusal and pending integrated pilot.
 
 - **Modo Code inside the app** (`1.0.x`): the desktop hosts `anna` as a sidecar and speaks its
   NDJSON protocol, so the agent runs on the developer's machine while the UI stays the ShvIA
-  Blade. Two engines are selectable — the gateway, and **"Claude Code (assinatura)"** through
-  the Agent SDK.
+  Blade. At introduction it selected gateway or **"Claude Code (assinatura)"** through
+  the Agent SDK; Codex is now a third local engine through `codex-runner`, with a live client
+  model catalog exposed as `codexModels()`.
 - **The model catalogue comes from the SDK, not from a list of ours** (`1.1.28`, `1.1.29`):
   keeping a copy meant the selector offered "Opus" = Opus 4.8 weeks after Opus 5 shipped.
   `--modelos` asks `supportedModels()` instead.
@@ -257,7 +312,9 @@ for the Linux/macOS profile, Windows refusal and pending integrated pilot.
   (8 MB), and eval'd only while a page is attached. The next page calls `sessions()` (with busy
   state and the open gates) and `attach(sessao, desde)` to get what it missed and go live again.
   With no page for 15 s a waiting gate or a finished turn produces a native notice. An idle agent
-  nobody came back for ends after 10 minutes.
+  nobody came back for ends after 10 minutes. The replay log reports a gap rather than claiming
+  completeness after it drops old lines. Closing the owning window still ends its local agents;
+  this feature does not preserve them through an app restart.
 - **PLAN turns** (`1.9.0`): `recursos.plano`. SHVIA-WEB's Approval gained "Plan": the agent reads
   and presents a plan, and writes and runs nothing. The page sends `plano: true` on each user
   message of that mode. The mode is per TURN, so switching Plan → Auto to execute keeps the same
@@ -279,6 +336,10 @@ is needed. It is not a new mode: it is a posture of the turn. The **Autonomia** 
 to Aprovação, chooses between *Um turno* and *Até terminar* per project; the approval gate
 for commands keeps working inside a run exactly as outside it. Nothing runs or writes
 without the person seeing it — the Run changes who types "continue", not who approves.
+
+**Current approval scope:** the selected approval level still applies, including Full where
+offered and explicitly enabled. Run does not add per-action confirmation back to that level.
+The Web screen drives the continuation; a detached native process is not an autonomous Run worker.
 
 **Who decides, at every stop.** The page asks `POST /api/v1/code/orchestrate` and gets one
 decision back — CONTINUE, ASK_HUMAN, DONE or STOP — signed by whoever took it. The rule
@@ -348,7 +409,9 @@ someone who uses or builds the app:
 - **Linux can quit** (`1.6.9`): `Sair` and `Fechar janela` exist in the menu and the tray
   (the predefined items were silently dropped on GTK).
 - **The Changes tab works with accents and spaces** (`1.6.10`).
-- **Reloading or leaving the page ends that window's agent** (`1.6.11`).
+- **Reloading or leaving the page ends that window's agent** (`1.6.11`, historical). Since
+  `1.8.2`, sessions declared resumable survive a new document in the same window; non-resumable
+  ones still end, and closing the owning window ends its local agents.
 - **The Claude engine's approval boundary holds in Auto mode** (`1.6.12` → `1.6.15`):
   network egress, protected paths and destructive commands always ask — through tools and
   through the shell; `~` and symlinks cannot walk out of the read fence; destructive commands
@@ -373,8 +436,10 @@ runner*; nothing answered *an old one*. The app updates itself, and the runners 
 Measured on the owner's machine on 25/09/2026, with the app at 1.6.58: `codex-runner` 1.4.34,
 without `--modelos` (the Codex engine locked MODEL and EFFORT), and `claude-runner` from 21/08. The
 app now ships both runners, and at every start reinstalls an installed one that is older than the
-bundled one, or has the same version and different files. It never installs an engine nobody
-installed, and never downgrades a newer one. Code in `src-tauri/src/code_bridge/atualizacao.rs`,
+bundled one, or has the same version and different files. In 1.7.1 it updated existing installs
+only; **1.13.0 also installs missing runners** when Node.js 18+ is available, unless first
+installation is disabled with `SHVIA_RUNNERS_AUTO`. It does not downgrade a newer installed
+version. Code in `src-tauri/src/code_bridge/atualizacao.rs`,
 decision in ADR-036.
 
 ## Phase 8 — reaching the app from anywhere (1.10.0)
@@ -396,8 +461,8 @@ app-server's `turn/steer`, Claude through `streamInput` with `priority: "next"`.
 `steer_applied` when the turn read it and `steer_deferred` when it could not, in which case the
 page sends it as the next message; never as an error. The shell declares `recursos.orientar`, so a
 page never sends `steer` to an older desktop, whose runner would drop it. Measured against the real Claude Agent SDK and the
-real runner on 01/10/2026. The page side (sending `steer` while the agent works) is SHVIA-WEB's
-`code-mode.js`; until it ships, nothing on screen sends it.
+real runner on 01/10/2026. The page side is SHVIA-WEB's `code-mode.js`, which now sends steering
+when its bridge/engine supports it; a page or runner without that capability uses the queue.
 
 ## Phase 10 — the machine as the agent's extension (1.12.0)
 
@@ -409,7 +474,9 @@ turns on "Comandos de aparelho para o agente" in the tray; nothing on the page c
 `aparelho.rs`, decision in ADR-039. The Linux capture was measured on GNOME 48; macOS and Windows
 are compiled by CI and not yet run. A request the agent has stopped waiting for (170 s, under the server's
 180 s) is refused when the person finally answers (`expirou`), so nothing is captured or read for nothing. The agent's side (a tool on the server that asks the page and
-waits) is SHVIA-WEB's; until it ships, nothing calls these commands.
+waits) belongs to SHVIA-WEB's device/browser tools. Availability still requires a compatible
+page, the server's feature configuration and the person's native tray switch; a bridge method
+alone does not grant the agent access.
 
 **1.24.0 — the assessment consent names the model and who pays.** When the web authorization approves a model, the
 native dialog for starting, resuming and retesting shows it as `Modelo: provider/model` with the payer: the person,

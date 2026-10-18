@@ -1,213 +1,193 @@
 # ShvIA Desktop (`shvia-desktop`)
 
-> **Projeto interno da Blue3.** Cliente **desktop multiplataforma** (macOS,
-> Windows, Linux) do **ShvIA** — a plataforma interna de IA da Blue3
-> (`https://ai.shvia.org`). Documentação interna — não publicar.
+[English (US)](README.md)
 
-**Ver também:** [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md) (convenções de
-código e do agente) · [docs/README.md](docs/README.md) (índice da documentação
-técnica) · [.continue/escopo-projeto.md](.continue/escopo-projeto.md) (escopo
-detalhado e plano de fases) · [docs/decisoes.md](docs/decisoes.md) (ADRs).
+ShvIA Desktop é o cliente nativo **Tauri 2 + Rust** do ShvIA para macOS, Windows
+e Linux. Ele abre a interface hospedada do ShvIA e acrescenta motores locais de
+Code, diálogos nativos de arquivos, integração com o sistema e acesso controlado
+a esta máquina. O servidor padrão é [ai.shvia.org](https://ai.shvia.org); o dono
+pode configurar outro servidor ShvIA confiável. Documentação interna do projeto.
 
----
+**Revisado em 15/10/2026 sobre a base de runtime 1.29.0.** A versão atual do
+repositório está em [`version.md`](version.md). Esta visão geral descreve capacidades
+implementadas, sem afirmar aceite de todas as plataformas ou versões instaladas.
 
-## Sumário
+Comece pelo [estado do projeto](docs/project-state.md), pela [revisão documental](docs/documentation-review-20261015.md)
+e pelo [índice da documentação](docs/README.md). As convenções de desenvolvimento
+estão em [AGENTS.md](AGENTS.md); decisões estão no [registro de ADRs](docs/decisoes.md).
 
-1. [O que é](#o-que-é)
-2. [Decisão de arquitetura](#decisão-de-arquitetura)
-3. [Stack](#stack)
-4. [Modelo organizacional](#modelo-organizacional)
-5. [Estrutura do repositório (alvo)](#estrutura-do-repositório-alvo)
-6. [Versão (`version.md`)](#versão-versionmd)
-7. [Relação com ShvIA e SHVTERM](#relação-com-shvia-e-shvterm)
-8. [Roadmap em fases](#roadmap-em-fases)
-9. [Status atual](#status-atual)
+## Produto e arquitetura
 
----
+A janela principal carrega a própria interface Laravel/Blade do servidor. Chat,
+projetos, bots, automações, conhecimento, reuniões, comparação, conta e administração
+acompanham, portanto, o deploy Web configurado e as permissões da pessoa autenticada.
+A casca local TypeScript/Vite fornece inicialização, retorno sobre a conexão,
+configuração do servidor e telas de recuperação; ela não reimplementa o aplicativo Web.
 
-## O que é
+O servidor mantém os dados da aplicação, as contas e as permissões. O desktop não
+executa um banco local da aplicação. Ele mantém cookies da WebView, preferências
+nativas, permissões de pastas, configuração de motores/contas e os registros locais
+privados necessários ao fluxo de avaliações. Existe tela offline; chat com IA offline
+e replicação do servidor não estão implementados.
 
-**ShvIA Desktop** é um app desktop que entrega o ShvIA com **a cara do projeto**
-e as **mesmas funções** do web app — empacotado como aplicativo nativo para
-macOS, Windows e Linux, com janela própria, ícone, bandeja (tray), notificações
-de SO e auto-update.
+A página remota usa uma ponte nativa delimitada, com verificação de origem, token
+de capacidade da sessão, restrições de pasta do projeto e confirmação nativa onde
+exigida. IPC genérico do Tauri e controle do updater não são expostos à página
+remota. Escolher outro servidor é uma decisão de confiança: ele recebe as pontes
+nativas suportadas pelo aplicativo. A sonda de conexão verifica alcance, não que
+o site remoto seja uma instância ShvIA.
 
-O ShvIA em si **continua sendo o servidor Laravel hospedado** em
-`https://ai.shvia.org`: chat com IA (streaming SSE), comparação de modelos,
-workspaces/pastas com arquivos (RAG), base de conhecimento, skills, painel admin
-e rastreamento de uso/tokens. O desktop é o **cliente** dessa instância — não
-reescreve o backend nem o frontend.
+| Superfície de execução | Onde o trabalho roda | Credencial e contabilidade |
+|---|---|---|
+| Recursos Web dentro do aplicativo | Servidor ShvIA configurado e seus provedores | Login Web normal na mesma origem; permissões e contabilidade do servidor |
+| Code local, motor gateway | `anna` nesta máquina, inferência pelo ShvIA | Credenciais curtas de sessão/delegadas; binário `anna` independente |
+| Code local, motor Claude | `claude-runner` e Claude Agent SDK nesta máquina | Conta/assinatura Claude local selecionada; inferência direta ao provedor |
+| Code local, motor Codex | `codex-runner` → `codex app-server --stdio` nesta máquina | Conta mantida pelo `codex login`; sua assinatura, sem injetar chave de API OpenAI |
+| Code remoto | Serviço Workspace configurado pelo ShvIA Web | Projeto/sessão remotos vinculados à conta; arquivos e execução permanecem remotos |
 
----
+Code local e remoto compartilham conceitos da interface Web, mas usam pontes,
+sistemas de arquivos e fluxos de credenciais diferentes. Uma prévia de arquivo do
+Workspace remoto não concede acesso ao sistema de arquivos local deste desktop.
+Veja [Modo Code](docs/code/MODO-CODE-20260709.md) e [estado do projeto](docs/project-state.md)
+para os limites atuais.
 
-## Decisão de arquitetura
+## Capacidades nativas implementadas
 
-> Decisão tomada em **30/06/2026**, após análise multi-agente (ver
-> [docs/decisoes.md](docs/decisoes.md) para os ADRs completos).
+| Área | Capacidade atual | Detalhes |
+|---|---|---|
+| Janelas e sistema | Várias janelas, encaminhamento para instância única, geometria persistida, bandeja/menu, fechar para bandeja e iniciar com o sistema configuráveis | [Funcionalidades](docs/funcionalidades.md) |
+| Acesso rápido | Chat rápido, atalho global selecionável e deep links `shvia://` permitidos | [Arquitetura](docs/arquitetura.md), ADR-038 |
+| Notificações e atualização | Polling de notificações nativas, contagem nos ícones suportados, checagem automática/manual e confirmação antes de instalar | [Build e distribuição](docs/build.md), ADR-011/022/028 |
+| Arquivos e ferramentas | Diálogos nativos para abrir/salvar, árvore/status/diff/leitura do projeto local, salvar artefatos, suporte a colar imagens e configurar clientes CLI | [Modo Code](docs/code/MODO-CODE-20260709.md), [arquitetura](docs/arquitetura.md) |
+| Supervisão de Code | Escolha de motor/modelo/esforço, sessões por projeto, reanexação após reload, cartões de aprovação, Plano, orientação durante o turno e Run supervisionado | [Run](docs/code/RUN-20260910.md), [Codex](docs/code/MOTOR-CODEX-20260909.md) |
+| Contas dos motores | Perfis e login Claude, catálogos consultados no runtime, leitura do uso dos planos; fontes dos runners no pacote e instalação/atualização | [Contas Claude](docs/code/CONTAS-CLAUDE.md), [uso dos planos](docs/code/USO-DAS-CONTAS.md) |
+| Claude no Workspace remoto | Ponte nativa implementada: consentimento, `claude setup-token` em terminal privado e envio direto do token ao servidor configurado; exige página Web compatível para acioná-la | [Conexão da assinatura](docs/code/ASSINATURA-NO-WORKSPACE.md) |
+| Aparelho e navegador do agente | Operações do aparelho ativadas pelo usuário, seletor de arquivos e captura de tela; navegador isolado opcional com confirmação das ações | [Funcionalidades](docs/funcionalidades.md), ADR-039/042 |
+| Avaliações controladas | Consentimento e verificação nativa do runtime, controle/recuperação, revisão/reteste privados, histórico durável, sincronização de relatórios e visualizador local separado | [Autorização](docs/PENTEST/authorization.md), [compatibilidade](docs/pentest-compatibility.md), [visualizador](docs/pentest-viewer.md) |
 
-**Shell fino em Tauri 2 carregando o ShvIA web (Blade) remoto.**
+A conexão da assinatura é uma capacidade nativa, sem comprovar que existe um botão
+funcional em Configurações em todo deploy Web. A base Web revisada em 15/10/2026 ainda
+não acionava essa ponte; sua integração e um login real exigem aceite separado.
 
-- **Base = SHVTERM** (`/Users/samir/Projetos/SHVTERM`), nosso cliente desktop
-  **Tauri 2 + React** já multiplataforma, com CI dos 3 SOs, updater e padrões de
-  empacotamento prontos. **O fork Claude Desktop foi descartado** (arquivado em
-  `archive/claude-fork` + tag `archive/claude-fork-v0.2.2`).
-- **A janela Tauri abre o ShvIA hospedado** (`https://ai.shvia.org`). Assim
-  **"mesmas funções" é literal** — é a própria UI Blade do ShvIA. Zero código
-  Laravel forkado, zero UI reescrita na Fase 1.
-- **Servidor remoto = fonte da verdade** (dados, senhas, permissões). O desktop
-  **não abre nenhum banco local** — a regra "MariaDB/MySQL, nunca SQLite" é
-  satisfeita por construção (não há DB no cliente).
-- **Auth = sessão Sanctum (cookie), same-origin.** Como navegamos o FQDN real, o
-  login é a tela normal do ShvIA e o cookie de sessão autentica tudo, como num
-  browser. (Bearer token só serve `/api/v1`; deep-link SSO `shvia://` é o único
-  caso que exige tratamento extra — Fase 2.)
-- **Camada nativa fina** (Rust/Tauri): janela com branding ShvIA, tray, deep-link
-  `shvia://`, notificações de SO, auto-update e persistência de config/janela.
+As políticas de aprovação dos runners diferem. Claude possui política própria de
+ferramentas e restrições de caminhos com segredos. Codex usa o conjunto de escrita
+de seu sandbox; escritas nesse conjunto podem ocorrer sem cartão, e leituras de
+segredos locais não recebem o mesmo filtro do Claude. Plano muda a política do
+turno. O modo Codex com contêiner externo é explícito e delimitado ao diretório
+configurado. Leia o [contrato do runner Codex](codex-runner/README.md) antes de
+presumir que aprovações ou controles de privacidade são iguais entre os motores.
 
-**Por que não Electron, não NativePHP:**
+Motores de assinatura direta não enviam a inferência pelo gateway ShvIA: cota,
+mascaramento de PII e contabilidade `inference_requests` do gateway não cobrem essas
+chamadas. O uso do plano informado pelo cliente é uma medida diferente do gasto de
+API do servidor.
 
-| Alternativa | Por que descartada |
-|-------------|--------------------|
-| **Electron** (o fork) | Chromium embarcado (~120 MB/build) sem ganho aqui; o Tauri do SHVTERM já está pronto. Mantido só como **fallback** se o streaming SSE quebrar no WebKitGTK (Linux). |
-| **NativePHP** (Laravel local) | Ganho dele é SQLite local; o ShvIA **exige MariaDB/MySQL e proíbe SQLite**. Forçar MySQL em cada laptop forkaria a camada de dados — o oposto de reuso. |
+## Limites por plataforma
 
-**Trade-off assinado:** a arquitetura é **online-first / efetivamente
-online-only**. Aceitável para um app de chat de IA (a inferência é server-side de
-qualquer forma), endereçado com uma **tela offline** com a marca ShvIA + retry.
-Operação genuinamente offline é um *killer* desta arquitetura. **Confirmado pelo
-dono em 23/09/2026** ("aceitável — documenta"): não há modo offline planejado. O que
-funciona sem o servidor é o que roda na máquina (os motores, a casca local).
+| Plataforma | Implementação e limites |
+|---|---|
+| macOS | WKWebView; motores locais e ponte nativa; conexão de assinatura Claude e avaliação controlada usam a implementação Unix. Assinatura/notarização e aceite instalado são etapas separadas da release |
+| Windows | WebView2; ponte nativa e instaladores PowerShell dos runners existem. Conexão de assinatura Claude e perfil de avaliação controlada não são suportados nesta versão. Contagem nativa no ícone não é suportada; use o [roteiro de validação Windows](docs/roteiro-validacao-windows.md) para o comportamento instalado |
+| Linux | WebKitGTK 4.1; integração nativa de mídia/colar e TTS existe, com aceite de microfone e colagem real de imagem acompanhado no [roteiro de mídia](docs/roteiro-microfone-e-colar.md). No Wayland, associe um atalho do sistema a `xdg-open shvia://rapida`; não presuma que o aplicativo registra um atalho global |
 
----
+Captura de tela depende da permissão/portal do sistema. O navegador do agente usa
+perfil isolado, bloqueia pop-ups/downloads e pode não atender logins que dependam
+deles. Uma VM/ambiente de GPU que mostre janela Linux em branco pode usar o ajuste
+documentado `WEBKIT_DISABLE_DMABUF_RENDERER=1`. Código implementado por plataforma,
+checagem de compilação e um fluxo real no aplicativo instalado são evidências distintas.
 
-## Stack
+## Desenvolvimento a partir do código
 
-- **Tauri 2** (núcleo Rust) + **WebView nativo do SO** (WKWebView no macOS,
-  WebView2 no Windows, WebKitGTK no Linux).
-- **Frontend da casca**: mínimo (Vite/TS) — tela de bootstrap/offline e config de
-  URL. A UI principal é o **Blade remoto** do ShvIA.
-- **Sidecar Python** (PyInstaller) — padrão herdado do SHVTERM; **opcional na
-  F1**, estrutural na F2 (vault de token no keychain, SSO, ações nativas na API).
-- **Plugins Tauri**: `updater`, `process`, `store`, `notification`, `deep-link`,
-  `single-instance`.
-- **Três runtimes** (como o SHVTERM): `npm` (casca) · `cargo` (Rust) · `pip`
-  (sidecar).
-- **CI**: GitHub Actions roda testes/lint (`ci.yml`, desde 09/2026). Empacotamento/
-  assinatura de release seguem locais por decisão (`build-local.*`) — a matriz
-  `macos`/`windows`/`ubuntu` via `tauri-action` foi removida na 0.4.6 por custo e não
-  voltou, porque runners macOS custam 10x mesmo no plano Enterprise atual.
+O aplicativo usa Rust stable e Node **20.19+ ou 22.12+** para a cadeia Vite
+(o CI usa Node 22). Instale os pré-requisitos Tauri da plataforma: ferramentas de
+linha de comando do Xcode no macOS; ferramentas MSVC C++ e WebView2 no Windows;
+WebKitGTK/GTK e bibliotecas de empacotamento no Linux. Os pacotes exatos estão em
+[pré-requisitos de build](docs/build.md#pré-requisitos).
 
----
-
-## Modelo organizacional
-
-- **Repositório reaproveitado** — este mesmo repo (`samirhvbr/SHVIA-DESKTOP`,
-  branch `master`). O nome encaixa: **SHVIA-DESKTOP = o desktop do ShvIA**. O
-  histórico do fork foi preservado em `archive/claude-fork` (+ tag) e
-  empurrado ao `origin`.
-- **Repo separado do Laravel.** O ShvIA (Laravel) permanece **intocado** no seu
-  próprio repo. Não é monorepo: o desktop é cliente de um servidor já hospedado e
-  compartilhado com o web app; juntá-los só acoplaria cadências de release.
-- **SHVTERM** continua repo **irmão** (cliente SSH) — dele a gente **colhe
-  ativos** (CI, updater, packaging, convenções), sem merge.
-- **Branding:** identidade ShvIA/Blue3 (ícones/splash de `brand/`, vindos de
-  `/Users/samir/x/IA/brand/`). App ID sugerido: `cloud.blue3.shvia` (alinhado ao
-  `cloud.blue3.shvterm`). **Nenhuma** marca Claude/Anthropic em artefato algum.
-- **Commits:** `versão - comentário em português` (bump de `version.md` no mesmo
-  commit). Sem `feat:/fix:/chore:`.
-
----
-
-## Estrutura do repositório (alvo)
-
-> Layout-alvo da Fase 1. O esqueleto (`src/`, `src-tauri/`, `scripts/` e as
-> configs) **já existe** desde a `0.2.0`; `sidecar/` e `.github/workflows/` entram
-> nas fases seguintes. Detalhe e passo-a-passo em
-> [docs/roteiro-fundacao.md](docs/roteiro-fundacao.md).
-
-```
-shvia-desktop/
-├── version.md                  # fonte única X.Y.Z (0.1.0)
-├── README.md                   # este arquivo
-├── CLAUDE.md / AGENTS.md       # convenções do agente (espelhados)
-├── brand/                      # ícones/splash ShvIA (copiar de IA/brand/)
-├── src/                        # casca web mínima (bootstrap, tela offline, config URL)
-├── src-tauri/
-│   ├── tauri.conf.json         # version gerada de version.md na CI
-│   ├── src/                    # Rust: janela, tray, deep-link, notifications, updater, store
-│   ├── capabilities/           # allowlist por janela (postura de segurança)
-│   └── icons/
-├── sidecar/                    # (F2) serviços nativos/seguros em Python
-├── scripts/packaging/          # appimage/deb/rpm adaptados do SHVTERM
-├── .github/workflows/          # ci.yml (testes/lint); matriz de release ainda local
-├── .claude/                    # perfil do agente: permissões + effort (sem modelo)
-├── .continue/                  # WIP: estado-atual + escopo do projeto
-└── docs/                       # documentação técnica estável
+```bash
+npm ci
+npm run build
+npm run prova:bump
+npm run prova:politica
 ```
 
----
+`npm run build` compila a casca local de inicialização, sem gerar instalador.
+Para desenvolver o aplicativo nativo com o motor gateway, prepare antes um `anna`
+compatível vindo do SHVIA-CODE:
 
-## Versão (`version.md`)
+```bash
+npm run anna:stage -- --from /caminho/absoluto/para/anna
+npm run tauri dev
+```
 
-`version.md` guarda a versão do **app desktop** (linha própria, independente da
-versão do servidor ShvIA), no formato `X.Y.Z`:
+Se nenhum `anna` será empacotado, substitua a declaração `externalBin` do Tauri;
+um clone limpo não contém o binário preparado. Para desenvolver a casca/outros motores:
 
-- **X** — versão estável (manual).
-- **Y** — nova capacidade de runtime, redesenho de IPC, mudança de auth-handoff.
-- **Z** — incremento: mudança visível de UI/menu/janela, nova capacidade de
-  empacotamento, ajuste de build.
+```bash
+TAURI_CONFIG='{"bundle":{"externalBin":[]}}' npm run tauri dev
+```
 
-**Acoplamento com o servidor:** cada release registra a **versão mínima do
-servidor ShvIA** compatível, verificada em runtime lendo o campo `version` de
-`GET /api/v1/health`. Na CI, `tauri.conf.json` recebe a versão de `version.md`
-(fonte única). Bump **no mesmo commit** da mudança.
+No PowerShell, defina `$env:TAURI_CONFIG` com o mesmo JSON antes de
+`npm run tauri dev`. A configuração omite o motor gateway do pacote; um `anna`
+externo instalado ainda pode ser encontrado em runtime. Nunca crie um motor falso
+para distribuir uma release.
 
----
+O runner Claude exige Node 18+ e as dependências do SDK; o runner Codex exige
+Node 18+ e o CLI Codex instalado e autenticado. O aplicativo pode instalar/atualizar
+runners a partir das fontes incluídas no pacote; veja [runner Claude](claude-runner/README.md)
+e [runner Codex](codex-runner/README.md). A arquitetura atual não prevê um sidecar
+Python/PyInstaller. Ferramentas opcionais e runtimes de avaliação têm dependências próprias.
 
-## Relação com ShvIA e SHVTERM
+As verificações Rust rodam em `src-tauri` (`cargo test --locked`,
+`cargo clippy --locked --all-targets -- -D warnings`), com a mesma preparação do
+motor ou substituição `TAURI_CONFIG`. O [CI](.github/workflows/ci.yml) também roda
+verificações de runners, instaladores, versão, dependências e publicação. Passar
+nelas não empacota, assina, publica nem instala uma release.
 
-| Repo | Papel aqui |
-|------|------------|
-| **ShvIA** (`/Users/samir/x/IA`, Laravel) | **Servidor/fonte da verdade.** O desktop carrega o Blade e consome `/api/v1`. Intocado. |
-| **SHVTERM** (`/Users/samir/Projetos/SHVTERM`, Tauri) | **Base técnica.** Colhemos CI, updater, packaging, sidecar e convenções. Repo irmão, sem merge. |
-| **archive/claude-fork** (neste repo) | Snapshot do fork Claude Desktop descartado. Histórico preservado. |
+## Versão, build e distribuição
 
----
+[`version.md`](version.md) é a versão do desktop, independente do ShvIA Web e dos
+motores. `npm run version:sync` propaga para manifests/lockfiles;
+`npm run prova:bump` verifica os portadores. A mudança registra versão e changelog
+no mesmo commit. Assunto e cabeçalho de changelog seguem **`X.Y.Z - descrição em
+inglês (US)`**. Z cobre mudanças visíveis/empacotamento/build; Y cobre novas
+capacidades de runtime, IPC ou auth-handoff; X é uma mudança manual para versão estável.
 
-## Roadmap em fases
+O aviso de compatibilidade compara o **BUILD** deste desktop instalado com
+`clients.desktop.min_version`, recebido de `GET /api/v1/version` autenticado
+(com fallback para o payload antigo de health). Ele avisa, pode ser dispensado e
+não bloqueia o aplicativo. Não é uma exigência de versão mínima do servidor;
+`latest_version` isolado não dispara o aviso. Capacidades nativas individuais e
+compatibilidade do runtime de avaliação possuem verificações próprias.
 
-Resumo (detalhe em [.continue/escopo-projeto.md](.continue/escopo-projeto.md)):
+O empacotamento de release é local, em cada sistema de destino: `build-local.sh`
+para macOS/Linux, `build-local.ps1` ou `build-local.cmd` para Windows. As saídas
+incluem DMG/arquivo do app, MSI/NSIS, AppImage/DEB/RPM e o fluxo separado de pacote
+Arch. O usuário recebe instaladores/manifests publicados no servidor de distribuição
+configurado; GitHub Releases registra a versão e os artefatos publicados. No Arch,
+a atualização usa pacman. Veja [build, assinatura e publicação](docs/build.md) para
+credenciais, verificações, checksums e opções de publicação.
 
-| Fase | Entrega |
-|------|---------|
-| **F0** | Decisões + colheita de ativos do SHVTERM + branding do ShvIA. |
-| **F1** | Esqueleto andante: Tauri abre `ai.shvia.org`; **smoke-test de streaming SSE no Linux** (risco #1); login por cookie; ícone/título ShvIA. **Já entrega "mesmas funções".** |
-| **F2** | Polish nativo: tray, menu, About, estado de janela, config de URL, tela offline, deep-link `shvia://` + reconciliação de auth, notificações. (Sidecar entra aqui se necessário.) |
-| **F3** | Check de compatibilidade de versão de servidor (`/api/v1/health`). |
-| **F4** | CI + assinatura/notarização (macOS, Windows EV, Linux) + auto-update. |
-| **F5** | Beta nos 3 SOs + correções de quirks de WebView + docs. |
+Release do repositório, instalador empacotado, assinaturas/notarização válidas,
+publicação no servidor e aceite no aplicativo instalado são resultados separados.
+Informe cada um explicitamente; commit novo ou CI verde não atualiza o aplicativo
+instalado de ninguém.
 
-**Esforço estimado:** ~5–6 semanas-engenheiro para 1.0 assinado/notarizado nos 3
-SOs. Long pole de **prazo** (não de eng): **procurement do cert EV Windows** —
-iniciar no dia 1.
+## Repositório e identidade
 
----
+| Caminho | Responsabilidade |
+|---|---|
+| `src/`, `index.html` | Casca local de inicialização e conexão TypeScript/Vite |
+| `src-tauri/src/` | Janelas, ponte, motores, integração com SO e ciclo das avaliações em Rust |
+| `claude-runner/`, `codex-runner/` | Runners Node, módulos de protocolo/política e instaladores |
+| `scripts/`, `build-local.*`, `packaging/` | Preparação, validação, empacotamento e publicação |
+| `src-tauri/icons/`, `brand/`, `public/` | Exports nativos e ativos Shield |
+| `docs/` | Contratos atuais, runbooks e decisões |
+| `.continue/` | Trabalho/design pendente; sua existência não comprova implementação |
 
-## Status atual
-
-**30/06/2026 — primeira versão lançada (`0.4.5`).** **Fase 1 completa e validada**
-(app abre, loga por cookie, **chat com streaming SSE** funciona) e **Fase 2** bem
-encorpada: **multi-janela** (Ctrl+N), **branding** (seta Blue3 P&B + "AI" navy),
-estado de janela persistido, links externos no navegador, **tela offline** e
-empacotamento **local** (`.deb`/`.AppImage`/`.rpm` via `build-local`). Detalhe do que funciona em
-[docs/funcionalidades.md](docs/funcionalidades.md); como buildar em
-[docs/build.md](docs/build.md).
-
-**1 pendência conhecida** (limitação do WebKitGTK no Linux — ADR-008): **mic
-(voz)** não funciona no empacotamento Linux local; macOS/Windows tendem a resolver,
-com fallback Electron se virar must-have. Contexto vivo e pendências em
-[.continue/estado-atual.md](.continue/estado-atual.md). **Ctrl+V de imagem** está
-implementado (`CLIPBOARD_IMAGE_PASTE_JS` injetado no host do servidor) — atualização
-de docs pendente em [.continue/estado-atual.md](.continue/estado-atual.md).
-
-> **Sem doc, sem deploy.** Toda função nova vira doc em `docs/` antes de entrar.
+**Shield** é a identidade ShvIA ativa: escudo grafite/titânio, hemisfério esquerdo
+cobalto e nós de orquestração. Mantenha ShvIA distinta da identidade corporativa
+Blue3. As [fontes de marca](brand/README.md) são canônicas neste checkout;
+`brand/versao2-portal/` preserva a arte anterior. SHVTERM é um projeto irmão separado
+cujos padrões desktop ajudaram a formar este cliente; o fork descartado de Claude
+Desktop permanece histórico, sem representar a arquitetura atual.
