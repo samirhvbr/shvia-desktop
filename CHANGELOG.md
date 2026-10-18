@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.30.2 - Replace CLI credential files atomically without adjacent backups
+
+- Stop creating or updating plaintext `.shvia-bak` copies. Merge from an in-memory snapshot, reject unreadable/invalid files and detected consent-time changes, and preserve the original until a complete private temporary can replace it atomically.
+- Create private permissions before credential bytes are written: Unix 0600, macOS staging without inherited ACLs, and a protected Windows DACL. Refuse symbolic links/reparse points; retain `backup: null` in the bridge response and explain the updated behavior in native consent.
+- Add filesystem regressions for failed/partial writes, conflicts, existing backups, permissions, invalid files and links, plus macOS inherited-ACL and Windows DACL checks. Preserve historical ADR-026 with a dated security update. Existing user backups are not removed, and no credentials are read or migrated by this delivery.
+
 ## 1.30.1 - The report digest builds with sha2 0.11 again
 
 - The `sha2` 0.10 → 0.11 bump (#134) was merged with red checks and broke the build of master and of every local

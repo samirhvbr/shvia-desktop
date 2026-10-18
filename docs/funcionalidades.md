@@ -30,6 +30,16 @@ record follows below. Work not yet produced stays in
   takeover are separate lifecycles. The architecture's persistence table says which state stays
   on this computer and which service owns the rest.
 
+## Private CLI configuration replacement (1.30.2)
+
+Native CLI configuration writes no longer create or refresh adjacent `.shvia-bak` files.
+The original remains until a complete private file is synced and renamed into place;
+read errors and changes detected before replacement abort instead of overwriting blindly.
+Unix replacements use 0600, macOS staging removes inherited ACLs before writing bytes,
+and Windows creation uses a protected DACL. Existing backups are left untouched. There is
+no persistent undo copy after success, and snapshot revalidation is not a concurrent-write
+lock. See [the ADR-026 security update](decisoes.md#credential-file-replacement-2026-10-15).
+
 ## The report digest after the sha2 0.11 bump (1.30.1)
 
 The SHA-256 the assessment report synchronization sends and compares (`request_sha256`) is written out as lowercase hex
