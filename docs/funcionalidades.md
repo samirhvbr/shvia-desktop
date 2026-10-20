@@ -30,6 +30,22 @@ record follows below. Work not yet produced stays in
   takeover are separate lifecycles. The architecture's persistence table says which state stays
   on this computer and which service owns the rest.
 
+## Pentest engine: ready to be bundled, not yet bundled (1.30.3)
+
+The Pentest (controlled assessment) native bridge looked up `strix` on `PATH` only — the
+operator had to install and keep it updated separately on the machine that runs it, the one
+engine still working that way while `anna` and the Claude/Codex runners are bundled or
+self-installing. `code_bridge::pentest::command()` now tries a sidecar bundled beside the app
+first (`resolve_bin("strix")`, the exact lookup `anna` already uses), falling back to the
+`PATH`-installed `strix` otherwise. No build here stages one yet — `bundle.externalBin` has
+no `strix` entry, so every build today still behaves exactly as before, byte for byte.
+
+This is the first of three pieces: the fork now builds a standalone binary per platform
+(`samirhvbr/strix`'s own `pentest-binaries` workflow); staging one into
+`src-tauri/binaries/strix-<target-triple>` (a `scripts/stage-strix.mjs`, mirroring
+`scripts/stage-anna.mjs`) and declaring it in `externalBin` are not done. Until they are,
+nothing changes for an operator.
+
 ## Private CLI configuration replacement (1.30.2)
 
 Native CLI configuration writes no longer create or refresh adjacent `.shvia-bak` files.
