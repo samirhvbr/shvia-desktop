@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.30.3 - Native consent accepts a scope-only authorization, not just the controlled profile
+## 1.30.4 - Native consent accepts a scope-only authorization, not just the controlled profile
 
 - The native consent builder (`approved_summary`) rejected any grant whose approved policy
   was not exactly version 2 — every WEB authorization had to be the controlled, identity-bound
@@ -13,6 +13,17 @@
 - A version-1 policy that unexpectedly carries a context, or a version-2 one that is missing
   one, is refused before anything else is read — the same strictness the rest of this function
   already has.
+
+## 1.30.3 - The Pentest engine looks for a bundled sidecar first, same as anna
+
+- `code_bridge::pentest::command()` now tries a sidecar bundled beside the app first (the exact
+  `resolve_bin("strix")` lookup `anna` already uses), falling back to the separately installed
+  `strix` on `PATH` otherwise. No build stages one yet (`bundle.externalBin` has no `strix`
+  entry), so every build today behaves exactly as before.
+- First of three pieces toward no longer asking the operator to install and update the Pentest
+  engine separately: the fork now builds a standalone binary per platform
+  (`samirhvbr/strix`'s `pentest-binaries` workflow, all five Desktop release platforms green).
+  The staging script and `externalBin` entry are not done yet.
 
 ## 1.30.2 - Replace CLI credential files atomically without adjacent backups
 
