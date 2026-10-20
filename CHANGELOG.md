@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.30.4 - Native consent accepts a scope-only authorization, not just the controlled profile
+
+- The native consent builder (`approved_summary`) rejected any grant whose approved policy
+  was not exactly version 2 — every WEB authorization had to be the controlled, identity-bound
+  profile. It now also accepts a version-1 policy with no context at all (a scope-only
+  authorization, approved PENTEST "quick start" PT-25 continuation): the agent runs with its
+  full toolset, confined to the policy's own network grant, and the consent names that grant
+  (target, approved IP/port, any DNS name pinned to it) instead of a list of fixed operations,
+  identities and cases, which do not exist for this profile. `needs_credentials` is always
+  `false` for it: no identity means nothing to look up a credential file for.
+- A version-1 policy that unexpectedly carries a context, or a version-2 one that is missing
+  one, is refused before anything else is read — the same strictness the rest of this function
+  already has.
+
 ## 1.30.3 - The Pentest engine looks for a bundled sidecar first, same as anna
 
 - `code_bridge::pentest::command()` now tries a sidecar bundled beside the app first (the exact
