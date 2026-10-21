@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.30.5 - Pin two Tauri plugins back so the Linux build compiles again
+
+- The cargo-patch-minor Dependabot group (#147) raised `tauri-plugin-deep-link` to 2.6.2 and
+  `tauri-plugin-single-instance` to 2.5.4. On Linux, 2.6.2 builds `ini::ParseOption` with only
+  `enabled_quote` and `enabled_escape`, but the locked `rust-ini` 0.21.3 has two more fields
+  (`enabled_indented_mutiline_value`, `enabled_preserve_key_leading_whitespace`), so the crate
+  fails with E0063 and `tauri build` stops after about 17 seconds. macOS and Windows compile
+  because that code is `#[cfg(target_os = "linux")]`; the `Provas` job, which runs on Linux,
+  has failed at its `cargo test` step on master since that merge (before it, only the
+  later `cargo-deny` step was red). `rust-ini` cannot be moved instead: 0.21.2 is yanked
+  and 0.21.3 is the newest release.
+- `Cargo.lock` goes back to `tauri-plugin-deep-link` 2.6.1 (which does not touch `ParseOption`)
+  and `tauri-plugin-single-instance` 2.5.3 (2.5.4 requires deep-link `^2.6.2`). Nothing else
+  changes: four lines of the lockfile plus the version carriers. `cargo check --locked
+  --all-targets` passes on Linux.
+- Dependabot will propose 2.6.2 again; do not merge it until `tauri-plugin-deep-link` stops
+  building `ParseOption` field by field or `rust-ini` is pinned to a release that matches.
+
 ## 1.30.4 - Native consent accepts a scope-only authorization, not just the controlled profile
 
 - The native consent builder (`approved_summary`) rejected any grant whose approved policy
