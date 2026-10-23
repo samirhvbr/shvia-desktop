@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.31.0 - Track the Traffic sidecar in the two docs the freshness proof watches
+
+- `.continue/estado-atual.md` and `docs/funcionalidades.md` both named a version below the
+  tolerance `npm run prova:doc` allows for a minor bump — each gets a dated 1.31.0 entry
+  summarizing what shipped and, just as prominently, what was not verified (see
+  docs/TRAFFIC/README.md for the full account).
+
 ## 1.31.0 - Document Traffic's architecture and cover the CI/Dependabot/staging gaps it opened
 
 - New `scripts/stage-traffic-capture.mjs` (`npm run traffic-capture:stage`): builds the sidecar
