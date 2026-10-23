@@ -41,6 +41,7 @@ shipped remote Codex option in ShvIA Web. Refer to each component's current capa
 | [PENTEST/authorization.md](PENTEST/authorization.md) | Native authorization, local process supervision, recovery, telemetry, review/retest and private report/history synchronization |
 | [pentest-compatibility.md](pentest-compatibility.md) | Installed runtime preflight, Unix support, fork-version check and reviewed version pairs |
 | [pentest-viewer.md](pentest-viewer.md) | Viewer in the OS browser, native consent, private session capability and lifecycle |
+| [TRAFFIC/README.md](TRAFFIC/README.md) | Native packet capture for the Network "Traffic" tool — the `traffic-capture` sidecar, the privilege-separation rationale, per-OS permission steps and what has and has not been verified |
 
 ## Acceptance and historical foundations
 

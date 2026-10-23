@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.31.0 - Document Traffic's architecture and cover the CI/Dependabot/staging gaps it opened
+
+- New `scripts/stage-traffic-capture.mjs` (`npm run traffic-capture:stage`): builds the sidecar
+  crate (`cargo build --release`) and copies it into `src-tauri/binaries/traffic-capture-
+  <triple>` for `externalBin` bundling — the same role `stage-anna.mjs` has for `anna`, except
+  this one builds our own code instead of locating an externally-installed binary. A build
+  failure (most likely a missing `libpcap-dev` on the BUILD machine) is not fatal to the app
+  build, the same posture `stage-anna.mjs` already has for a missing engine.
+- New docs/TRAFFIC/README.md: the privilege-separation rationale (Wireshark's GUI/`dumpcap`
+  split), the sidecar's command surface, the six bridge actions, the per-OS permission steps,
+  and — up front, not buried — exactly what was and was not verified in this delivery (Linux
+  build+unit-tests only; the `traffic-capture` crate itself was never compiled, no real device
+  was ever opened, and macOS/Windows were never built at all). Linked from docs/README.md.
+- `.github/workflows/ci.yml` and `plataformas.yml`: every job that already stages an inert
+  `anna-<triple>` stand-in (so Tauri's build script finds its required `externalBin` entries)
+  now also stages `traffic-capture-<triple>` the same way — the previous commit's
+  `externalBin` registration would otherwise have made `cargo check`/`test`/`clippy` fail on
+  every platform's CI job from this point in the branch on.
+- `.github/dependabot.yml`: a new `cargo` entry for `/src-tauri/traffic-capture`, grouped the
+  same way as `/src-tauri` — `npm run prova:dependabot` requires every tracked manifest to
+  have one.
+- Known follow-up, recorded rather than silently left: `build-local.sh`'s existing
+  `--no-anna`/no-anna-found fallback overrides `bundle.externalBin` to `[]` entirely
+  (`build-local.sh:1515-1521`), so a local release build made without `anna` staged also
+  ships without `traffic-capture` even if the latter was staged. Teaching it to compose
+  per-sidecar overrides is separate, scoped work — see docs/TRAFFIC/README.md.
+
 ## 1.31.0 - Wire the traffic-capture sidecar into the bridge (six new actions, one new flag)
 
 - New `code_bridge::traffic` module: resolves the sidecar's path next to the app's own
