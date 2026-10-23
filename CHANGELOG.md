@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.30.6 - Take the patched rustls-webpki, webpki-root-certs and tokio and write down why the zip and zbus advisories stay: `cargo deny` is green again
+
+`cargo deny` has been the last red step of the `Provas` job on `master` since 18/10/2026 (every completed run
+from `1fab95de` to `236b2ea3`; the `cargo test` failure that sat in front of it was fixed in 1.30.5).
+RustSec published nine advisories against six crates that were already locked, so the red is newer
+than the code (measured 23/10/2026 with `cargo deny check advisories`, the command the workflow runs):
+
+- **Fixed by moving the lockfile** (`cargo update -p`, semver-compatible, nothing else moves):
+  `rustls-webpki` 0.103.15 → 0.103.16 (RUSTSEC-2026-0382, distrusted intermediates accepted),
+  `webpki-root-certs` 1.0.9 → 1.0.11 (-0383, distrusted emSign intermediates) and `tokio`
+  1.52.3 → 1.54.1 (-0386, `AsyncFd::new` violates I/O safety).
+- **`zip` 4.6.1, three extraction advisories (RUSTSEC-2026-0367/-0368/-0369, fixed in zip >= 9):
+  ignored, with the reason written in `deny.toml`.** The only path to `zip` is
+  `tauri-plugin-updater` 2.14.0 (the latest 2.x; 3.0.0 is an alpha), which pins zip 4 and calls
+  `ZipArchive::extract` once, in its Windows install path, on bytes it has already verified
+  against the minisign public key. The flaws need a malicious archive (SUID/SGID bits, a symlink
+  that leaves the destination), and an archive that passes our signature check is one we signed.
+  The entry names what to re-check: the block goes when the plugin takes zip >= 9.
+- **`zbus_names`, `zvariant`, `zvariant_derive` (RUSTSEC-2026-0371/-0370/-0372): ignored.**
+  Unmaintained since they were merged into zbus 6; no flaw is reported. They are the Linux D-Bus
+  layer under `tauri-plugin-notification`, `-single-instance` and `-opener`, so moving needs those
+  plugins to move first.
+- **Five stale ignores removed**: the `unic-*` entries (RUSTSEC-2025-0075/-0080/-0081/-0098/-0100)
+  matched no crate any more, and cargo-deny reported each as `advisory-not-detected`; the file's
+  own rule is that an ignore which matches nothing reads as a decision and guards nothing.
+
+`cargo deny check` (advisories, bans, licenses, sources), `cargo test --locked` (339 passed, 2
+ignored) and `cargo clippy --locked --all-targets -- -D warnings` pass locally. The other red on
+PR #151 (macOS and Windows: `unused variable: bin`) is in that PR's own code, not here.
+
 ## 1.30.5 - Pin two Tauri plugins back so the Linux build compiles again
 
 - The cargo-patch-minor Dependabot group (#147) raised `tauri-plugin-deep-link` to 2.6.2 and
