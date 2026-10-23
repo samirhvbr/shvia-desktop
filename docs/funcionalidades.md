@@ -44,21 +44,42 @@ context, or a version-2 one that does not, is refused before anything else is re
 [open-scan-authorization.md in the fork](https://github.com/samirhvbr/strix/blob/master/docs/PENTEST/open-scan-authorization.md)
 for the WEB-handoff contract this consumes; the WEB side that issues one does not exist yet.
 
-## Pentest engine: ready to be bundled, not yet bundled (1.30.3)
+## Pentest engine ships inside the installer (1.32.0)
 
-The Pentest (controlled assessment) native bridge looked up `strix` on `PATH` only — the
-operator had to install and keep it updated separately on the machine that runs it, the one
-engine still working that way while `anna` and the Claude/Codex runners are bundled or
-self-installing. `code_bridge::pentest::command()` now tries a sidecar bundled beside the app
-first (`resolve_bin("strix")`, the exact lookup `anna` already uses), falling back to the
-`PATH`-installed `strix` otherwise. No build here stages one yet — `bundle.externalBin` has
-no `strix` entry, so every build today still behaves exactly as before, byte for byte.
+The Pentest (controlled assessment) engine used to be something the operator installed and
+kept updated by hand on the machine that runs it, the one engine still working that way while
+`anna` and the Claude/Codex runners are bundled or self-installing. A Desktop with the right
+version still answered "Pentest not detected", because the engine was a separate thing. On
+Linux and macOS the installer now carries it: updating the Desktop updates the engine.
 
-This is the first of three pieces: the fork now builds a standalone binary per platform
-(`samirhvbr/strix`'s own `pentest-binaries` workflow); staging one into
-`src-tauri/binaries/strix-<target-triple>` (a `scripts/stage-strix.mjs`, mirroring
-`scripts/stage-anna.mjs`) and declaring it in `externalBin` are not done. Until they are,
-nothing changes for an operator.
+- **Resolution.** `code_bridge::pentest::command()` runs the file beside the executable
+  (`motores::bundled_bin("pentest")`) and nothing else: no lookup on `PATH`, so a program
+  with the same name elsewhere on the machine is never run. A build that carries none answers
+  `E_PENTEST_NOT_BUNDLED` before any flow starts, which the page translates, instead of the
+  old "update Pentest".
+- **Staging.** `scripts/stage-pentest.mjs` takes `--from`, `SHVIA_PENTEST_BIN` or the release
+  pinned in `pentest-engine.json` (a SHA-256 per platform), and refuses an engine that does not
+  run, is below the floor or is not the version the manifest pins. `externalBin` lists it only
+  in `tauri.linux.conf.json` and `tauri.macos.conf.json`, so Windows, where the profile is
+  refused, never needs one. `./build-local.sh --pentest <path>` and `--no-pentest` choose or skip
+  it, and `--no-anna` no longer deletes the folder that holds it. See
+  [build.md](build.md#pentest-engine).
+- **Names.** The product is Pentest wherever a person reads it. The native summary reports
+  `pentestVersion` (it was `strixVersion`), the refusal codes are `E_PENTEST_TOO_OLD`,
+  `E_PENTEST_VERSION_UNKNOWN` and `E_PENTEST_NOT_BUNDLED` (they were `E_STRIX_*`), and the history
+  snapshot sent to the WEB carries `pentest_version`. The engine's own file format keeps its
+  names (`strix_runs/`, `strix_version` in `run.json`), recorded in runs already on disk, and
+  `code_bridge/pentest.rs` names them once. A WEB older than this change reads none of the new
+  names, so deploy the WEB first.
+- **Probe deadline.** 20 s, up from 5 s. A one-file build unpacks itself on every start:
+  `--fork-version` takes about 2.6 s on Linux, cold or warm (measured), and a first launch on
+  macOS also waits for Gatekeeper.
+- **Not verified:** a signed macOS build. The hardened runtime can refuse the libraries a
+  PyInstaller one-file engine unpacks; `build-local.sh` runs the engine from inside the signed
+  `.app` and stops the build if it does not start (build.md explains the two remedies).
+
+This is the third piece: the fork publishes the binaries on its Release (`pentest-binaries.yml`
+with `release_tag`, fork 1.2.43), and 1.30.3 had already made the bridge prefer a bundled file.
 
 ## Private CLI configuration replacement (1.30.2)
 
@@ -78,11 +99,11 @@ and a test pins it to the FIPS 180-2 vectors.
 
 ## The server name in the assessment consent (1.30.0)
 
-An assessment operation may carry the DNS name its site is known by next to the literal IP that was authorized (Strix
-1.2.39, `docs/PENTEST/server-name.md` in the Strix fork): the connection still goes to the IP, and the name sets the TLS server
+An assessment operation may carry the DNS name its site is known by next to the literal IP that was authorized (Pentest
+1.2.39, `docs/PENTEST/server-name.md` in the engine repository `samirhvbr/strix`): the connection still goes to the IP, and the name sets the TLS server
 name, the certificate check and the `Host` header. Because it changes what the approver agrees to, the native
 confirmation prints it on the operation's line (`nome do servidor (SNI e Host): app.example.com`) and refuses a name that is
-not a canonical lowercase ASCII DNS name. The supported pair becomes Desktop **1.30.0+** and Strix **1.2.39+ within 1.x**.
+not a canonical lowercase ASCII DNS name. The supported pair becomes Desktop **1.30.0+** and Pentest **1.2.39+ within 1.x**.
 
 ## Claude subscription connected from the desktop (1.29.0)
 
@@ -126,11 +147,11 @@ or viewer session capability. See [the viewer boundary](pentest-viewer.md).
 
 ## Assessment runtime compatibility (1.25.0)
 
-The native bridge reports the installed Strix version and refuses unsupported
+The native bridge reports the installed Pentest version and refuses unsupported
 runtime/platform pairs before consent. Start, resume and retest repeat the check,
 and the approval names the installed version. Supported baseline: Linux/macOS,
-Desktop **1.26.2+ within 1.x** for the corrected fork-build probe and Strix **1.2.30+ within
-1.x** (1.30.0 raised the Strix floor to **1.2.39**, the first build that accepts a server name). The feature began in 1.25.0, whose probe read the upstream version and incorrectly
+Desktop **1.26.2+ within 1.x** for the corrected fork-build probe and Pentest **1.2.30+ within
+1.x** (1.30.0 raised the Pentest floor to **1.2.39**, the first build that accepts a server name). The feature began in 1.25.0, whose probe read the upstream version and incorrectly
 accepted other fork builds; 1.26.2 corrected it. Unknown, prerelease and unreviewed major
 versions are refused. See
 [the compatibility contract](pentest-compatibility.md).
@@ -141,13 +162,13 @@ Fresh native consent explicitly covers report narrative, findings, evidence and
 code. The private outbox uploads stopped reports only after metadata receipts and
 retries identical request bytes until a bound report receipt arrives. Existing
 metadata-only outboxes remain metadata-only. Report generation and downloads run
-on WEB; uploaded does not mean generated. Strix 1.2.27+ is required.
+on WEB; uploaded does not mean generated. Pentest 1.2.27+ is required.
 
 ## Durable assessment history (1.21.0)
 
 Unix assessments can synchronize bounded native metadata to their original HTTPS
 server after explicit native consent. Private outgoing snapshots survive restart;
-receipts bind scan, revision and request bytes before data is acknowledged. Strix
+receipts bind scan, revision and request bytes before data is acknowledged. Pentest
 1.2.26 exports stopped/crashed accounting without changing evidence. Partial and
 unknown states remain visible; no raw evidence or target/model credentials upload.
 See [the authorization contract](PENTEST/authorization.md).
@@ -156,9 +177,9 @@ See [the authorization contract](PENTEST/authorization.md).
 
 The owning Unix window can read bounded live telemetry, request operator pause
 and acknowledge one operator/test pause with fresh native consent. Private Unix
-IPC binds the known Strix child and launch generation; tokens, socket paths and
+IPC binds the known Pentest child and launch generation; tokens, socket paths and
 raw output never reach the page. Budget and other pause reasons remain unchanged.
-Requires Strix 1.2.25+. See [the control contract](PENTEST/authorization.md#cooperative-native-control-1200).
+Requires Pentest 1.2.25+. See [the control contract](PENTEST/authorization.md#cooperative-native-control-1200).
 
 ## Restart recovery (1.18.0)
 
@@ -173,7 +194,7 @@ This source capability does not establish installed-app pilot acceptance.
 
 The native bridge selects a vulnerable baseline from a fresh verified review,
 checks the owning run and current HTTPS authority, and asks for native consent
-before invoking Strix 1.2.22's deterministic private-read retest. Original
+before invoking Pentest 1.2.22's deterministic private-read retest. Original
 evidence and spending remain intact; paths and credentials stay native-owned.
 At 1.17.0 this supported Unix within the current app session. Restart reconciliation was
 added in 1.18.0 above; a complete installed-app pilot remains separate evidence. See
@@ -181,7 +202,7 @@ added in 1.18.0 above; a complete installed-app pilot remains separate evidence.
 
 ## Local assessment evidence review (1.16.0)
 
-The owning window can review its finished assessment with Strix 1.2.21 or later.
+The owning window can review its finished assessment with Pentest 1.2.21 or later.
 The native bridge verifies the configured HTTPS authority, selects the recorded
 run itself, limits the helper output/time and returns an explicit metadata
 projection. Essential gaps, uncertainty, stale results and history remain visible.
@@ -199,7 +220,7 @@ interactive pilot remains separate from those source capabilities.
 
 ## Controlled local assessments (1.14.0)
 
-The existing native bridge now verifies a WEB assessment grant with Strix, shows
+The existing native bridge now verifies a WEB assessment grant with Pentest, shows
 native consent and selects a private local identity file before starting the
 controlled profile. One local process is supervised, with status and interruption
 controls. The configured HTTPS origin owns authorization; the page cannot supply
@@ -510,10 +531,10 @@ alone does not grant the agent access.
 
 **1.24.0 — the assessment consent names the model and who pays.** When the web authorization approves a model, the
 native dialog for starting, resuming and retesting shows it as `Modelo: provider/model` with the payer: the person,
-using the credentials on this computer (marked "not verified" when the installed Strix could not check). The app
+using the credentials on this computer (marked "not verified" when the installed Pentest could not check). The app
 refuses before asking if the machine has no credentials for that model, if the source is not `local`, or if the name
-is not a plain `provider/model`. Without an approved model the line says the one configured locally in Strix. The
-model itself is pinned by the Strix process, not by the app: the app passes no model and no key.
+is not a plain `provider/model`. Without an approved model the line says the one configured locally in Pentest. The
+model itself is pinned by the Pentest process, not by the app: the app passes no model and no key.
 
 **1.23.0 — the agent's own browser on this machine.** A second tray switch, "Navegador do agente nesta máquina",
 lets the agent open a window of its own (with its own profile, where the person signs in by hand), read it, and click
