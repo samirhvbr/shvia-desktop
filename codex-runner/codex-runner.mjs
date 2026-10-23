@@ -276,7 +276,14 @@ async function rodarTurno(texto, plano = false) {
       threadId: tid, input: [{ type: "text", text: texto }],
       ...(EFFORT ? { effort: EFFORT } : {}),
       ...(sandboxPolicy ? { sandboxPolicy } : {}),
-    });
+    }, { silencioso: true });
+    // A refused request never starts a turn, so it will never send turn/completed.
+    // Finish this host message and let finally release the queue instead of waiting forever.
+    if (inicio?.erro) {
+      emit({ type: "error", message: String(inicio.erro.message ?? "app-server error") });
+      emit({ type: "turn_done" });
+      return;
+    }
     turnoAtual = inicio?.turn?.id ?? null;
     avisarTurno?.();
     ultimoFoiPlano = plano === true;
