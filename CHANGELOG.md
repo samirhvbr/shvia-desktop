@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.31.0 - Wire the traffic-capture sidecar into the bridge (six new actions, one new flag)
+
+- New `code_bridge::traffic` module: resolves the sidecar's path next to the app's own
+  executable (the same spot `externalBin` always places it), spawns it, and answers six new
+  bridge actions — `trafficInterfaces`, `trafficPermissionStatus`, `trafficRequestPermission`,
+  `trafficStart`, `trafficStop`, `trafficExport` — the native half of the Network "Traffic"
+  tool. `code_bridge` itself never links `pcap`; the sidecar added in the previous commit is
+  the only thing that does.
+- `trafficStart` streams parsed packet batches back to the page through the SAME `_emit` push
+  channel agent sessions already use (`onEvent`), not polling. `trafficStop` kills the
+  sidecar and is also called with no window at app exit (`lib.rs`'s `RunEvent::Exit`), the
+  same lifecycle `pentest::stop` already has. `trafficExport` copies the session's temp
+  `.pcapng` file to a user-chosen path through a native save dialog — a plain file copy, not
+  a round trip through the existing `saveFile` action's 50 MB attachment cap.
+- `window.__shviaCode.recursos.captura` is the new presence flag the page feature-detects
+  before offering the real Traffic UI instead of a "desktop required" message.
+- `trafficRequestPermission` is the one action that may trigger an OS elevation prompt
+  (`pkexec setcap` on Linux, `osascript ... with administrator privileges` on macOS to join
+  `access_bpf`, a Npcap download link on Windows) — written and compiled, never executed by
+  this session: granting a real OS capability needed a human's own explicit action on this
+  shared machine, not something a session grants itself. See docs/TRAFFIC/README.md (next
+  commit) for the full account of what is and is not verified.
+- `cargo test`/`cargo clippy --all-targets -- -D warnings` for `src-tauri` are green with this
+  module in place (342 existing tests + 3 new ones, 2 pre-existing unrelated ignores).
+
 ## 1.31.0 - Add the traffic-capture sidecar crate for the Network "Traffic" tool
 
 - New `src-tauri/traffic-capture/` crate: a thin, separate binary that is the only part of
