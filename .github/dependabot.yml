@@ -48,6 +48,19 @@ updates:
       - dependency-name: zbus
       - dependency-name: raw-window-handle
 
+  # The packet-capture sidecar (Network "Traffic" tool). A separate crate on purpose: it is
+  # the only thing allowed to link libpcap/Npcap, and `src-tauri` above must never resolve it.
+  - package-ecosystem: cargo
+    directory: /src-tauri/traffic-capture
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    groups:
+      cargo-patch-minor:
+        update-types: [patch, minor]
+
   # The web shell and the build tools (Vite, TypeScript, the Tauri CLI).
   - package-ecosystem: npm
     directory: /

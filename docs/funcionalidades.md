@@ -30,6 +30,25 @@ record follows below. Work not yet produced stays in
   takeover are separate lifecycles. The architecture's persistence table says which state stays
   on this computer and which service owns the rest.
 
+## Packet capture for the Network "Traffic" tool (1.31.0)
+
+A new, separate crate (`src-tauri/traffic-capture/`) is the only part of this repository that
+links `pcap` (libpcap/Npcap bindings) — modeled on Wireshark's own GUI/`dumpcap` privilege
+split, so the main app process never needs OS capture capability itself. It is spawned only
+while a capture runs (never at app start) and answers it over NDJSON on stdout.
+`code_bridge::traffic` resolves and spawns it, and exposes six bridge actions
+(`trafficInterfaces`, `trafficPermissionStatus`, `trafficRequestPermission`, `trafficStart`,
+`trafficStop`, `trafficExport`) behind the new `recursos.captura` presence flag. Captured
+frames stream to the page as batched `_emit` events and are written to a `pcap-file`-built
+PCAPNG file; Export copies that file to a user-chosen path via a native save dialog.
+`trafficRequestPermission` is the one action that may ask the OS for elevated capability
+(`setcap` on the sidecar binary on Linux, `access_bpf` group membership on macOS, a Npcap
+prerequisite on Windows) — written, but **not exercised**: this delivery verified `cargo
+test`/`clippy` for the main crate on Linux only; the `traffic-capture` crate itself was never
+compiled (needs `libpcap-dev` at build time), no real device was opened on any OS, and
+macOS/Windows were never built at all. See [docs/TRAFFIC/README.md](TRAFFIC/README.md) for
+the full account and the known packaging follow-up in `build-local.sh`.
+
 ## Native consent for a scope-only assessment (1.30.4)
 
 The native consent builder required the approved policy to be exactly version 2 — every

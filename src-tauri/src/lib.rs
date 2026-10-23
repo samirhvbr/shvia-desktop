@@ -1679,6 +1679,7 @@ pub fn run() {
         }
         tauri::RunEvent::Exit => {
             code_bridge::stop_pentest(None);
+            let _ = code_bridge::stop_traffic(None);
             app_handle.state::<code_bridge::Sidecars>().kill_all();
             // 🔴 O login NÃO mora no mapa de sidecars — é um `static` próprio, porque não é
             // sessão de projeto. Sem esta linha ele sobrevive ao app: um `claude auth login`

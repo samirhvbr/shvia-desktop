@@ -1,0 +1,25 @@
+[package]
+name = "traffic-capture"
+version = "0.1.0"
+description = "Unprivileged-by-default packet capture sidecar for the Network/Traffic tool"
+authors = ["Samir Hanna Verza <samirhv@me.com>"]
+edition = "2021"
+publish = false
+
+# Built and staged separately from the main app (scripts/stage-traffic-capture.mjs), the same
+# way the externally-sourced `anna` binary is staged — see docs/TRAFFIC/README.md for why this
+# is its own crate instead of a second [[bin]] in src-tauri: the GUI process must never link
+# libpcap, so the dependency boundary has to be a separate compilation unit, not a feature flag.
+[[bin]]
+name = "traffic-capture"
+path = "src/main.rs"
+
+[dependencies]
+pcap = "2"
+etherparse = "0.14"
+pcap-file = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+strip = true

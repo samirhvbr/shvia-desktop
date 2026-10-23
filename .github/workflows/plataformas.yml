@@ -54,6 +54,7 @@ jobs:
         run: |
           mkdir -p src-tauri/binaries
           : > src-tauri/binaries/anna-x86_64-pc-windows-gnu.exe
+          : > src-tauri/binaries/traffic-capture-x86_64-pc-windows-gnu.exe
       - name: clippy (x86_64-pc-windows-gnu)
         working-directory: src-tauri
         run: cargo clippy --locked --target x86_64-pc-windows-gnu --all-targets -- -D warnings
@@ -80,6 +81,8 @@ jobs:
           triple="$(rustc -vV | awk '/^host:/{print $2}')"
           : > "src-tauri/binaries/anna-$triple"
           chmod +x "src-tauri/binaries/anna-$triple"
+          : > "src-tauri/binaries/traffic-capture-$triple"
+          chmod +x "src-tauri/binaries/traffic-capture-$triple"
       - name: clippy
         working-directory: src-tauri
         run: cargo clippy --locked --all-targets -- -D warnings
@@ -112,6 +115,7 @@ jobs:
         run: |
           mkdir -p src-tauri/binaries
           : > src-tauri/binaries/anna-x86_64-pc-windows-msvc.exe
+          : > src-tauri/binaries/traffic-capture-x86_64-pc-windows-msvc.exe
       - name: clippy (x86_64-pc-windows-msvc)
         working-directory: src-tauri
         run: cargo clippy --locked --all-targets -- -D warnings

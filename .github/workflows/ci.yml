@@ -151,6 +151,8 @@ jobs:
           triple="$(rustc -vV | awk '/^host:/{print $2}')"
           : > "src-tauri/binaries/anna-$triple"
           chmod +x "src-tauri/binaries/anna-$triple"
+          : > "src-tauri/binaries/traffic-capture-$triple"
+          chmod +x "src-tauri/binaries/traffic-capture-$triple"
       # O motor Codex é instalação opcional, e por isso mesmo a régua que confere a
       # instalação precisa de uma instalação para conferir. O script não usa rede,
       # npm nem login: copia arquivos, escreve um wrapper e cai na cópia do schema

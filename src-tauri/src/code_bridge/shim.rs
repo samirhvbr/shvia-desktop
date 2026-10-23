@@ -276,7 +276,15 @@ pub const BRIDGE_JS: &str = r#"(function () {
     //           are on: that is the tray switch, which `aparelhoStatus().ligado` reads and
     //           nothing on the page can change. Without the flag the page offers the agent no
     //           device tool at all.
-    recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true, plano: true, orientar: true, aparelho: true, uso: true, assinatura: __SHVIA_ASSINATURA__ },
+    //   captura: live packet capture for the Network "Traffic" tool —
+    //           `trafficInterfaces()`, `trafficPermissionStatus(interfaceId)`,
+    //           `trafficRequestPermission()`, `trafficStart({interfaceId, filter})`,
+    //           `trafficStop()`, `trafficExport()`. Presence says this shell CAN capture, not
+    //           that it is allowed to on this machine yet — that is what
+    //           `trafficPermissionStatus` answers. Without the flag the page shows the
+    //           "desktop required" panel, the same way it already does when this whole object
+    //           is absent on a plain browser.
+    recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true, plano: true, orientar: true, aparelho: true, uso: true, assinatura: __SHVIA_ASSINATURA__, captura: true },
     // chamados pelo Rust (eval):
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
     _emit: function (evt, sessao, seq) { if (evt && typeof evt === 'object') { if (sessao) evt.sessao = sessao; if (seq) evt.seq = seq; } for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }

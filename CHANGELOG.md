@@ -1,5 +1,112 @@
 # Changelog
 
+## 1.31.1 - Fix the traffic-capture sidecar: it had never actually been compiled
+
+- `cargo build --manifest-path src-tauri/traffic-capture/Cargo.toml` had never been run before
+  this commit (no `Cargo.lock` existed, and the sidecar's own `pcap`/`pcap-file` calls were
+  written without a compiler to check them — `libpcap-dev` was not available on the machine
+  that wrote them). Building it against a locally staged `libpcap0.8-dev` surfaced three real
+  defects, all fixed here:
+  - `EnhancedPacketBlock` (pcap-file 2.0.0) does not implement `Default`; the `..Default::default()`
+    spread did not compile. Replaced with an explicit `options: Vec::new()`.
+  - Two `cargo clippy -D warnings` violations: a single-arm `match` that should be `if let`, and
+    a `tv_usec` widening whose necessity is platform-dependent (`i64` already on 64-bit Linux,
+    `i32` on macOS/BSD) — kept as `i64::from` with a scoped `#[allow(clippy::useless_conversion)]`
+    and a comment, since removing the conversion would break the other platforms' build.
+  - **`classify_open_error` did not recognize this machine's real EPERM message.** Running
+    `--check-permission` against `lo` without `cap_net_raw` returns libpcap's actual Linux
+    wording, `"socket: Operation not permitted"` — which contains none of "permission",
+    "denied" or "eperm", so it fell through to the generic `"error"` status instead of
+    `"needs_permission"`. That status is exactly what the Traffic UI would use to decide
+    whether to guide the operator through the permission flow instead of showing a dead end;
+    verified against the real binary before and after the fix, not just by reasoning about the
+    string. Added `"not permitted"` to the match, plus a regression test with the exact message.
+- Verified on this machine (previously not run at all): `cargo build`/`cargo test`/`cargo clippy
+  --all-targets -D warnings` against a `libpcap0.8-dev` staged locally without touching system
+  state (`apt-get download` + unpack, no `sudo`); `--list-interfaces` and `--check-permission`
+  run for real against this host's actual interfaces. Opening a live capture still needs
+  `cap_net_raw`/`cap_net_admin` on the sidecar binary, which remains a deliberate human action
+  (see docs/TRAFFIC/README.md) — not performed in this session either.
+
+## 1.31.0 - Track the Traffic sidecar in the two docs the freshness proof watches
+
+- `.continue/estado-atual.md` and `docs/funcionalidades.md` both named a version below the
+  tolerance `npm run prova:doc` allows for a minor bump — each gets a dated 1.31.0 entry
+  summarizing what shipped and, just as prominently, what was not verified (see
+  docs/TRAFFIC/README.md for the full account).
+
+## 1.31.0 - Document Traffic's architecture and cover the CI/Dependabot/staging gaps it opened
+
+- New `scripts/stage-traffic-capture.mjs` (`npm run traffic-capture:stage`): builds the sidecar
+  crate (`cargo build --release`) and copies it into `src-tauri/binaries/traffic-capture-
+  <triple>` for `externalBin` bundling — the same role `stage-anna.mjs` has for `anna`, except
+  this one builds our own code instead of locating an externally-installed binary. A build
+  failure (most likely a missing `libpcap-dev` on the BUILD machine) is not fatal to the app
+  build, the same posture `stage-anna.mjs` already has for a missing engine.
+- New docs/TRAFFIC/README.md: the privilege-separation rationale (Wireshark's GUI/`dumpcap`
+  split), the sidecar's command surface, the six bridge actions, the per-OS permission steps,
+  and — up front, not buried — exactly what was and was not verified in this delivery (Linux
+  build+unit-tests only; the `traffic-capture` crate itself was never compiled, no real device
+  was ever opened, and macOS/Windows were never built at all). Linked from docs/README.md.
+- `.github/workflows/ci.yml` and `plataformas.yml`: every job that already stages an inert
+  `anna-<triple>` stand-in (so Tauri's build script finds its required `externalBin` entries)
+  now also stages `traffic-capture-<triple>` the same way — the previous commit's
+  `externalBin` registration would otherwise have made `cargo check`/`test`/`clippy` fail on
+  every platform's CI job from this point in the branch on.
+- `.github/dependabot.yml`: a new `cargo` entry for `/src-tauri/traffic-capture`, grouped the
+  same way as `/src-tauri` — `npm run prova:dependabot` requires every tracked manifest to
+  have one.
+- Known follow-up, recorded rather than silently left: `build-local.sh`'s existing
+  `--no-anna`/no-anna-found fallback overrides `bundle.externalBin` to `[]` entirely
+  (`build-local.sh:1515-1521`), so a local release build made without `anna` staged also
+  ships without `traffic-capture` even if the latter was staged. Teaching it to compose
+  per-sidecar overrides is separate, scoped work — see docs/TRAFFIC/README.md.
+
+## 1.31.0 - Wire the traffic-capture sidecar into the bridge (six new actions, one new flag)
+
+- New `code_bridge::traffic` module: resolves the sidecar's path next to the app's own
+  executable (the same spot `externalBin` always places it), spawns it, and answers six new
+  bridge actions — `trafficInterfaces`, `trafficPermissionStatus`, `trafficRequestPermission`,
+  `trafficStart`, `trafficStop`, `trafficExport` — the native half of the Network "Traffic"
+  tool. `code_bridge` itself never links `pcap`; the sidecar added in the previous commit is
+  the only thing that does.
+- `trafficStart` streams parsed packet batches back to the page through the SAME `_emit` push
+  channel agent sessions already use (`onEvent`), not polling. `trafficStop` kills the
+  sidecar and is also called with no window at app exit (`lib.rs`'s `RunEvent::Exit`), the
+  same lifecycle `pentest::stop` already has. `trafficExport` copies the session's temp
+  `.pcapng` file to a user-chosen path through a native save dialog — a plain file copy, not
+  a round trip through the existing `saveFile` action's 50 MB attachment cap.
+- `window.__shviaCode.recursos.captura` is the new presence flag the page feature-detects
+  before offering the real Traffic UI instead of a "desktop required" message.
+- `trafficRequestPermission` is the one action that may trigger an OS elevation prompt
+  (`pkexec setcap` on Linux, `osascript ... with administrator privileges` on macOS to join
+  `access_bpf`, a Npcap download link on Windows) — written and compiled, never executed by
+  this session: granting a real OS capability needed a human's own explicit action on this
+  shared machine, not something a session grants itself. See docs/TRAFFIC/README.md (next
+  commit) for the full account of what is and is not verified.
+- `cargo test`/`cargo clippy --all-targets -- -D warnings` for `src-tauri` are green with this
+  module in place (342 existing tests + 3 new ones, 2 pre-existing unrelated ignores).
+
+## 1.31.0 - Add the traffic-capture sidecar crate for the Network "Traffic" tool
+
+- New `src-tauri/traffic-capture/` crate: a thin, separate binary that is the only part of
+  this repository allowed to link `pcap` (libpcap/Npcap bindings) — modeled on Wireshark's own
+  GUI/`dumpcap` privilege split (see docs/TRAFFIC/README.md, added together with the rest of
+  this feature in a later commit of this delivery). It takes `--list-interfaces`,
+  `--check-permission --interface <id>`, or `--capture --interface <id> [--filter <bpf>] --out
+  <path.pcapng>`, and prints one NDJSON line per response/batch to stdout. Registered in
+  `tauri.conf.json`'s `bundle.externalBin` next to `anna`, so `cargo check`/`build` now also
+  require a staged `traffic-capture-<triple>` stand-in (the rest of the packaging — the
+  staging script, CI's stand-in creation, Dependabot coverage — lands in a later commit).
+- Capture itself writes every frame to a `pcap-file`-built PCAPNG file and summarizes each one
+  (source, destination, protocol, length, a one-line description) with `etherparse` — enough
+  for the Traffic table without a full protocol-dissector framework.
+- `cargo test --manifest-path src-tauri/traffic-capture/Cargo.toml` was **not** run: `pcap`
+  needs the `libpcap-dev` system package at build time, and installing it needs `sudo` on the
+  shared machine this was written on. `args.rs` and `parse.rs`'s own logic (no `pcap` types)
+  carries unit tests and reads correctly, but the crate as a whole has not been compiled — see
+  docs/TRAFFIC/README.md's "What has and has not been verified" for the full account.
+
 ## 1.30.5 - Pin two Tauri plugins back so the Linux build compiles again
 
 - The cargo-patch-minor Dependabot group (#147) raised `tauri-plugin-deep-link` to 2.6.2 and
