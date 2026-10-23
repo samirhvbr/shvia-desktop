@@ -29,7 +29,7 @@
 //!    português antes de salvar. Ver `crate::is_server_host` e o ADR-019.
 
 use std::io::ErrorKind;
-use std::net::{TcpStream, ToSocketAddrs};
+use std::net::TcpStream;
 use std::sync::RwLock;
 use std::time::Duration;
 
@@ -231,15 +231,12 @@ pub fn probe(url: &str) -> bool {
     let Ok(u) = tauri::Url::parse(url) else {
         return false;
     };
-    let Some(host) = u.host_str() else {
-        return false;
-    };
-    let porta = u.port_or_known_default().unwrap_or(443);
     let timeout = Duration::from_millis(PROBE_TIMEOUT_MS);
 
-    // `to_socket_addrs` resolve DNS. Offline de verdade falha aqui, na hora — e é
-    // por isso que o caso comum de "sem rede" não espera o timeout inteiro.
-    let Ok(addrs) = (host, porta).to_socket_addrs() else {
+    // Resolve domains while preserving typed IP literals: `host_str()` brackets an IPv6
+    // address, which `(&str, u16)::to_socket_addrs` incorrectly treats as a DNS name.
+    // Keep explicit ports, the scheme's known default and the existing 443 fallback.
+    let Ok(addrs) = u.socket_addrs(|| Some(443)) else {
         return false;
     };
 
@@ -337,5 +334,33 @@ mod tests {
         // Sem rede não é o mesmo que travar: DNS inexistente falha na hora.
         assert!(!probe("https://host-que-nao-existe.invalid"));
         assert!(!probe("nao-e-url"));
+    }
+
+    #[test]
+    fn probe_reaches_an_ipv6_literal_on_its_explicit_port() {
+        let listener = std::net::TcpListener::bind((std::net::Ipv6Addr::LOCALHOST, 0))
+            .expect("this test needs IPv6 loopback");
+        let addr = listener.local_addr().unwrap();
+        // The probe checks TCP reachability, even for an HTTPS URL; no TLS server is needed.
+        for scheme in ["http", "https"] {
+            let url = normalize(&format!("{scheme}://{addr}/chat")).unwrap();
+            assert!(probe(&url), "the listening IPv6 server was reported offline: {url}");
+        }
+    }
+
+    #[test]
+    fn probe_keeps_ipv4_and_localhost_reachable() {
+        let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        for host in ["127.0.0.1", "localhost"] {
+            assert!(probe(&format!("http://{host}:{port}")), "could not reach {host}");
+        }
+    }
+
+    #[test]
+    fn probe_refuses_a_port_without_a_listener() {
+        // Port zero cannot be a listening service's assigned port.
+        assert!(!probe("http://127.0.0.1:0"));
+        assert!(!probe("http://[::1]:0"));
     }
 }
