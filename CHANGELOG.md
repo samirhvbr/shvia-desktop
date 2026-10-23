@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.31.1 - Fix the traffic-capture sidecar: it had never actually been compiled
+
+- `cargo build --manifest-path src-tauri/traffic-capture/Cargo.toml` had never been run before
+  this commit (no `Cargo.lock` existed, and the sidecar's own `pcap`/`pcap-file` calls were
+  written without a compiler to check them — `libpcap-dev` was not available on the machine
+  that wrote them). Building it against a locally staged `libpcap0.8-dev` surfaced three real
+  defects, all fixed here:
+  - `EnhancedPacketBlock` (pcap-file 2.0.0) does not implement `Default`; the `..Default::default()`
+    spread did not compile. Replaced with an explicit `options: Vec::new()`.
+  - Two `cargo clippy -D warnings` violations: a single-arm `match` that should be `if let`, and
+    a `tv_usec` widening whose necessity is platform-dependent (`i64` already on 64-bit Linux,
+    `i32` on macOS/BSD) — kept as `i64::from` with a scoped `#[allow(clippy::useless_conversion)]`
+    and a comment, since removing the conversion would break the other platforms' build.
+  - **`classify_open_error` did not recognize this machine's real EPERM message.** Running
+    `--check-permission` against `lo` without `cap_net_raw` returns libpcap's actual Linux
+    wording, `"socket: Operation not permitted"` — which contains none of "permission",
+    "denied" or "eperm", so it fell through to the generic `"error"` status instead of
+    `"needs_permission"`. That status is exactly what the Traffic UI would use to decide
+    whether to guide the operator through the permission flow instead of showing a dead end;
+    verified against the real binary before and after the fix, not just by reasoning about the
+    string. Added `"not permitted"` to the match, plus a regression test with the exact message.
+- Verified on this machine (previously not run at all): `cargo build`/`cargo test`/`cargo clippy
+  --all-targets -D warnings` against a `libpcap0.8-dev` staged locally without touching system
+  state (`apt-get download` + unpack, no `sudo`); `--list-interfaces` and `--check-permission`
+  run for real against this host's actual interfaces. Opening a live capture still needs
+  `cap_net_raw`/`cap_net_admin` on the sidecar binary, which remains a deliberate human action
+  (see docs/TRAFFIC/README.md) — not performed in this session either.
+
 ## 1.31.0 - Track the Traffic sidecar in the two docs the freshness proof watches
 
 - `.continue/estado-atual.md` and `docs/funcionalidades.md` both named a version below the

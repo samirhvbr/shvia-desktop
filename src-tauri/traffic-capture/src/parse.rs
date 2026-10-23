@@ -34,12 +34,9 @@ pub fn summarize(seq: u64, ts_unix_ms: u64, length: u32, raw: &[u8]) -> PacketSu
 
     let (mut src, mut dst, mut protocol) = ("?".to_string(), "?".to_string(), "ethernet".to_string());
 
-    match &sliced.link {
-        Some(LinkSlice::Ethernet2(eth)) => {
-            src = mac_to_string(eth.source());
-            dst = mac_to_string(eth.destination());
-        }
-        _ => {}
+    if let Some(LinkSlice::Ethernet2(eth)) = &sliced.link {
+        src = mac_to_string(eth.source());
+        dst = mac_to_string(eth.destination());
     }
 
     match &sliced.net {

@@ -91,7 +91,17 @@ fn check_permission(interface: &str) -> ExitCode {
 
 fn classify_open_error(e: &pcap::Error) -> &'static str {
     let msg = e.to_string().to_ascii_lowercase();
-    if msg.contains("permission") || msg.contains("denied") || msg.contains("eperm") {
+    // Measured on this machine, without `cap_net_raw`: libpcap's actual Linux message is
+    // "socket: Operation not permitted" -- it contains neither "permission" nor "denied" nor
+    // the literal string "eperm", so the three substrings alone let a real EPERM fall through
+    // to the generic "error" status instead of "needs_permission". macOS's BPF-group message
+    // ("... Permission denied") and a literal "EPERM"/"eperm" are kept as a safety net for
+    // wordings this build has not produced.
+    if msg.contains("permission")
+        || msg.contains("denied")
+        || msg.contains("eperm")
+        || msg.contains("not permitted")
+    {
         "needs_permission"
     } else {
         "error"
@@ -148,6 +158,11 @@ fn capture(interface: &str, filter: Option<&str>, out: &str) -> ExitCode {
         match active.next_packet() {
             Ok(packet) => {
                 seq += 1;
+                // `tv_usec`'s width is platform-defined: `i64` on 64-bit Linux (where this
+                // widening is a no-op clippy flags on this very build) but `i32` on macOS/BSD,
+                // where it is a real conversion. Keeping it working on both outranks silencing
+                // a lint that only fires on one of the three targets.
+                #[allow(clippy::useless_conversion)]
                 let ts_unix_ms = packet
                     .header
                     .ts
@@ -163,7 +178,7 @@ fn capture(interface: &str, filter: Option<&str>, out: &str) -> ExitCode {
                     ),
                     original_len: packet.header.len,
                     data: Cow::Borrowed(packet.data),
-                    ..Default::default()
+                    options: Vec::new(),
                 };
                 if writer.write_pcapng_block(block).is_err() {
                     // The file on disk is what Export copies; a write failure (disk full,
@@ -202,4 +217,24 @@ fn flush_batch(batch: &mut Vec<parse::PacketSummary>) {
     }
     emit_line(&serde_json::json!({ "packets": batch }));
     batch.clear();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_missing_capability_on_linux_is_classified_as_needs_permission() {
+        // The literal message libpcap/pcap return on this machine without `cap_net_raw`
+        // (confirmed by actually running the binary against `lo`), which contains none of
+        // "permission", "denied" or "eperm" -- the bug this test guards against.
+        let e = pcap::Error::PcapError("socket: Operation not permitted".into());
+        assert_eq!(classify_open_error(&e), "needs_permission");
+    }
+
+    #[test]
+    fn an_unrelated_pcap_error_stays_a_generic_error() {
+        let e = pcap::Error::PcapError("no such device exists".into());
+        assert_eq!(classify_open_error(&e), "error");
+    }
 }
