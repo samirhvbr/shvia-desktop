@@ -38,13 +38,8 @@ ignore = [
     # `proc-macro-error` runs during compilation and ships no runtime code.
     { id = "RUSTSEC-2024-0370", reason = "proc-macro-error — unmaintained, compile-time only, pulled by Tauri's macro crates" },
 
-    # `unic-*` are Unicode tables reached through Tauri's identifier handling. Unmaintained,
-    # no reported flaw, and no upgrade path that does not go through Tauri.
-    { id = "RUSTSEC-2025-0075", reason = "unic-char-range — unmaintained, via Tauri" },
-    { id = "RUSTSEC-2025-0080", reason = "unic-common — unmaintained, via Tauri" },
-    { id = "RUSTSEC-2025-0081", reason = "unic-char-property — unmaintained, via Tauri" },
-    { id = "RUSTSEC-2025-0098", reason = "unic-ucd-version — unmaintained, via Tauri" },
-    { id = "RUSTSEC-2025-0100", reason = "unic-ucd-ident — unmaintained, via Tauri" },
+    # The five `unic-*` ignores (RUSTSEC-2025-0075/0080/0081/0098/0100) left on 23/10/2026: Tauri
+    # no longer pulls those crates and cargo-deny reported each one as advisory-not-detected.
 
     # `glib` 0.18 is Tauri's GTK3 tree again (gtk 0.18 → tauri, wry, tao, muda, webkit2gtk,
     # libappindicator). The unsound impl is `VariantStrIter`, which `Variant::array_iter_str`
@@ -64,6 +59,29 @@ ignore = [
     # quick-xml (RUSTSEC-2026-0194/0195) left in 1.6.4 as well: plist 1.10.1 accepts the
     # patched quick-xml 0.42, so `cargo update -p plist` closed it — the "cannot be fixed
     # here" measured earlier had gone stale.
+
+    # ── zip 4.6.1, three extraction advisories (published 09–10/10/2026, fixed in zip >= 9.0.0) ──
+    # The only path to `zip` is `tauri-plugin-updater` 2.14.0 (the latest 2.x; 3.0.0 is still an
+    # alpha), which pins zip 4 and calls `ZipArchive::extract` in exactly one place:
+    # `extract_zip`, the Windows install path, on bytes it has already checked with
+    # `verify_signature` against the minisign public key in `tauri.conf.json`. The three flaws
+    # need a MALICIOUS archive (SUID/SGID bits, a symlink pointing outside the destination);
+    # an archive that passes our signature check is one we built and signed ourselves, and the
+    # updater only ever asks the configured ShvIA server. We do not use `zip` anywhere else.
+    # Re-check when `tauri-plugin-updater` takes zip >= 9: this block goes with it.
+    { id = "RUSTSEC-2026-0367", reason = "zip SUID/SGID preserved on extract — only via tauri-plugin-updater's Windows install path, after the minisign signature check; fix is zip>=9, held at 4 by the plugin" },
+    { id = "RUSTSEC-2026-0368", reason = "zip extract writes symlinks outside the destination — same single caller, same signed-archive precondition" },
+    { id = "RUSTSEC-2026-0369", reason = "zip extract applies permissions through symlinks — same single caller, same signed-archive precondition" },
+
+    # ── zbus_names / zvariant / zvariant_derive: unmaintained, merged into zbus 6 (16/10/2026) ──
+    # No flaw is reported; the advisory is that the standalone crates stopped. They are the D-Bus
+    # layer of the Linux notification, single-instance and opener plugins (zbus 5.16 under
+    # notify-rust 4.18, tauri-plugin-single-instance 2.5.3 and tauri-plugin-opener 2.7.2), and we
+    # also name `zbus = "5"` ourselves. Moving to zbus 6 needs those plugins to move first, or the
+    # tree carries both versions. Re-check when notify-rust and the two plugins take zbus 6.
+    { id = "RUSTSEC-2026-0370", reason = "zvariant — unmaintained (merged into zbus 6), no flaw reported, Linux D-Bus layer under Tauri plugins" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names — unmaintained (merged into zbus 6), no flaw reported, Linux D-Bus layer under Tauri plugins" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive — unmaintained (merged into zbus 6), no flaw reported, Linux D-Bus layer under Tauri plugins" },
 ]
 
 [licenses]
