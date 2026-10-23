@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.31.0 - Add the traffic-capture sidecar crate for the Network "Traffic" tool
+
+- New `src-tauri/traffic-capture/` crate: a thin, separate binary that is the only part of
+  this repository allowed to link `pcap` (libpcap/Npcap bindings) — modeled on Wireshark's own
+  GUI/`dumpcap` privilege split (see docs/TRAFFIC/README.md, added together with the rest of
+  this feature in a later commit of this delivery). It takes `--list-interfaces`,
+  `--check-permission --interface <id>`, or `--capture --interface <id> [--filter <bpf>] --out
+  <path.pcapng>`, and prints one NDJSON line per response/batch to stdout. Registered in
+  `tauri.conf.json`'s `bundle.externalBin` next to `anna`, so `cargo check`/`build` now also
+  require a staged `traffic-capture-<triple>` stand-in (the rest of the packaging — the
+  staging script, CI's stand-in creation, Dependabot coverage — lands in a later commit).
+- Capture itself writes every frame to a `pcap-file`-built PCAPNG file and summarizes each one
+  (source, destination, protocol, length, a one-line description) with `etherparse` — enough
+  for the Traffic table without a full protocol-dissector framework.
+- `cargo test --manifest-path src-tauri/traffic-capture/Cargo.toml` was **not** run: `pcap`
+  needs the `libpcap-dev` system package at build time, and installing it needs `sudo` on the
+  shared machine this was written on. `args.rs` and `parse.rs`'s own logic (no `pcap` types)
+  carries unit tests and reads correctly, but the crate as a whole has not been compiled — see
+  docs/TRAFFIC/README.md's "What has and has not been verified" for the full account.
+
 ## 1.30.5 - Pin two Tauri plugins back so the Linux build compiles again
 
 - The cargo-patch-minor Dependabot group (#147) raised `tauri-plugin-deep-link` to 2.6.2 and
