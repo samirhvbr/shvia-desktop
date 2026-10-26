@@ -140,4 +140,6 @@ objc2-web-kit = "0.3"
 # the Win32 security and filesystem APIs enabled below.
 [target.'cfg(target_os = "windows")'.dependencies]
 webview2-com = "0.39"
-windows = { version = "0.62", features = ["Win32_Security_Authorization", "Win32_Storage_FileSystem"] }
+windows = { version = "0.62", features = ["Win32_Networking_WinSock", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_IO"] }
+# The IPv4 Search probe sets a WinSock option before connecting, which std's TcpStream does not allow; already in the lockfile.
+socket2 = "0.6"

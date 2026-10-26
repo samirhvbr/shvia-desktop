@@ -20,6 +20,12 @@ ever sent**: no banner grab, no payload, no protocol conversation. The answer is
 | unreachable | the network said "no route" | the address is not there; its other probes are skipped |
 | error | the probe could not be made (out of descriptors, odd OS error) | counted apart, **never** read as `filtered` |
 
+On Windows a refused connection is not reported at once: the stack answers a reset by sending the SYN again, twice, and fails
+the connect about two seconds later, which would turn every `closed` into `filtered` inside the default time limit. The probe
+creates its socket itself and sets `SIO_TCP_INITIAL_RTO` to "no SYN retransmissions" before connecting, so the reset is
+final. It is best effort: on a Windows that ignores the option (older than 8) `closed` can still read as `filtered` unless
+the time limit is raised past about two seconds.
+
 An address is **found** when any probe came back `open` or `closed`. One that only ever times out is "no answer": a
 connect scan cannot tell a dead address from a host that silently drops everything, and the report says so instead of
 guessing.
@@ -106,6 +112,4 @@ against (`docs/NETWORK/ipv4-search-vectors.json` there): 72 inputs with their ex
 cannot drift apart without a visible edit in both repositories. Nothing compares the two files with each other.
 
 **Not measured:** a scan across a real network with hosts that drop packets (the timeout path is a real
-`connect_timeout`, but no test waits on one), macOS and Windows builds of this module (it compiles on every target and
-the descriptor handling has a Windows branch, but CI's platform jobs are what check them), and how long a /22 takes on the
-owner's network.
+`connect_timeout`, but no test waits on one), the Windows option on a real remote host (the CI job proves it on loopback only: a refused port must come back `closed` inside 500 ms), and how long a /22 takes on the owner's network.

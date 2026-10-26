@@ -19,6 +19,9 @@ server never sees the range, the ports or the result.
 - **Descriptors.** Up to 128 probes at once; the process's descriptor limit is raised when allowed (a macOS GUI app starts at
   256, shared with the webview), and the count falls back to 64 or 32 when it is not. Running out of descriptors is an
   `error`, never read as `filtered`.
+- **Windows.** A SYN answered by a reset makes Windows send it again, twice, and report "refused" about two seconds later,
+  so inside the default 800 ms a closed port would read as `filtered`. The probe turns SYN retransmission off for its own
+  socket (`SIO_TCP_INITIAL_RTO`), which makes the reset final; the `Windows MSVC` job's loopback test is what checks it.
 - **Proved** by 33 unit tests: the parsers over malformed input, the policy (including that a /16 never straddles two zones,
   over all 65,536 blocks), the two passes on a scripted network, cancellation, the events and report, the one-slot rule, the
   real probe against listening and non-listening loopback sockets, and 72 vectors shared with SHVIA-WEB's page parser

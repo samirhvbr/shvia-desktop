@@ -27,7 +27,9 @@
 //! what is on the person's own network, it is not a way to look at somebody else's.
 
 use super::*;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+#[cfg(not(windows))]
+use std::net::TcpStream;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -389,15 +391,56 @@ fn classify_error(e: &std::io::Error) -> Option<Probe> {
     })
 }
 
+/// One connection attempt; the connection, if it is made, is closed before this returns. Sends nothing.
+#[cfg(not(windows))]
+fn connect(address: &SocketAddr, timeout: Duration) -> std::io::Result<()> {
+    TcpStream::connect_timeout(address, timeout).map(drop)
+}
+
+/// Same, on Windows, with one difference that decides what the report says. When a SYN is answered by a reset, Windows
+/// does not report "refused" at once: it sends the SYN again, twice, and only then fails the connect, about two seconds
+/// later. Inside the default 800 ms limit a closed port would therefore read as `filtered` ("a firewall dropped it")
+/// and a host that refuses everything would read as "no answer". `SIO_TCP_INITIAL_RTO` with "no SYN retransmissions"
+/// makes the reset final. Best effort: Windows older than 8 ignores it and keeps the slow behaviour.
+#[cfg(windows)]
+fn connect(address: &SocketAddr, timeout: Duration) -> std::io::Result<()> {
+    use socket2::{Domain, Protocol, Socket, Type};
+    let socket = Socket::new(Domain::for_address(*address), Type::STREAM, Some(Protocol::TCP))?;
+    no_syn_retransmission(&socket);
+    socket.connect_timeout(&(*address).into(), timeout)
+}
+
+#[cfg(windows)]
+fn no_syn_retransmission(socket: &socket2::Socket) {
+    use std::os::windows::io::AsRawSocket;
+    use windows::Win32::Networking::WinSock::{SIO_TCP_INITIAL_RTO, SOCKET, TCP_INITIAL_RTO_PARAMETERS, WSAIoctl};
+    // `TCP_INITIAL_RTO_UNSPECIFIED_RTT` is (USHORT)-1 and `TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS` is (UCHAR)-2 in
+    // ws2ipdef.h; the windows crate types the second one as a u16, which does not fit the u8 field, so both are spelled out.
+    let params = TCP_INITIAL_RTO_PARAMETERS { Rtt: u16::MAX, MaxSynRetransmissions: 0xFE };
+    let mut returned = 0u32;
+    // SAFETY: `params` outlives the call and the length passed is its size; the socket is open for the whole call.
+    // The result is ignored on purpose: failing to set the option leaves the default (slower) behaviour, not an error.
+    let _ = unsafe {
+        WSAIoctl(
+            SOCKET(socket.as_raw_socket() as usize),
+            SIO_TCP_INITIAL_RTO,
+            Some(std::ptr::from_ref(&params).cast()),
+            std::mem::size_of::<TCP_INITIAL_RTO_PARAMETERS>() as u32,
+            None,
+            0,
+            &mut returned,
+            None,
+            None,
+        )
+    };
+}
+
 /// One connection attempt, dropped the moment it is accepted. Sends nothing.
 pub(crate) fn probe_tcp(ip: Ipv4Addr, port: u16, timeout: Duration) -> Probe {
     let address = SocketAddr::V4(SocketAddrV4::new(ip, port));
     for attempt in 0..3u64 {
-        match TcpStream::connect_timeout(&address, timeout) {
-            Ok(stream) => {
-                drop(stream);
-                return Probe::Open;
-            }
+        match connect(&address, timeout) {
+            Ok(()) => return Probe::Open,
             Err(e) => match classify_error(&e) {
                 Some(answer) => return answer,
                 None => std::thread::sleep(Duration::from_millis(40 * (attempt + 1))),
