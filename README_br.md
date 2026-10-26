@@ -2,6 +2,10 @@
 
 [English (US)](README.md)
 
+> This translation retains the 2026-10-15 baseline. For the 2026-10-26 source review
+> of Desktop 1.30.6, including current Web integration and pending work, use the
+> [English overview](README.md) and [capability map](docs/project-state.md).
+
 ShvIA Desktop é o cliente nativo **Tauri 2 + Rust** do ShvIA para macOS, Windows
 e Linux. Ele abre a interface hospedada do ShvIA e acrescenta motores locais de
 Code, diálogos nativos de arquivos, integração com o sistema e acesso controlado

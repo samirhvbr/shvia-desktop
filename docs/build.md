@@ -6,7 +6,7 @@ package also contains native Rust capabilities, the optional `anna` sidecar and 
 Claude/Codex runner resources. A direct `tauri build` does not perform all the wrapper's
 staging, credential preflight, manifest and publication steps.
 
-> **Source review — 2026-10-15, baseline `983f2aa` (1.29.0).** This guide was checked against
+> **Source review — 2026-10-26, baseline `280a85d` (1.30.6).** This guide was checked against
 > build scripts, manifests and workflows. No installer was built, signed, notarized,
 > uploaded or accepted on a real device during this review. Credential files were not
 > inspected. External credential-setup UI steps below retain their original context;
@@ -49,6 +49,7 @@ belong to the target OS. See [the Windows acceptance runbook](roteiro-validacao-
 | SHVIA engine | `scripts/stage-anna.mjs`, then `bundle.externalBin` | Optional `anna` executable matching the build host's target triple; not a Python/PyInstaller backend built here |
 | Claude runner | Bundled `.mjs`/`.json` and installers under `claude-runner/` | Node, runner installation, SDK and authorized Claude credentials; see [runner README](../claude-runner/README.md) |
 | Codex runner | Bundled modules/installers/schema under `codex-runner/` | Node, installed runner and Codex CLI/app-server/login; see [runner README](../codex-runner/README.md) |
+| Pentest engine | No Strix staging script or `externalBin` entry in this baseline | Separately installed SHVIA Strix fork; the native resolver supports bundled lookup but packaging has not delivered it here. See [compatibility](pentest-compatibility.md#current-build-and-web-quick-start) |
 
 `stage-anna.mjs` selects `--from`, then `SHVIA_ANNA_BIN`, then `anna` on PATH. It probes
 `--version`, checks the minimum supported version and stages the target-named executable.

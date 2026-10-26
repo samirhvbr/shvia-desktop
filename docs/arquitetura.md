@@ -5,7 +5,7 @@ Rust bridge. The server owns accounts and shared application data; local engines
 folders, browser profiles and assessment artifacts remain on the computer. See
 [the current capability map](project-state.md) and [the decision records](decisoes.md).
 
-> **Reviewed against source on 2026-10-15, Desktop 1.29.0.** This describes implementation
+> **Reviewed against source on 2026-10-26, Desktop 1.30.6 (`280a85d`).** This describes implementation
 > contracts, not a deployed server or installed-client acceptance. Dated measurements below
 > retain their original scope. The original Python-sidecar/F2 sketch is superseded: there is
 > no Python `sidecar/` in the current app. Native services are Rust; local Code uses anna and
@@ -57,8 +57,9 @@ The native capability for connecting Claude for **remote** Workspace execution i
 credential flow: when called by a compatible Web page, `claude setup-token` runs after native
 confirmation on Linux/macOS, and the shell sends the
 token to the configured ShvIA server without exposing it to the page. The server encrypts its
-copy. The reviewed Web source (`25704dbc`) has the manual token form but does not call these
-native methods yet. Windows uses that paste path. See
+copy. The reviewed Web source (`956c134f`, 2026-10-26) calls these methods from Settings → Engines
+when `recursos.assinatura` is true. The manual token form remains the Windows path.
+Source integration is not evidence of a deployed page or a successful real sign-in. See
 [the subscription contract](code/ASSINATURA-NO-WORKSPACE.md) and
 [local account profiles](code/CONTAS-CLAUDE.md).
 

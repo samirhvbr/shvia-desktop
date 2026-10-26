@@ -5,7 +5,7 @@ record follows below. Work not yet produced stays in
 [`.continue/estado-atual.md`](../.continue/estado-atual.md), decisions in
 [decisoes.md](decisoes.md), and packaging/publication instructions in [build.md](build.md).
 
-> **Source review, 2026-10-15, Desktop 1.29.0.** A versioned entry records what changed at
+> **Source review, 2026-10-26, Desktop 1.30.6.** A versioned entry records what changed at
 > that time. It is not a claim that the same limit still holds or that every supported OS has
 > installed-app acceptance. Later entries and the current contracts supersede earlier behavior.
 > This documentation review did not exercise a real engine, account login, OS dialog or deployment.
@@ -42,7 +42,10 @@ of the operation/identity/case lists that do not exist for it; it never asks for
 credentials file (`needs_credentials` is always `false`). A version-1 policy that carries a
 context, or a version-2 one that does not, is refused before anything else is read. See
 [open-scan-authorization.md in the fork](https://github.com/samirhvbr/strix/blob/master/docs/PENTEST/open-scan-authorization.md)
-for the WEB-handoff contract this consumes; the WEB side that issues one does not exist yet.
+for the WEB-handoff contract this consumes. At the 2026-10-26 review, Web `956c134f`
+has a quick-start issuer, disabled by default and requiring newer Desktop and
+engine builds. The current Desktop 1.30.6 baseline does not meet that requirement;
+see [current build and Web requirements](pentest-compatibility.md#current-build-and-web-quick-start).
 
 ## Pentest engine: ready to be bundled, not yet bundled (1.30.3)
 
@@ -93,10 +96,10 @@ after a native confirmation, reads the one-year token off the client's screen an
 The token never reaches the page; the page hears phases (`claude_assinatura` events). See
 [the contract and the runbook](code/ASSINATURA-NO-WORKSPACE.md) and [ADR-043](decisoes.md).
 
-This is the implemented **native half**. The reviewed Web source (`25704dbc`) has the manual
-subscription-token form but does not call these native methods yet; installing Desktop 1.29.0
-alone does not create the Web button or establish the complete sign-in flow. Its real-client
-and installed-app acceptance remain separate.
+The **native half** was delivered in 1.29.0. The 2026-10-15 Web baseline (`25704dbc`)
+did not call it; the 2026-10-26 baseline (`956c134f`) now does so from Settings → Engines
+when the app advertises the capability. Its real-client and installed-app acceptance
+remain separate from that source integration.
 
 ## The Codex runner where a container is the boundary (1.28.0)
 
@@ -358,7 +361,7 @@ for the Linux/macOS profile, Windows refusal and pending integrated pilot.
 ## Phase 4 — the Run in Code mode (1.5.x)
 
 The plan is [`code/RUN-20260910.md`](code/RUN-20260910.md), the decision is
-[ADR-034](decisoes.md#adr-034), and the screen is
+[ADR-034](decisoes.md#adr-034--the-run-is-a-posture-of-the-turn-and-the-orchestrator-is-a-gateway-profile), and the screen is
 [`code/modo-code-run-mockup.html`](code/modo-code-run-mockup.html).
 
 **What the Run is.** Code mode continuing its own turns and stopping only where a person

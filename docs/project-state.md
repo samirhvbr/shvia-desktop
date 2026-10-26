@@ -1,7 +1,6 @@
 # ShvIA Desktop: current product and capability map
 
-**Reviewed:** 2026-10-15 · **Implementation baseline:** `983f2aa`, version 1.29.0.
-The documentation delivery uses patch 1.29.1 and synchronizes version metadata only.
+**Reviewed:** 2026-10-26 · **Implementation baseline:** `280a85d`, version 1.30.6.
 This review describes source behavior; it does not certify an installed application,
 a signed installer, a live login or the current hosted server.
 
@@ -45,7 +44,7 @@ and can be dismissed. It is not a hard startup block or a minimum-server-version
 | Claude profiles/login | Registered directory/credential profiles, explicit alias discovery, native login flow and account selection | `contas_claude.rs`, `code_bridge/login.rs`, `motores.rs` | [Claude accounts](code/CONTAS-CLAUDE.md), [login diagnosis](code/MOTOR-CLAUDE-DIAGNOSTICO.md); profile presence is not proof of login |
 | Engine plan usage | Claude profile and Codex account usage read through the official clients | `code_bridge/motores.rs`, runner `--uso` paths | [Account usage](code/USO-DAS-CONTAS.md); percent used, unknown stays unknown |
 | Claude subscription handoff | Native `claude setup-token`, progress phases and direct submission to the configured Web server | `code_bridge/assinatura.rs`, `assinatura/` | [Subscription connection](code/ASSINATURA-NO-WORKSPACE.md); Linux/macOS, explicit native consent; requires a Web page that calls the capability, real sign-in remains an acceptance step |
-| CLI configuration | Generate/merge supported client settings locally after native confirmation | `cli_config.rs` | ADR-026 in [decisions](decisoes.md), [features](funcionalidades.md); current adjacent backup behavior is a review finding |
+| CLI configuration | Generate/merge supported client settings locally after native confirmation; replace through a private staged file without creating adjacent backups | `cli_config.rs`, `cli_config/storage.rs` | [ADR-026 update](decisoes.md#credential-file-replacement-2026-10-15); existing backups remain untouched and snapshot checks are not a concurrent-write lock |
 | Device commands | A fixed set of device operations behind native tray enablement and command-specific consent | `code_bridge/aparelho.rs`, `tray.rs` | [Features](funcionalidades.md); `recursos.aparelho` reports implementation, not whether it is enabled |
 | Agent browser | Separate local browser window/profile; bounded read/click/type/open/close; site and per-action consent | `code_bridge/navegador.rs`, `navegador.js` | ADR-042 in [decisions](decisoes.md), [features](funcionalidades.md); not control of the person's existing Chrome session |
 | Controlled assessments | Native authorization/consent, one supervised local process, status/stop/control, recovery/review/retest and private history/report outbox | `code_bridge/pentest.rs`, `pentest/` | [Authorization](PENTEST/authorization.md), [compatibility](pentest-compatibility.md); supported Unix path only, fresh consent and runtime/version checks |
@@ -85,23 +84,43 @@ folders, Claude profile metadata, engine caches and the agent browser's separate
 Assessment descriptors/outboxes are a separate native private store. See
 [architecture and persistence](arquitetura.md) for exact files and boundaries.
 
-At the separately reviewed Web baseline (`25704dbc`), the page does not yet call the
-Desktop subscription-connect methods. The native bridge implementation therefore requires
-a compatible Web update before its automatic button is available; the manual token flow
-is separate. This is a cross-repository source observation dated 2026-10-15, not a claim
-about an installed or deployed UI.
+At the separately reviewed Web baseline (`956c134f`, 2026-10-26), Settings → Engines
+calls the Desktop subscription-connect methods in `public/js/motores.js` when the
+bridge advertises `recursos.assinatura`; the manual token flow remains available.
+This supersedes the missing-caller observation from 2026-10-15. Source availability
+does not establish deployment of that page or acceptance of a real sign-in.
 
 A local Claude profile/login is distinct from the subscription token submitted to Web for
 remote execution. The latter does not pass through the page in the native connection flow;
 its progress notifications do not prove a completed login until the native flow confirms it.
 Never describe “no application database” as “no local state” or “no credentials on disk”.
 
+## Pending work and cross-repository requirements
+
+The following PRs were still open on 2026-10-26 and are not part of this baseline:
+
+- [#154](https://github.com/samirhvbr/shvia-desktop/pull/154): discard superseded
+  connection probes when the configured server changes.
+- [#155](https://github.com/samirhvbr/shvia-desktop/pull/155): release the Codex
+  message queue when the app-server rejects turn startup.
+- [#156](https://github.com/samirhvbr/shvia-desktop/pull/156): probe servers at IPv6
+  literal addresses correctly.
+- [#151](https://github.com/samirhvbr/shvia-desktop/pull/151) and
+  [#160](https://github.com/samirhvbr/shvia-desktop/pull/160): native traffic capture
+  and IPv4 range scanning, respectively. Neither is a current released capability
+  established by this source baseline.
+
+Pentest's native scope-only consent is implemented, but the current build does not
+bundle Strix. Web's quick-start contract at `956c134f` requires Desktop **1.32.0+**
+and engine **1.2.43+**, and quick start is disabled by default. Desktop 1.30.6 does
+not satisfy that requirement. See [compatibility](pentest-compatibility.md#current-build-and-web-quick-start)
+before equating native consent support with an available quick-start installation.
+
 ## Build, release and acceptance
 
 [`version.md`](../version.md) is the version source. The synchronization script propagates
-it to six carriers, checked by `npm run prova:bump`. This documentation patch changes only
-Markdown and those required version fields; dependency versions and application code stay
-the same.
+it to six carriers, checked by `npm run prova:bump`. Documentation review does not
+establish that a new binary was built or distributed.
 
 Read [build.md](build.md) before packaging. A frontend build, Rust tests/Clippy, a native
 package, OS signature/notarization, published artifacts, a GitHub Release, a matching update
@@ -110,5 +129,5 @@ replace the local signed-release process. No installer or runtime update was pro
 this documentation review.
 
 Start from [the documentation index](README.md) for procedures and dated design history.
-The [review record](documentation-review-20261015.md) lists remaining gaps and code findings
-for owner decisions; it is not an implementation roadmap approved by this review.
+The [2026-10-15 review record](documentation-review-20261015.md) preserves earlier
+findings with follow-up status; it is not an approved implementation roadmap.

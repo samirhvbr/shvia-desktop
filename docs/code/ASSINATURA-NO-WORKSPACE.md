@@ -4,11 +4,12 @@
 > there). This document is the desktop half: how `claude setup-token` is run and its token handed to
 > the server without ever being in the page, and what was and was not proved.
 
-> **Cross-repository review, 2026-10-15:** the Desktop bridge is implemented in 1.29.0.
-> The Web baseline reviewed alongside it (`25704dbc`) does not yet call these native methods;
-> its manual subscription-token flow is separate. A compatible Web page must invoke the
-> capability before the automatic connection button is available. This contract and its
-> fixtures do not establish that the hosted Settings screen or a real sign-in used it.
+> **Cross-repository review, 2026-10-26:** the bridge is present in Desktop 1.30.6 (`280a85d`).
+> Web `956c134f` calls connect/code/cancel from `public/js/motores.js`, listens for
+> `claude_assinatura` phases and checks `recursos.assinatura` before offering the app flow.
+> Its manual subscription-token flow remains separate. This supersedes the missing-caller
+> observation at Web `25704dbc`; source and fixtures do not establish deployment of the
+> hosted Settings screen or acceptance of a real sign-in.
 
 ## What the page can ask
 

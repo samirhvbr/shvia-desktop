@@ -56,6 +56,15 @@ capability is not evidence that every current platform was exercised.
 
 ## Code findings for owner decisions
 
+**Follow-up, 2026-10-26:** the adjacent-backup finding below was addressed in
+Desktop 1.30.2 and is included in the current `280a85d` baseline (1.30.6).
+[`cli_config/storage.rs`](../src-tauri/src/cli_config/storage.rs) now replaces through
+a private staged file without creating new adjacent backups; existing backups are
+left untouched. See [the ADR-026 update](decisoes.md#credential-file-replacement-2026-10-15).
+The original observation below describes the 2026-10-15 review baseline, not the
+current implementation. The missing Web subscription caller recorded above is
+also superseded by the [current handoff status](code/ASSINATURA-NO-WORKSPACE.md).
+
 **Adjacent backups can retain credentials.** In `src-tauri/src/cli_config.rs`, `gravar()`
 copies a preexisting client config to a fixed `.shvia-bak` path before writing. It only
 attempts `0600` for a newly created destination, and it does not harden existing

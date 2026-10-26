@@ -1,7 +1,8 @@
 # ShvIA Desktop documentation
 
 Start with the current capability map, then choose the contract or operator check for the
-task. The 2026-10-15 review describes source, not installed-device acceptance. Work not yet
+task. The current map was rechecked on 2026-10-26 against Desktop 1.30.6; it describes
+source, not installed-device acceptance. Work not yet
 produced stays in [`.continue/`](../.continue/); historical designs and dated measurements
 remain evidence of the decisions they led to.
 
@@ -10,7 +11,7 @@ remain evidence of the decisions they led to.
 | Document | What it answers |
 |---|---|
 | [project-state.md](project-state.md) | What Desktop does today, Web/Workspace boundaries, requirements, platform support and acceptance limits |
-| [documentation-review-20261015.md](documentation-review-20261015.md) | What the documentation review corrected, what remains uncertain and what needs a separate decision |
+| [documentation-review-20261015.md](documentation-review-20261015.md) | Dated review findings and follow-up status; use the current map for today's implementation |
 | [funcionalidades.md](funcionalidades.md) | Current capability summary and the chronological implementation record; old behavior is labeled when superseded |
 | [arquitetura.md](arquitetura.md) | Shared Web UI, native bridge, trust boundary, local/remote sessions, persistence, updater and assessment architecture |
 | [build.md](build.md) | Development and local packaging/signing/publication; CI checks and release/deployment are separate stages |

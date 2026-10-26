@@ -8,7 +8,7 @@ file dialogs, desktop integration and controlled access to this machine.
 The default server is [ai.shvia.org](https://ai.shvia.org); the owner can configure
 another trusted ShvIA server. Internal project documentation.
 
-**Reviewed on 2026-10-15 against runtime baseline 1.29.0.** The current repository
+**Reviewed on 2026-10-26 against runtime baseline 1.30.6 (`280a85d`).** The current repository
 version is in [`version.md`](version.md). This overview describes implemented
 capabilities, not a claim that every platform or installed build passed acceptance.
 
@@ -63,9 +63,11 @@ local filesystem access. See [Code mode](docs/code/MODO-CODE-20260709.md) and
 | Agent device/browser tools | Opt-in device operations, file picker and screen capture; opt-in isolated browser with confirmed actions | [Features](docs/funcionalidades.md), ADR-039/042 |
 | Controlled assessments | Native consent/runtime checks, control/recovery, private review/retest, durable history, report synchronization and separate local viewer | [Authorization](docs/PENTEST/authorization.md), [compatibility](docs/pentest-compatibility.md), [viewer](docs/pentest-viewer.md) |
 
-The subscription handoff is a native capability, not evidence of a working Settings
-button in every Web deployment. The Web baseline reviewed on 2026-10-15 did not yet
-invoke this bridge; its integration and a real sign-in need separate acceptance.
+Web's Settings → Engines calls the subscription bridge when the app advertises it
+(Web source `956c134f`, reviewed 2026-10-26); the manual token flow remains available.
+A deployed compatible page and a real sign-in still need separate acceptance. See
+[Project state](docs/project-state.md#pending-work-and-cross-repository-requirements)
+for open work and Pentest's stricter quick-start version requirements.
 
 Runner approval policies differ. Claude has its own tool policy and secret-path
 gates. Codex uses its sandbox's writable set; writes within that set can run without
