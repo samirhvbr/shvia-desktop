@@ -19,9 +19,11 @@ server never sees the range, the ports or the result.
 - **Descriptors.** Up to 128 probes at once; the process's descriptor limit is raised when allowed (a macOS GUI app starts at
   256, shared with the webview), and the count falls back to 64 or 32 when it is not. Running out of descriptors is an
   `error`, never read as `filtered`.
-- **Proved** by 32 unit tests: the parsers over malformed input, the policy (including that a /16 never straddles two zones,
-  over all 65,536 blocks), the two passes on a scripted network, cancellation, the events and report, the one-slot rule, and
-  the real probe against listening and non-listening loopback sockets. **Not measured:** a scan across a real network with
+- **Proved** by 33 unit tests: the parsers over malformed input, the policy (including that a /16 never straddles two zones,
+  over all 65,536 blocks), the two passes on a scripted network, cancellation, the events and report, the one-slot rule, the
+  real probe against listening and non-listening loopback sockets, and 72 vectors shared with SHVIA-WEB's page parser
+  (`ipv4_search_vectors.json` here, `docs/NETWORK/ipv4-search-vectors.json` there: each side is tested against its own
+  copy, so changing one without the other is a visible edit in both repositories). **Not measured:** a scan across a real network with
   dropping hosts, and the macOS/Windows builds of this module.
 
 Docs: `docs/code/IPV4-SEARCH.md`, ADR-044, `docs/funcionalidades.md` (Phase 11).

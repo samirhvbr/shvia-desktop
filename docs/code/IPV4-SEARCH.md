@@ -96,11 +96,14 @@ and never renders the free text after the colon.
 
 ## How it was proved, and what was not
 
-Proved by the unit tests in `ipv4_search.rs` (32): the target and port parsers over malformed input, the range policy
+Proved by the unit tests in `ipv4_search.rs` (33): the target and port parsers over malformed input, the range policy
 (every private class accepted, public and forbidden refused, the /16 invariant), the two passes on a scripted network
 (who is found, that pass 2 never touches a silent host, that `probeAll` reaches a host the shortcut would miss, that an
 unreachable address stops being probed, that an error is not counted as `filtered`), cancellation, the events, the
-report, the one-slot rule — and the real TCP probe against listening and non-listening sockets on loopback.
+report, the one-slot rule — and the real TCP probe against listening and non-listening sockets on loopback. The target
+and port parsers are also tested against `ipv4_search_vectors.json`, a copy of the vectors SHVIA-WEB's page parser is tested
+against (`docs/NETWORK/ipv4-search-vectors.json` there): 72 inputs with their expected result, so the page and this module
+cannot drift apart without a visible edit in both repositories. Nothing compares the two files with each other.
 
 **Not measured:** a scan across a real network with hosts that drop packets (the timeout path is a real
 `connect_timeout`, but no test waits on one), macOS and Windows builds of this module (it compiles on every target and

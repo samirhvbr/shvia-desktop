@@ -963,6 +963,47 @@ mod tests {
         assert_eq!(compact_ports(&[65534, 65535]), "65534-65535");
     }
 
+    /// SHVIA-WEB's `public/js/ipv4-search.js` validates the same text for a good message. This copy of its vectors
+    /// (`docs/NETWORK/ipv4-search-vectors.json` over there) is what keeps the two parsers from drifting apart: each
+    /// side is tested against its own copy, so changing one without the other is a visible edit in both repositories.
+    #[test]
+    fn the_vectors_shared_with_the_page_agree_with_this_parser() {
+        let vectors: serde_json::Value = serde_json::from_str(include_str!("ipv4_search_vectors.json")).expect("vectors parse");
+        let slug = |r: Refusal| r.code().trim_start_matches("E_SCAN_").to_lowercase();
+        let targets = vectors["targets"].as_array().expect("targets");
+        assert!(targets.len() > 40);
+        for case in targets {
+            let input = case["input"].as_str().unwrap();
+            match plan(input, "", None, false) {
+                Ok(p) => {
+                    assert_eq!(case["ok"], true, "{input:?} was accepted");
+                    assert_eq!(p.cidr.label(), case["cidr"].as_str().unwrap(), "{input:?}");
+                    assert_eq!((p.hosts.len() + p.skipped) as u64, case["addresses"].as_u64().unwrap(), "{input:?}");
+                }
+                Err(r) => {
+                    assert_eq!(case["ok"], false, "{input:?} was refused as {r:?}");
+                    assert_eq!(slug(r), case["code"].as_str().unwrap(), "{input:?}");
+                }
+            }
+        }
+        let ports = vectors["ports"].as_array().expect("ports");
+        assert!(ports.len() > 20);
+        for case in ports {
+            let input = case["input"].as_str().unwrap();
+            match parse_ports(input) {
+                Ok(list) => {
+                    assert_eq!(case["ok"], true, "{input:?} was accepted");
+                    assert_eq!(compact_ports(&list), case["compact"].as_str().unwrap(), "{input:?}");
+                    assert_eq!(list.len() as u64, case["count"].as_u64().unwrap(), "{input:?}");
+                }
+                Err(r) => {
+                    assert_eq!(case["ok"], false, "{input:?} was refused as {r:?}");
+                    assert_eq!(slug(r), case["code"].as_str().unwrap(), "{input:?}");
+                }
+            }
+        }
+    }
+
     // ── plan ──
 
     #[test]
