@@ -124,6 +124,12 @@ o que forçava timeout de 15 s — agora são **4 s**.
 certificate or establish that the host is ShvIA. Navigation and the updater make their own
 HTTPS requests; a successful TCP probe alone is not an application-health check.
 
+The probe accepts domain names, IPv4 and bracketed IPv6 server URLs such as
+`http://[::1]:8000` (loopback development) or `https://[2001:db8::1]:8443`
+(address-format example). Since 1.30.8, IPv6 literals are resolved as IP addresses
+instead of sending their URL brackets to DNS. Explicit ports and the URL scheme's
+default port are preserved.
+
 **O host configurado vira INTERNO** (`is_server_host`), logo recebe as pontes
 nativas: Modo Code, notificação, badge, gate de versão. É decisão de confiança
 deliberada, cercada por: `https` obrigatório fora de loopback, credencial na URL

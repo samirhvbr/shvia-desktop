@@ -115,6 +115,12 @@ no guard, because it looks like one.
 an early failure surfaced as `unknown error` with the server's actual message thrown
 away — a translation layer that cannot show its input is one nobody can debug.
 
+If the app-server rejects `turn/start`, the runner reports its error once, emits
+`turn_done` for that host message and processes the next queued message. It does not
+wait for a completion notification from a turn that never started or retry the
+rejected message. `ciclo.test.mjs` checks this with the real runner and a local
+app-server stand-in; it does not require account access or an inference request.
+
 ## Layout
 
 | file | role |
