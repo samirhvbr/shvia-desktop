@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.32.1 - Give the capture sidecar a valid pcapng, a stop that works and rows with hex
+
+The sidecar of the two earlier commits of this branch (1.31.0 and 1.31.1, never released) had never captured a packet. Run
+against real traffic, its first packet killed it (`could not write to the capture file; stopping`), and the rest of it had the
+defects below. Everything here is `src-tauri/traffic-capture`; the bridge is the next commit.
+
+- **A valid pcapng.** `pcap-file` writes only the section header and refuses a packet whose interface was never described, so
+  the file now gets its interface description block. It also writes times in nanoseconds and the file did not say so, which
+  made every date a thousand times too large; the description now declares it. Found by reading the file back with libpcap,
+  a reader independent of the one that wrote it: same packets, same bytes, same times.
+- **A stop that works.** libpcap's read timeout cannot be relied on (measured: an idle `pcap_next_ex` did not return in 8 s with
+  a 100 ms timeout), so a blocking loop never saw a stop request. The loop is non-blocking and sleeps 10 ms when idle. The
+  sidecar lives exactly as long as its stdin: closing it asks for a stop (it finishes the file and reports `stopped` with the
+  reason and libpcap's drop count), and a dead parent closes it too, so a crashed app never leaves a capture running.
+- **A start that says so.** `started` is printed only once the device is open, the filter compiled and the file created; a refusal
+  is one line with a code (`E_CAPTURE_PERMISSION_DENIED`, `E_INTERFACE_UNAVAILABLE`, `E_CAPTURE_FILTER_INVALID`,
+  `E_CAPTURE_WRITE`) and leaves no file behind.
+- **Rows the page can read.** Each row has `id`, a Wireshark-style `time` (seconds since the first packet), and a hex dump of the
+  first 512 bytes. The summary names TCP flags with seq/ack/win and ARP, VLAN and LLDP frames, and decodes BSD loopback, raw IP
+  and Linux cooked (v1 and v2) framings, with the tolerant parser so a frame an offloading NIC left with IPv4 length 0 still
+  shows what it is. A flood shows at most 100 rows per 100 ms and counts the rest (`notShown`); the file has every packet.
+- **The file.** Created `0600` and never overwriting; flushed every tick, with `flushed` saying how many bytes end on a packet
+  boundary (what Export may copy while capturing); capped at `--max-bytes` (512 MiB), after which the capture ends with
+  `reason: size_limit` and the file stays exportable.
+- **Strict arguments.** Every value comes from a page, so each flag takes exactly the next token (an interface called `--out` stays
+  an interface), unknown or repeated flags are errors, and the interface must be one libpcap itself lists.
+- `--list-interfaces` answers `{id, name, description, isUp, isLoopback}` (addresses in the description; the adapter's own name on
+  Windows), up interfaces first; `--check-permission` needs no interface, because the capability is the binary's.
+- Measured: 21 unit tests (including the pcapng round trip read by libpcap), clippy `-D warnings`, and real captures on `lo`
+  inside a throw-away network namespace (no sudo): a UDP+TCP exchange as 16 rows with flags and hex, a filter that kept exactly
+  the 3 matching packets, an invalid filter refused with no file left, a flood of 254,500 datagrams captured whole (254,503
+  packets in a file libpcap accepts) with 1,520 rows delivered and nothing dropped by the kernel.
+
 ## 1.32.1 - Bring the IPv4 Search and Pentest-engine commits into the Traffic branch
 
 - Merges `feat/bundle-pentest-engine` (which carries `feat/ipv4-search`, 1.31.0, and the Pentest engine in the installer, 1.32.0)
