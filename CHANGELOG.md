@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.30.7 - Reach configured servers at IPv6 literal addresses
+## 1.30.8 - Reach configured servers at IPv6 literal addresses
 
 - The startup TCP probe passed the bracketed IPv6 host from the URL parser to DNS
   resolution. A listening server at `http://[::1]:8000` therefore appeared offline
@@ -10,6 +10,17 @@
   existing behavior; the probe still measures TCP reachability only.
 - Add real loopback-listener regressions for IPv6, IPv4 and localhost, plus refusal
   of a port without a service. The IPv6 regression fails on the previous code.
+
+## 1.30.7 - Release the Codex message queue when turn startup is rejected
+
+- A JSON-RPC error response to `turn/start` previously left the runner waiting for
+  `turn/completed` from a turn that had never started. Later messages stayed queued,
+  and stdin EOF could not end the process. The runner now reports the original error
+  once, finishes that host message and releases the queue without retrying it.
+- `codex-runner/ciclo.test.mjs` reproduces the rejection through the real runner and
+  a local app-server stand-in, verifies that the next queued message completes and
+  checks clean exit on EOF. The regression timed out before the fix. It requires
+  neither account access nor inference; installed-app acceptance is separate.
 
 ## 1.30.6 - Take the patched rustls-webpki, webpki-root-certs and tokio and write down why the zip and zbus advisories stay: `cargo deny` is green again
 

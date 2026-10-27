@@ -1,7 +1,7 @@
 {
   "name": "shvia-desktop",
   "private": true,
-  "version": "1.30.7",
+  "version": "1.30.8",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -40,7 +40,7 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2",
     "typescript": "~7.0.2",
-    "vite": "^8.3.4"
+    "vite": "^8.3.5"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4"

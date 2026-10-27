@@ -126,7 +126,7 @@ HTTPS requests; a successful TCP probe alone is not an application-health check.
 
 The probe accepts domain names, IPv4 and bracketed IPv6 server URLs such as
 `http://[::1]:8000` (loopback development) or `https://[2001:db8::1]:8443`
-(address-format example). Since 1.30.7, IPv6 literals are resolved as IP addresses
+(address-format example). Since 1.30.8, IPv6 literals are resolved as IP addresses
 instead of sending their URL brackets to DNS. Explicit ports and the URL scheme's
 default port are preserved.
 
