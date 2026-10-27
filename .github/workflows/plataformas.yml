@@ -54,7 +54,6 @@ jobs:
         run: |
           mkdir -p src-tauri/binaries
           : > src-tauri/binaries/anna-x86_64-pc-windows-gnu.exe
-          : > src-tauri/binaries/traffic-capture-x86_64-pc-windows-gnu.exe
       - name: clippy (x86_64-pc-windows-gnu)
         working-directory: src-tauri
         run: cargo clippy --locked --target x86_64-pc-windows-gnu --all-targets -- -D warnings
@@ -95,6 +94,13 @@ jobs:
       - name: cargo test
         working-directory: src-tauri
         run: cargo test --locked
+      # The capture sidecar links libpcap, which macOS ships; this is where its macOS-only code (the BSD
+      # loopback framing, the 32-bit `tv_usec`) is compiled and tested. Windows does not bundle it.
+      - name: The capture sidecar builds, tests and lints
+        working-directory: src-tauri/traffic-capture
+        run: |
+          cargo test --locked
+          cargo clippy --locked --all-targets -- -D warnings
 
   windows-msvc:
     name: Windows MSVC (clippy + test, on a Windows runner)
@@ -119,7 +125,6 @@ jobs:
         run: |
           mkdir -p src-tauri/binaries
           : > src-tauri/binaries/anna-x86_64-pc-windows-msvc.exe
-          : > src-tauri/binaries/traffic-capture-x86_64-pc-windows-msvc.exe
       - name: clippy (x86_64-pc-windows-msvc)
         working-directory: src-tauri
         run: cargo clippy --locked --all-targets -- -D warnings

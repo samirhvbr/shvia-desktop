@@ -49,7 +49,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libpcap-dev
       - run: npm ci --no-audit --no-fund
       - name: Pending connection probes do not interrupt server settings
         run: npm run prova:bootstrap
@@ -176,6 +176,16 @@ jobs:
       - name: clippy
         working-directory: src-tauri
         run: cargo clippy --locked --all-targets -- -D warnings
+      # The packet-capture sidecar is its own crate (src-tauri/traffic-capture, the only code that links
+      # libpcap), so the two steps above never compile it. Its tests include a pcapng round trip read
+      # back by libpcap itself. The end-to-end run against real packets needs a network namespace and is
+      # `scripts/traffic-e2e.sh`, by hand: a hosted runner may forbid user namespaces, and a test that
+      # silently skipped there would look green.
+      - name: The capture sidecar builds, tests and lints
+        working-directory: src-tauri/traffic-capture
+        run: |
+          cargo test --locked
+          cargo clippy --locked --all-targets -- -D warnings
       # Tauri requires every externalBin to exist unless told there is none; this is the
       # override build-local.sh passes when no anna is staged (1.6.24). Without it,
       # --no-anna and "no anna on the build machine" could not build at all.
@@ -194,4 +204,10 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           manifest-path: src-tauri/Cargo.toml
+          command: check
+      # The capture sidecar has its own lock file, so it is checked on its own, against the same policy.
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: src-tauri/traffic-capture/Cargo.toml
+          arguments: --all-features --config src-tauri/deny.toml
           command: check

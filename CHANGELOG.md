@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.32.1 - Bundle the capture sidecar on Linux and macOS only, and build, test and lint it in CI
+
+- **Declared per platform.** `traffic-capture` was in the base `tauri.conf.json`, which Windows also reads, so a Windows build would
+  have required a binary that cannot be built there (the Npcap SDK). It is now in `tauri.linux.conf.json` and
+  `tauri.macos.conf.json` beside `anna` and the Pentest engine; the base declares only `anna` again. The `.deb`/`.rpm` depend on
+  `libpcap0.8`/`libpcap`. The AppImage cannot be granted capture (its files sit on a read-only mount); the docs say so.
+- **Staged by the release build.** `build-local.sh` never staged it, so a release build either failed on the missing file or shipped
+  without it silently. It is step `[D7]` (`--no-traffic` skips it), and the `externalBin` list is built from what is staged so any of
+  the three sidecars can be absent without dropping the others. `stage-traffic-capture.mjs` runs the binary once
+  (`--list-interfaces`) before staging, so one that cannot load (libpcap missing on the build machine) is never bundled, and does
+  nothing on Windows.
+- **The proofs follow.** `prova:sem-anna` checks every combination of the three sidecars with and without the updater key (16 cases
+  derived from the combination, never read from `build-local.sh`); `prova:pentest` expects the three-entry list on Linux and macOS.
+- **CI compiles the crate.** Nothing built or tested the sidecar before (only empty stand-ins). The Linux job installs `libpcap-dev`
+  and runs its tests and clippy, the macOS job does the same (where its macOS-only code compiles), and a second `cargo deny` step
+  checks its own lock against the app's policy (run locally first: advisories, bans, licenses and sources ok). The Windows jobs lose the
+  sidecar stand-in. These steps have not run on GitHub: Actions is locked for this account.
+
 ## 1.32.1 - Define the six traffic methods in the shim and start a capture only after the person's yes
 
 The shim defined none of the six `traffic*` methods (the earlier commit only set `recursos.captura` and listed their names in a

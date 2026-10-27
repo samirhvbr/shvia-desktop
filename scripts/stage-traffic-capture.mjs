@@ -10,11 +10,14 @@
 // not a feature flag. That means this crate is NOT a workspace member of `src-tauri` and is
 // built with its own `--manifest-path`. See docs/TRAFFIC/README.md.
 //
-// Absence of a successful build is NOT a fatal error for the app build, same posture as
-// `stage-anna.mjs`: the app still works without live capture, it just shows the "desktop
-// required"/"capture unavailable" message instead (`window.__shviaCode.recursos.captura`
-// stays true regardless — the per-call `trafficPermissionStatus`/`error` responses are what
-// actually carry "not available on this build").
+// ── Which platforms ──
+// Linux and macOS declare it in `tauri.linux.conf.json` / `tauri.macos.conf.json`, next to `anna` and the
+// Pentest engine. Windows does not bundle it in this version: building the crate there needs the Npcap SDK,
+// and running it needs the Npcap driver, neither of which this repository can provide (docs/TRAFFIC/README.md).
+//
+// Absence of a successful build is NOT a fatal error for the app build, same posture as `stage-anna.mjs`:
+// the staged file of an earlier build is removed (never bundled stale), `build-local.sh` drops the sidecar
+// from `externalBin`, and Traffic then answers "capture is unavailable in this build" instead of failing.
 import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
@@ -39,6 +42,11 @@ function targetTriple() {
     /* rustc absent falls through to the error below */
   }
   return null;
+}
+
+if (process.platform === "win32") {
+  console.log("[stage-traffic-capture] Windows does not bundle the capture sidecar in this version — nothing to stage.");
+  process.exit(0);
 }
 
 const triple = targetTriple();
@@ -74,6 +82,17 @@ if (!origem) {
 
 if (!existsSync(origem)) {
   console.warn(`[stage-traffic-capture] ${origem} not found — shipping without the capture sidecar.`);
+  if (existsSync(destino)) rmSync(destino);
+  process.exit(0);
+}
+
+// A sidecar that cannot start (libpcap missing on this machine, a truncated copy) must not be bundled:
+// `--list-interfaces` needs no capture capability, so running it here proves the binary loads and answers.
+try {
+  const resposta = execFileSync(origem, ["--list-interfaces"], { encoding: "utf8", timeout: 15000 });
+  if (!Array.isArray(JSON.parse(resposta.split("\n")[0]).interfaces)) throw new Error("no interface list in the answer");
+} catch (erro) {
+  console.warn(`[stage-traffic-capture] ${origem} does not run (${erro.message}) — shipping without the capture sidecar.`);
   if (existsSync(destino)) rmSync(destino);
   process.exit(0);
 }

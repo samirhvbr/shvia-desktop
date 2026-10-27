@@ -36,6 +36,8 @@
 #   ./build-local.sh --pentest /path/to/pentest  # bundle THIS Pentest engine (Linux/macOS)
 #   ./build-local.sh --no-pentest    # do NOT bundle the Pentest engine (the app then says so,
 #                                    # E_PENTEST_NOT_BUNDLED, instead of carrying a stale one)
+#   ./build-local.sh --no-traffic    # do NOT bundle the packet-capture sidecar (Linux and macOS; Traffic then says
+#                                    # capture is unavailable in this build)
 #   ./build-local.sh --publish       # publica no servidor por scp (item D1)
 #   ./build-local.sh --publish --dest usuario@HOST:/caminho/   # outro destino
 #   ./build-local.sh --publish --transicao-de-chave   # the ONE release of an updater key
@@ -97,6 +99,12 @@
 # validation once the app is signed with the hardened runtime, and a build that ships a Pentest
 # that does not start must fail here, not on the installed app (docs/build.md, "Pentest engine").
 #
+# PACKET-CAPTURE SIDECAR (Linux and macOS): `traffic-capture` is our own crate (src-tauri/traffic-capture,
+# the only code that links libpcap), built by scripts/stage-traffic-capture.mjs with `cargo build --release`
+# and bundled as a third sidecar. The build machine needs libpcap's development files on Linux
+# (libpcap-dev); macOS has them in the SDK. A build that cannot produce it ships WITHOUT it, says so, and
+# Traffic answers "capture is unavailable in this build". Windows does not bundle it in this version.
+#
 # GIT PULL (padrão da casa): antes de tudo, o script faz 'git pull --ff-only'
 # para você não empacotar código velho sem querer. É fast-forward-only (nunca
 # cria merge) e NÃO trava o build se falhar (offline, mudanças locais ou branch
@@ -134,6 +142,7 @@ NO_ANNA=0
 # The Pentest engine (Linux/macOS): where it comes from, and whether it is bundled.
 PENTEST_FROM=""
 NO_PENTEST=0
+NO_TRAFFIC=0
 
 # ── Cronômetro do build: tempo total (parede) + por etapa ───────────────────
 # Mesmo padrão do SHVTERM/build-local.sh: o "built in Xs" do Vite/cargo é só
@@ -1316,6 +1325,7 @@ while [ $# -gt 0 ]; do
     --no-anna)      NO_ANNA=1 ;;
     --pentest)      shift; PENTEST_FROM="${1:-}" ;;
     --no-pentest)   NO_PENTEST=1 ;;
+    --no-traffic)   NO_TRAFFIC=1 ;;
     --transicao-de-chave) TRANSICAO_DE_CHAVE=1 ;;
     -h|--help)      usage; exit 0 ;;
     *) echo "opção desconhecida: $1 (use --help)" >&2; exit 2 ;;
@@ -1561,6 +1571,14 @@ if [ "$REUSE" -eq 0 ]; then
     node scripts/stage-pentest.mjs
   fi
 
+  step "[D7] packet-capture sidecar into the bundle"
+  if [ "$NO_TRAFFIC" = "1" ]; then
+    echo "    (skipped: --no-traffic — the app will ship WITHOUT the capture sidecar)"
+    rm -f src-tauri/binaries/traffic-capture-*
+  else
+    node scripts/stage-traffic-capture.mjs
+  fi
+
   step "[3/3] Tauri build"
   # ── bundle overrides (1.6.24) ──
   # Tauri REQUIRES every `externalBin` to exist — measured: "resource path
@@ -1568,12 +1586,12 @@ if [ "$REUSE" -eq 0 ]; then
   # without the engine" (--no-anna, or no anna found) was never true: --no-anna failed the
   # build, and a missing anna either failed it or bundled a stale one. With no sidecar
   # staged, Tauri is told so; the installed app then finds anna on PATH.
-  # Linux and macOS declare TWO sidecars (anna, and the Pentest engine in tauri.<os>.conf.json) and
-  # either can be absent, so the list is built from what is staged, never emptied as a whole: an
-  # empty list for one missing file would drop the other one from the bundle.
+  # Linux and macOS declare THREE sidecars (anna, and the Pentest engine and the capture sidecar in
+  # tauri.<os>.conf.json) and any can be absent, so the list is built from what is staged, never emptied
+  # as a whole: an empty list for one missing file would drop the others from the bundle.
   # Both overrides live under "bundle", so they are merged into ONE --config.
   _SIDECARS=""
-  for _nome in anna pentest; do
+  for _nome in anna pentest traffic-capture; do
     if ls src-tauri/binaries/${_nome}-* >/dev/null 2>&1; then
       _SIDECARS="${_SIDECARS:+$_SIDECARS,}\"binaries/${_nome}\""
     else
@@ -1582,7 +1600,7 @@ if [ "$REUSE" -eq 0 ]; then
   done
   _BUNDLE_CFG=""
   if [ "$UPDATER_ARTIFACTS" -eq 0 ]; then _BUNDLE_CFG='"createUpdaterArtifacts":false'; fi
-  if [ "$_SIDECARS" != '"binaries/anna","binaries/pentest"' ]; then _BUNDLE_CFG="${_BUNDLE_CFG:+$_BUNDLE_CFG,}\"externalBin\":[${_SIDECARS}]"; fi
+  if [ "$_SIDECARS" != '"binaries/anna","binaries/pentest","binaries/traffic-capture"' ]; then _BUNDLE_CFG="${_BUNDLE_CFG:+$_BUNDLE_CFG,}\"externalBin\":[${_SIDECARS}]"; fi
   _CFG=""
   if [ -n "$_BUNDLE_CFG" ]; then _CFG="{\"bundle\":{$_BUNDLE_CFG}}"; fi
   # ── end bundle overrides ──

@@ -2,7 +2,20 @@
   "bundle": {
     "externalBin": [
       "binaries/anna",
-      "binaries/pentest"
-    ]
+      "binaries/pentest",
+      "binaries/traffic-capture"
+    ],
+    "linux": {
+      "deb": {
+        "depends": [
+          "libpcap0.8"
+        ]
+      },
+      "rpm": {
+        "depends": [
+          "libpcap"
+        ]
+      }
+    }
   }
 }

@@ -19,7 +19,9 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["shvia"]
+        "schemes": [
+          "shvia"
+        ]
       }
     },
     "updater": {
@@ -44,8 +46,7 @@
       "icons/icon.ico"
     ],
     "externalBin": [
-      "binaries/anna",
-      "binaries/traffic-capture"
+      "binaries/anna"
     ],
     "resources": [
       "../claude-runner/*.mjs",
