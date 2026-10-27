@@ -44,6 +44,15 @@ updates the engine, the way `anna` has always travelled.
   archive) staged by the script and run; `npm run prova:pentest` against a local HTTP server for each way a
   wrong engine could get in; the resolver and the `NOT_BUNDLED` refusal each shown to fail their test with the
   code reverted.
+- **The pin: Pentest 1.2.43** (`pentest-engine.json`, 27/10/2026). The four binaries come from the fork's
+  `Pentest binaries` run 39984194123 of 23/10/2026, built from `047cc8cb` on samirhvbr/strix#37; the two
+  commits after it on that branch change the workflow, the docs, a test and `package_pdf.py`, the server-side
+  PDF renderer the engine does not run. They are pinned before the `shvia-v1.2.43` Release exists, because
+  GitHub Actions is locked for billing since 26/10/2026 and the fork's workflow cannot publish it; the owner
+  attaches these same four files and their `SHA256SUMS` to that Release by hand. Until then the pinned
+  download fails and a build goes on without the engine, as an absence always does. Measured here: the Linux
+  x86_64 binary answers `--fork-version` with `1.2.43`, and `stage-pentest.mjs` downloads it from a local
+  server standing in for the Release, checks its SHA-256 and bundles it.
 
 ## 1.31.0 - Add IPv4 Search: scan one private range for open ports from this computer, behind a native confirmation
 
