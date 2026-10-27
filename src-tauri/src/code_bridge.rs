@@ -201,7 +201,7 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             Err(error) => (false, serde_json::json!(error)),
         }),
         "ipv4SearchStop" => {
-            let stopped = ipv4_search::stop();
+            let stopped = ipv4_search::stop(window.label());
             reply(window, &req, true, serde_json::json!({"stopped": stopped}));
         }
         "spawn" => spawn(window, &req, &v),

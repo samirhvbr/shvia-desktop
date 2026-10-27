@@ -66,7 +66,8 @@ The page validates for a good message; **this module decides** (`code_bridge/ipv
 - A **native confirmation dialog** shows the range as normalised (`10.100.100.7/22` becomes `10.100.100.0/22`), the number of
   addresses, the ports, the time limit and the most attempts it can make. The page cannot answer it. Declining ends in
   `E_SCAN_DECLINED`.
-- The scan **stops** on `ipv4SearchStop`, when the window starts a new document, when the window closes and when the app
+- The scan **stops** on `ipv4SearchStop` from the window that started it (from any other window the call answers
+  `{ stopped: false }` and changes nothing), when the window starts a new document, when the window closes and when the app
   quits. Nothing takes a running scan back after a reload, so a result nobody can read is never produced.
 
 The whole-range zone check looks at the first and last address only. That is sound because every accepted range is a /16

@@ -734,15 +734,15 @@ fn release(id: u64) {
     }
 }
 
-/// Stops the scan in progress, if any. Returns whether there was one. The `ipv4_search_done` event, with
-/// `stopped: true`, follows from the scan's own thread.
-pub(crate) fn stop() -> bool {
+/// Stops the scan this window started, if any. Returns whether there was one. A scan another window started is not
+/// this page's to stop. The `ipv4_search_done` event, with `stopped: true`, follows from the scan's own thread.
+pub(crate) fn stop(window: &str) -> bool {
     match slot().lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
-        Some(a) => {
+        Some(a) if a.window == window => {
             a.cancel.store(true, Ordering::Relaxed);
             true
         }
-        None => false,
+        _ => false,
     }
 }
 
@@ -1306,11 +1306,15 @@ mod tests {
         assert_eq!(reserve("outra").unwrap_err(), Refusal::Busy);
         cancelar_varredura(Some("outra"));
         assert!(!first.1.load(Ordering::Relaxed), "a different window cannot cancel it");
+        assert!(!stop("outra"), "a page in a different window cannot stop it");
+        assert!(!first.1.load(Ordering::Relaxed));
+        assert!(stop("janela-teste"));
+        assert!(first.1.load(Ordering::Relaxed));
         cancelar_varredura(Some("janela-teste"));
         assert!(first.1.load(Ordering::Relaxed));
         release(first.0);
         let second = reserve("outra").expect("released");
         release(second.0);
-        assert!(!stop());
+        assert!(!stop("outra"));
     }
 }

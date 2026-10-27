@@ -15,7 +15,7 @@ server never sees the range, the ports or the result.
   classes as the WEB's `DestinationPolicy` — and a public range is refused, not confirmed; loopback/link-local/multicast never;
   at most a /16, 1,024 ports and 1,000,000 first-pass probes; 200–5,000 ms per connection; one scan at a time; a native
   dialog that shows the normalised range, the ports and the most attempts it can make. A new document, a closed window or a
-  quit cancels the scan.
+  quit cancels the scan. `ipv4SearchStop` stops only the scan its own window started.
 - **Descriptors.** Up to 128 probes at once; the process's descriptor limit is raised when allowed (a macOS GUI app starts at
   256, shared with the webview), and the count falls back to 64 or 32 when it is not. Running out of descriptors is an
   `error`, never read as `filtered`.
