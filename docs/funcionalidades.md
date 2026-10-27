@@ -30,24 +30,29 @@ record follows below. Work not yet produced stays in
   takeover are separate lifecycles. The architecture's persistence table says which state stays
   on this computer and which service owns the rest.
 
-## Packet capture for the Network "Traffic" tool (1.31.0)
+## Packet capture for the Network "Traffic" tool (1.32.1)
 
-A new, separate crate (`src-tauri/traffic-capture/`) is the only part of this repository that
-links `pcap` (libpcap/Npcap bindings) — modeled on Wireshark's own GUI/`dumpcap` privilege
-split, so the main app process never needs OS capture capability itself. It is spawned only
-while a capture runs (never at app start) and answers it over NDJSON on stdout.
-`code_bridge::traffic` resolves and spawns it, and exposes six bridge actions
-(`trafficInterfaces`, `trafficPermissionStatus`, `trafficRequestPermission`, `trafficStart`,
-`trafficStop`, `trafficExport`) behind the new `recursos.captura` presence flag. Captured
-frames stream to the page as batched `_emit` events and are written to a `pcap-file`-built
-PCAPNG file; Export copies that file to a user-chosen path via a native save dialog.
-`trafficRequestPermission` is the one action that may ask the OS for elevated capability
-(`setcap` on the sidecar binary on Linux, `access_bpf` group membership on macOS, a Npcap
-prerequisite on Windows) — written, but **not exercised**: this delivery verified `cargo
-test`/`clippy` for the main crate on Linux only; the `traffic-capture` crate itself was never
-compiled (needs `libpcap-dev` at build time), no real device was opened on any OS, and
-macOS/Windows were never built at all. See [docs/TRAFFIC/README.md](TRAFFIC/README.md) for
-the full account and the known packaging follow-up in `build-local.sh`.
+A separate crate (`src-tauri/traffic-capture/`) is the only part of this repository that links `pcap`
+(libpcap/Npcap) — modeled on Wireshark's own GUI/`dumpcap` privilege split, so the app never needs OS
+capture capability itself. It runs only while a capture runs, for exactly as long as its stdin stays
+open (Stop closes it; a dead app closes it too). `code_bridge::traffic` spawns it and answers six
+bridge actions (`trafficInterfaces`, `trafficPermissionStatus`, `trafficRequestPermission`,
+`trafficStart`, `trafficStop`, `trafficExport`), defined in the shim and flagged by
+`recursos.captura`.
+
+`trafficStart` shows a **native confirmation** naming the interface and the filter, and resolves only
+once the device is open — a refusal (declined, no permission, invalid filter, unknown interface, busy)
+rejects with an `E_CODE: text` the page knows. Rows reach the page as `traffic_packet` events with a
+Wireshark-style hex dump of the first 512 bytes; the capture file (pcapng, `0600`, in the app's cache
+folder) gets every packet in full and is what Export copies, while capturing or after Stop. A flood
+shows a sample of rows and counts the rest; the file stops growing at 512 MiB. A new document in the
+window, a closed window or quitting stops the capture and deletes the file.
+
+Measured on Linux with real packets in a throw-away network namespace (`scripts/traffic-e2e.sh`, no
+sudo): the whole start-to-export flow against the real sidecar, the exported file read back by libpcap,
+a flood of 254,500 datagrams captured whole. **Not verified:** the permission grant on a real interface,
+the running app with its dialog and page together, macOS (needs Wireshark's ChmodBPF; not built) and
+Windows (not bundled in this version). See [docs/TRAFFIC/README.md](TRAFFIC/README.md).
 
 ## Native consent for a scope-only assessment (1.30.4)
 

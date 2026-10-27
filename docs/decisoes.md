@@ -2833,3 +2833,39 @@ owner's own network and somebody else's is where it is pointed.
 ### Not measured
 
 A scan over a real network with dropping hosts, and the macOS and Windows builds — see `docs/code/IPV4-SEARCH.md`.
+
+## ADR-045 — Packet capture lives in its own program, and the person allows each capture
+
+- **Date:** 27/10/2026 · **Status:** **Accepted**
+
+### Context
+
+The Network module's Traffic tool captures packets on the computer running the Desktop, never on the server. Capturing needs OS
+capability the app never has (`CAP_NET_RAW` on Linux, read access to `/dev/bpf*` on macOS, the Npcap driver on Windows), and the
+app's process also renders remote web content. The first version (1.31.0) was written without a compiler and without ever
+opening a device; building it for real found it did not work — the page could not reach it, the pcapng file it wrote was invalid
+and its first packet killed it.
+
+### Decision
+
+1. **A separate program holds the capability** (`traffic-capture`, Wireshark's `dumpcap` split): it is the only code that links
+   libpcap, and the only file that is ever granted anything. The app is never elevated.
+2. **The sidecar lives as long as its stdin.** Stop closes it (it finishes the file and reports why it stopped); an app that dies
+   closes it too, so no privileged capture outlives the app.
+3. **Every capture needs a native confirmation** naming the interface and the filter, like the assessment and IPv4 Search do. The
+   page's token proves who is asking, not that the person agreed. A refusal rejects `trafficStart` with a code; the page never
+   waits on a capture that did not begin.
+4. **What is captured stays here.** The file is private, in the app's cache folder, bounded in size, and deleted when the page that
+   started the capture is replaced or the app quits; it leaves only through Export, to a path the person chose. The page gets rows,
+   not the file.
+5. **The grant is for one binary and one group.** On Linux one polkit prompt makes the sidecar `root:<your group>` `0750` with the
+   two capabilities, because file capabilities on a world-executable binary would let every local user capture. macOS and
+   Windows are not granted by this app: it says what to install (Wireshark's ChmodBPF, Npcap) rather than run privileged commands
+   nobody verified.
+6. **Linux and macOS bundle it; Windows does not yet.** Building it on Windows needs the Npcap SDK.
+
+### Consequences
+
+- The grant is lost when the package replaces the file; the page shows its permission note again.
+- A flood is shown as a sample of rows with the rest counted; the file has everything.
+- Real-interface capture, macOS and Windows remain to be run by a person on that hardware.

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.32.1 - Document packet capture as it works now, and record why it is built this way (ADR-045)
+
+- `docs/TRAFFIC/README.md` is rewritten: it still said the sidecar "was never compiled" and that `pkexec`/`osascript` were never run.
+  It now gives the sidecar's contract line by line, the bridge actions, the permission model per OS (Linux group-limited, macOS
+  and Windows honest about what the app does not do), packaging, and two lists: what was measured on Linux with real packets and
+  what was not (the grant on a real interface, the app with its dialog and page together, macOS, Windows, a real `.deb`). It
+  records how the two halves were checked against each other (the page rendered in Chromium with the real bridge script and the
+  sidecar's real output) and that the running app was not.
+- ADR-045 records the decisions that are not obvious from the code: a separate program holds the capability, it lives as long as its
+  stdin, every capture needs a native yes, what is captured stays here, the grant is for one binary and one group, Windows does not
+  bundle it yet.
+- `docs/funcionalidades.md`, `docs/build.md` (the sidecar's row), the mirrored `CLAUDE.md`/`AGENTS.md` (the list of sidecars) and
+  `.continue/estado-atual.md` follow.
+
 ## 1.32.1 - Say why a capture permission was not granted, with a code the page translates
 
 - `trafficRequestPermission()` answers `{granted, status, reason?}`; when nothing was granted, `reason` is `needs_chmodbpf` (macOS:

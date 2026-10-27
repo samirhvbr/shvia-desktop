@@ -99,12 +99,14 @@ Format: `X.Y.Z - description in English (US)`, the same sentence as the `CHANGEL
 - **Tauri 2** (Rust) + WebView nativo do SO (WKWebView / WebView2 / WebKitGTK).
 - **Vite/TypeScript** builds the small local shell. Node 22 is used in CI; the locked Vite
   runtime requires Node 20.19+ or 22.12+.
-- **The configured sidecars are `anna` and, on Linux and macOS, the Pentest engine.** `anna` is
+- **The configured sidecars are `anna` and, on Linux and macOS, the Pentest engine and `traffic-capture`.** `anna` is
   staged by `scripts/stage-anna.mjs` into `src-tauri/binaries/anna-<target-triple>`; the engine by
   `scripts/stage-pentest.mjs` into `src-tauri/binaries/pentest-<target-triple>`, from the release
   pinned in `pentest-engine.json` (SHA-256 checked, never looked up on PATH). Both are declared in
   `bundle.externalBin`, the engine only in `tauri.linux.conf.json` and `tauri.macos.conf.json`, so
-  Windows never needs one. Claude/Codex runner modules and installers are bundled as resources.
+  Windows never needs one. `traffic-capture` is this repository's own crate (`src-tauri/traffic-capture/`, the
+  only code that links libpcap), staged by `scripts/stage-traffic-capture.mjs` and declared in the same two files;
+  Windows does not bundle it. Claude/Codex runner modules and installers are bundled as resources.
   Their SDK/CLI, installed engine, credentials and OS capabilities remain separate runtime
   requirements.
 - **The Pentest engine is a Python program built in another repository.** It is the SHVIA fork of
