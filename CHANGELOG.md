@@ -53,6 +53,11 @@ updates the engine, the way `anna` has always travelled.
   download fails and a build goes on without the engine, as an absence always does. Measured here: the Linux
   x86_64 binary answers `--fork-version` with `1.2.43`, and `stage-pentest.mjs` downloads it from a local
   server standing in for the Release, checks its SHA-256 and bundles it.
+- **The Windows clippy job compiles the engine's names without a use.** `ENGINE_BIN`, `ENGINE_RUNS_DIR` and
+  `ENGINE_VERSION_FIELD` silenced their unused-warning only off `any(unix, test)`, and every use is Unix-only,
+  so `--all-targets` on `x86_64-pc-windows-gnu` (a Windows test build) failed with three `dead_code` errors on
+  the cicd watcher. The condition is now `unix` alone. That job's command, run here, failed before the change
+  and passes after it.
 
 ## 1.31.0 - Add IPv4 Search: scan one private range for open ports from this computer, behind a native confirmation
 
