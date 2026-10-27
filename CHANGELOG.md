@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.30.9 - Ignore superseded connection probes while changing servers
+
+- Opening the server form now invalidates connection checks already in flight.
+  Their late replies can no longer close the form or navigate away while the user
+  edits the address. Saving a different address waits for that server's own probe;
+  canceling resumes the appropriate connection or automatic retry.
+- Manual retries also supersede older checks. The bootstrap regression suite runs
+  the actual TypeScript event handlers with controlled native replies and timers,
+  covering startup, automatic retries, address changes, cancellation and deep links.
+  Eight cases failed before the fix; all ten now pass. CI runs this suite after
+  installing the existing frontend dependencies. Native WebView acceptance is separate.
+
 ## 1.30.8 - Reach configured servers at IPv6 literal addresses
 
 - The startup TCP probe passed the bracketed IPv6 host from the URL parser to DNS

@@ -164,6 +164,10 @@ No DEV build is needed: the address is configuration, the mechanism above.
   **trocar** button. Type `https://dev.shvia.org`, then **Salvar e conectar**: the app probes it
   (4 s) and opens it. With production reachable the splash is short, so the offline screen is
   the easy moment to catch.
+- **While editing.** Opening the server form suspends automatic navigation. Replies from
+  earlier connection probes are ignored, including after saving a different server or
+  canceling the form. Saving waits for the new address's own probe; canceling resumes
+  connection checks for the current address.
 - **By file**, with the app closed. Write the address to `server.json` in the app's config
   directory (identifier `cloud.blue3.shvia`):
 
