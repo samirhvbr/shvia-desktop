@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.30.10 - Take the Tauri 2.12.5 patch group, with rust-ini held at 0.21.1 so the Linux build compiles
+
+- Dependabot's cargo-patch-minor group (#158) moves `tauri` 2.12.2 → 2.12.5, `tauri-build` 2.7.3 →
+  2.7.4, `libc` 0.2.190 → 0.2.191, `tauri-plugin-single-instance` 2.5.3 → 2.5.4 and
+  `tauri-plugin-deep-link` 2.6.1 → 2.6.2 (with `tauri-codegen`/`-macros` 2.7.4, `tauri-runtime`
+  2.12.2, `tauri-runtime-wry` 2.12.3, `ico` 0.6.0, and the second `png` gone). As in #147, it
+  failed the Linux `Provas` job with E0063: deep-link 2.6.2 builds `ini::ParseOption` with two
+  fields and the locked `rust-ini` 0.21.3 has four.
+- 1.30.5 only looked upward (0.21.2 yanked, 0.21.3 the newest). Downward works: `rust-ini`
+  0.21.1 has exactly the two fields deep-link 2.6.2 sets, and deep-link (`^0.21`, Linux only) is
+  its only dependent here. `cargo update -p rust-ini --precise 0.21.1` adds `trim-in-place`
+  0.1.8 (MIT), which 0.21.1 depends on.
+- A plain `cargo update` would take `rust-ini` back to 0.21.3 and break the Linux build again;
+  the comment above `tauri-plugin-deep-link` in `Cargo.toml` says so.
+- Measured on Linux, locally (GitHub Actions cannot run while the account is locked):
+  deep-link 2.6.2 with 0.21.3 fails with the same E0063; with 0.21.1, `cargo check`, `cargo
+  clippy --all-targets -D warnings` (Linux and cross-compiled Windows GNU), `cargo test --locked`
+  and `cargo deny check` pass. macOS and Windows MSVC were not run.
+
 ## 1.30.9 - Ignore superseded connection probes while changing servers
 
 - Opening the server form now invalidates connection checks already in flight.

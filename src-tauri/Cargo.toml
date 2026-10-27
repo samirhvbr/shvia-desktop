@@ -1,6 +1,6 @@
 [package]
 name = "shvia-desktop"
-version = "1.30.9"
+version = "1.30.10"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
@@ -92,6 +92,9 @@ tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 tauri-plugin-global-shortcut = "~2.4.0"
 # The `shvia://` scheme (1.10.0, ADR-038). Rust API only, for the same reason: the page never
 # learns which links opened the app, and the routes it can reach are a fixed list (`esquema.rs`).
+# On Linux, 2.6.2 builds `ini::ParseOption` with the two fields of `rust-ini` 0.21.1, so the lockfile
+# holds `rust-ini` at 0.21.1: 0.21.3 added two more fields and fails it with E0063. A plain
+# `cargo update` moves it back to 0.21.3 (1.30.10; 1.30.5 had pinned deep-link 2.6.1 instead).
 tauri-plugin-deep-link = "~2.6.0"
 # Auto-update (item D1 — ADR-022). Dirigido SÓ pela API Rust (`src/updater.rs`):
 # a capability não declara `updater:default`, senão a página remota poderia
