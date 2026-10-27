@@ -522,9 +522,9 @@ that quotes the agent's reason as the agent's; a password or token field is neve
 back into the app. Code in `navegador.rs` and `navegador.js`, decision in ADR-042, measured on Linux by
 `scripts/medir-navegador-local.sh` (39 of 39); macOS and Windows are not run.
 
-## Phase 11 — the network from this machine (1.33.0)
+## Phase 11 — the network from this machine (1.31.0)
 
-**1.33.0 — IPv4 Search.** The shell can scan one private IPv4 range (up to a /16) for the ports the person names
+**1.31.0 — IPv4 Search.** The shell can scan one private IPv4 range (up to a /16) for the ports the person names
 (`2000,8000-8080`) and report which addresses answered and what each port did: a TCP connect scan that sends no data, in two
 passes so an empty range is cheap, behind a native confirmation, with the limits enforced here and not in the page. The shell
 declares `recursos.varreduraIPv4`; the page is SHVIA-WEB's `/network/ipv4-search`. See

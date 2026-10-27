@@ -1689,7 +1689,7 @@ pub fn run() {
             code_bridge::cancelar_login();
             // Same for the Claude subscription flow (1.29.0): a `claude setup-token` waiting on a browser sign-in.
             code_bridge::cancelar_assinatura();
-            // And a network scan in flight (1.33.0): its threads would otherwise keep opening connections after the window is gone.
+            // And a network scan in flight (1.31.0): its threads would otherwise keep opening connections after the window is gone.
             code_bridge::cancelar_varredura(None);
         }
         _ => {}

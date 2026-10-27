@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.33.0 - Add IPv4 Search: scan one private range for open ports from this computer, behind a native confirmation
+## 1.31.0 - Add IPv4 Search: scan one private range for open ports from this computer, behind a native confirmation
 
 The Network module gets a tool that answers "which address on this /22 has port 8006 open?". The page asks through two new
 bridge actions (`ipv4SearchStart`, `ipv4SearchStop`, declared as `recursos.varreduraIPv4`) and the shell does the work — the
@@ -30,6 +30,59 @@ server never sees the range, the ports or the result.
   dropping hosts, and the macOS/Windows builds of this module.
 
 Docs: `docs/code/IPV4-SEARCH.md`, ADR-044, `docs/funcionalidades.md` (Phase 11).
+
+## 1.30.10 - Take the Tauri 2.12.5 patch group, with rust-ini held at 0.21.1 so the Linux build compiles
+
+- Dependabot's cargo-patch-minor group (#158) moves `tauri` 2.12.2 → 2.12.5, `tauri-build` 2.7.3 →
+  2.7.4, `libc` 0.2.190 → 0.2.191, `tauri-plugin-single-instance` 2.5.3 → 2.5.4 and
+  `tauri-plugin-deep-link` 2.6.1 → 2.6.2 (with `tauri-codegen`/`-macros` 2.7.4, `tauri-runtime`
+  2.12.2, `tauri-runtime-wry` 2.12.3, `ico` 0.6.0, and the second `png` gone). As in #147, it
+  failed the Linux `Provas` job with E0063: deep-link 2.6.2 builds `ini::ParseOption` with two
+  fields and the locked `rust-ini` 0.21.3 has four.
+- 1.30.5 only looked upward (0.21.2 yanked, 0.21.3 the newest). Downward works: `rust-ini`
+  0.21.1 has exactly the two fields deep-link 2.6.2 sets, and deep-link (`^0.21`, Linux only) is
+  its only dependent here. `cargo update -p rust-ini --precise 0.21.1` adds `trim-in-place`
+  0.1.8 (MIT), which 0.21.1 depends on.
+- A plain `cargo update` would take `rust-ini` back to 0.21.3 and break the Linux build again;
+  the comment above `tauri-plugin-deep-link` in `Cargo.toml` says so.
+- Measured on Linux, locally (GitHub Actions cannot run while the account is locked):
+  deep-link 2.6.2 with 0.21.3 fails with the same E0063; with 0.21.1, `cargo check`, `cargo
+  clippy --all-targets -D warnings` (Linux and cross-compiled Windows GNU), `cargo test --locked`
+  and `cargo deny check` pass. macOS and Windows MSVC were not run.
+
+## 1.30.9 - Ignore superseded connection probes while changing servers
+
+- Opening the server form now invalidates connection checks already in flight.
+  Their late replies can no longer close the form or navigate away while the user
+  edits the address. Saving a different address waits for that server's own probe;
+  canceling resumes the appropriate connection or automatic retry.
+- Manual retries also supersede older checks. The bootstrap regression suite runs
+  the actual TypeScript event handlers with controlled native replies and timers,
+  covering startup, automatic retries, address changes, cancellation and deep links.
+  Eight cases failed before the fix; all ten now pass. CI runs this suite after
+  installing the existing frontend dependencies. Native WebView acceptance is separate.
+
+## 1.30.8 - Reach configured servers at IPv6 literal addresses
+
+- The startup TCP probe passed the bracketed IPv6 host from the URL parser to DNS
+  resolution. A listening server at `http://[::1]:8000` therefore appeared offline
+  and the shell never navigated to it, even though the address passed validation.
+- Resolve socket addresses through the parsed URL so IPv6 literals retain their
+  address type. Domain names, IPv4, explicit ports and scheme defaults keep their
+  existing behavior; the probe still measures TCP reachability only.
+- Add real loopback-listener regressions for IPv6, IPv4 and localhost, plus refusal
+  of a port without a service. The IPv6 regression fails on the previous code.
+
+## 1.30.7 - Release the Codex message queue when turn startup is rejected
+
+- A JSON-RPC error response to `turn/start` previously left the runner waiting for
+  `turn/completed` from a turn that had never started. Later messages stayed queued,
+  and stdin EOF could not end the process. The runner now reports the original error
+  once, finishes that host message and releases the queue without retrying it.
+- `codex-runner/ciclo.test.mjs` reproduces the rejection through the real runner and
+  a local app-server stand-in, verifies that the next queued message completes and
+  checks clean exit on EOF. The regression timed out before the fix. It requires
+  neither account access nor inference; installed-app acceptance is separate.
 
 ## 1.30.6 - Take the patched rustls-webpki, webpki-root-certs and tokio and write down why the zip and zbus advisories stay: `cargo deny` is green again
 

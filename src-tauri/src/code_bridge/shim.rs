@@ -70,7 +70,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
     pausePentest: function (localId) { return post('pausePentest', { localId: localId }); },
     continuePentest: function (o) { return post('continuePentest', o || {}); },
     stopPentest: function () { return post('stopPentest'); },
-    // IPv4 Search (recursos.varreduraIPv4, 1.33.0). `o` = {target:'10.100.100.0/22', ports?:'2000,8000-8080', timeoutMs?, probeAll?}.
+    // IPv4 Search (recursos.varreduraIPv4, 1.31.0). `o` = {target:'10.100.100.0/22', ports?:'2000,8000-8080', timeoutMs?, probeAll?}.
     // Resolves with {scanId, cidr, addresses, ports, discoveryPorts} AFTER the person confirms in a native dialog; rejects with an
     // 'E_SCAN_*: text' string (E_SCAN_DECLINED when they say no). Progress, hosts as they answer and the final report arrive through
     // onEvent as {type:'ipv4_search_progress'|'ipv4_search_host'|'ipv4_search_done', scanId, ...}.
@@ -282,7 +282,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
     //           are on: that is the tray switch, which `aparelhoStatus().ligado` reads and
     //           nothing on the page can change. Without the flag the page offers the agent no
     //           device tool at all.
-    //   varreduraIPv4: this shell can scan one private IPv4 range for open ports (1.33.0) —
+    //   varreduraIPv4: this shell can scan one private IPv4 range for open ports (1.31.0) —
     //           `ipv4SearchStart` / `ipv4SearchStop`. Presence, never a version number: a page that
     //           does not find it shows "requires the Desktop app" instead of a form that goes nowhere.
     recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true, plano: true, orientar: true, aparelho: true, uso: true, assinatura: __SHVIA_ASSINATURA__, varreduraIPv4: true },

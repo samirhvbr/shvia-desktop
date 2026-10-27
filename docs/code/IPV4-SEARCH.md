@@ -1,6 +1,6 @@
 # IPv4 Search — find what answers on a private range, from this computer
 
-> **Status:** shipped in 1.33.0 (`recursos.varreduraIPv4`). The page is SHVIA-WEB's `/network/ipv4-search`
+> **Status:** shipped in 1.31.0 (`recursos.varreduraIPv4`). The page is SHVIA-WEB's `/network/ipv4-search`
 > (`docs/NETWORK/README.md` there); this document is the native half. Decision record: [ADR-044](../decisoes.md).
 
 The person types a range (`10.100.100.0/22`) and, optionally, ports (`2000,8000-8080`). The shell tries to open a TCP

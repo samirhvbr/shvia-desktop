@@ -1,7 +1,7 @@
 {
   "name": "shvia-desktop",
   "private": true,
-  "version": "1.33.0",
+  "version": "1.31.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,7 @@
     "tauri": "tauri",
     "version:sync": "node scripts/sync-version.mjs",
     "prova:bump": "node scripts/sync-version.mjs --verificar",
+    "prova:bootstrap": "node --test scripts/prova-bootstrap.test.mjs",
     "prova:runner": "node scripts/prova-montar-prompt.mjs",
     "prebuild": "node scripts/sync-version.mjs",
     "pull": "node scripts/git-sync.mjs",
@@ -40,7 +41,7 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2",
     "typescript": "~7.0.2",
-    "vite": "^8.3.4"
+    "vite": "^8.3.5"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4"

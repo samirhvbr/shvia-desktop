@@ -78,6 +78,9 @@ let config: ServerConfig = {
 };
 let autoRetryTimer: number | undefined;
 let checking = false;
+// Native probes cannot be canceled. Only the latest attempt may update the UI
+// or navigate; opening settings invalidates any reply still in flight.
+let checkGeneration = 0;
 
 /** Estado anterior, para o "Cancelar" do formulário voltar para onde estava. */
 let stateBeforeForm: "connecting" | "offline" = "connecting";
@@ -153,8 +156,10 @@ function enter(): void {
 // quando esta termina (e só se ainda estivermos offline).
 async function autoCheck(): Promise<void> {
   if (checking) return;
+  const generation = ++checkGeneration;
   checking = true;
   const ok = await serverReachable();
+  if (generation !== checkGeneration) return;
   checking = false;
   if (ok) {
     enter();
@@ -167,8 +172,13 @@ async function autoCheck(): Promise<void> {
 
 // Tentativa manual/inicial: mostra o estado "connecting" (sonar) enquanto tenta.
 async function connect(): Promise<void> {
+  const generation = ++checkGeneration;
+  checking = true;
   setState("connecting");
-  if (await serverReachable()) {
+  const ok = await serverReachable();
+  if (generation !== checkGeneration) return;
+  checking = false;
+  if (ok) {
     enter();
     return;
   }
@@ -176,6 +186,8 @@ async function connect(): Promise<void> {
 }
 
 function openForm(): void {
+  ++checkGeneration;
+  checking = false;
   const atual = rootEl.dataset.state;
   if (atual === "connecting" || atual === "offline") {
     stateBeforeForm = atual;

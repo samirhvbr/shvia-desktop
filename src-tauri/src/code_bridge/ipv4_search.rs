@@ -1,4 +1,4 @@
-//! IPv4 Search (1.33.0, `recursos.varreduraIPv4`): a TCP connect scan of ONE private IPv4 range, run from
+//! IPv4 Search (1.31.0, `recursos.varreduraIPv4`): a TCP connect scan of ONE private IPv4 range, run from
 //! THIS computer. The server never sees the range, the ports or the result — the page only asks, and this
 //! module decides, confirms with the person and scans.
 //!
