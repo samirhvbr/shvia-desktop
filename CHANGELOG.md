@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.30.8 - Reach configured servers at IPv6 literal addresses
+
+- The startup TCP probe passed the bracketed IPv6 host from the URL parser to DNS
+  resolution. A listening server at `http://[::1]:8000` therefore appeared offline
+  and the shell never navigated to it, even though the address passed validation.
+- Resolve socket addresses through the parsed URL so IPv6 literals retain their
+  address type. Domain names, IPv4, explicit ports and scheme defaults keep their
+  existing behavior; the probe still measures TCP reachability only.
+- Add real loopback-listener regressions for IPv6, IPv4 and localhost, plus refusal
+  of a port without a service. The IPv6 regression fails on the previous code.
+
 ## 1.30.7 - Release the Codex message queue when turn startup is rejected
 
 - A JSON-RPC error response to `turn/start` previously left the runner waiting for
