@@ -65,7 +65,8 @@ The page validates for a good message; **this module decides** (`code_bridge/ipv
   range) instead of refusing the whole range; the report counts them as `skipped`.
 - A **native confirmation dialog** shows the range as normalised (`10.100.100.7/22` becomes `10.100.100.0/22`), the number of
   addresses, the ports, the time limit and the most attempts it can make. The page cannot answer it. Declining ends in
-  `E_SCAN_DECLINED`.
+  `E_SCAN_DECLINED`. If the window starts a new document while the dialog is open, the answer starts nothing and the
+  request ends in `E_SCAN_WINDOW_CHANGED`, as it does when the window closes.
 - The scan **stops** on `ipv4SearchStop` from the window that started it (from any other window the call answers
   `{ stopped: false }` and changes nothing), when the window starts a new document, when the window closes and when the app
   quits. Nothing takes a running scan back after a reload, so a result nobody can read is never produced.

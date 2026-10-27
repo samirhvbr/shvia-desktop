@@ -831,7 +831,9 @@ pub(super) fn start(window: &WebviewWindow, v: &serde_json::Value) -> Result<ser
         release(id);
         return Err(Refusal::Declined.message());
     }
-    if window.app_handle().get_webview_window(&label).is_none() {
+    // A new document while the dialog was open already cancelled the reserved slot: the page that asked is gone, so the
+    // answer starts nothing instead of a scan that stops at once and reports to a page that never asked.
+    if cancel.load(Ordering::Relaxed) || window.app_handle().get_webview_window(&label).is_none() {
         release(id);
         return Err(Refusal::WindowChanged.message());
     }
