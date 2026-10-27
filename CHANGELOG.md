@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.32.1 - Define the six traffic methods in the shim and start a capture only after the person's yes
+
+The shim defined none of the six `traffic*` methods (the earlier commit only set `recursos.captura` and listed their names in a
+comment), so the page saw a Desktop that "could capture" and could call nothing: with the real shim the page had `captura: true`,
+no methods, and a Start button that did nothing. The two halves passed their own tests and never met.
+
+- **The shim defines them**, with their contract written next to them, and the answers match what `public/js/traffic.js` reads: an
+  array of interfaces with a `name`, a permission probe that takes an optional interface, `traffic_packet` events with `id`,
+  `time` and `hex`.
+- **`trafficStart` waits for the sidecar to say the device is open** and rejects `E_CODE: text` when it is not (permission denied,
+  invalid filter, unknown interface, busy, declined). The earlier version answered "started" at once, so a bad filter or a
+  missing permission left the page on "Capturing…" forever. A sidecar that ends by itself (size cap, write error, killed) tells
+  the page with `traffic_status`/`traffic_error` and the capture becomes "stopped" with its file kept.
+- **The person allows each capture.** `trafficStart` shows a native confirmation naming the interface and the filter (page-controlled
+  text is quoted, stripped of control characters and bounded), like the assessment and IPv4 Search do; the bridge token only
+  proves who is asking. A page replaced while the dialog is open starts nothing.
+- **Stop, Export and the file's life.** Stop closes the sidecar's stdin and waits up to 3 s for it to finish before killing it. Export
+  works while capturing and after Stop (it answered "nothing captured" after Stop) and copies only whole packet blocks. The file is
+  `0600` in the app's cache folder (it was `0644` in `/tmp`), is replaced by the next capture, and is deleted when the page that
+  started it is replaced, its window closes or the app quits (`release`, wired into the page-load hook, window destruction and
+  `RunEvent::Exit`); leftovers of a crashed run are removed at the next start.
+- **Permission.** Linux: one polkit prompt makes the sidecar `root:<your group>` `0750` with `cap_net_raw,cap_net_admin` (paths
+  travel as positional parameters of a fixed script; capabilities on a world-executable file would let every local user capture),
+  and the answer is the probe's result after the attempt, never what the attempt hoped for. macOS: the earlier plan assumed an
+  `access_bpf` group exists on every Mac (it does not; Wireshark's installer creates it) and its `$(whoami)` would have run as
+  root; the app now says what to install instead of running an unverified privileged command. The `unused variable: bin` that
+  failed the macOS and Windows jobs is gone with that code.
+- **The whole flow runs against the real sidecar.** `scripts/traffic-e2e.sh` runs two `#[ignore]`d tests inside a throw-away network
+  namespace (no sudo, no real interface): refused starts leave no file; five UDP datagrams arrive as five rows with their payload in
+  the hex; Stop keeps the file; the exported file is section header, interface description, five packet blocks, `0600`; replacing
+  the page deletes it; killing the sidecar from outside tells the page (`engine_exited`) and keeps the file exportable.
+  `lib.rs`'s page-load ruler still holds (the added comment is one line, because that ruler reads a fixed window of the hook).
+
 ## 1.32.1 - Give the capture sidecar a valid pcapng, a stop that works and rows with hex
 
 The sidecar of the two earlier commits of this branch (1.31.0 and 1.31.1, never released) had never captured a packet. Run

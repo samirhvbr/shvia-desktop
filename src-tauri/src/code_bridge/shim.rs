@@ -76,6 +76,22 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // onEvent as {type:'ipv4_search_progress'|'ipv4_search_host'|'ipv4_search_done', scanId, ...}.
     ipv4SearchStart: function (o) { return post('ipv4SearchStart', o || {}); },
     ipv4SearchStop: function () { return post('ipv4SearchStop'); },
+    // Packet capture for the Network "Traffic" tool (recursos.captura, 1.32.1). Everything below happens on THIS computer's own
+    // interfaces; nothing captured goes anywhere but the file the person exports. Errors reject with an 'E_CODE: text' string.
+    //   trafficInterfaces()                        -> [{id, name, description, isUp, isLoopback}]
+    //   trafficPermissionStatus({interfaceId?})    -> {status: 'ready'|'needs_permission'|'missing_npcap'|'error', message?, url?}
+    //   trafficRequestPermission()                 -> {granted, status, message?, url?}  (one OS prompt, never silent)
+    //   trafficStart({interfaceId, filter})        -> {started:true} AFTER a native dialog the person accepts and the device opens
+    //   trafficStop()                              -> {stopped}; the capture file stays for trafficExport until the next start
+    //   trafficExport()                            -> {exported, path?} through a native save dialog
+    // Rows arrive through onEvent as {type:'traffic_packet', total, notShown, packets:[{id,time,src,dst,protocol,length,summary,hex}]};
+    // {type:'traffic_status', state:'stopped', reason} and {type:'traffic_error', code, error} say when and why it ended.
+    trafficInterfaces: function () { return post('trafficInterfaces'); },
+    trafficPermissionStatus: function (o) { return post('trafficPermissionStatus', o || {}); },
+    trafficRequestPermission: function () { return post('trafficRequestPermission'); },
+    trafficStart: function (o) { return post('trafficStart', o || {}); },
+    trafficStop: function () { return post('trafficStop'); },
+    trafficExport: function () { return post('trafficExport'); },
     resumePentest: function () { return post('resumePentest'); },
     reviewPentest: function () { return post('reviewPentest'); },
     retestPentest: function (localId, baselineRef) { return post('retestPentest', { localId: localId, baselineRef: baselineRef }); },
@@ -285,14 +301,10 @@ pub const BRIDGE_JS: &str = r#"(function () {
     //   varreduraIPv4: this shell can scan one private IPv4 range for open ports (1.31.0) —
     //           `ipv4SearchStart` / `ipv4SearchStop`. Presence, never a version number: a page that
     //           does not find it shows "requires the Desktop app" instead of a form that goes nowhere.
-    //   captura: live packet capture for the Network "Traffic" tool —
-    //           `trafficInterfaces()`, `trafficPermissionStatus(interfaceId)`,
-    //           `trafficRequestPermission()`, `trafficStart({interfaceId, filter})`,
-    //           `trafficStop()`, `trafficExport()`. Presence says this shell CAN capture, not
-    //           that it is allowed to on this machine yet — that is what
-    //           `trafficPermissionStatus` answers. Without the flag the page shows the
-    //           "desktop required" panel, the same way it already does when this whole object
-    //           is absent on a plain browser.
+    //   captura: live packet capture for the Network "Traffic" tool (1.32.1) — the `traffic*` methods above. Presence says this
+    //           shell CAN capture, not that it is allowed to on this machine yet — that is what `trafficPermissionStatus`
+    //           answers. Without the flag the page shows the "desktop required" panel, the same way it already does when this
+    //           whole object is absent on a plain browser.
     recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true, plano: true, orientar: true, aparelho: true, uso: true, assinatura: __SHVIA_ASSINATURA__, varreduraIPv4: true, captura: true },
     // chamados pelo Rust (eval):
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
