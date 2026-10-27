@@ -23,6 +23,7 @@ server never sees the range, the ports or the result.
 - **Windows.** A SYN answered by a reset makes Windows send it again, twice, and report "refused" about two seconds later,
   so inside the default 800 ms a closed port would read as `filtered`. The probe turns SYN retransmission off for its own
   socket (`SIO_TCP_INITIAL_RTO`), which makes the reset final; the `Windows MSVC` job's loopback test is what checks it.
+  `socket2` sits in the Windows dependency section, so it joins Dependabot's `ignore` list like the other per-OS crates.
 - **Proved** by 33 unit tests: the parsers over malformed input, the policy (including that a /16 never straddles two zones,
   over all 65,536 blocks), the two passes on a scripted network, cancellation, the events and report, the one-slot rule, the
   real probe against listening and non-listening loopback sockets, and 72 vectors shared with SHVIA-WEB's page parser
