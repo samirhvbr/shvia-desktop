@@ -1,111 +1,189 @@
 # Changelog
 
-## 1.31.1 - Fix the traffic-capture sidecar: it had never actually been compiled
+## 1.32.1 - Bring the IPv4 Search and Pentest-engine commits into the Traffic branch
 
-- `cargo build --manifest-path src-tauri/traffic-capture/Cargo.toml` had never been run before
-  this commit (no `Cargo.lock` existed, and the sidecar's own `pcap`/`pcap-file` calls were
-  written without a compiler to check them — `libpcap-dev` was not available on the machine
-  that wrote them). Building it against a locally staged `libpcap0.8-dev` surfaced three real
-  defects, all fixed here:
-  - `EnhancedPacketBlock` (pcap-file 2.0.0) does not implement `Default`; the `..Default::default()`
-    spread did not compile. Replaced with an explicit `options: Vec::new()`.
-  - Two `cargo clippy -D warnings` violations: a single-arm `match` that should be `if let`, and
-    a `tv_usec` widening whose necessity is platform-dependent (`i64` already on 64-bit Linux,
-    `i32` on macOS/BSD) — kept as `i64::from` with a scoped `#[allow(clippy::useless_conversion)]`
-    and a comment, since removing the conversion would break the other platforms' build.
-  - **`classify_open_error` did not recognize this machine's real EPERM message.** Running
-    `--check-permission` against `lo` without `cap_net_raw` returns libpcap's actual Linux
-    wording, `"socket: Operation not permitted"` — which contains none of "permission",
-    "denied" or "eperm", so it fell through to the generic `"error"` status instead of
-    `"needs_permission"`. That status is exactly what the Traffic UI would use to decide
-    whether to guide the operator through the permission flow instead of showing a dead end;
-    verified against the real binary before and after the fix, not just by reasoning about the
-    string. Added `"not permitted"` to the match, plus a regression test with the exact message.
-- Verified on this machine (previously not run at all): `cargo build`/`cargo test`/`cargo clippy
-  --all-targets -D warnings` against a `libpcap0.8-dev` staged locally without touching system
-  state (`apt-get download` + unpack, no `sudo`); `--list-interfaces` and `--check-permission`
-  run for real against this host's actual interfaces. Opening a live capture still needs
-  `cap_net_raw`/`cap_net_admin` on the sidecar binary, which remains a deliberate human action
-  (see docs/TRAFFIC/README.md) — not performed in this session either.
+- Merges `feat/bundle-pentest-engine` (which carries `feat/ipv4-search`, 1.31.0, and the Pentest engine in the installer, 1.32.0)
+  into `feat/traffic-capture` so Traffic is built on what will be on `master` before it. The Traffic work, version 1.31.x on this
+  branch and never released, becomes 1.32.1: the engine's 1.32.0 may not be passed by anything that ships without the engine.
+- Conflicts were mechanical and resolved without a rewrite: the six version carriers, the CHANGELOG (this entry above the stack's),
+  the two sidecar stand-ins in `ci.yml` and `plataformas.yml`, `package.json`'s stage scripts, the `recursos` line and comment in
+  the shim (`varreduraIPv4` and `captura` both stay) and the bridge's `match` arms (IPv4 Search's and Traffic's both stay).
+  No Traffic behavior changes in this commit; the next ones make it work.
 
-## 1.31.0 - Track the Traffic sidecar in the two docs the freshness proof watches
+## 1.32.0 - Ship the Pentest engine inside the installer on Linux and macOS, and call it Pentest in the native bridge
 
-- `.continue/estado-atual.md` and `docs/funcionalidades.md` both named a version below the
-  tolerance `npm run prova:doc` allows for a minor bump — each gets a dated 1.31.0 entry
-  summarizing what shipped and, just as prominently, what was not verified (see
-  docs/TRAFFIC/README.md for the full account).
+Reported on 23/10/2026 with a screenshot: the Pentest page said "Quick start needs Desktop 1.30.5 and
+Strix 1.2.42 … Detected: Desktop 1.30.5; Strix not detected" on a Desktop that was at 1.30.5. Both halves
+were true. The engine was a separate program the Desktop expected to find on the machine, and the installer
+did not carry it, so a Desktop with the right version still had nothing to run. Updating the Desktop now
+updates the engine, the way `anna` has always travelled.
 
-## 1.31.0 - Document Traffic's architecture and cover the CI/Dependabot/staging gaps it opened
+- **The engine is a bundled sidecar.** `scripts/stage-pentest.mjs` stages it into
+  `src-tauri/binaries/pentest-<target triple>` and Tauri installs it beside the executable (`Contents/MacOS/`
+  on macOS, `/usr/bin/` in the `.deb`: measured, the `.rpm` and the AppImage were not built). It comes from `--from`, `SHVIA_PENTEST_BIN` or the release pinned in
+  `pentest-engine.json` (a version and one SHA-256 per platform, taken from the fork's Release). There is **no lookup on
+  PATH**: `motores::bundled_bin` finds the file beside the executable and nothing else, so a program with the
+  same name elsewhere on the machine is never run. A file that is there and wrong fails the build (a hash that
+  differs from the pinned one, an engine that does not run or answers a version other than the one pinned or
+  below the floor); an absence does not (no network and no cache, no asset for the platform), and it removes
+  an engine staged by an earlier build instead of bundling it.
+- **Per platform.** The controlled profile is refused on Windows, so `externalBin` lists the engine only in
+  `tauri.linux.conf.json` and `tauri.macos.conf.json`; the Windows build and its CI stand-ins are unchanged.
+  `build-local.sh` gets `--pentest <path>` and `--no-pentest`, builds the `externalBin` list from what is
+  staged (an empty list for one missing file would drop the other sidecar), and `--no-anna` no longer deletes the
+  folder that holds the engine.
+- **A build with no engine says so.** The refusal is `E_PENTEST_NOT_BUNDLED`, told apart from an engine that is
+  too old or does not answer, so nobody is sent to "update Pentest" when the fix is a different installer.
+- **The probe waits 20 s, not 5.** A one-file engine unpacks itself on every start: `--fork-version` takes about
+  2.6 s on Linux, cold or warm (measured on the real binary), and a first launch on macOS also waits for
+  Gatekeeper.
+- **Pentest is the name, wherever a person reads it.** The native summary reports `pentestVersion` (was
+  `strixVersion`), the refusal codes are `E_PENTEST_TOO_OLD` / `E_PENTEST_VERSION_UNKNOWN` (were `E_STRIX_*`),
+  the history snapshot sent to the WEB carries `pentest_version`, and every message and consent text says
+  Pentest. The engine's own file format keeps its names (`strix_runs/`, and `strix_version` in `run.json`):
+  they are recorded in runs already on disk, and `code_bridge/pentest.rs` names them once. **Deploy the WEB
+  first**: a WEB older than this change reads none of the new names.
+- 🔴 **Not verified: a signed macOS build.** The engine is a PyInstaller one-file build, its libraries are signed
+  ad hoc, and the hardened runtime can refuse libraries that do not carry the app's Team ID. No Mac was
+  available. `build-local.sh` therefore runs `Contents/MacOS/pentest --fork-version` from inside the signed
+  `.app` and stops the build, with the explanation, if it does not print a version; the two ways out (build the
+  engine on the Mac with `--codesign-identity`, or add `com.apple.security.cs.disable-library-validation`, which
+  weakens library validation for the whole app) are in `docs/build.md`, and neither is applied.
+- Checked: `cargo clippy -D warnings` and the 43 Pentest tests; the real Linux binary built from the fork
+  (`--fork-version`, `--inspect-web-authorization`, `-n --web-authorization`, `view`, the certificate bundle in the
+  archive) staged by the script and run; `npm run prova:pentest` against a local HTTP server for each way a
+  wrong engine could get in; the resolver and the `NOT_BUNDLED` refusal each shown to fail their test with the
+  code reverted.
+- **The pin: Pentest 1.2.43** (`pentest-engine.json`, 27/10/2026). The four binaries come from the fork's
+  `Pentest binaries` run 39984194123 of 23/10/2026, built from `047cc8cb` on samirhvbr/strix#37; the two
+  commits after it on that branch change the workflow, the docs, a test and `package_pdf.py`, the server-side
+  PDF renderer the engine does not run. They are pinned before the `shvia-v1.2.43` Release exists, because
+  GitHub Actions is locked for billing since 26/10/2026 and the fork's workflow cannot publish it; the owner
+  attaches these same four files and their `SHA256SUMS` to that Release by hand. Until then the pinned
+  download fails and a build goes on without the engine, as an absence always does. Measured here: the Linux
+  x86_64 binary answers `--fork-version` with `1.2.43`, and `stage-pentest.mjs` downloads it from a local
+  server standing in for the Release, checks its SHA-256 and bundles it.
+- **The Windows clippy job compiles the engine's names without a use.** `ENGINE_BIN`, `ENGINE_RUNS_DIR` and
+  `ENGINE_VERSION_FIELD` silenced their unused-warning only off `any(unix, test)`, and every use is Unix-only,
+  so `--all-targets` on `x86_64-pc-windows-gnu` (a Windows test build) failed with three `dead_code` errors on
+  the cicd watcher. The condition is now `unix` alone. That job's command, run here, failed before the change
+  and passes after it.
 
-- New `scripts/stage-traffic-capture.mjs` (`npm run traffic-capture:stage`): builds the sidecar
-  crate (`cargo build --release`) and copies it into `src-tauri/binaries/traffic-capture-
-  <triple>` for `externalBin` bundling — the same role `stage-anna.mjs` has for `anna`, except
-  this one builds our own code instead of locating an externally-installed binary. A build
-  failure (most likely a missing `libpcap-dev` on the BUILD machine) is not fatal to the app
-  build, the same posture `stage-anna.mjs` already has for a missing engine.
-- New docs/TRAFFIC/README.md: the privilege-separation rationale (Wireshark's GUI/`dumpcap`
-  split), the sidecar's command surface, the six bridge actions, the per-OS permission steps,
-  and — up front, not buried — exactly what was and was not verified in this delivery (Linux
-  build+unit-tests only; the `traffic-capture` crate itself was never compiled, no real device
-  was ever opened, and macOS/Windows were never built at all). Linked from docs/README.md.
-- `.github/workflows/ci.yml` and `plataformas.yml`: every job that already stages an inert
-  `anna-<triple>` stand-in (so Tauri's build script finds its required `externalBin` entries)
-  now also stages `traffic-capture-<triple>` the same way — the previous commit's
-  `externalBin` registration would otherwise have made `cargo check`/`test`/`clippy` fail on
-  every platform's CI job from this point in the branch on.
-- `.github/dependabot.yml`: a new `cargo` entry for `/src-tauri/traffic-capture`, grouped the
-  same way as `/src-tauri` — `npm run prova:dependabot` requires every tracked manifest to
-  have one.
-- Known follow-up, recorded rather than silently left: `build-local.sh`'s existing
-  `--no-anna`/no-anna-found fallback overrides `bundle.externalBin` to `[]` entirely
-  (`build-local.sh:1515-1521`), so a local release build made without `anna` staged also
-  ships without `traffic-capture` even if the latter was staged. Teaching it to compose
-  per-sidecar overrides is separate, scoped work — see docs/TRAFFIC/README.md.
+## 1.31.0 - Add IPv4 Search: scan one private range for open ports from this computer, behind a native confirmation
 
-## 1.31.0 - Wire the traffic-capture sidecar into the bridge (six new actions, one new flag)
+The Network module gets a tool that answers "which address on this /22 has port 8006 open?". The page asks through two new
+bridge actions (`ipv4SearchStart`, `ipv4SearchStop`, declared as `recursos.varreduraIPv4`) and the shell does the work — the
+server never sees the range, the ports or the result.
 
-- New `code_bridge::traffic` module: resolves the sidecar's path next to the app's own
-  executable (the same spot `externalBin` always places it), spawns it, and answers six new
-  bridge actions — `trafficInterfaces`, `trafficPermissionStatus`, `trafficRequestPermission`,
-  `trafficStart`, `trafficStop`, `trafficExport` — the native half of the Network "Traffic"
-  tool. `code_bridge` itself never links `pcap`; the sidecar added in the previous commit is
-  the only thing that does.
-- `trafficStart` streams parsed packet batches back to the page through the SAME `_emit` push
-  channel agent sessions already use (`onEvent`), not polling. `trafficStop` kills the
-  sidecar and is also called with no window at app exit (`lib.rs`'s `RunEvent::Exit`), the
-  same lifecycle `pentest::stop` already has. `trafficExport` copies the session's temp
-  `.pcapng` file to a user-chosen path through a native save dialog — a plain file copy, not
-  a round trip through the existing `saveFile` action's 50 MB attachment cap.
-- `window.__shviaCode.recursos.captura` is the new presence flag the page feature-detects
-  before offering the real Traffic UI instead of a "desktop required" message.
-- `trafficRequestPermission` is the one action that may trigger an OS elevation prompt
-  (`pkexec setcap` on Linux, `osascript ... with administrator privileges` on macOS to join
-  `access_bpf`, a Npcap download link on Windows) — written and compiled, never executed by
-  this session: granting a real OS capability needed a human's own explicit action on this
-  shared machine, not something a session grants itself. See docs/TRAFFIC/README.md (next
-  commit) for the full account of what is and is not verified.
-- `cargo test`/`cargo clippy --all-targets -- -D warnings` for `src-tauri` are green with this
-  module in place (342 existing tests + 3 new ones, 2 pre-existing unrelated ignores).
+- **What a probe is.** One TCP `connect()` with a time limit, dropped when accepted; no byte is sent. `open` (accepted),
+  `closed` (refused: the host is alive), `filtered` (no answer in time). An address is *found* when any probe was `open` or
+  `closed`; one that only times out is "no answer", never "down".
+- **Two passes.** Pass 1 tries eight ports on every address (the person's first four, then the common ones); pass 2 tries the
+  rest only on the addresses that answered. `probeAll` skips the shortcut. With no ports it is discovery only.
+- **Limits enforced natively** (`code_bridge/ipv4_search.rs`): private ranges only — RFC1918, CGNAT, `198.18.0.0/15`, the same
+  classes as the WEB's `DestinationPolicy` — and a public range is refused, not confirmed; loopback/link-local/multicast never;
+  at most a /16, 1,024 ports and 1,000,000 first-pass probes; 200–5,000 ms per connection; one scan at a time; a native
+  dialog that shows the normalised range, the ports and the most attempts it can make. A new document, a closed window or a
+  quit cancels the scan; a new document while the dialog is open makes the answer start nothing. `ipv4SearchStop` stops
+  only the scan its own window started.
+- **Descriptors.** Up to 128 probes at once; the process's descriptor limit is raised when allowed (a macOS GUI app starts at
+  256, shared with the webview), and the count falls back to 64 or 32 when it is not. Running out of descriptors is an
+  `error`, never read as `filtered`.
+- **Windows.** A SYN answered by a reset makes Windows send it again, twice, and report "refused" about two seconds later,
+  so inside the default 800 ms a closed port would read as `filtered`. The probe turns SYN retransmission off for its own
+  socket (`SIO_TCP_INITIAL_RTO`), which makes the reset final; the `Windows MSVC` job's loopback test is what checks it.
+  `socket2` sits in the Windows dependency section, so it joins Dependabot's `ignore` list like the other per-OS crates.
+- **Proved** by 33 unit tests: the parsers over malformed input, the policy (including that a /16 never straddles two zones,
+  over all 65,536 blocks), the two passes on a scripted network, cancellation, the events and report, the one-slot rule, the
+  real probe against listening and non-listening loopback sockets, and 72 vectors shared with SHVIA-WEB's page parser
+  (`ipv4_search_vectors.json` here, `docs/NETWORK/ipv4-search-vectors.json` there: each side is tested against its own
+  copy, so changing one without the other is a visible edit in both repositories). **Not measured:** a scan across a real network with
+  dropping hosts, and the macOS/Windows builds of this module.
 
-## 1.31.0 - Add the traffic-capture sidecar crate for the Network "Traffic" tool
+Docs: `docs/code/IPV4-SEARCH.md`, ADR-044, `docs/funcionalidades.md` (Phase 11).
 
-- New `src-tauri/traffic-capture/` crate: a thin, separate binary that is the only part of
-  this repository allowed to link `pcap` (libpcap/Npcap bindings) — modeled on Wireshark's own
-  GUI/`dumpcap` privilege split (see docs/TRAFFIC/README.md, added together with the rest of
-  this feature in a later commit of this delivery). It takes `--list-interfaces`,
-  `--check-permission --interface <id>`, or `--capture --interface <id> [--filter <bpf>] --out
-  <path.pcapng>`, and prints one NDJSON line per response/batch to stdout. Registered in
-  `tauri.conf.json`'s `bundle.externalBin` next to `anna`, so `cargo check`/`build` now also
-  require a staged `traffic-capture-<triple>` stand-in (the rest of the packaging — the
-  staging script, CI's stand-in creation, Dependabot coverage — lands in a later commit).
-- Capture itself writes every frame to a `pcap-file`-built PCAPNG file and summarizes each one
-  (source, destination, protocol, length, a one-line description) with `etherparse` — enough
-  for the Traffic table without a full protocol-dissector framework.
-- `cargo test --manifest-path src-tauri/traffic-capture/Cargo.toml` was **not** run: `pcap`
-  needs the `libpcap-dev` system package at build time, and installing it needs `sudo` on the
-  shared machine this was written on. `args.rs` and `parse.rs`'s own logic (no `pcap` types)
-  carries unit tests and reads correctly, but the crate as a whole has not been compiled — see
-  docs/TRAFFIC/README.md's "What has and has not been verified" for the full account.
+## 1.30.10 - Take the Tauri 2.12.5 patch group, with rust-ini held at 0.21.1 so the Linux build compiles
+
+- Dependabot's cargo-patch-minor group (#158) moves `tauri` 2.12.2 → 2.12.5, `tauri-build` 2.7.3 →
+  2.7.4, `libc` 0.2.190 → 0.2.191, `tauri-plugin-single-instance` 2.5.3 → 2.5.4 and
+  `tauri-plugin-deep-link` 2.6.1 → 2.6.2 (with `tauri-codegen`/`-macros` 2.7.4, `tauri-runtime`
+  2.12.2, `tauri-runtime-wry` 2.12.3, `ico` 0.6.0, and the second `png` gone). As in #147, it
+  failed the Linux `Provas` job with E0063: deep-link 2.6.2 builds `ini::ParseOption` with two
+  fields and the locked `rust-ini` 0.21.3 has four.
+- 1.30.5 only looked upward (0.21.2 yanked, 0.21.3 the newest). Downward works: `rust-ini`
+  0.21.1 has exactly the two fields deep-link 2.6.2 sets, and deep-link (`^0.21`, Linux only) is
+  its only dependent here. `cargo update -p rust-ini --precise 0.21.1` adds `trim-in-place`
+  0.1.8 (MIT), which 0.21.1 depends on.
+- A plain `cargo update` would take `rust-ini` back to 0.21.3 and break the Linux build again;
+  the comment above `tauri-plugin-deep-link` in `Cargo.toml` says so.
+- Measured on Linux, locally (GitHub Actions cannot run while the account is locked):
+  deep-link 2.6.2 with 0.21.3 fails with the same E0063; with 0.21.1, `cargo check`, `cargo
+  clippy --all-targets -D warnings` (Linux and cross-compiled Windows GNU), `cargo test --locked`
+  and `cargo deny check` pass. macOS and Windows MSVC were not run.
+
+## 1.30.9 - Ignore superseded connection probes while changing servers
+
+- Opening the server form now invalidates connection checks already in flight.
+  Their late replies can no longer close the form or navigate away while the user
+  edits the address. Saving a different address waits for that server's own probe;
+  canceling resumes the appropriate connection or automatic retry.
+- Manual retries also supersede older checks. The bootstrap regression suite runs
+  the actual TypeScript event handlers with controlled native replies and timers,
+  covering startup, automatic retries, address changes, cancellation and deep links.
+  Eight cases failed before the fix; all ten now pass. CI runs this suite after
+  installing the existing frontend dependencies. Native WebView acceptance is separate.
+
+## 1.30.8 - Reach configured servers at IPv6 literal addresses
+
+- The startup TCP probe passed the bracketed IPv6 host from the URL parser to DNS
+  resolution. A listening server at `http://[::1]:8000` therefore appeared offline
+  and the shell never navigated to it, even though the address passed validation.
+- Resolve socket addresses through the parsed URL so IPv6 literals retain their
+  address type. Domain names, IPv4, explicit ports and scheme defaults keep their
+  existing behavior; the probe still measures TCP reachability only.
+- Add real loopback-listener regressions for IPv6, IPv4 and localhost, plus refusal
+  of a port without a service. The IPv6 regression fails on the previous code.
+
+## 1.30.7 - Release the Codex message queue when turn startup is rejected
+
+- A JSON-RPC error response to `turn/start` previously left the runner waiting for
+  `turn/completed` from a turn that had never started. Later messages stayed queued,
+  and stdin EOF could not end the process. The runner now reports the original error
+  once, finishes that host message and releases the queue without retrying it.
+- `codex-runner/ciclo.test.mjs` reproduces the rejection through the real runner and
+  a local app-server stand-in, verifies that the next queued message completes and
+  checks clean exit on EOF. The regression timed out before the fix. It requires
+  neither account access nor inference; installed-app acceptance is separate.
+
+## 1.30.6 - Take the patched rustls-webpki, webpki-root-certs and tokio and write down why the zip and zbus advisories stay: `cargo deny` is green again
+
+`cargo deny` has been the last red step of the `Provas` job on `master` since 18/10/2026 (every completed run
+from `1fab95de` to `236b2ea3`; the `cargo test` failure that sat in front of it was fixed in 1.30.5).
+RustSec published nine advisories against six crates that were already locked, so the red is newer
+than the code (measured 23/10/2026 with `cargo deny check advisories`, the command the workflow runs):
+
+- **Fixed by moving the lockfile** (`cargo update -p`, semver-compatible, nothing else moves):
+  `rustls-webpki` 0.103.15 → 0.103.16 (RUSTSEC-2026-0382, distrusted intermediates accepted),
+  `webpki-root-certs` 1.0.9 → 1.0.11 (-0383, distrusted emSign intermediates) and `tokio`
+  1.52.3 → 1.54.1 (-0386, `AsyncFd::new` violates I/O safety).
+- **`zip` 4.6.1, three extraction advisories (RUSTSEC-2026-0367/-0368/-0369, fixed in zip >= 9):
+  ignored, with the reason written in `deny.toml`.** The only path to `zip` is
+  `tauri-plugin-updater` 2.14.0 (the latest 2.x; 3.0.0 is an alpha), which pins zip 4 and calls
+  `ZipArchive::extract` once, in its Windows install path, on bytes it has already verified
+  against the minisign public key. The flaws need a malicious archive (SUID/SGID bits, a symlink
+  that leaves the destination), and an archive that passes our signature check is one we signed.
+  The entry names what to re-check: the block goes when the plugin takes zip >= 9.
+- **`zbus_names`, `zvariant`, `zvariant_derive` (RUSTSEC-2026-0371/-0370/-0372): ignored.**
+  Unmaintained since they were merged into zbus 6; no flaw is reported. They are the Linux D-Bus
+  layer under `tauri-plugin-notification`, `-single-instance` and `-opener`, so moving needs those
+  plugins to move first.
+- **Five stale ignores removed**: the `unic-*` entries (RUSTSEC-2025-0075/-0080/-0081/-0098/-0100)
+  matched no crate any more, and cargo-deny reported each as `advisory-not-detected`; the file's
+  own rule is that an ignore which matches nothing reads as a decision and guards nothing.
+
+`cargo deny check` (advisories, bans, licenses, sources), `cargo test --locked` (339 passed, 2
+ignored) and `cargo clippy --locked --all-targets -- -D warnings` pass locally. The other red on
+PR #151 (macOS and Windows: `unused variable: bin`) is in that PR's own code, not here.
 
 ## 1.30.5 - Pin two Tauri plugins back so the Linux build compiles again
 

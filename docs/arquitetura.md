@@ -7,9 +7,11 @@ folders, browser profiles and assessment artifacts remain on the computer. See
 
 > **Reviewed against source on 2026-10-15, Desktop 1.29.0.** This describes implementation
 > contracts, not a deployed server or installed-client acceptance. Dated measurements below
-> retain their original scope. The original Python-sidecar/F2 sketch is superseded: there is
-> no Python `sidecar/` in the current app. Native services are Rust; local Code uses anna and
-> the Node-based Claude/Codex runners.
+> retain their original scope. The original Python-sidecar/F2 sketch is superseded as a design:
+> there is no Python `sidecar/` directory in this repository. Native services are Rust; local
+> Code uses anna and the Node-based Claude/Codex runners; the Pentest engine is the one Python
+> program the app carries, built in its own repository and bundled as a sidecar on Linux and
+> macOS (see [build.md](build.md)).
 
 ---
 
@@ -24,7 +26,7 @@ Local bootstrap (src/, Vite/TypeScript)
           └─ Custom native bridge → Rust capability dispatch
               ├─ Authorized local folder → anna / claude-runner / codex-runner
               ├─ Native file dialogs, notifications, device and browser actions
-              └─ Controlled Strix assessment → private local artifacts/outbox
+              └─ Controlled Pentest assessment → private local artifacts/outbox
 
 Remote Code is a separate path owned by the Web UI:
   shared Code screen → ShvIA Web work channel → Workspace service → remote files/engine
@@ -124,6 +126,12 @@ o que forçava timeout de 15 s — agora são **4 s**.
 certificate or establish that the host is ShvIA. Navigation and the updater make their own
 HTTPS requests; a successful TCP probe alone is not an application-health check.
 
+The probe accepts domain names, IPv4 and bracketed IPv6 server URLs such as
+`http://[::1]:8000` (loopback development) or `https://[2001:db8::1]:8443`
+(address-format example). Since 1.30.8, IPv6 literals are resolved as IP addresses
+instead of sending their URL brackets to DNS. Explicit ports and the URL scheme's
+default port are preserved.
+
 **O host configurado vira INTERNO** (`is_server_host`), logo recebe as pontes
 nativas: Modo Code, notificação, badge, gate de versão. É decisão de confiança
 deliberada, cercada por: `https` obrigatório fora de loopback, credencial na URL
@@ -158,6 +166,10 @@ No DEV build is needed: the address is configuration, the mechanism above.
   **trocar** button. Type `https://dev.shvia.org`, then **Salvar e conectar**: the app probes it
   (4 s) and opens it. With production reachable the splash is short, so the offline screen is
   the easy moment to catch.
+- **While editing.** Opening the server form suspends automatic navigation. Replies from
+  earlier connection probes are ignored, including after saving a different server or
+  canceling the form. Saving waits for the new address's own probe; canceling resumes
+  connection checks for the current address.
 - **By file**, with the app closed. Write the address to `server.json` in the app's config
   directory (identifier `cloud.blue3.shvia`):
 
@@ -263,7 +275,8 @@ enables them. Screen capture, file picking and browser interactions follow their
 consent rules; the agent's browser uses a separate profile and cannot call back into the app.
 These are distinct from Code's approval level.
 
-Controlled assessment uses the installed SHVIA Strix fork on Linux/macOS. The current probe
+Controlled assessment uses the Pentest engine bundled with the app on Linux/macOS (the SHVIA fork
+of Strix, `pentest` beside the executable, never looked up on PATH). The current probe
 requires a plain fork version `1.2.39 <= version < 2.0.0`, using `--fork-version` before native
 consent; Windows is refused. Start, resume and retest repeat the check. Private saved-run and
 authorization identity stay native-owned. The viewer opens separately in the OS browser after

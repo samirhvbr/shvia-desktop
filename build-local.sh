@@ -33,6 +33,9 @@
 #   ./build-local.sh --anna /caminho/para/anna   # empacota ESTE anna (item D5)
 #   ./build-local.sh --no-anna       # NÃO empacota o motor (app sai sem Modo Code
 #                                    # pronto — o usuário terá de instalar à mão)
+#   ./build-local.sh --pentest /path/to/pentest  # bundle THIS Pentest engine (Linux/macOS)
+#   ./build-local.sh --no-pentest    # do NOT bundle the Pentest engine (the app then says so,
+#                                    # E_PENTEST_NOT_BUNDLED, instead of carrying a stale one)
 #   ./build-local.sh --publish       # publica no servidor por scp (item D1)
 #   ./build-local.sh --publish --dest usuario@HOST:/caminho/   # outro destino
 #   ./build-local.sh --publish --transicao-de-chave   # the ONE release of an updater key
@@ -87,6 +90,13 @@
 # como uma versão velha vai parar dentro de um release. Sem `anna` no PATH, o build
 # segue e avisa.
 #
+# PENTEST ENGINE (Linux and macOS): bundled the same way, by scripts/stage-pentest.mjs, from
+# `--pentest`, $SHVIA_PENTEST_BIN or the release pinned in pentest-engine.json (checked against a
+# SHA-256 written in the repository). There is no lookup on PATH. On macOS, after signing, the
+# engine is RUN from inside the .app: a PyInstaller one-file engine can be refused by library
+# validation once the app is signed with the hardened runtime, and a build that ships a Pentest
+# that does not start must fail here, not on the installed app (docs/build.md, "Pentest engine").
+#
 # GIT PULL (padrão da casa): antes de tudo, o script faz 'git pull --ff-only'
 # para você não empacotar código velho sem querer. É fast-forward-only (nunca
 # cria merge) e NÃO trava o build se falhar (offline, mudanças locais ou branch
@@ -121,6 +131,9 @@ cd "$(dirname "$0")"
 # Item D5: de onde vem o `anna` a empacotar, e se empacota.
 ANNA_FROM=""
 NO_ANNA=0
+# The Pentest engine (Linux/macOS): where it comes from, and whether it is bundled.
+PENTEST_FROM=""
+NO_PENTEST=0
 
 # ── Cronômetro do build: tempo total (parede) + por etapa ───────────────────
 # Mesmo padrão do SHVTERM/build-local.sh: o "built in Xs" do Vite/cargo é só
@@ -447,6 +460,38 @@ setup_macos_signing() {
 
   # 2) Notarization credential: the API key first, the keychain password as the fallback.
   escolhe_credencial_de_notarizacao || exit 1
+}
+
+# Runs the bundled Pentest engine from inside the signed .app (see "PENTEST ENGINE" in the header).
+# Signing happens inside `tauri build`, so this is the first moment the signed engine exists.
+verify_macos_engine() {
+  [ "$_BUILD_OS" = macOS ] || return 0
+  [ "$SIGN_ENABLED" -eq 1 ] || return 0
+  ls src-tauri/binaries/pentest-* >/dev/null 2>&1 || return 0
+  local app out
+  app="$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' 2>/dev/null | head -1 || true)"
+  if [ -z "$app" ]; then
+    echo "    (no standalone .app in this build — the signed Pentest engine was NOT run; try it in the installed app)"
+    return 0
+  fi
+  out="$("$app/Contents/MacOS/pentest" --fork-version 2>&1 || true)"
+  if printf '%s' "$out" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+    echo "    ✔ the bundled Pentest engine starts inside the signed .app ($out)"
+    return 0
+  fi
+  {
+    echo "  ❌ the bundled Pentest engine does NOT start inside the signed .app."
+    echo "     It answered: $(printf '%s' "$out" | head -c 300)"
+    echo "     The usual cause is library validation: the engine is a PyInstaller one-file build, its"
+    echo "     libraries are signed ad hoc, and the hardened runtime refuses libraries that do not carry"
+    echo "     the app's Team ID. Two ways out, each with a cost (docs/build.md, \"Pentest engine\"):"
+    echo "       1. build the engine on this Mac with --codesign-identity \"\$APPLE_SIGNING_IDENTITY\""
+    echo "          and pass it with --pentest;"
+    echo "       2. add com.apple.security.cs.disable-library-validation to the app's entitlements,"
+    echo "          which weakens library validation for the whole app."
+    echo "     Or build with --no-pentest to ship without the engine."
+  } >&2
+  exit 1
 }
 
 # Verificação pós-build: prova que o .app/.dmg ficaram aceitáveis ao Gatekeeper.
@@ -1269,6 +1314,8 @@ while [ $# -gt 0 ]; do
     --bundles)      shift; BUNDLES="${1:-}" ;;
     --anna)         shift; ANNA_FROM="${1:-}" ;;
     --no-anna)      NO_ANNA=1 ;;
+    --pentest)      shift; PENTEST_FROM="${1:-}" ;;
+    --no-pentest)   NO_PENTEST=1 ;;
     --transicao-de-chave) TRANSICAO_DE_CHAVE=1 ;;
     -h|--help)      usage; exit 0 ;;
     *) echo "opção desconhecida: $1 (use --help)" >&2; exit 2 ;;
@@ -1496,11 +1543,22 @@ if [ "$REUSE" -eq 0 ]; then
   step "[D5] motor (anna) para dentro do bundle"
   if [ "$NO_ANNA" = "1" ]; then
     echo "    (pulado: --no-anna — o app sairá SEM Modo Code pronto)"
-    rm -rf src-tauri/binaries
+    # Only anna's files: the folder also holds the Pentest engine, which --no-anna says nothing about.
+    rm -f src-tauri/binaries/anna-*
   elif [ -n "$ANNA_FROM" ]; then
     node scripts/stage-anna.mjs --from "$ANNA_FROM"
   else
     node scripts/stage-anna.mjs
+  fi
+
+  step "[D6] Pentest engine into the bundle"
+  if [ "$NO_PENTEST" = "1" ]; then
+    echo "    (skipped: --no-pentest — the app will ship WITHOUT the Pentest engine)"
+    rm -f src-tauri/binaries/pentest-*
+  elif [ -n "$PENTEST_FROM" ]; then
+    node scripts/stage-pentest.mjs --from "$PENTEST_FROM"
+  else
+    node scripts/stage-pentest.mjs
   fi
 
   step "[3/3] Tauri build"
@@ -1509,16 +1567,22 @@ if [ "$REUSE" -eq 0 ]; then
   # `binaries/anna-<triple>` doesn't exist" stops the build script. So "the app ships
   # without the engine" (--no-anna, or no anna found) was never true: --no-anna failed the
   # build, and a missing anna either failed it or bundled a stale one. With no sidecar
-  # staged, Tauri is told so (`externalBin: []`); the installed app then finds anna on PATH.
+  # staged, Tauri is told so; the installed app then finds anna on PATH.
+  # Linux and macOS declare TWO sidecars (anna, and the Pentest engine in tauri.<os>.conf.json) and
+  # either can be absent, so the list is built from what is staged, never emptied as a whole: an
+  # empty list for one missing file would drop the other one from the bundle.
   # Both overrides live under "bundle", so they are merged into ONE --config.
-  SEM_ANNA=0
-  if ! ls src-tauri/binaries/anna-* >/dev/null 2>&1; then
-    SEM_ANNA=1
-    echo "    (sem anna em src-tauri/binaries — o bundle sai SEM o motor; o app usa o do PATH)"
-  fi
+  _SIDECARS=""
+  for _nome in anna pentest; do
+    if ls src-tauri/binaries/${_nome}-* >/dev/null 2>&1; then
+      _SIDECARS="${_SIDECARS:+$_SIDECARS,}\"binaries/${_nome}\""
+    else
+      echo "    (no ${_nome} in src-tauri/binaries — the bundle ships WITHOUT it)"
+    fi
+  done
   _BUNDLE_CFG=""
   if [ "$UPDATER_ARTIFACTS" -eq 0 ]; then _BUNDLE_CFG='"createUpdaterArtifacts":false'; fi
-  if [ "$SEM_ANNA" -eq 1 ]; then _BUNDLE_CFG="${_BUNDLE_CFG:+$_BUNDLE_CFG,}\"externalBin\":[]"; fi
+  if [ "$_SIDECARS" != '"binaries/anna","binaries/pentest"' ]; then _BUNDLE_CFG="${_BUNDLE_CFG:+$_BUNDLE_CFG,}\"externalBin\":[${_SIDECARS}]"; fi
   _CFG=""
   if [ -n "$_BUNDLE_CFG" ]; then _CFG="{\"bundle\":{$_BUNDLE_CFG}}"; fi
   # ── end bundle overrides ──
@@ -1539,6 +1603,7 @@ if [ "$REUSE" -eq 0 ]; then
   if [ "$_BUILD_OS" = macOS ]; then
     step "[macOS] verificação (codesign / spctl / stapler)"
     verify_macos_signature
+    verify_macos_engine
   fi
 fi
 

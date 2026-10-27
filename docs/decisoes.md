@@ -2787,3 +2787,49 @@ the person already has the client installed and signed in, so the owner asked fo
 
 The sign-in itself: it needs the person's browser. Everything around it is proved on fixtures of the client's screen and on
 stand-ins (see the doc's *What was read, and what was NOT run*).
+
+---
+
+## ADR-044 — IPv4 Search runs here, on private ranges only, and the shell is the one that decides
+
+- **Date:** 26/10/2026 · **Status:** **Accepted**
+
+### Context
+
+The owner needed to find which address on a private /22 had port 8006 open, and asked for a tool in the Network module
+(`IPv4 Search`, below Pentest) that scans a range and optional ports and reports the result. A scan has to run from the
+machine that can reach the range — the server cannot — and a port scanner is a tool whose only difference between the
+owner's own network and somebody else's is where it is pointed.
+
+### Decision
+
+1. **The scan runs in the shell and the server never sees it.** The page asks through the bridge
+   (`ipv4SearchStart`/`ipv4SearchStop`, `recursos.varreduraIPv4`); results come back as events. The WEB page is a form and a
+   report, not an authority.
+2. **The shell enforces the limits; the page cannot widen them.** Private ranges only (the WEB's `DestinationPolicy`
+   classes), at most a /16, 1,024 ports and 1,000,000 first-pass probes, one scan at a time, and a **native confirmation**
+   that shows the normalised range, the ports and the most attempts it can make. A public range is refused, not confirmed.
+3. **A TCP connect scan, and nothing more**: one `connect()` per probe, dropped when accepted, no data sent. Raw sockets,
+   SYN scans, ICMP and OS-fingerprinting are out — they need privileges this app deliberately never asks for.
+4. **Two passes** so an empty /22 does not cost every port on every address; `probeAll` opts out.
+5. **The scan belongs to the page that asked.** A new document, a closed window or a quit cancels it.
+
+### Alternatives considered
+
+- **Run it on the server.** It cannot reach the person's private range, and a server that scans on request is the thing
+  `DestinationPolicy` exists to prevent.
+- **Shell out to `nmap`.** Not installed on most machines, a different command line per OS, and its output is a format to
+  parse; the limits above would be the page's promise instead of the shell's code.
+- **Allow public ranges behind a stronger confirmation.** A confirmation tells the shell the person clicked, not that the
+  range is theirs. The owner's need is a private network; widening it is a separate decision with its own review.
+
+### Consequences
+
+- A host that drops everything is indistinguishable from an empty address: the report says "no answer", not "down".
+- Pass 1 can miss a host that drops the common ports and listens only on an odd one; the person can choose `probeAll`.
+- There is no server-side audit of scans (unlike Pentest authorizations). The native dialog is the only record, and a log
+  of confirmed scans is a possible follow-up.
+
+### Not measured
+
+A scan over a real network with dropping hosts, and the macOS and Windows builds — see `docs/code/IPV4-SEARCH.md`.

@@ -47,6 +47,10 @@ updates:
       # through tauri), and a second copy would not hand its window handle to tauri's types.
       - dependency-name: zbus
       - dependency-name: raw-window-handle
+      # 1.31.0 (ADR-044): the IPv4 Search probe's socket on Windows. Not a WebView crate: tokio and
+      # hyper-util already resolve it (0.6.5), so it moves when they do. It is listed because every
+      # crate in a per-OS section has to be, and `prova:dependabot` failed without it.
+      - dependency-name: socket2
 
   # The packet-capture sidecar (Network "Traffic" tool). A separate crate on purpose: it is
   # the only thing allowed to link libpcap/Npcap, and `src-tauri` above must never resolve it.

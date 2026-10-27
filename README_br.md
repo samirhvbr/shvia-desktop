@@ -135,8 +135,12 @@ para distribuir uma release.
 O runner Claude exige Node 18+ e as dependências do SDK; o runner Codex exige
 Node 18+ e o CLI Codex instalado e autenticado. O aplicativo pode instalar/atualizar
 runners a partir das fontes incluídas no pacote; veja [runner Claude](claude-runner/README.md)
-e [runner Codex](codex-runner/README.md). A arquitetura atual não prevê um sidecar
-Python/PyInstaller. Ferramentas opcionais e runtimes de avaliação têm dependências próprias.
+e [runner Codex](codex-runner/README.md). No Linux e no macOS o instalador também leva o
+motor do Pentest (o perfil de avaliação controlada) como sidecar ao lado do `anna`: um build
+PyInstaller do fork SHVIA do Strix, publicado pelo repositório dele e fixado aqui por SHA-256,
+então atualizar o Desktop atualiza o motor. O Docker é um requisito à parte; veja
+[docs/build.md](docs/build.md). Ferramentas opcionais e outros runtimes de avaliação têm
+dependências próprias.
 
 As verificações Rust rodam em `src-tauri` (`cargo test --locked`,
 `cargo clippy --locked --all-targets -- -D warnings`), com a mesma preparação do

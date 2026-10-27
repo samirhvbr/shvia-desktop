@@ -432,22 +432,26 @@ pub(super) fn resolve_runner(base: &str) -> Option<Lancamento> {
     )
 }
 
-pub(super) fn resolve_bin(base: &str) -> Option<PathBuf> {
+/// A program that ships WITH the app: the file beside the running executable, and nowhere else.
+/// There is no lookup on PATH or in an install directory, so what runs is always the build the
+/// installer carried, never whatever else a machine happens to have under the same name.
+pub(super) fn bundled_bin(base: &str) -> Option<PathBuf> {
     let exe_name = if cfg!(windows) { format!("{base}.exe") } else { base.to_string() };
+    let exe = std::env::current_exe().ok()?;
+    let p = exe.parent()?.join(exe_name);
+    p.is_file().then_some(p)
+}
 
+pub(super) fn resolve_bin(base: &str) -> Option<PathBuf> {
     // (1) Ao lado do próprio app (bundled).
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let p = dir.join(&exe_name);
-            if p.exists() {
-                return Some(p);
-            }
-        }
+    if let Some(p) = bundled_bin(base) {
+        return Some(p);
     }
 
     // (2)+(3) por SO.
     #[cfg(windows)]
     {
+        let exe_name = format!("{base}.exe");
         let mut onde = crate::processo::comando("where");
         onde.arg(base);
         if let Ok(out) = saida_com_prazo(onde, PRAZO_VERSAO) {
@@ -549,6 +553,23 @@ pub fn engine_status(base: &str) -> serde_json::Value {
 #[cfg(test)]
 mod tests_motor {
     use super::*;
+
+    /// A bundled program is the file beside the executable and nothing else: a program that IS on
+    /// PATH (`sh`, `cmd`) is not found, and a file placed beside the executable is.
+    #[test]
+    fn bundled_bin_is_the_file_beside_the_executable_and_never_a_path_lookup() {
+        let on_path = if cfg!(windows) { "cmd" } else { "sh" };
+        assert!(bundled_bin(on_path).is_none(), "{on_path} is on PATH, not beside the executable");
+
+        let beside = std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
+        let name = format!("shvia-bundled-probe-{}", std::process::id());
+        let file = beside.join(if cfg!(windows) { format!("{name}.exe") } else { name.clone() });
+        assert!(bundled_bin(&name).is_none());
+        std::fs::write(&file, b"x").unwrap();
+        let found = bundled_bin(&name);
+        let _ = std::fs::remove_file(&file);
+        assert_eq!(found.as_deref(), Some(file.as_path()));
+    }
 
     /// The page reads one shape from both runners' `--uso` (1.27.0), and an old runner that ignored the
     /// flag is said, never shown as an empty reading.

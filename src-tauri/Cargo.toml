@@ -1,6 +1,6 @@
 [package]
 name = "shvia-desktop"
-version = "1.31.1"
+version = "1.32.1"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
@@ -92,6 +92,9 @@ tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 tauri-plugin-global-shortcut = "~2.4.0"
 # The `shvia://` scheme (1.10.0, ADR-038). Rust API only, for the same reason: the page never
 # learns which links opened the app, and the routes it can reach are a fixed list (`esquema.rs`).
+# On Linux, 2.6.2 builds `ini::ParseOption` with the two fields of `rust-ini` 0.21.1, so the lockfile
+# holds `rust-ini` at 0.21.1: 0.21.3 added two more fields and fails it with E0063. A plain
+# `cargo update` moves it back to 0.21.3 (1.30.10; 1.30.5 had pinned deep-link 2.6.1 instead).
 tauri-plugin-deep-link = "~2.6.0"
 # Auto-update (item D1 — ADR-022). Dirigido SÓ pela API Rust (`src/updater.rs`):
 # a capability não declara `updater:default`, senão a página remota poderia
@@ -140,4 +143,6 @@ objc2-web-kit = "0.3"
 # the Win32 security and filesystem APIs enabled below.
 [target.'cfg(target_os = "windows")'.dependencies]
 webview2-com = "0.39"
-windows = { version = "0.62", features = ["Win32_Security_Authorization", "Win32_Storage_FileSystem"] }
+windows = { version = "0.62", features = ["Win32_Networking_WinSock", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_IO"] }
+# The IPv4 Search probe sets a WinSock option before connecting, which std's TcpStream does not allow; already in the lockfile.
+socket2 = "0.6"

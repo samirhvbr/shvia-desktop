@@ -28,8 +28,8 @@ decision.
 | **Windows** | `.\build-local.ps1` (ou duplo-clique `build-local.cmd`) | `.msi` + `-setup.exe` |
 
 Saída em `src-tauri/target/release/bundle/`. Opções (Linux/macOS): `--skip-npm-ci`,
-`--bundles <deb|appimage|rpm|dmg|app>`, `--anna <path>`, `--no-anna`, `--no-sign`,
-`--skip-git-pull`, `--force` and `--publish`. Windows uses PowerShell parameters:
+`--bundles <deb|appimage|rpm|dmg|app>`, `--anna <path>`, `--no-anna`, `--pentest <path>`,
+`--no-pentest`, `--no-sign`, `--skip-git-pull`, `--force` and `--publish`. Windows uses PowerShell parameters:
 `-SkipNpmCi`, `-SkipGitPull`, `-Anna <path>`, `-NoAnna`, `-NoSign`; it has no publish/reuse
 switch. These are different scripts, not interchangeable command-line syntaxes.
 
@@ -46,7 +46,8 @@ belong to the target OS. See [the Windows acceptance runbook](roteiro-validacao-
 |---|---|---|
 | Local shell | Root `npm ci`, TypeScript and Vite (`npm run build`) | Offline/loading/settings shell; the main application page is remote |
 | Native app | `src-tauri/Cargo.toml`, `Cargo.lock` and OS-specific Tauri dependencies | WebView and OS permissions; capabilities differ by OS |
-| SHVIA engine | `scripts/stage-anna.mjs`, then `bundle.externalBin` | Optional `anna` executable matching the build host's target triple; not a Python/PyInstaller backend built here |
+| SHVIA engine | `scripts/stage-anna.mjs`, then `bundle.externalBin` | Optional `anna` executable matching the build host's target triple |
+| Pentest engine | `scripts/stage-pentest.mjs` (release pinned in `pentest-engine.json`), then `bundle.externalBin` in `tauri.linux.conf.json` / `tauri.macos.conf.json` | Linux and macOS only. The engine ships in the installer; Docker and the sandbox image it pulls on first use are separate requirements |
 | Claude runner | Bundled `.mjs`/`.json` and installers under `claude-runner/` | Node, runner installation, SDK and authorized Claude credentials; see [runner README](../claude-runner/README.md) |
 | Codex runner | Bundled modules/installers/schema under `codex-runner/` | Node, installed runner and Codex CLI/app-server/login; see [runner README](../codex-runner/README.md) |
 
@@ -58,9 +59,59 @@ a compatibility check. Absence removes a stale staged binary, and the wrappers o
 engine**, not that every other local/remote Code engine disappears. An independently
 installed engine can still be discovered at runtime.
 
-No configured application sidecar in `tauri.conf.json` uses Python/PyInstaller. The old F2
-proposal and Python probe scripts do not establish such an installed backend. Do not add
-a `pip` packaging step to this build on the strength of that proposal.
+## Pentest engine
+
+The controlled assessment profile runs a local engine. It used to be something the operator
+installed and updated by hand, and a Desktop with the right version (1.30.5) still said
+"Pentest not detected" because the engine was a separate thing. It now ships inside the
+installer, so updating the Desktop updates it.
+
+**What it is.** The SHVIA fork of Strix, frozen with PyInstaller (one file, about 94 to 118
+MB per platform) by that repository's `pentest-binaries.yml`, and published on its GitHub
+Release as `pentest-<target triple>` plus a `SHA256SUMS`. It is built there, not here: this
+repository has no Python source and this build has no `pip` step.
+
+**Where it lands.** `externalBin` puts it beside the executable: `Contents/MacOS/pentest` on
+macOS, and `/usr/bin/pentest` in the `.deb` (measured: `ShvIA_1.32.0_amd64.deb` is 117.7 MB, the engine 111.8 MB of it, and the packaged
+`pentest --fork-version` runs). The `.rpm` and the AppImage were not built here. The app looks for it there and nowhere
+else (`motores::bundled_bin`): no lookup on PATH, so what runs is always the build the
+installer carried. A build that carries none answers `E_PENTEST_NOT_BUNDLED`, which the page
+translates, instead of "update Pentest".
+
+**Staging.** `scripts/stage-pentest.mjs` takes `--from`, then `SHVIA_PENTEST_BIN`, then the
+release pinned in `pentest-engine.json`: a version, the release URL and one SHA-256 per
+target triple. A downloaded file is cached under `~/.cache/shvia/pentest-engine/` and is
+checked against that hash on every build. What fails the build is a file that is there and
+wrong: a hash that differs from the pinned one, an engine that does not run or does not print
+a plain `X.Y.Z` for `--fork-version`, one below the floor, or one that prints a different
+version than the manifest pins. What does not fail it is an absence (no network and no cache,
+no asset for the platform): the build goes on without the engine and removes any engine an
+earlier build staged. `npm run prova:pentest` runs each of those cases against a local HTTP
+server and keeps the floor in the script equal to the one in `compatibility.rs`.
+
+**Windows.** The controlled profile refuses to run on Windows, so the engine is declared per
+platform and the Windows build never asks for one.
+
+**Raising the engine.** Publish the fork's Release (`pentest-binaries.yml` with `release_tag`),
+copy the four SHA-256 values from its `SHA256SUMS` into `pentest-engine.json` with the new
+version, and raise the floor in `stage-pentest.mjs` and `compatibility.rs` together only if
+the Desktop needs something the older engine lacks.
+
+**Probe time.** A one-file build unpacks itself on every start: `--fork-version` takes about
+2.6 s on Linux, cold or warm (measured), and a first launch on macOS also waits for Gatekeeper.
+The probe deadline is 20 s for that reason.
+
+**macOS signing: not verified here.** The engine is signed with the app by `tauri build`
+(hardened runtime). A PyInstaller one-file engine unpacks libraries that are signed ad hoc, and
+library validation refuses libraries that do not carry the app's Team ID, so a signed build
+can fail to start. This was not tested: no Mac was available when the engine was bundled. So
+`build-local.sh` runs `Contents/MacOS/pentest --fork-version` from inside the signed `.app`
+and stops the build, with the explanation, if it does not print a version. The two ways out
+each cost something: build the engine on the Mac with `--codesign-identity` (its libraries then
+carry the Team ID) and pass it with `--pentest`, or add
+`com.apple.security.cs.disable-library-validation` to the app's entitlements, which weakens
+library validation for the whole app, not only the engine. `--no-pentest` ships the app without
+it.
 
 ## Targets por SO
 
@@ -101,7 +152,8 @@ npm run prova:politica
 npm run prova:runner-version
 ```
 
-For Rust checks, first stage a usable `anna` with `npm run anna:stage`, and install the
+For Rust checks, first stage a usable `anna` with `npm run anna:stage` (and, on Linux or macOS, the
+engine with `npm run pentest:stage`), and install the
 Codex runner as described by its [README](../codex-runner/README.md). The suite contains an
 installed-runner `--version` smoke check. Then:
 

@@ -83,6 +83,10 @@ jobs:
           chmod +x "src-tauri/binaries/anna-$triple"
           : > "src-tauri/binaries/traffic-capture-$triple"
           chmod +x "src-tauri/binaries/traffic-capture-$triple"
+          # Linux and macOS also declare the Pentest engine (tauri.<os>.conf.json), so the build
+          # script requires that file too. Inert, like anna's: nothing here runs it.
+          : > "src-tauri/binaries/pentest-$triple"
+          chmod +x "src-tauri/binaries/pentest-$triple"
       - name: clippy
         working-directory: src-tauri
         run: cargo clippy --locked --all-targets -- -D warnings

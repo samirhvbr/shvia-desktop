@@ -51,6 +51,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
       - run: npm ci --no-audit --no-fund
+      - name: Pending connection probes do not interrupt server settings
+        run: npm run prova:bootstrap
       - name: Política do claude-runner (F-13)
         run: npm run prova:politica
       # Does the runner LOAD? `node --check` only parses, and `politica.test.mjs` never
@@ -121,6 +123,11 @@ jobs:
       # sidecar, instead of bundling an old engine or failing the build (1.6.24).
       - name: Packaging without anna ships no stale engine
         run: npm run prova:sem-anna
+      # The Pentest engine is staged from a pinned release (SHA-256 in this repository), never from
+      # PATH: a replaced asset or an engine below the floor fails the build, an absent one does not,
+      # and the floor equals the one `compatibility.rs` enforces.
+      - name: The Pentest engine is staged from the pinned release, or not at all
+        run: npm run prova:pentest
       # `--publish` ships only what is committed: a dirty or untracked build input refuses it (1.6.34).
       - name: A publish refuses a dirty build input
         run: npm run prova:arvore
@@ -153,6 +160,10 @@ jobs:
           chmod +x "src-tauri/binaries/anna-$triple"
           : > "src-tauri/binaries/traffic-capture-$triple"
           chmod +x "src-tauri/binaries/traffic-capture-$triple"
+          # Linux and macOS also declare the Pentest engine (tauri.<os>.conf.json), so the build
+          # script requires that file too. Inert, like anna's: nothing here runs it.
+          : > "src-tauri/binaries/pentest-$triple"
+          chmod +x "src-tauri/binaries/pentest-$triple"
       # O motor Codex é instalação opcional, e por isso mesmo a régua que confere a
       # instalação precisa de uma instalação para conferir. O script não usa rede,
       # npm nem login: copia arquivos, escreve um wrapper e cai na cópia do schema
