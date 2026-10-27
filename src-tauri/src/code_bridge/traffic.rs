@@ -170,6 +170,10 @@ pub(super) fn request_permission() -> Result<Value, String> {
     let after = permission_status(None);
     let granted = after.get("status").and_then(Value::as_str) == Some("ready");
     let mut answer = json!({ "granted": granted, "status": after.get("status").cloned().unwrap_or(Value::Null) });
+    if !granted {
+        // A code the page translates into the next step for THIS OS; the free text below it is never shown.
+        answer["reason"] = json!(not_granted_reason());
+    }
     let note = match (&attempt, granted) {
         (_, true) => None,
         (Err(e), false) => Some(e.clone()),
@@ -182,6 +186,18 @@ pub(super) fn request_permission() -> Result<Value, String> {
         answer["url"] = url;
     }
     Ok(answer)
+}
+
+/// Why a grant did not happen, as a code the page turns into the next step for this OS: macOS and Windows need
+/// something installed that this app does not install for the person; on Linux the prompt was dismissed or refused.
+fn not_granted_reason() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "needs_chmodbpf"
+    } else if cfg!(target_os = "windows") {
+        "needs_npcap"
+    } else {
+        "cancelled"
+    }
 }
 
 /// Linux: give the SIDECAR BINARY — not the app — the two capabilities libpcap needs, readable and
@@ -694,6 +710,15 @@ mod tests {
         assert!(!spoof.contains("eth0\n\n"), "a newline from the page must not start a line of the app's own text");
         let long = confirmation_text("e", &"a".repeat(5000));
         assert!(long.len() < 1200, "{}", long.len());
+    }
+
+    #[test]
+    fn a_grant_that_did_not_happen_names_the_next_step_for_this_os_with_a_code_the_page_knows() {
+        // public/js/traffic.js translates exactly these three; anything else would reach the person as nothing.
+        assert!(["needs_chmodbpf", "needs_npcap", "cancelled"].contains(&not_granted_reason()));
+        if cfg!(target_os = "linux") {
+            assert_eq!(not_granted_reason(), "cancelled");
+        }
     }
 
     #[test]

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.32.1 - Say why a capture permission was not granted, with a code the page translates
+
+- `trafficRequestPermission()` answers `{granted, status, reason?}`; when nothing was granted, `reason` is `needs_chmodbpf` (macOS:
+  the device access Wireshark's helper sets up), `needs_npcap` (Windows) or `cancelled` (Linux: the polkit prompt was dismissed or
+  refused). Without it the page could only say "not granted" — and on macOS the whole instruction (what to install) was in a free-text
+  message the page, by design, never renders. The page turns each code into its own next step from fixed strings and fixed links, so
+  nothing the native side sends is shown or followed. `public/js/traffic.js` (SHVIA-WEB) reads it.
+- `trafficPermissionStatus` no longer carries `message`/`url` in the shim's documented answer: the page never read them.
+
 ## 1.32.1 - Bundle the capture sidecar on Linux and macOS only, and build, test and lint it in CI
 
 - **Declared per platform.** `traffic-capture` was in the base `tauri.conf.json`, which Windows also reads, so a Windows build would

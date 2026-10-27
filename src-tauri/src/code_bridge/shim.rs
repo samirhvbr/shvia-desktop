@@ -79,8 +79,9 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // Packet capture for the Network "Traffic" tool (recursos.captura, 1.32.1). Everything below happens on THIS computer's own
     // interfaces; nothing captured goes anywhere but the file the person exports. Errors reject with an 'E_CODE: text' string.
     //   trafficInterfaces()                        -> [{id, name, description, isUp, isLoopback}]
-    //   trafficPermissionStatus({interfaceId?})    -> {status: 'ready'|'needs_permission'|'missing_npcap'|'error', message?, url?}
-    //   trafficRequestPermission()                 -> {granted, status, message?, url?}  (one OS prompt, never silent)
+    //   trafficPermissionStatus({interfaceId?})    -> {status: 'ready'|'needs_permission'|'missing_npcap'|'error'}
+    //   trafficRequestPermission()                 -> {granted, status, reason?}  (one OS prompt, never silent); reason when not granted:
+    //                                                 'cancelled' | 'needs_chmodbpf' (macOS) | 'needs_npcap' (Windows)
     //   trafficStart({interfaceId, filter})        -> {started:true} AFTER a native dialog the person accepts and the device opens
     //   trafficStop()                              -> {stopped}; the capture file stays for trafficExport until the next start
     //   trafficExport()                            -> {exported, path?} through a native save dialog
