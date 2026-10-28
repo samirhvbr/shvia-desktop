@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.32.2 - Show the Pentest engine in Help → About: the build this Desktop requires and the one found beside it
+
+The page said "Detected: Desktop 1.32.1; Pentest not detected" and nothing told the person why. The About dialog now has two
+rows that answer it.
+
+- **Pentest engine** is what is actually beside the executable: `v1.2.43 (empacotado)` when `--fork-version` answers, and
+  otherwise the reason in plain words — `não incluído neste build` (`E_PENTEST_NOT_BUNDLED`: the installer was packaged
+  without an engine, which is what a build gets while the pinned Release does not exist), `versão não suportada`
+  (`E_PENTEST_TOO_OLD`), `não informou a versão` (`E_PENTEST_VERSION_UNKNOWN`). On Windows it says the engine is not offered.
+- **Pentest exigido** is the engine this Desktop is made to carry: the `version` in `pentest-engine.json`, the file the
+  installer's stage script pins and SHA-checks, read at compile time so the dialog cannot drift from what ships. The row is
+  left out where the engine is not offered.
+- The probe takes seconds (a one-file engine that unpacks itself on each call, plus Gatekeeper on a first macOS launch), so
+  the dialog opens at once with `verificando…` and a background thread fills the row in; a dialog closed in the meantime is
+  simply not there to update. Nothing runs on the UI thread, and an absent engine needs no probe at all.
+- **Copiar** carries both: `Motor do Pentest: v1.2.43 (empacotado) · exigido v1.2.43`, for a support report.
+
+Proved by 4 new unit tests (the dialog's version is the pin's, each failure has its own line, nothing in any line can close a JS
+string, an absent engine answers without a probe) and by rendering the real modal in Chromium in three states.
+
 ## 1.32.1 - Document packet capture as it works now, and record why it is built this way (ADR-045)
 
 - `docs/TRAFFIC/README.md` is rewritten: it still said the sidecar "was never compiled" and that `pkexec`/`osascript` were never run.

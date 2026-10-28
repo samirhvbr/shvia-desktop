@@ -77,7 +77,7 @@ macOS, and `/usr/bin/pentest` in the `.deb` (measured: `ShvIA_1.32.0_amd64.deb` 
 `pentest --fork-version` runs). The `.rpm` and the AppImage were not built here. The app looks for it there and nowhere
 else (`motores::bundled_bin`): no lookup on PATH, so what runs is always the build the
 installer carried. A build that carries none answers `E_PENTEST_NOT_BUNDLED`, which the page
-translates, instead of "update Pentest".
+translates, instead of "update Pentest". Help → About shows both halves (the engine beside the executable, and the one this Desktop requires, from `pentest-engine.json`), so "Pentest not detected" on the page can be told apart from a broken engine without opening the bundle.
 
 **Staging.** `scripts/stage-pentest.mjs` takes `--from`, then `SHVIA_PENTEST_BIN`, then the
 release pinned in `pentest-engine.json`: a version, the release URL and one SHA-256 per
