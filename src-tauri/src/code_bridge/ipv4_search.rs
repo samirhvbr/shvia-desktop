@@ -687,14 +687,26 @@ pub(crate) fn confirmation_text(plan: &Plan) -> String {
     } else {
         format!("{} ({} portas)", compact_ports(&plan.ports), plan.ports.len())
     };
+    // The first pass tries the common ports on EVERY address even when the person typed their own, so the dialog says
+    // which ports those are; what the person consents to is what the scan does, not only what they typed.
+    let passes = if plan.ports.is_empty() || plan.first_pass == plan.ports {
+        String::new()
+    } else {
+        let mut lines = format!("\n  Em todos os endereços: {}", compact_ports(&plan.first_pass));
+        if !plan.second_pass.is_empty() {
+            lines.push_str(&format!("\n  Só nos que responderem: {}", compact_ports(&plan.second_pass)));
+        }
+        lines
+    };
     let worst = plan.first_pass_probes() + plan.hosts.len() as u64 * plan.second_pass.len() as u64;
     format!(
-        "Faixa: {}\nEndereços: {}\nPortas: {}\nTempo limite por conexão: {} ms\nAté {} tentativas de conexão TCP.\n\n\
+        "Faixa: {}\nEndereços: {}\nPortas: {}{}\nTempo limite por conexão: {} ms\nAté {} tentativas de conexão TCP.\n\n\
          O ShvIA vai tentar abrir conexões a partir deste computador e fechá-las em seguida, sem enviar dados. \
          Faça isso apenas em redes que você administra ou que tem autorização para testar. Continuar?",
         plan.cidr.label(),
         plan.hosts.len(),
         ports,
+        passes,
         plan.timeout.as_millis(),
         worst,
     )
@@ -1099,6 +1111,28 @@ mod tests {
         }
         let discovery = confirmation_text(&plan("10.100.100.0/24", "", None, false).unwrap());
         assert!(discovery.contains("só descobrir quem responde"));
+    }
+
+    #[test]
+    fn the_confirmation_names_the_ports_tried_on_every_address_not_only_the_typed_ones() {
+        // Typed ports: the first pass still probes the common ones everywhere, and the dialog is what the person consents to.
+        // The person's first four (2000, 8000-8002) plus the common ones up to eight; the other 78 only where something answered.
+        let text = confirmation_text(&plan("10.100.100.0/22", "2000,8000-8080", None, false).unwrap());
+        assert!(text.contains("Em todos os endereços: 22,80,443,445,2000,8000-8002\n"), "{text}");
+        assert!(text.contains("Só nos que responderem: 8003-8080\n"), "{text}");
+
+        // Typed ports that all fit in the first pass: the common ones are still named, and there is no second line.
+        let few = confirmation_text(&plan("10.100.100.0/24", "8006", None, false).unwrap());
+        assert!(few.contains("Em todos os endereços: 22,80,135,139,443,445,3389,8006\n"), "{few}");
+        assert!(!few.contains("Só nos que responderem"), "{few}");
+
+        // `probeAll` tries the typed ports and nothing else, and discovery-only already lists its own ports on the Portas line.
+        for text in [
+            confirmation_text(&plan("10.100.100.0/24", "2000,8000-8080", None, true).unwrap()),
+            confirmation_text(&plan("10.100.100.0/24", "", None, false).unwrap()),
+        ] {
+            assert!(!text.contains("Em todos os endereços") && !text.contains("Só nos que responderem"), "{text}");
+        }
     }
 
     #[test]
