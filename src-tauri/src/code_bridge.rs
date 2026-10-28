@@ -49,6 +49,9 @@ use sessao::*;
 mod atualizacao;
 pub(crate) use atualizacao::na_abertura;
 mod aparelho;
+// IPv4 Search (1.31.0): a TCP connect scan of one private range, from this computer. Not glob-imported: the arms below address it by path.
+mod ipv4_search;
+pub use ipv4_search::cancelar_varredura;
 mod navegador;
 mod pentest;
 pub(crate) use pentest::stop as stop_pentest;
@@ -192,6 +195,15 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             pentest::stop(Some(w.label()));
             (true, serde_json::json!({"stopped":true}))
         }),
+        // Blocks on a native dialog until the person answers, so it must not run on the UI thread.
+        "ipv4SearchStart" => fora_da_ui(window, &req, move |w| match ipv4_search::start(w, &v) {
+            Ok(summary) => (true, summary),
+            Err(error) => (false, serde_json::json!(error)),
+        }),
+        "ipv4SearchStop" => {
+            let stopped = ipv4_search::stop(window.label());
+            reply(window, &req, true, serde_json::json!({"stopped": stopped}));
+        }
         "spawn" => spawn(window, &req, &v),
         "send" => {
             let ok = send(window, &v);
@@ -727,7 +739,7 @@ mod tests_fora_da_ui {
         for acao in [
             "gitStatus", "listTree", "gitDiff", "readFile", "codexModels", "claudeAuthStatus", "claudeUsage", "codexUsage",
             "claudeAuthLoginStart", "claudeSubscriptionConnect", "claudeSubscriptionCode", "claudeModels", "claudeRunnerInstall", "claudeAccountsDetect",
-            "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "openPentestViewer", "pentestCompatibility", "stopPentest", "resumePentest", "reviewPentest", "retestPentest", "pentestLive", "pausePentest", "continuePentest",
+            "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "openPentestViewer", "pentestCompatibility", "stopPentest", "resumePentest", "reviewPentest", "retestPentest", "pentestLive", "pausePentest", "continuePentest", "ipv4SearchStart",
         ] {
             let chave = format!("\"{acao}\" =>");
             let a = corpo.find(&chave).unwrap_or_else(|| panic!("{acao}: arm not found"));

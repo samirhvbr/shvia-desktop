@@ -894,6 +894,9 @@ pub(crate) fn build_shvia_window(
             // window takes them back (`sessions`/`attach`). The others end as before.
             if let PageLoadEvent::Started = payload.event() {
                 webview.app_handle().state::<code_bridge::Sidecars>().soltar_janela(webview.label());
+                // A network scan belongs to the page that asked for it: with a new document there is nobody left to read the
+                // result or press Stop, and nothing here takes a running scan back.
+                code_bridge::cancelar_varredura(Some(webview.label()));
                 return;
             }
             if let PageLoadEvent::Finished = payload.event() {
@@ -1686,6 +1689,8 @@ pub fn run() {
             code_bridge::cancelar_login();
             // Same for the Claude subscription flow (1.29.0): a `claude setup-token` waiting on a browser sign-in.
             code_bridge::cancelar_assinatura();
+            // And a network scan in flight (1.31.0): its threads would otherwise keep opening connections after the window is gone.
+            code_bridge::cancelar_varredura(None);
         }
         _ => {}
     });

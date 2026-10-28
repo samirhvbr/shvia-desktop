@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.31.0 - Add IPv4 Search: scan one private range for open ports from this computer, behind a native confirmation
+
+The Network module gets a tool that answers "which address on this /22 has port 8006 open?". The page asks through two new
+bridge actions (`ipv4SearchStart`, `ipv4SearchStop`, declared as `recursos.varreduraIPv4`) and the shell does the work — the
+server never sees the range, the ports or the result.
+
+- **What a probe is.** One TCP `connect()` with a time limit, dropped when accepted; no byte is sent. `open` (accepted),
+  `closed` (refused: the host is alive), `filtered` (no answer in time). An address is *found* when any probe was `open` or
+  `closed`; one that only times out is "no answer", never "down".
+- **Two passes.** Pass 1 tries eight ports on every address (the person's first four, then the common ones); pass 2 tries the
+  rest only on the addresses that answered. `probeAll` skips the shortcut. With no ports it is discovery only.
+- **Limits enforced natively** (`code_bridge/ipv4_search.rs`): private ranges only — RFC1918, CGNAT, `198.18.0.0/15`, the same
+  classes as the WEB's `DestinationPolicy` — and a public range is refused, not confirmed; loopback/link-local/multicast never;
+  at most a /16, 1,024 ports and 1,000,000 first-pass probes; 200–5,000 ms per connection; one scan at a time; a native
+  dialog that shows the normalised range, the ports (and, when the person typed some, the common ones pass 1 also tries on
+  every address, and the rest it tries only where something answered) and the most attempts it can make. A new document, a closed window or a
+  quit cancels the scan; a new document while the dialog is open makes the answer start nothing. `ipv4SearchStop` stops
+  only the scan its own window started.
+- **Descriptors.** Up to 128 probes at once; the process's descriptor limit is raised when allowed (a macOS GUI app starts at
+  256, shared with the webview), and the count falls back to 64 or 32 when it is not. Running out of descriptors is an
+  `error`, never read as `filtered`.
+- **Windows.** A SYN answered by a reset makes Windows send it again, twice, and report "refused" about two seconds later,
+  so inside the default 800 ms a closed port would read as `filtered`. The probe turns SYN retransmission off for its own
+  socket (`SIO_TCP_INITIAL_RTO`), which makes the reset final; the `Windows MSVC` job's loopback test is what checks it.
+  `socket2` sits in the Windows dependency section, so it joins Dependabot's `ignore` list like the other per-OS crates.
+- **Proved** by 33 unit tests: the parsers over malformed input, the policy (including that a /16 never straddles two zones,
+  over all 65,536 blocks), the two passes on a scripted network, cancellation, the events and report, the one-slot rule, the
+  real probe against listening and non-listening loopback sockets, and 72 vectors shared with SHVIA-WEB's page parser
+  (`ipv4_search_vectors.json` here, `docs/NETWORK/ipv4-search-vectors.json` there: each side is tested against its own
+  copy, so changing one without the other is a visible edit in both repositories). **Not measured:** a scan across a real network with
+  dropping hosts, and the macOS/Windows builds of this module.
+
+Docs: `docs/code/IPV4-SEARCH.md`, ADR-044, `docs/funcionalidades.md` (Phase 11).
+
 ## 1.30.10 - Take the Tauri 2.12.5 patch group, with rust-ini held at 0.21.1 so the Linux build compiles
 
 - Dependabot's cargo-patch-minor group (#158) moves `tauri` 2.12.2 → 2.12.5, `tauri-build` 2.7.3 →
