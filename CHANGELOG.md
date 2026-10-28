@@ -1,5 +1,59 @@
 # Changelog
 
+## 1.33.0 - Install the Pentest engine on first use, with the person's consent, where the signed app cannot start the one it carries
+
+A Mac running 1.32.3 (28/10/2026) showed, in Help → About, `saiu com erro 255: [PYI-12883:ERROR] Failed to load Python shared
+library /var/folders/2d/7pngpxv51…`. The engine was inside the app and could not start there: it is a PyInstaller one-file
+program that unpacks its own libraries into a temp folder at every start, and the same file starts fine outside the bundle
+(`stage-pentest.mjs` runs it on the build machine before bundling it). The likely cause is library validation under the
+hardened runtime, which refuses libraries that do not carry the app's Team ID; it is not proved, because the system's own
+reason came after the path and the 80 characters kept by 1.32.3 ended inside it. The build guard added in 1.32.3 did not
+keep that app from being installed on that Mac, and whether it ran there is not known.
+
+Repairing the bundled copy would mean weakening the app's library validation for everything it loads, or building the engine
+with the app's signing identity. This takes the other road: the app gets the engine the way it already gets anything else it
+does not carry, by asking.
+
+- **A second place the engine can come from.** `code_bridge/pentest/engine.rs`. The engine is the copy this app installed under
+  its own data folder (`<app data>/pentest-engine/<version>/pentest`) when there is a verified one, otherwise the one beside
+  the executable, otherwise none. Every Pentest use goes through that one choice (`engine_path`, `compatibility::require`, the
+  About rows). A copy counts only if it is a plain executable file (not a link) with exactly the pinned length and SHA-256,
+  checked at each use and cached on length and modification time, because the folder belongs to the person's account and
+  anything running as them could rewrite it. A rewritten copy is not run, and the bundled one is used.
+- **Offered, never done silently.** `pentestCompatibility` now carries `engine: {source, installable, version, bytes}`, only
+  fixed words and numbers from the pin (no path, URL or checksum). `installable` is true only when the engine in use fails the
+  check and the pinned copy is not already the one in use (downloading it again would fail the same way). The page can call the
+  new `pentestInstallEngine`, which only asks: a native dialog the page cannot answer names the file, its size, the version, the
+  source, the destination and the start of the SHA-256. Declining changes nothing. No administrator rights are involved. A
+  failure is explained in a native dialog (what failed, never text that came from the network) and leaves nothing installed;
+  the page gets one of `E_PENTEST_INSTALL_DECLINED`, `_UNAVAILABLE`, `_BUSY` or `_FAILED`.
+- **What makes the download safe.** What is fetched is fixed at build time: the release, file name, SHA-256 and exact size come
+  from `pentest-engine.json` (which now pins `bytes` for each asset). The URL is the pinned GitHub release only; redirects are
+  followed by hand, up to 4, https only and only to `github.com` or `*.githubusercontent.com`. The body is cut at the pinned
+  length while it is read, and its SHA-256 must match. It is built in a scratch folder beside the destination, must answer
+  `--fork-version` with the pinned version, and is moved into place only then; a failed install removes the scratch folder and
+  leaves a copy that worked before untouched. The engine folder is created owner-only (`0700`) even if something else created
+  it first. One install at a time.
+- **macOS no longer bundles the engine by default.** `scripts/pentest-bundling.mjs` is the policy: Linux yes, macOS only with
+  `SHVIA_BUNDLE_PENTEST_ON_MAC=1`, Windows never. An engine named with `--pentest`, `--from` or `$SHVIA_PENTEST_BIN` is always
+  bundled, and a macOS build that carries one still has to start it from inside the built `.app` (the 1.32.3 guard). A Mac build
+  without it removes any stale staged engine and says so.
+- **About says where the engine is from** (`v1.2.43 (instalado)`, `(empacotado)`, `não instalado`) and keeps 200 characters of
+  what the engine wrote to stderr instead of 80.
+- Proved with real processes and a real local HTTP server: the pin for every platform and each malformed pin; a good install
+  landing in the pinned place with the right modes and cleaning older leftovers; a download too short, too long (announced and
+  unannounced), with other bytes of the same length, a 404, a file that exits 255 with a PyInstaller-style line, one that
+  answers another version, one that is not a program; redirects followed, refused to another host (a real server there that must
+  never be asked), looping, and refused over plain http; an endless body cut at the pinned length; the order of preference and a
+  forged copy losing to the bundled one. Twelve reversions of the new code were run: eleven red on the exact test, and the twelfth
+  (the length check in `installed_in`) is equivalent by construction, a shortcut for a hash that already refuses other sizes. The
+  staging proof gained the manifest sizes, the platform table and the script run as a Mac, with five reversions, all red.
+- Not measured: a real Mac. Whether the downloaded copy starts when the hardened app launches it as a child process is the one
+  link no test here can show; the staging step proves the file starts outside the app, and the install ends by running it, so a
+  copy that does not start is never kept and its cause reaches the person. The native dialogs are not driven by any test, and the
+  download from GitHub itself was not run (the pinned sizes and SHA-256 match the digests GitHub reports for the release, read on
+  28/10/2026).
+
 ## 1.32.3 - Say why the Pentest engine did not start, and refuse a macOS build whose engine does not
 
 The first Mac to install the Desktop with the engine bundled (28/10/2026) showed "Motor do Pentest: não informou a versão"

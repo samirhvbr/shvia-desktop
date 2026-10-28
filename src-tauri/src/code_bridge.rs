@@ -59,6 +59,8 @@ pub(crate) use pentest::stop as stop_pentest;
 pub(crate) use pentest::{about_expected as pentest_about_expected, about_found_now as pentest_about_found_now, about_found_probe as pentest_about_found_probe};
 #[cfg(unix)]
 pub(crate) use pentest::sync_background as pentest_sync_background;
+#[cfg(unix)]
+pub(crate) use pentest::engine_init as pentest_engine_init;
 mod traffic;
 pub(crate) use traffic::release as release_traffic;
 pub use sessao::Sidecars;
@@ -171,6 +173,10 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             Err(error) => (false, serde_json::json!(error)),
         }),
         "pentestCompatibility" => fora_da_ui(window, &req, |w| match pentest::compatibility(w) {
+            Ok(value) => (true, value),
+            Err(error) => (false, serde_json::json!(error)),
+        }),
+        "pentestInstallEngine" => fora_da_ui(window, &req, |w| match pentest::install_engine(w) {
             Ok(value) => (true, value),
             Err(error) => (false, serde_json::json!(error)),
         }),
@@ -761,7 +767,7 @@ mod tests_fora_da_ui {
         for acao in [
             "gitStatus", "listTree", "gitDiff", "readFile", "codexModels", "claudeAuthStatus", "claudeUsage", "codexUsage",
             "claudeAuthLoginStart", "claudeSubscriptionConnect", "claudeSubscriptionCode", "claudeModels", "claudeRunnerInstall", "claudeAccountsDetect",
-            "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "openPentestViewer", "pentestCompatibility", "stopPentest", "resumePentest", "reviewPentest", "retestPentest", "pentestLive", "pausePentest", "continuePentest", "ipv4SearchStart",
+            "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "openPentestViewer", "pentestCompatibility", "pentestInstallEngine", "stopPentest", "resumePentest", "reviewPentest", "retestPentest", "pentestLive", "pausePentest", "continuePentest", "ipv4SearchStart",
         ] {
             let chave = format!("\"{acao}\" =>");
             let a = corpo.find(&chave).unwrap_or_else(|| panic!("{acao}: arm not found"));
