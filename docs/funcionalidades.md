@@ -305,6 +305,10 @@ for the Linux/macOS profile, Windows refusal and pending integrated pilot.
   página remota (postura de menor privilégio — [arquitetura.md](arquitetura.md));
   visual pelos design tokens do ShvIA (`var(--token, fallback)`), Esc/backdrop
   fecham, `prefers-reduced-motion` respeitado.
+- **About shows the Pentest engine (1.32.2).** Two more rows: *Motor do Pentest*, what is beside the executable (`v1.2.43 (empacotado)`,
+  or why there is none: not bundled, unsupported version, no version reported, not offered on Windows), and *Pentest exigido*, the
+  engine this Desktop is made to carry (the `version` of `pentest-engine.json`). The probe is slow, so the row says `verificando…`
+  and a background thread fills it in. It explains the page's "Pentest not detected".
 
 ## Local Code, the bridge and session capabilities
 

@@ -481,6 +481,8 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
     '<dt>Build desktop</dt><dd id="shvia-about-build"></dd>' +
     '<dt>ShvIA servidor</dt><dd id="shvia-about-server" aria-live="polite">…</dd>' +
     '<dt>Motor do Code</dt><dd id="shvia-about-anna"></dd>' +
+    '<dt>Motor do Pentest</dt><dd id="shvia-about-pentest" aria-live="polite"></dd>' +
+    '<dt id="shvia-about-pentest-required-label">Pentest exigido</dt><dd id="shvia-about-pentest-required"></dd>' +
     '<dt>Servidor</dt><dd id="shvia-about-host"></dd>' +
     '</dl>' +
     '<p class="shvia-about-env" id="shvia-about-env"></p>' +
@@ -499,6 +501,16 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
   // Motor do Code (`anna`): versão E origem. O Rust já resolveu — a página não
   // tem como perguntar isso, e é justamente o dado que faltava em 19/08.
   card.querySelector('#shvia-about-anna').textContent = '__SHVIA_ANNA__';
+  // Motor do Pentest: o que está ao lado do executável (a sonda leva segundos; o Rust a refaz em segundo
+  // plano e troca o texto) e o que ESTE Desktop foi feito para trazer. Sem a segunda, fora do Windows, a
+  // linha some em vez de mostrar um traço.
+  card.querySelector('#shvia-about-pentest').textContent = '__SHVIA_PENTEST_FOUND__';
+  var pentestRequired = '__SHVIA_PENTEST_REQUIRED__';
+  card.querySelector('#shvia-about-pentest-required').textContent = pentestRequired;
+  if (!pentestRequired) {
+    card.querySelector('#shvia-about-pentest-required-label').style.display = 'none';
+    card.querySelector('#shvia-about-pentest-required').style.display = 'none';
+  }
   card.querySelector('#shvia-about-host').textContent = host;
   card.querySelector('#shvia-about-env').textContent = env;
 
@@ -593,8 +605,10 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
     // O "Copiar" existe para colar num relato de suporte — então ele carrega as
     // MESMAS linhas do modal. Motor do Code incluído: foi a linha ausente que fez
     // o diagnóstico de 19/08 custar uma manhã.
+    var pentestFound = card.querySelector('#shvia-about-pentest').textContent;
     var text = 'ShvIA Desktop\nBuild (desktop): v__SHVIA_BUILD__\nShvIA (servidor): ' + serverVersion +
-      '\nMotor do Code: __SHVIA_ANNA__\nServidor: ' + host + '\n' + env;
+      '\nMotor do Code: __SHVIA_ANNA__\nMotor do Pentest: ' + pentestFound +
+      (pentestRequired ? ' · exigido ' + pentestRequired : '') + '\nServidor: ' + host + '\n' + env;
     function done(ok) {
       copyBtn.textContent = ok ? 'Copiado ✓' : 'Falhou';
       setTimeout(function () { copyBtn.textContent = 'Copiar'; }, 1600);
@@ -1566,10 +1580,16 @@ pub fn run() {
             "about" => {
                 // Abre o modal "Sobre" na janela em foco (fallback: a primeira).
                 // Build vem do pacote (version.md → tauri.conf.json, via sync).
+                // O motor do Pentest só responde em segundos (um arquivo único que se desempacota a cada
+                // chamada): quando há um ao lado do app, o modal abre com "verificando…" e a sonda roda
+                // abaixo, fora da thread da UI.
+                let pentest_agora = code_bridge::pentest_about_found_now();
                 let js = ABOUT_MODAL_JS
                     .replace("__SHVIA_BUILD__", &app.package_info().version.to_string())
                     .replace("__SHVIA_TAURI__", tauri::VERSION)
                     .replace("__SHVIA_ANNA__", &code_bridge::versao_do_anna())
+                    .replace("__SHVIA_PENTEST_FOUND__", pentest_agora.as_deref().unwrap_or("verificando…"))
+                    .replace("__SHVIA_PENTEST_REQUIRED__", &code_bridge::pentest_about_expected())
                     .replace("__SHVIA_SERVER_HOST__", SERVER_HOST);
                 let windows = rapida::normais(app);
                 let alvo = windows
@@ -1583,6 +1603,18 @@ pub fn run() {
                     let _ = win.unminimize();
                     let _ = win.set_focus();
                     let _ = win.eval(&js);
+                    if pentest_agora.is_none() {
+                        let win = win.clone();
+                        std::thread::spawn(move || {
+                            let texto = code_bridge::pentest_about_found_probe();
+                            // Literal JSON: o texto sai de palavras fixas e de uma versão já validada, mas o
+                            // `eval` não precisa confiar nisso. Se o modal já fechou, o elemento não existe.
+                            let literal = serde_json::to_string(&texto).unwrap_or_else(|_| "\"?\"".into());
+                            let _ = win.eval(format!(
+                                "(function(){{var e=document.getElementById('shvia-about-pentest');if(e){{e.textContent={literal};}}}})();"
+                            ));
+                        });
+                    }
                 }
             }
             _ => {}

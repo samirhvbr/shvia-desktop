@@ -55,6 +55,8 @@ pub use ipv4_search::cancelar_varredura;
 mod navegador;
 mod pentest;
 pub(crate) use pentest::stop as stop_pentest;
+// The About dialog's two Pentest rows: what this Desktop requires, and what is beside the executable.
+pub(crate) use pentest::{about_expected as pentest_about_expected, about_found_now as pentest_about_found_now, about_found_probe as pentest_about_found_probe};
 #[cfg(unix)]
 pub(crate) use pentest::sync_background as pentest_sync_background;
 mod traffic;
