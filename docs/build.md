@@ -102,17 +102,33 @@ the Desktop needs something the older engine lacks.
 2.6 s on Linux, cold or warm (measured), and a first launch on macOS also waits for Gatekeeper.
 The probe deadline is 20 s for that reason.
 
-**macOS signing: not verified here.** The engine is signed with the app by `tauri build`
+**macOS signing: not verified on a Mac yet.** The engine is signed with the app by `tauri build`
 (hardened runtime). A PyInstaller one-file engine unpacks libraries that are signed ad hoc, and
 library validation refuses libraries that do not carry the app's Team ID, so a signed build
-can fail to start. This was not tested: no Mac was available when the engine was bundled. So
-`build-local.sh` runs `Contents/MacOS/pentest --fork-version` from inside the signed `.app`
-and stops the build, with the explanation, if it does not print a version. The two ways out
-each cost something: build the engine on the Mac with `--codesign-identity` (its libraries then
-carry the Team ID) and pass it with `--pentest`, or add
+can fail to start. This was not tested: no Mac was available when the engine was bundled, and the
+first Mac to run it (28/10/2026) installed a Desktop whose About said the engine "did not report
+the version": the engine was in the app and did not start. So `build-local.sh` runs
+`Contents/MacOS/pentest --fork-version` from inside the built `.app`, the way the app does (stdout
+only, the same 20 s deadline), **in every macOS build that carries the engine, signed or not**, and
+the build does not finish if the engine does not print a version. It reports what happened (the
+exit status or signal, or that it did not answer in time) and what the engine wrote to stderr.
+A build with no standalone `.app` (`--bundles dmg` deletes it) is refused too, because the engine
+could not be shown to start; build with the default bundles or `--no-pentest`.
+`npm run prova:motor-no-mac` runs the real function against fake engines (answers, junk, error with
+stderr, killed, hangs, no `.app`, no engine, not a Mac).
+
+The two ways out of a refusal each cost something: build the engine on the Mac with
+`--codesign-identity` (its libraries then carry the Team ID) and pass it with `--pentest`, or add
 `com.apple.security.cs.disable-library-validation` to the app's entitlements, which weakens
 library validation for the whole app, not only the engine. `--no-pentest` ships the app without
 it.
+
+**Why About says what failed.** Help → About asks the engine the same question the app asks and
+names the cause in one sentence: `encerrado pelo sistema (sinal 9)` (a refused signature looks like
+this from outside), `não respondeu em 20 s`, `saiu com erro 255: <first line of stderr>` (a
+PyInstaller engine that cannot load its libraries says so there), `o sistema bloqueou a execução`,
+`arquivo não encontrado`, `resposta ilegível`. The page still gets one code
+(`E_PENTEST_VERSION_UNKNOWN`) for all of them.
 
 ## Targets por SO
 

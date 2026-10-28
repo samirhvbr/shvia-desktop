@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.32.3 - Say why the Pentest engine did not start, and refuse a macOS build whose engine does not
+
+The first Mac to install the Desktop with the engine bundled (28/10/2026) showed "Motor do Pentest: não informou a versão"
+in Help → About. The engine was in the app (the build stages it only after downloading it, checking its SHA-256 and running
+it), so the installer was not the problem: it did not start inside the installed app. Two things made that impossible to
+tell apart from everything else, and this fixes both. The repair itself (starting the engine on a Mac, or offering to install
+it with the person's permission) is a separate change: this one makes the failure name itself and keeps a broken build from
+being produced.
+
+- **About names the cause.** The probe used to turn every failure (the system would not start the file, no answer inside
+  20 s, killed by a signal, an error exit, unreadable output) into the same sentence. It now keeps the cause and the row says
+  it: `encerrado pelo sistema (sinal 9)`, `não respondeu em 20 s`, `saiu com erro 255: <first line the engine wrote to
+  stderr>`, `o sistema bloqueou a execução`, `arquivo não encontrado`, `formato de arquivo inválido`, `resposta ilegível`.
+  What the engine wrote is stripped of control characters and of anything that could close a JS string or open a tag, and
+  cut at 80 characters. The page still receives the one code it already translates (`E_PENTEST_VERSION_UNKNOWN`), so nothing
+  changes there. Proved with real processes (`kill -9`, `exit 3`, a stderr line, `sleep` past the deadline, a missing file,
+  a file without the execute bit) and by three reversions, each red on the exact value.
+- **The macOS build guard runs every time.** `verify_macos_engine` in `build-local.sh` only ran in signed builds, and with no
+  standalone `.app` it printed "try it in the installed app" and let the build through. It now starts the engine inside the
+  built `.app` in every macOS build that carries it, the way the app does (stdout only, the same 20 s deadline), and the build
+  does not finish if the engine does not print a version; it says whether the engine hung, was ended by a signal or exited with
+  an error, and what it wrote. A build with no `.app` (a `--bundles dmg` one) is refused as well, because the engine could not
+  be shown to start. `npm run prova:motor-no-mac`, in CI, runs the real function against fake engines. Writing it caught a
+  defect in the guard itself: a status above 128 was reported as a signal, so `exit 255` read as "signal 127"; signals stop
+  at 64.
+- Not measured: a real Mac. The guard and the About sentences are proved on Linux with shell fakes; whether the real engine
+  starts inside a signed `.app` is exactly what the next macOS build will report.
+
 ## 1.32.2 - Show the Pentest engine in Help → About: the build this Desktop requires and the one found beside it
 
 The page said "Detected: Desktop 1.32.1; Pentest not detected" and nothing told the person why. The About dialog now has two
