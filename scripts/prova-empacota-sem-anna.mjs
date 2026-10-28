@@ -26,6 +26,7 @@ const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
 const triple = /host: (\S+)/.exec(execFileSync("rustc", ["-vV"], { encoding: "utf8" }))[1];
 const sufixo = process.platform === "win32" ? ".exe" : "";
 let falhas = 0;
+let casosVerificados = 0;
 const falha = (m) => { falhas++; console.error(`🔴 ${m}`); };
 
 function arvore() {
@@ -66,37 +67,41 @@ const b = FONTE.indexOf("  # ── end bundle overrides ──");
 if (a < 0 || b < 0) { falha("the bundle-override block moved out of build-local.sh"); }
 else {
   const BLOCO = FONTE.slice(a, b);
-  // Linux and macOS declare two sidecars; each one can be absent on its own. The list is built from
-  // what is staged: emptying it for one missing file would drop the other from the bundle.
-  for (const [comAnna, comPentest, updater, esperado] of [
-    [true, true, 1, ""],
-    [true, false, 1, { bundle: { externalBin: ["binaries/anna"] } }],
-    [false, true, 1, { bundle: { externalBin: ["binaries/pentest"] } }],
-    [false, false, 1, { bundle: { externalBin: [] } }],
-    [true, true, 0, { bundle: { createUpdaterArtifacts: false } }],
-    [true, false, 0, { bundle: { createUpdaterArtifacts: false, externalBin: ["binaries/anna"] } }],
-    [false, false, 0, { bundle: { createUpdaterArtifacts: false, externalBin: [] } }],
-  ]) {
-    const dir = mkdtempSync(join(tmpdir(), "shvia-cfg-"));
-    mkdirSync(join(dir, "src-tauri/binaries"), { recursive: true });
-    if (comAnna) writeFileSync(join(dir, `src-tauri/binaries/anna-${triple}`), "x");
-    if (comPentest) writeFileSync(join(dir, `src-tauri/binaries/pentest-${triple}`), "x");
-    const out = execFileSync("bash", ["-c", `set -euo pipefail\nUPDATER_ARTIFACTS=${updater}\n${BLOCO}\nprintf '%s' "$_CFG"`], { cwd: dir, encoding: "utf8" });
-    rmSync(dir, { recursive: true, force: true });
-    // The block also logs a line for the build output; the config is what printf wrote last.
-    const cfg = out.slice(out.lastIndexOf("\n") + 1);
-    const obtido = cfg === "" ? "" : JSON.parse(cfg);
-    if (JSON.stringify(obtido) !== JSON.stringify(esperado)) {
-      falha(`anna=${comAnna} pentest=${comPentest} updater=${updater}: expected ${JSON.stringify(esperado)}, got ${JSON.stringify(obtido)}`);
+  // Linux and macOS declare three sidecars (anna, the Pentest engine, the capture sidecar); each one can
+  // be absent on its own. The list is built from what is staged: emptying it for one missing file would
+  // drop the others from the bundle. Every combination is checked, with and without the updater key, and
+  // the expected config is derived here from the combination alone, never read from build-local.sh.
+  const NOMES = ["anna", "pentest", "traffic-capture"];
+  let casos = 0;
+  for (let mascara = 0; mascara < 8; mascara++) {
+    for (const updater of [1, 0]) {
+      const presentes = NOMES.filter((_, i) => mascara & (1 << i));
+      const bundle = {};
+      if (updater === 0) bundle.createUpdaterArtifacts = false;
+      if (presentes.length !== NOMES.length) bundle.externalBin = presentes.map((n) => `binaries/${n}`);
+      const esperado = Object.keys(bundle).length ? { bundle } : "";
+      const dir = mkdtempSync(join(tmpdir(), "shvia-cfg-"));
+      mkdirSync(join(dir, "src-tauri/binaries"), { recursive: true });
+      for (const n of presentes) writeFileSync(join(dir, `src-tauri/binaries/${n}-${triple}`), "x");
+      const out = execFileSync("bash", ["-c", `set -euo pipefail\nUPDATER_ARTIFACTS=${updater}\n${BLOCO}\nprintf '%s' "$_CFG"`], { cwd: dir, encoding: "utf8" });
+      rmSync(dir, { recursive: true, force: true });
+      // The block also logs a line for the build output; the config is what printf wrote last.
+      const cfg = out.slice(out.lastIndexOf("\n") + 1);
+      const obtido = cfg === "" ? "" : JSON.parse(cfg);
+      casos++;
+      if (JSON.stringify(obtido) !== JSON.stringify(esperado)) {
+        falha(`staged=[${presentes}] updater=${updater}: expected ${JSON.stringify(esperado)}, got ${JSON.stringify(obtido)}`);
+      }
     }
   }
+  casosVerificados = casos;
 
-  // --no-anna must remove anna's files only: the folder also holds the Pentest engine.
+  // --no-anna must remove anna's files only: the folder also holds the other sidecars.
   if (/rm -rf src-tauri\/binaries(?!\/)/.test(FONTE)) {
-    falha("build-local.sh still deletes the whole src-tauri/binaries folder; --no-anna would take the Pentest engine with it");
+    falha("build-local.sh still deletes the whole src-tauri/binaries folder; --no-anna would take the other sidecars with it");
   }
   if (!FONTE.includes("rm -f src-tauri/binaries/anna-*")) falha("--no-anna no longer removes anna's own files");
 }
 
 if (falhas) { console.error(`\n${falhas} problem(s): the bundle would carry a stale engine, or the build would fail without one.`); process.exit(1); }
-console.log("[empacota-sem-anna] sem anna o velho sai e o Tauri é avisado; cada sidecar ausente sai da lista sozinho — 9 casos");
+console.log(`[empacota-sem-anna] sem anna o velho sai e o Tauri é avisado; cada sidecar ausente sai da lista sozinho — ${2 + casosVerificados} casos`);

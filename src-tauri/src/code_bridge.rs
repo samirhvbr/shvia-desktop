@@ -57,6 +57,8 @@ mod pentest;
 pub(crate) use pentest::stop as stop_pentest;
 #[cfg(unix)]
 pub(crate) use pentest::sync_background as pentest_sync_background;
+mod traffic;
+pub(crate) use traffic::release as release_traffic;
 pub use sessao::Sidecars;
 pub(crate) use motores::{engine_status, versao_do_anna};
 
@@ -195,6 +197,24 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             pentest::stop(Some(w.label()));
             (true, serde_json::json!({"stopped":true}))
         }),
+        "trafficInterfaces" => fora_da_ui(window, &req, |_w| match traffic::interfaces() {
+            Ok(list) => (true, list),
+            Err(error) => (false, serde_json::json!(error)),
+        }),
+        "trafficPermissionStatus" => fora_da_ui(window, &req, move |_w| {
+            (true, traffic::permission_status(v.get("interfaceId").and_then(|x| x.as_str())))
+        }),
+        "trafficRequestPermission" => fora_da_ui(window, &req, |_w| match traffic::request_permission() {
+            Ok(value) => (true, value),
+            Err(error) => (false, serde_json::json!(error)),
+        }),
+        // Blocks on a native dialog until the person answers, so it must not run on the UI thread.
+        "trafficStart" => fora_da_ui(window, &req, move |w| match traffic::start(w, &v) {
+            Ok(value) => (true, value),
+            Err(error) => (false, serde_json::json!(error)),
+        }),
+        "trafficStop" => fora_da_ui(window, &req, |w| (true, traffic::stop(w.label()))),
+        "trafficExport" => traffic::export(window, req),
         // Blocks on a native dialog until the person answers, so it must not run on the UI thread.
         "ipv4SearchStart" => fora_da_ui(window, &req, move |w| match ipv4_search::start(w, &v) {
             Ok(summary) => (true, summary),

@@ -1,7 +1,7 @@
 {
   "name": "shvia-desktop",
   "private": true,
-  "version": "1.32.0",
+  "version": "1.32.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,6 +16,7 @@
     "pull": "node scripts/git-sync.mjs",
     "release:manifest": "node scripts/release-manifest.mjs",
     "anna:stage": "node scripts/stage-anna.mjs",
+    "traffic-capture:stage": "node scripts/stage-traffic-capture.mjs",
     "pentest:stage": "node scripts/stage-pentest.mjs",
     "prova:politica": "node --test claude-runner/politica.test.mjs claude-runner/parada.test.mjs claude-runner/entrada.test.mjs claude-runner/plano.test.mjs claude-runner/orientacao.test.mjs claude-runner/uso.test.mjs codex-runner/catalogue.test.mjs codex-runner/protocolo.test.mjs codex-runner/ciclo.test.mjs codex-runner/externo.test.mjs codex-runner/plano.test.mjs codex-runner/orientar.test.mjs codex-runner/plataforma.test.mjs codex-runner/uso.test.mjs",
     "prova:runner-version": "node claude-runner/claude-runner.mjs --version",

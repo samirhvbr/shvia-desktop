@@ -48,6 +48,7 @@ belong to the target OS. See [the Windows acceptance runbook](roteiro-validacao-
 | Native app | `src-tauri/Cargo.toml`, `Cargo.lock` and OS-specific Tauri dependencies | WebView and OS permissions; capabilities differ by OS |
 | SHVIA engine | `scripts/stage-anna.mjs`, then `bundle.externalBin` | Optional `anna` executable matching the build host's target triple |
 | Pentest engine | `scripts/stage-pentest.mjs` (release pinned in `pentest-engine.json`), then `bundle.externalBin` in `tauri.linux.conf.json` / `tauri.macos.conf.json` | Linux and macOS only. The engine ships in the installer; Docker and the sandbox image it pulls on first use are separate requirements |
+| Packet-capture sidecar | `scripts/stage-traffic-capture.mjs` (builds `src-tauri/traffic-capture` with `cargo build --release` and runs it once before staging), then `bundle.externalBin` in `tauri.linux.conf.json` / `tauri.macos.conf.json` | Linux and macOS only; `build-local.sh --no-traffic` skips it. The Linux build machine needs `libpcap-dev`, the `.deb`/`.rpm` depend on `libpcap0.8`/`libpcap`, and capture needs a permission grant at run time ([TRAFFIC/README.md](TRAFFIC/README.md)) |
 | Claude runner | Bundled `.mjs`/`.json` and installers under `claude-runner/` | Node, runner installation, SDK and authorized Claude credentials; see [runner README](../claude-runner/README.md) |
 | Codex runner | Bundled modules/installers/schema under `codex-runner/` | Node, installed runner and Codex CLI/app-server/login; see [runner README](../codex-runner/README.md) |
 

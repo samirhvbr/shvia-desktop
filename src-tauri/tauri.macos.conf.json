@@ -2,7 +2,8 @@
   "bundle": {
     "externalBin": [
       "binaries/anna",
-      "binaries/pentest"
+      "binaries/pentest",
+      "binaries/traffic-capture"
     ]
   }
 }

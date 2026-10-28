@@ -1,5 +1,122 @@
 # Changelog
 
+## 1.32.1 - Document packet capture as it works now, and record why it is built this way (ADR-045)
+
+- `docs/TRAFFIC/README.md` is rewritten: it still said the sidecar "was never compiled" and that `pkexec`/`osascript` were never run.
+  It now gives the sidecar's contract line by line, the bridge actions, the permission model per OS (Linux group-limited, macOS
+  and Windows honest about what the app does not do), packaging, and two lists: what was measured on Linux with real packets and
+  what was not (the grant on a real interface, the app with its dialog and page together, macOS, Windows, a real `.deb`). It
+  records how the two halves were checked against each other (the page rendered in Chromium with the real bridge script and the
+  sidecar's real output) and that the running app was not.
+- ADR-045 records the decisions that are not obvious from the code: a separate program holds the capability, it lives as long as its
+  stdin, every capture needs a native yes, what is captured stays here, the grant is for one binary and one group, Windows does not
+  bundle it yet.
+- `docs/funcionalidades.md`, `docs/build.md` (the sidecar's row), the mirrored `CLAUDE.md`/`AGENTS.md` (the list of sidecars) and
+  `.continue/estado-atual.md` follow.
+
+## 1.32.1 - Say why a capture permission was not granted, with a code the page translates
+
+- `trafficRequestPermission()` answers `{granted, status, reason?}`; when nothing was granted, `reason` is `needs_chmodbpf` (macOS:
+  the device access Wireshark's helper sets up), `needs_npcap` (Windows) or `cancelled` (Linux: the polkit prompt was dismissed or
+  refused). Without it the page could only say "not granted" — and on macOS the whole instruction (what to install) was in a free-text
+  message the page, by design, never renders. The page turns each code into its own next step from fixed strings and fixed links, so
+  nothing the native side sends is shown or followed. `public/js/traffic.js` (SHVIA-WEB) reads it.
+- `trafficPermissionStatus` no longer carries `message`/`url` in the shim's documented answer: the page never read them.
+
+## 1.32.1 - Bundle the capture sidecar on Linux and macOS only, and build, test and lint it in CI
+
+- **Declared per platform.** `traffic-capture` was in the base `tauri.conf.json`, which Windows also reads, so a Windows build would
+  have required a binary that cannot be built there (the Npcap SDK). It is now in `tauri.linux.conf.json` and
+  `tauri.macos.conf.json` beside `anna` and the Pentest engine; the base declares only `anna` again. The `.deb`/`.rpm` depend on
+  `libpcap0.8`/`libpcap`. The AppImage cannot be granted capture (its files sit on a read-only mount); the docs say so.
+- **Staged by the release build.** `build-local.sh` never staged it, so a release build either failed on the missing file or shipped
+  without it silently. It is step `[D7]` (`--no-traffic` skips it), and the `externalBin` list is built from what is staged so any of
+  the three sidecars can be absent without dropping the others. `stage-traffic-capture.mjs` runs the binary once
+  (`--list-interfaces`) before staging, so one that cannot load (libpcap missing on the build machine) is never bundled, and does
+  nothing on Windows.
+- **The proofs follow.** `prova:sem-anna` checks every combination of the three sidecars with and without the updater key (16 cases
+  derived from the combination, never read from `build-local.sh`); `prova:pentest` expects the three-entry list on Linux and macOS.
+- **CI compiles the crate.** Nothing built or tested the sidecar before (only empty stand-ins). The Linux job installs `libpcap-dev`
+  and runs its tests and clippy, the macOS job does the same (where its macOS-only code compiles), and a second `cargo deny` step
+  checks its own lock against the app's policy (run locally first: advisories, bans, licenses and sources ok). The Windows jobs lose the
+  sidecar stand-in. These steps have not run on GitHub: Actions is locked for this account.
+
+## 1.32.1 - Define the six traffic methods in the shim and start a capture only after the person's yes
+
+The shim defined none of the six `traffic*` methods (the earlier commit only set `recursos.captura` and listed their names in a
+comment), so the page saw a Desktop that "could capture" and could call nothing: with the real shim the page had `captura: true`,
+no methods, and a Start button that did nothing. The two halves passed their own tests and never met.
+
+- **The shim defines them**, with their contract written next to them, and the answers match what `public/js/traffic.js` reads: an
+  array of interfaces with a `name`, a permission probe that takes an optional interface, `traffic_packet` events with `id`,
+  `time` and `hex`.
+- **`trafficStart` waits for the sidecar to say the device is open** and rejects `E_CODE: text` when it is not (permission denied,
+  invalid filter, unknown interface, busy, declined). The earlier version answered "started" at once, so a bad filter or a
+  missing permission left the page on "Capturing…" forever. A sidecar that ends by itself (size cap, write error, killed) tells
+  the page with `traffic_status`/`traffic_error` and the capture becomes "stopped" with its file kept.
+- **The person allows each capture.** `trafficStart` shows a native confirmation naming the interface and the filter (page-controlled
+  text is quoted, stripped of control characters and bounded), like the assessment and IPv4 Search do; the bridge token only
+  proves who is asking. A page replaced while the dialog is open starts nothing.
+- **Stop, Export and the file's life.** Stop closes the sidecar's stdin and waits up to 3 s for it to finish before killing it. Export
+  works while capturing and after Stop (it answered "nothing captured" after Stop) and copies only whole packet blocks. The file is
+  `0600` in the app's cache folder (it was `0644` in `/tmp`), is replaced by the next capture, and is deleted when the page that
+  started it is replaced, its window closes or the app quits (`release`, wired into the page-load hook, window destruction and
+  `RunEvent::Exit`); leftovers of a crashed run are removed at the next start.
+- **Permission.** Linux: one polkit prompt makes the sidecar `root:<your group>` `0750` with `cap_net_raw,cap_net_admin` (paths
+  travel as positional parameters of a fixed script; capabilities on a world-executable file would let every local user capture),
+  and the answer is the probe's result after the attempt, never what the attempt hoped for. macOS: the earlier plan assumed an
+  `access_bpf` group exists on every Mac (it does not; Wireshark's installer creates it) and its `$(whoami)` would have run as
+  root; the app now says what to install instead of running an unverified privileged command. The `unused variable: bin` that
+  failed the macOS and Windows jobs is gone with that code.
+- **The whole flow runs against the real sidecar.** `scripts/traffic-e2e.sh` runs two `#[ignore]`d tests inside a throw-away network
+  namespace (no sudo, no real interface): refused starts leave no file; five UDP datagrams arrive as five rows with their payload in
+  the hex; Stop keeps the file; the exported file is section header, interface description, five packet blocks, `0600`; replacing
+  the page deletes it; killing the sidecar from outside tells the page (`engine_exited`) and keeps the file exportable.
+  `lib.rs`'s page-load ruler still holds (the added comment is one line, because that ruler reads a fixed window of the hook).
+
+## 1.32.1 - Give the capture sidecar a valid pcapng, a stop that works and rows with hex
+
+The sidecar of the two earlier commits of this branch (1.31.0 and 1.31.1, never released) had never captured a packet. Run
+against real traffic, its first packet killed it (`could not write to the capture file; stopping`), and the rest of it had the
+defects below. Everything here is `src-tauri/traffic-capture`; the bridge is the next commit.
+
+- **A valid pcapng.** `pcap-file` writes only the section header and refuses a packet whose interface was never described, so
+  the file now gets its interface description block. It also writes times in nanoseconds and the file did not say so, which
+  made every date a thousand times too large; the description now declares it. Found by reading the file back with libpcap,
+  a reader independent of the one that wrote it: same packets, same bytes, same times.
+- **A stop that works.** libpcap's read timeout cannot be relied on (measured: an idle `pcap_next_ex` did not return in 8 s with
+  a 100 ms timeout), so a blocking loop never saw a stop request. The loop is non-blocking and sleeps 10 ms when idle. The
+  sidecar lives exactly as long as its stdin: closing it asks for a stop (it finishes the file and reports `stopped` with the
+  reason and libpcap's drop count), and a dead parent closes it too, so a crashed app never leaves a capture running.
+- **A start that says so.** `started` is printed only once the device is open, the filter compiled and the file created; a refusal
+  is one line with a code (`E_CAPTURE_PERMISSION_DENIED`, `E_INTERFACE_UNAVAILABLE`, `E_CAPTURE_FILTER_INVALID`,
+  `E_CAPTURE_WRITE`) and leaves no file behind.
+- **Rows the page can read.** Each row has `id`, a Wireshark-style `time` (seconds since the first packet), and a hex dump of the
+  first 512 bytes. The summary names TCP flags with seq/ack/win and ARP, VLAN and LLDP frames, and decodes BSD loopback, raw IP
+  and Linux cooked (v1 and v2) framings, with the tolerant parser so a frame an offloading NIC left with IPv4 length 0 still
+  shows what it is. A flood shows at most 100 rows per 100 ms and counts the rest (`notShown`); the file has every packet.
+- **The file.** Created `0600` and never overwriting; flushed every tick, with `flushed` saying how many bytes end on a packet
+  boundary (what Export may copy while capturing); capped at `--max-bytes` (512 MiB), after which the capture ends with
+  `reason: size_limit` and the file stays exportable.
+- **Strict arguments.** Every value comes from a page, so each flag takes exactly the next token (an interface called `--out` stays
+  an interface), unknown or repeated flags are errors, and the interface must be one libpcap itself lists.
+- `--list-interfaces` answers `{id, name, description, isUp, isLoopback}` (addresses in the description; the adapter's own name on
+  Windows), up interfaces first; `--check-permission` needs no interface, because the capability is the binary's.
+- Measured: 21 unit tests (including the pcapng round trip read by libpcap), clippy `-D warnings`, and real captures on `lo`
+  inside a throw-away network namespace (no sudo): a UDP+TCP exchange as 16 rows with flags and hex, a filter that kept exactly
+  the 3 matching packets, an invalid filter refused with no file left, a flood of 254,500 datagrams captured whole (254,503
+  packets in a file libpcap accepts) with 1,520 rows delivered and nothing dropped by the kernel.
+
+## 1.32.1 - Bring the IPv4 Search and Pentest-engine commits into the Traffic branch
+
+- Merges `feat/bundle-pentest-engine` (which carries `feat/ipv4-search`, 1.31.0, and the Pentest engine in the installer, 1.32.0)
+  into `feat/traffic-capture` so Traffic is built on what will be on `master` before it. The Traffic work, version 1.31.x on this
+  branch and never released, becomes 1.32.1: the engine's 1.32.0 may not be passed by anything that ships without the engine.
+- Conflicts were mechanical and resolved without a rewrite: the six version carriers, the CHANGELOG (this entry above the stack's),
+  the two sidecar stand-ins in `ci.yml` and `plataformas.yml`, `package.json`'s stage scripts, the `recursos` line and comment in
+  the shim (`varreduraIPv4` and `captura` both stay) and the bridge's `match` arms (IPv4 Search's and Traffic's both stay).
+  No Traffic behavior changes in this commit; the next ones make it work.
+
 ## 1.32.0 - Ship the Pentest engine inside the installer on Linux and macOS, and call it Pentest in the native bridge
 
 Reported on 23/10/2026 with a screenshot: the Pentest page said "Quick start needs Desktop 1.30.5 and

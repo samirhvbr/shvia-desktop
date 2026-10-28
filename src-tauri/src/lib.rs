@@ -897,6 +897,8 @@ pub(crate) fn build_shvia_window(
                 // A network scan belongs to the page that asked for it: with a new document there is nobody left to read the
                 // result or press Stop, and nothing here takes a running scan back.
                 code_bridge::cancelar_varredura(Some(webview.label()));
+                // A packet capture too: nobody is left to export it.
+                code_bridge::release_traffic(Some(webview.label()));
                 return;
             }
             if let PageLoadEvent::Finished = payload.event() {
@@ -1660,6 +1662,7 @@ pub fn run() {
             ..
         } => {
             code_bridge::stop_pentest(Some(&label));
+            code_bridge::release_traffic(Some(&label));
             app_handle.state::<code_bridge::Sidecars>().kill_one(&label);
             // The last real window is gone (closed with "close keeps running" off, or after
             // the Code question): the app would end here, as it did before 1.10.0 — but a
@@ -1682,6 +1685,7 @@ pub fn run() {
         }
         tauri::RunEvent::Exit => {
             code_bridge::stop_pentest(None);
+            code_bridge::release_traffic(None);
             app_handle.state::<code_bridge::Sidecars>().kill_all();
             // 🔴 O login NÃO mora no mapa de sidecars — é um `static` próprio, porque não é
             // sessão de projeto. Sem esta linha ele sobrevive ao app: um `claude auth login`
