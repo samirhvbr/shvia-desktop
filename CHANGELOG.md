@@ -1,5 +1,64 @@
 # Changelog
 
+## 1.32.0 - Ship the Pentest engine inside the installer on Linux and macOS, and call it Pentest in the native bridge
+
+Reported on 23/10/2026 with a screenshot: the Pentest page said "Quick start needs Desktop 1.30.5 and
+Strix 1.2.42 … Detected: Desktop 1.30.5; Strix not detected" on a Desktop that was at 1.30.5. Both halves
+were true. The engine was a separate program the Desktop expected to find on the machine, and the installer
+did not carry it, so a Desktop with the right version still had nothing to run. Updating the Desktop now
+updates the engine, the way `anna` has always travelled.
+
+- **The engine is a bundled sidecar.** `scripts/stage-pentest.mjs` stages it into
+  `src-tauri/binaries/pentest-<target triple>` and Tauri installs it beside the executable (`Contents/MacOS/`
+  on macOS, `/usr/bin/` in the `.deb`: measured, the `.rpm` and the AppImage were not built). It comes from `--from`, `SHVIA_PENTEST_BIN` or the release pinned in
+  `pentest-engine.json` (a version and one SHA-256 per platform, taken from the fork's Release). There is **no lookup on
+  PATH**: `motores::bundled_bin` finds the file beside the executable and nothing else, so a program with the
+  same name elsewhere on the machine is never run. A file that is there and wrong fails the build (a hash that
+  differs from the pinned one, an engine that does not run or answers a version other than the one pinned or
+  below the floor); an absence does not (no network and no cache, no asset for the platform), and it removes
+  an engine staged by an earlier build instead of bundling it.
+- **Per platform.** The controlled profile is refused on Windows, so `externalBin` lists the engine only in
+  `tauri.linux.conf.json` and `tauri.macos.conf.json`; the Windows build and its CI stand-ins are unchanged.
+  `build-local.sh` gets `--pentest <path>` and `--no-pentest`, builds the `externalBin` list from what is
+  staged (an empty list for one missing file would drop the other sidecar), and `--no-anna` no longer deletes the
+  folder that holds the engine.
+- **A build with no engine says so.** The refusal is `E_PENTEST_NOT_BUNDLED`, told apart from an engine that is
+  too old or does not answer, so nobody is sent to "update Pentest" when the fix is a different installer.
+- **The probe waits 20 s, not 5.** A one-file engine unpacks itself on every start: `--fork-version` takes about
+  2.6 s on Linux, cold or warm (measured on the real binary), and a first launch on macOS also waits for
+  Gatekeeper.
+- **Pentest is the name, wherever a person reads it.** The native summary reports `pentestVersion` (was
+  `strixVersion`), the refusal codes are `E_PENTEST_TOO_OLD` / `E_PENTEST_VERSION_UNKNOWN` (were `E_STRIX_*`),
+  the history snapshot sent to the WEB carries `pentest_version`, and every message and consent text says
+  Pentest. The engine's own file format keeps its names (`strix_runs/`, and `strix_version` in `run.json`):
+  they are recorded in runs already on disk, and `code_bridge/pentest.rs` names them once. **Deploy the WEB
+  first**: a WEB older than this change reads none of the new names.
+- 🔴 **Not verified: a signed macOS build.** The engine is a PyInstaller one-file build, its libraries are signed
+  ad hoc, and the hardened runtime can refuse libraries that do not carry the app's Team ID. No Mac was
+  available. `build-local.sh` therefore runs `Contents/MacOS/pentest --fork-version` from inside the signed
+  `.app` and stops the build, with the explanation, if it does not print a version; the two ways out (build the
+  engine on the Mac with `--codesign-identity`, or add `com.apple.security.cs.disable-library-validation`, which
+  weakens library validation for the whole app) are in `docs/build.md`, and neither is applied.
+- Checked: `cargo clippy -D warnings` and the 43 Pentest tests; the real Linux binary built from the fork
+  (`--fork-version`, `--inspect-web-authorization`, `-n --web-authorization`, `view`, the certificate bundle in the
+  archive) staged by the script and run; `npm run prova:pentest` against a local HTTP server for each way a
+  wrong engine could get in; the resolver and the `NOT_BUNDLED` refusal each shown to fail their test with the
+  code reverted.
+- **The pin: Pentest 1.2.43** (`pentest-engine.json`, 27/10/2026). The four binaries come from the fork's
+  `Pentest binaries` run 39984194123 of 23/10/2026, built from `047cc8cb` on samirhvbr/strix#37; the two
+  commits after it on that branch change the workflow, the docs, a test and `package_pdf.py`, the server-side
+  PDF renderer the engine does not run. They are pinned before the `shvia-v1.2.43` Release exists, because
+  GitHub Actions is locked for billing since 26/10/2026 and the fork's workflow cannot publish it; the owner
+  attaches these same four files and their `SHA256SUMS` to that Release by hand. Until then the pinned
+  download fails and a build goes on without the engine, as an absence always does. Measured here: the Linux
+  x86_64 binary answers `--fork-version` with `1.2.43`, and `stage-pentest.mjs` downloads it from a local
+  server standing in for the Release, checks its SHA-256 and bundles it.
+- **The Windows clippy job compiles the engine's names without a use.** `ENGINE_BIN`, `ENGINE_RUNS_DIR` and
+  `ENGINE_VERSION_FIELD` silenced their unused-warning only off `any(unix, test)`, and every use is Unix-only,
+  so `--all-targets` on `x86_64-pc-windows-gnu` (a Windows test build) failed with three `dead_code` errors on
+  the cicd watcher. The condition is now `unix` alone. That job's command, run here, failed before the change
+  and passes after it.
+
 ## 1.31.0 - Add IPv4 Search: scan one private range for open ports from this computer, behind a native confirmation
 
 The Network module gets a tool that answers "which address on this /22 has port 8006 open?". The page asks through two new

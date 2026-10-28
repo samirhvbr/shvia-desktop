@@ -1,7 +1,7 @@
 {
   "name": "shvia-desktop",
   "private": true,
-  "version": "1.31.0",
+  "version": "1.32.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,6 +16,7 @@
     "pull": "node scripts/git-sync.mjs",
     "release:manifest": "node scripts/release-manifest.mjs",
     "anna:stage": "node scripts/stage-anna.mjs",
+    "pentest:stage": "node scripts/stage-pentest.mjs",
     "prova:politica": "node --test claude-runner/politica.test.mjs claude-runner/parada.test.mjs claude-runner/entrada.test.mjs claude-runner/plano.test.mjs claude-runner/orientacao.test.mjs claude-runner/uso.test.mjs codex-runner/catalogue.test.mjs codex-runner/protocolo.test.mjs codex-runner/ciclo.test.mjs codex-runner/externo.test.mjs codex-runner/plano.test.mjs codex-runner/orientar.test.mjs codex-runner/plataforma.test.mjs codex-runner/uso.test.mjs",
     "prova:runner-version": "node claude-runner/claude-runner.mjs --version",
     "runner:sdk-bump": "node scripts/bump-sdk-do-runner.mjs",
@@ -28,6 +29,7 @@
     "prova:apple": "node scripts/prova-assinatura-apple.mjs",
     "prova:reuso": "node scripts/prova-reuso-ve-o-que-empacota.mjs",
     "prova:sem-anna": "node scripts/prova-empacota-sem-anna.mjs",
+    "prova:pentest": "node scripts/prova-pentest-engine.mjs",
     "prova:guarda": "node scripts/prova-guarda-dos-portadores.mjs",
     "prova:arvore": "node scripts/prova-publica-o-commitado.mjs",
     "prova:dependabot": "node scripts/prova-dependabot-cobre-os-manifestos.mjs",

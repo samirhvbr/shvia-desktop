@@ -77,6 +77,7 @@ dist/
 # O `anna` é copiado para cá pelo `scripts/stage-anna.mjs` antes do build e vira
 # sidecar do bundle. É ARTEFATO: binário de 8 MB versionado seria peso morto no
 # git, e a versão certa depende de qual `anna` a máquina de build tem.
+# The Pentest engine lands here too (`scripts/stage-pentest.mjs`, about 100 MB): same reason.
 src-tauri/binaries/
 
 # ── makepkg (pacote Arch) ───────────────────────────────────────────────────

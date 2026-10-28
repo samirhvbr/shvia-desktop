@@ -99,17 +99,24 @@ Format: `X.Y.Z - description in English (US)`, the same sentence as the `CHANGEL
 - **Tauri 2** (Rust) + WebView nativo do SO (WKWebView / WebView2 / WebKitGTK).
 - **Vite/TypeScript** builds the small local shell. Node 22 is used in CI; the locked Vite
   runtime requires Node 20.19+ or 22.12+.
-- **The configured sidecar is `anna`**, staged by `scripts/stage-anna.mjs` into
-  `src-tauri/binaries/anna-<target-triple>` and declared in `bundle.externalBin`.
-  Claude/Codex runner modules and installers are bundled as resources. Their SDK/CLI,
-  installed engine, credentials and OS capabilities remain separate runtime requirements.
-- **The Python/PyInstaller F2 sidecar was a proposal, not the current build.** This
-  repository's application bundler does not configure that proposed backend; Python probe
-  scripts do not make it an installed runtime component. No `pip` step belongs in the
-  normal Tauri build described here.
+- **The configured sidecars are `anna` and, on Linux and macOS, the Pentest engine.** `anna` is
+  staged by `scripts/stage-anna.mjs` into `src-tauri/binaries/anna-<target-triple>`; the engine by
+  `scripts/stage-pentest.mjs` into `src-tauri/binaries/pentest-<target-triple>`, from the release
+  pinned in `pentest-engine.json` (SHA-256 checked, never looked up on PATH). Both are declared in
+  `bundle.externalBin`, the engine only in `tauri.linux.conf.json` and `tauri.macos.conf.json`, so
+  Windows never needs one. Claude/Codex runner modules and installers are bundled as resources.
+  Their SDK/CLI, installed engine, credentials and OS capabilities remain separate runtime
+  requirements.
+- **The Pentest engine is a Python program built in another repository.** It is the SHVIA fork of
+  Strix, frozen with PyInstaller by that repository's `pentest-binaries.yml` and published on its
+  Release as `pentest-<triple>`. This repository holds no Python source, and no `pip` step belongs
+  in the normal Tauri build. The product calls it Pentest everywhere a person or this repository's
+  code reads it; the only `strix` names left are the engine's own file format (`strix_runs/`,
+  `strix_version`), named once in `code_bridge/pentest.rs`.
 - Commands below run **from the repository root**. Before Rust checks or `tauri dev`, stage
-  a usable `anna` with `npm run anna:stage` (or its explicit `--from` path). A clean clone
-  has no staged sidecar because binaries are ignored. CI uses an inert stand-in for tests;
+  a usable `anna` with `npm run anna:stage` and the engine with `npm run pentest:stage` (or
+  their explicit `--from` paths). A clean clone has no staged sidecar because binaries are
+  ignored. CI uses inert stand-ins for tests;
   it must never be distributed. Its separate no-sidecar `cargo check` uses `TAURI_CONFIG`.
   ```bash
   npm ci
@@ -117,6 +124,7 @@ Format: `X.Y.Z - description in English (US)`, the same sentence as the `CHANGEL
   npm run prova:doc
   npm run prova:politica
   npm run prova:runner-version
+  npm run prova:pentest
   cargo test --manifest-path src-tauri/Cargo.toml --locked
   cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
   npm run tauri dev          # roda o app em dev

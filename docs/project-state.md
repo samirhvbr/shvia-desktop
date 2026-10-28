@@ -11,7 +11,9 @@ ShvIA Desktop is a Tauri 2 client for ShvIA. Its local Vite/TypeScript shell sta
 application and handles the offline/server selection experience; the main interface is
 loaded from the configured ShvIA Web server. Rust provides native windows, the constrained
 bridge and local capabilities. Code uses SHVIA's `anna` engine plus the Claude Code and
-Codex runners. There is no implemented Python sidecar in this repository.
+Codex runners. This repository holds no Python source; the Pentest engine (a PyInstaller
+build of the SHVIA fork of Strix, built in its own repository) ships as a bundled sidecar on
+Linux and macOS.
 
 | Component | Owns | Update boundary |
 |---|---|---|

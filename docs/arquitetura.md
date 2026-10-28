@@ -7,9 +7,11 @@ folders, browser profiles and assessment artifacts remain on the computer. See
 
 > **Reviewed against source on 2026-10-15, Desktop 1.29.0.** This describes implementation
 > contracts, not a deployed server or installed-client acceptance. Dated measurements below
-> retain their original scope. The original Python-sidecar/F2 sketch is superseded: there is
-> no Python `sidecar/` in the current app. Native services are Rust; local Code uses anna and
-> the Node-based Claude/Codex runners.
+> retain their original scope. The original Python-sidecar/F2 sketch is superseded as a design:
+> there is no Python `sidecar/` directory in this repository. Native services are Rust; local
+> Code uses anna and the Node-based Claude/Codex runners; the Pentest engine is the one Python
+> program the app carries, built in its own repository and bundled as a sidecar on Linux and
+> macOS (see [build.md](build.md)).
 
 ---
 
@@ -24,7 +26,7 @@ Local bootstrap (src/, Vite/TypeScript)
           └─ Custom native bridge → Rust capability dispatch
               ├─ Authorized local folder → anna / claude-runner / codex-runner
               ├─ Native file dialogs, notifications, device and browser actions
-              └─ Controlled Strix assessment → private local artifacts/outbox
+              └─ Controlled Pentest assessment → private local artifacts/outbox
 
 Remote Code is a separate path owned by the Web UI:
   shared Code screen → ShvIA Web work channel → Workspace service → remote files/engine
@@ -273,7 +275,8 @@ enables them. Screen capture, file picking and browser interactions follow their
 consent rules; the agent's browser uses a separate profile and cannot call back into the app.
 These are distinct from Code's approval level.
 
-Controlled assessment uses the installed SHVIA Strix fork on Linux/macOS. The current probe
+Controlled assessment uses the Pentest engine bundled with the app on Linux/macOS (the SHVIA fork
+of Strix, `pentest` beside the executable, never looked up on PATH). The current probe
 requires a plain fork version `1.2.39 <= version < 2.0.0`, using `--fork-version` before native
 consent; Windows is refused. Start, resume and retest repeat the check. Private saved-run and
 authorization identity stay native-owned. The viewer opens separately in the OS browser after

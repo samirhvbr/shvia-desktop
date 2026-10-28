@@ -128,9 +128,12 @@ still be resolved at runtime. Never create a fake engine to ship a release.
 The Claude runner requires Node 18+ and its SDK dependencies; the Codex runner
 requires Node 18+ and an installed, authenticated Codex CLI. The app can install/update
 runners from bundled sources; see [Claude runner](claude-runner/README.md) and
-[Codex runner](codex-runner/README.md). There is no planned Python/PyInstaller
-sidecar in the current architecture. Optional tools and assessment runtimes have
-their own dependencies.
+[Codex runner](codex-runner/README.md). On Linux and macOS the installer also carries the
+Pentest engine (the controlled assessment profile) as a sidecar next to `anna`: a PyInstaller
+build of the SHVIA fork of Strix, published by that repository and pinned here by SHA-256, so
+updating the Desktop updates it. Docker is a separate requirement; see
+[docs/build.md](docs/build.md). Optional tools and other assessment runtimes have their own
+dependencies.
 
 Rust checks run from `src-tauri` (`cargo test --locked`,
 `cargo clippy --locked --all-targets -- -D warnings`), with the same engine staging
