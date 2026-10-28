@@ -92,13 +92,15 @@
 # como uma versão velha vai parar dentro de um release. Sem `anna` no PATH, o build
 # segue e avisa.
 #
-# PENTEST ENGINE (Linux and macOS): bundled the same way, by scripts/stage-pentest.mjs, from
+# PENTEST ENGINE: on Linux it is bundled the same way as `anna`, by scripts/stage-pentest.mjs, from
 # `--pentest`, $SHVIA_PENTEST_BIN or the release pinned in pentest-engine.json (checked against a
-# SHA-256 written in the repository). There is no lookup on PATH. On macOS, after the build, the
-# engine is RUN from inside the .app, in every build that carries it (signed or not): a PyInstaller
-# one-file engine can be refused by library validation once the app is signed with the hardened
-# runtime, and a build that ships a Pentest that does not start, or that cannot be shown to start
-# (no standalone .app), must fail here, not on the installed app (docs/build.md, "Pentest engine").
+# SHA-256 written in the repository). There is no lookup on PATH. On macOS it is NOT bundled by default:
+# a PyInstaller one-file engine is refused by library validation once the app is signed with the hardened
+# runtime (a signed 1.32.3 carried it and it did not start), so the app downloads the pinned copy on first
+# use, with the person's consent (docs/pentest-compatibility.md). An engine named with `--pentest`, or
+# SHVIA_BUNDLE_PENTEST_ON_MAC=1, is bundled on a Mac too, and then, after the build, it is RUN from inside
+# the .app: a build that ships a Pentest that does not start, or that cannot be shown to start (no
+# standalone .app), must fail here, not on the installed app (docs/build.md, "Pentest engine").
 #
 # PACKET-CAPTURE SIDECAR (Linux and macOS): `traffic-capture` is our own crate (src-tauri/traffic-capture,
 # the only code that links libpcap), built by scripts/stage-traffic-capture.mjs with `cargo build --release`
