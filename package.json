@@ -1,7 +1,7 @@
 {
   "name": "shvia-desktop",
   "private": true,
-  "version": "1.32.2",
+  "version": "1.32.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -31,6 +31,7 @@
     "prova:reuso": "node scripts/prova-reuso-ve-o-que-empacota.mjs",
     "prova:sem-anna": "node scripts/prova-empacota-sem-anna.mjs",
     "prova:pentest": "node scripts/prova-pentest-engine.mjs",
+    "prova:motor-no-mac": "node scripts/prova-trava-do-motor-no-mac.mjs",
     "prova:guarda": "node scripts/prova-guarda-dos-portadores.mjs",
     "prova:arvore": "node scripts/prova-publica-o-commitado.mjs",
     "prova:dependabot": "node scripts/prova-dependabot-cobre-os-manifestos.mjs",

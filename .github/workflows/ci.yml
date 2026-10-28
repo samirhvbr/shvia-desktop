@@ -128,6 +128,10 @@ jobs:
       # and the floor equals the one `compatibility.rs` enforces.
       - name: The Pentest engine is staged from the pinned release, or not at all
         run: npm run prova:pentest
+      # A macOS build that carries the engine does not finish unless the engine starts inside the built .app
+      # (the real guard from build-local.sh, against fake engines).
+      - name: A macOS build refuses an engine that does not start
+        run: npm run prova:motor-no-mac
       # `--publish` ships only what is committed: a dirty or untracked build input refuses it (1.6.34).
       - name: A publish refuses a dirty build input
         run: npm run prova:arvore

@@ -309,6 +309,11 @@ for the Linux/macOS profile, Windows refusal and pending integrated pilot.
   or why there is none: not bundled, unsupported version, no version reported, not offered on Windows), and *Pentest exigido*, the
   engine this Desktop is made to carry (the `version` of `pentest-engine.json`). The probe is slow, so the row says `verificando…`
   and a background thread fills it in. It explains the page's "Pentest not detected".
+- **About says why the engine did not start (1.32.3).** An engine that is there and gives no version is no longer one sentence:
+  the row names the cause (`encerrado pelo sistema (sinal 9)`, `não respondeu em 20 s`, `saiu com erro 255: <what it wrote>`,
+  `o sistema bloqueou a execução`, `arquivo não encontrado`, `resposta ilegível`), and Copiar carries it. The page's code is
+  unchanged. On macOS, `build-local.sh` now starts the engine inside the built `.app` in every build and stops if it does not
+  answer ([build.md](build.md), "macOS signing").
 
 ## Local Code, the bridge and session capabilities
 

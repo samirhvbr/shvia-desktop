@@ -94,10 +94,11 @@
 #
 # PENTEST ENGINE (Linux and macOS): bundled the same way, by scripts/stage-pentest.mjs, from
 # `--pentest`, $SHVIA_PENTEST_BIN or the release pinned in pentest-engine.json (checked against a
-# SHA-256 written in the repository). There is no lookup on PATH. On macOS, after signing, the
-# engine is RUN from inside the .app: a PyInstaller one-file engine can be refused by library
-# validation once the app is signed with the hardened runtime, and a build that ships a Pentest
-# that does not start must fail here, not on the installed app (docs/build.md, "Pentest engine").
+# SHA-256 written in the repository). There is no lookup on PATH. On macOS, after the build, the
+# engine is RUN from inside the .app, in every build that carries it (signed or not): a PyInstaller
+# one-file engine can be refused by library validation once the app is signed with the hardened
+# runtime, and a build that ships a Pentest that does not start, or that cannot be shown to start
+# (no standalone .app), must fail here, not on the installed app (docs/build.md, "Pentest engine").
 #
 # PACKET-CAPTURE SIDECAR (Linux and macOS): `traffic-capture` is our own crate (src-tauri/traffic-capture,
 # the only code that links libpcap), built by scripts/stage-traffic-capture.mjs with `cargo build --release`
@@ -471,26 +472,59 @@ setup_macos_signing() {
   escolhe_credencial_de_notarizacao || exit 1
 }
 
-# Runs the bundled Pentest engine from inside the signed .app (see "PENTEST ENGINE" in the header).
-# Signing happens inside `tauri build`, so this is the first moment the signed engine exists.
+# Runs the bundled Pentest engine from inside the BUILT .app (see "PENTEST ENGINE" in the header), the way the app
+# will: `--fork-version`, its stdout read alone, and the app's own 20 s deadline. Signing happens inside `tauri build`,
+# so this is the first moment the signed engine exists. It runs in EVERY macOS build that carries the engine, signed or
+# not, and a build whose engine cannot be shown to start does not finish: an app that "looks complete" with a Pentest
+# that never starts is how a Mac ended up on "Pentest not detected" (28/10/2026). `SHVIA_ENGINE_CHECK_SECONDS` and
+# `MACOS_BUNDLE_DIR` exist so that scripts/prova-trava-do-motor-no-mac.mjs can run the real function against fakes.
+MACOS_BUNDLE_DIR="${MACOS_BUNDLE_DIR:-src-tauri/target/release/bundle/macos}"
 verify_macos_engine() {
   [ "$_BUILD_OS" = macOS ] || return 0
-  [ "$SIGN_ENABLED" -eq 1 ] || return 0
   ls src-tauri/binaries/pentest-* >/dev/null 2>&1 || return 0
-  local app out
-  app="$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' 2>/dev/null | head -1 || true)"
+  local app seconds out err pid watchdog rc started elapsed timed_out said
+  seconds="${SHVIA_ENGINE_CHECK_SECONDS:-20}"
+  app="$(find "$MACOS_BUNDLE_DIR" -maxdepth 1 -name '*.app' 2>/dev/null | head -1 || true)"
   if [ -z "$app" ]; then
-    echo "    (no standalone .app in this build — the signed Pentest engine was NOT run; try it in the installed app)"
-    return 0
+    {
+      echo "  ❌ this build has no standalone .app, so the bundled Pentest engine could not be started to check it."
+      echo "     A .dmg-only build (--bundles dmg) deletes the .app after folding it in. Shipping an engine nobody"
+      echo "     started is how an app looks complete and says \"Pentest not detected\". Build with the default"
+      echo "     bundles, or with --no-pentest to ship without the engine."
+    } >&2
+    exit 1
   fi
-  out="$("$app/Contents/MacOS/pentest" --fork-version 2>&1 || true)"
-  if printf '%s' "$out" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-    echo "    ✔ the bundled Pentest engine starts inside the signed .app ($out)"
+  out="$(mktemp)"; err="$(mktemp)"
+  started=$SECONDS
+  "$app/Contents/MacOS/pentest" --fork-version >"$out" 2>"$err" &
+  pid=$!
+  ( sleep "$seconds"; kill -9 "$pid" 2>/dev/null ) >/dev/null 2>&1 &
+  watchdog=$!
+  rc=0
+  wait "$pid" 2>/dev/null || rc=$?
+  elapsed=$((SECONDS - started))
+  # The watchdog is still asleep when the engine ended by itself; it has already exited when it was the one that fired.
+  timed_out=0
+  if kill "$watchdog" 2>/dev/null; then wait "$watchdog" 2>/dev/null || true; else timed_out=1; fi
+  said="$(tr -d '\r' < "$out" | head -c 64)"
+  if [ "$timed_out" -eq 0 ] && [ "$rc" -eq 0 ] && printf '%s' "$said" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+    echo "    ✔ the bundled Pentest engine starts inside the built .app ($said, ${elapsed}s of ${seconds}s allowed)"
+    rm -f "$out" "$err"
     return 0
   fi
   {
-    echo "  ❌ the bundled Pentest engine does NOT start inside the signed .app."
-    echo "     It answered: $(printf '%s' "$out" | head -c 300)"
+    echo "  ❌ the bundled Pentest engine does NOT start inside the built .app."
+    if [ "$timed_out" -eq 1 ]; then
+      echo "     It did not answer in ${seconds} s (the app gives it the same time, then gives up)."
+    elif [ "$rc" -gt 128 ] && [ "$rc" -le 192 ]; then
+      # The shell reports a signal as 128 + N and cannot tell it from `exit 128+N`; signals stop at 64.
+      echo "     It exited with status $rc (the system most likely ended it with signal $((rc - 128)))."
+    elif [ "$rc" -ne 0 ]; then
+      echo "     It exited with status $rc."
+    else
+      echo "     It exited cleanly but printed something that is not a version: $(printf '%s' "$said" | head -c 120)"
+    fi
+    if [ -s "$err" ]; then echo "     It wrote: $(tr -d '\r' < "$err" | head -n 3 | head -c 300)"; fi
     echo "     The usual cause is library validation: the engine is a PyInstaller one-file build, its"
     echo "     libraries are signed ad hoc, and the hardened runtime refuses libraries that do not carry"
     echo "     the app's Team ID. Two ways out, each with a cost (docs/build.md, \"Pentest engine\"):"
@@ -500,6 +534,7 @@ verify_macos_engine() {
     echo "          which weakens library validation for the whole app."
     echo "     Or build with --no-pentest to ship without the engine."
   } >&2
+  rm -f "$out" "$err"
   exit 1
 }
 
