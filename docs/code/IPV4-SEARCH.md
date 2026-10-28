@@ -64,7 +64,9 @@ The page validates for a good message; **this module decides** (`code_bridge/ipv
 - **Cloud metadata addresses inside an allowed range are left out** (`100.100.100.200`, Alibaba's, sits inside the CGNAT
   range) instead of refusing the whole range; the report counts them as `skipped`.
 - A **native confirmation dialog** shows the range as normalised (`10.100.100.7/22` becomes `10.100.100.0/22`), the number of
-  addresses, the ports, the time limit and the most attempts it can make. The page cannot answer it. Declining ends in
+  addresses, the ports, the time limit and the most attempts it can make. When the person typed ports, it also names the
+  ports pass 1 tries on every address (the first four typed, then the common ones) and the ones left for pass 2, because
+  the dialog is what the person consents to. The page cannot answer it. Declining ends in
   `E_SCAN_DECLINED`. If the window starts a new document while the dialog is open, the answer starts nothing and the
   request ends in `E_SCAN_WINDOW_CHANGED`, as it does when the window closes.
 - The scan **stops** on `ipv4SearchStop` from the window that started it (from any other window the call answers

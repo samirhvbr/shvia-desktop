@@ -190,7 +190,8 @@ server never sees the range, the ports or the result.
 - **Limits enforced natively** (`code_bridge/ipv4_search.rs`): private ranges only — RFC1918, CGNAT, `198.18.0.0/15`, the same
   classes as the WEB's `DestinationPolicy` — and a public range is refused, not confirmed; loopback/link-local/multicast never;
   at most a /16, 1,024 ports and 1,000,000 first-pass probes; 200–5,000 ms per connection; one scan at a time; a native
-  dialog that shows the normalised range, the ports and the most attempts it can make. A new document, a closed window or a
+  dialog that shows the normalised range, the ports (and, when the person typed some, the common ones pass 1 also tries on
+  every address, and the rest it tries only where something answered) and the most attempts it can make. A new document, a closed window or a
   quit cancels the scan; a new document while the dialog is open makes the answer start nothing. `ipv4SearchStop` stops
   only the scan its own window started.
 - **Descriptors.** Up to 128 probes at once; the process's descriptor limit is raised when allowed (a macOS GUI app starts at
