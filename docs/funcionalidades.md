@@ -74,7 +74,10 @@ The Pentest (controlled assessment) engine used to be something the operator ins
 kept updated by hand on the machine that runs it, the one engine still working that way while
 `anna` and the Claude/Codex runners are bundled or self-installing. A Desktop with the right
 version still answered "Pentest not detected", because the engine was a separate thing. On
-Linux and macOS the installer now carries it: updating the Desktop updates the engine.
+Linux the installer now carries it: updating the Desktop updates the engine. On macOS, from 1.33.0,
+the app installs the pinned copy on first use, with the person's consent, because a signed app
+cannot start the engine from inside its bundle (see "Installing the engine" in
+[pentest-compatibility.md](pentest-compatibility.md)).
 
 - **Resolution.** `code_bridge::pentest::command()` runs the file beside the executable
   (`motores::bundled_bin("pentest")`) and nothing else: no lookup on `PATH`, so a program

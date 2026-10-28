@@ -275,8 +275,9 @@ enables them. Screen capture, file picking and browser interactions follow their
 consent rules; the agent's browser uses a separate profile and cannot call back into the app.
 These are distinct from Code's approval level.
 
-Controlled assessment uses the Pentest engine bundled with the app on Linux/macOS (the SHVIA fork
-of Strix, `pentest` beside the executable, never looked up on PATH). The current probe
+Controlled assessment uses the Pentest engine: bundled with the app on Linux (the SHVIA fork
+of Strix, `pentest` beside the executable, never looked up on PATH), and on macOS a copy the app installs
+with the person's consent (ADR-046), which is preferred over a bundled one when both exist. The current probe
 requires a plain fork version `1.2.39 <= version < 2.0.0`, using `--fork-version` before native
 consent; Windows is refused. Start, resume and retest repeat the check. Private saved-run and
 authorization identity stay native-owned. The viewer opens separately in the OS browser after

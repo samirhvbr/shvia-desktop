@@ -64,8 +64,10 @@ installed engine can still be discovered at runtime.
 
 The controlled assessment profile runs a local engine. It used to be something the operator
 installed and updated by hand, and a Desktop with the right version (1.30.5) still said
-"Pentest not detected" because the engine was a separate thing. It now ships inside the
-installer, so updating the Desktop updates it.
+"Pentest not detected" because the engine was a separate thing. On Linux it now ships inside the
+installer, so updating the Desktop updates it. **On macOS it does not ship inside the app (1.33.0):
+the signed app cannot start it from there, and the app installs the pinned copy on first use, with
+the person's consent** (below, and ADR-046).
 
 **What it is.** The SHVIA fork of Strix, frozen with PyInstaller (one file, about 94 to 118
 MB per platform) by that repository's `pentest-binaries.yml`, and published on its GitHub
@@ -94,20 +96,26 @@ server and keeps the floor in the script equal to the one in `compatibility.rs`.
 platform and the Windows build never asks for one.
 
 **Raising the engine.** Publish the fork's Release (`pentest-binaries.yml` with `release_tag`),
-copy the four SHA-256 values from its `SHA256SUMS` into `pentest-engine.json` with the new
-version, and raise the floor in `stage-pentest.mjs` and `compatibility.rs` together only if
+copy the four SHA-256 values from its `SHA256SUMS` and the four sizes (`gh api
+repos/samirhvbr/strix/releases/tags/<tag> --jq '.assets[] | "\(.name) \(.size)"'`) into
+`pentest-engine.json` with the new version, and raise the floor in `stage-pentest.mjs` and `compatibility.rs` together only if
 the Desktop needs something the older engine lacks.
 
 **Probe time.** A one-file build unpacks itself on every start: `--fork-version` takes about
 2.6 s on Linux, cold or warm (measured), and a first launch on macOS also waits for Gatekeeper.
 The probe deadline is 20 s for that reason.
 
-**macOS signing: not verified on a Mac yet.** The engine is signed with the app by `tauri build`
-(hardened runtime). A PyInstaller one-file engine unpacks libraries that are signed ad hoc, and
-library validation refuses libraries that do not carry the app's Team ID, so a signed build
-can fail to start. This was not tested: no Mac was available when the engine was bundled, and the
-first Mac to run it (28/10/2026) installed a Desktop whose About said the engine "did not report
-the version": the engine was in the app and did not start. So `build-local.sh` runs
+**macOS: measured on one Mac, cause not proved.** A signed 1.32.3 (hardened runtime) carried the
+engine and its About said `saiu com erro 255: [PYI-12883:ERROR] Failed to load Python shared library
+/var/folders/2d/…` (28/10/2026). The same file starts outside the bundle, which is what
+`stage-pentest.mjs` proves on the build machine before bundling it. The likely cause is library
+validation: a PyInstaller one-file engine unpacks libraries that are signed ad hoc, and the hardened
+runtime refuses libraries that do not carry the app's Team ID. That is the reading that fits, not a
+measurement: the system's own reason came after the path, and the first version of About kept 80
+characters, which ended inside it (it keeps 200 now). **So a Mac build does not bundle the engine by
+default** (`scripts/pentest-bundling.mjs`: Linux yes, macOS only with `SHVIA_BUNDLE_PENTEST_ON_MAC=1`,
+Windows never; an engine named with `--pentest` is always bundled) and the app downloads the pinned
+copy when the person agrees (below). For a build that does carry the engine, `build-local.sh` runs
 `Contents/MacOS/pentest --fork-version` from inside the built `.app`, the way the app does (stdout
 only, the same 20 s deadline), **in every macOS build that carries the engine, signed or not**, and
 the build does not finish if the engine does not print a version. It reports what happened (the
@@ -117,11 +125,23 @@ could not be shown to start; build with the default bundles or `--no-pentest`.
 `npm run prova:motor-no-mac` runs the real function against fake engines (answers, junk, error with
 stderr, killed, hangs, no `.app`, no engine, not a Mac).
 
-The two ways out of a refusal each cost something: build the engine on the Mac with
-`--codesign-identity` (its libraries then carry the Team ID) and pass it with `--pentest`, or add
-`com.apple.security.cs.disable-library-validation` to the app's entitlements, which weakens
-library validation for the whole app, not only the engine. `--no-pentest` ships the app without
-it.
+The two ways to make the BUNDLED copy start each cost something, and neither was taken: build the
+engine on the Mac with `--codesign-identity` (its libraries then carry the Team ID) and pass it with
+`--pentest`, or add `com.apple.security.cs.disable-library-validation` to the app's entitlements,
+which weakens library validation for the whole app, not only the engine. What the app does instead
+needs neither.
+
+**Installing the engine on first use (1.33.0).** `code_bridge/pentest/engine.rs`. When the engine in
+use is missing or does not start, `pentestCompatibility` says `engine.installable` and the page shows
+an "Install the engine" button. It calls `pentestInstallEngine`, which only asks: a native dialog
+names the file, size, version, source (`github.com/samirhvbr/strix`, the pinned Release), destination
+(`<app data>/pentest-engine/<version>/pentest`) and the start of the SHA-256. Declining changes
+nothing; no administrator password is involved. What is fetched is pinned in `pentest-engine.json`
+(release, file, SHA-256, and now exact `bytes`), the download is https-only to GitHub's own hosts
+with redirects followed by hand, cut at the pinned length, built in a scratch folder, started with
+`--fork-version` and moved into place only if it answers the pinned version. The installed copy is
+preferred over the bundled one and re-checked against the pinned SHA-256 at every use. When raising
+the engine (below), the new `bytes` go in with the new hashes, or `npm run prova:pentest` fails.
 
 **Why About says what failed.** Help → About asks the engine the same question the app asks and
 names the cause in one sentence: `encerrado pelo sistema (sinal 9)` (a refused signature looks like
