@@ -46,8 +46,8 @@ and can be dismissed. It is not a hard startup block or a minimum-server-version
 | Session continuity | Named sessions, per-project background work, bounded replay and reattachment after document reload for resumable sessions | `code_bridge/sessao.rs` | [Features](funcionalidades.md); window closure ends its sessions; reload persistence is not app-restart persistence |
 | Claude profiles/login | Registered directory/credential profiles, explicit alias discovery, native login flow and account selection | `contas_claude.rs`, `code_bridge/login.rs`, `motores.rs` | [Claude accounts](code/CONTAS-CLAUDE.md), [login diagnosis](code/MOTOR-CLAUDE-DIAGNOSTICO.md); profile presence is not proof of login |
 | Engine plan usage | Claude profile and Codex account usage read through the official clients | `code_bridge/motores.rs`, runner `--uso` paths | [Account usage](code/USO-DAS-CONTAS.md); percent used, unknown stays unknown |
-| Claude subscription handoff | Native `claude setup-token`, progress phases and direct submission to the configured Web server | `code_bridge/assinatura.rs`, `assinatura/` | [Subscription connection](code/ASSINATURA-NO-WORKSPACE.md); Linux/macOS, explicit native consent; requires a Web page that calls the capability, real sign-in remains an acceptance step |
-| CLI configuration | Generate/merge supported client settings locally after native confirmation | `cli_config.rs` | ADR-026 in [decisions](decisoes.md), [features](funcionalidades.md); current adjacent backup behavior is a review finding |
+| Claude subscription handoff | Native `claude setup-token`, progress phases and direct submission to the configured Web server | `code_bridge/assinatura.rs`, `assinatura/` | [Subscription connection](code/ASSINATURA-NO-WORKSPACE.md); Linux/macOS, explicit native consent; Web calls it since 2.114.57, real sign-in remains an acceptance step |
+| CLI configuration | Generate/merge supported client settings locally after native confirmation; replace credential-bearing files through a private staged file, without adjacent backups (1.29.2) | `cli_config.rs`, `cli_config/storage.rs` | [ADR-026 update](decisoes.md#credential-file-replacement-2026-10-15), [features](funcionalidades.md); backups made before 1.29.2 are left where they are |
 | Device commands | A fixed set of device operations behind native tray enablement and command-specific consent | `code_bridge/aparelho.rs`, `tray.rs` | [Features](funcionalidades.md); `recursos.aparelho` reports implementation, not whether it is enabled |
 | Agent browser | Separate local browser window/profile; bounded read/click/type/open/close; site and per-action consent | `code_bridge/navegador.rs`, `navegador.js` | ADR-042 in [decisions](decisoes.md), [features](funcionalidades.md); not control of the person's existing Chrome session |
 | Controlled assessments | Native authorization/consent, one supervised local process, status/stop/control, recovery/review/retest and private history/report outbox | `code_bridge/pentest.rs`, `pentest/` | [Authorization](PENTEST/authorization.md), [compatibility](pentest-compatibility.md); supported Unix path only, fresh consent and runtime/version checks |
@@ -87,11 +87,11 @@ folders, Claude profile metadata, engine caches and the agent browser's separate
 Assessment descriptors/outboxes are a separate native private store. See
 [architecture and persistence](arquitetura.md) for exact files and boundaries.
 
-At the separately reviewed Web baseline (`25704dbc`), the page does not yet call the
-Desktop subscription-connect methods. The native bridge implementation therefore requires
-a compatible Web update before its automatic button is available; the manual token flow
-is separate. This is a cross-repository source observation dated 2026-10-15, not a claim
-about an installed or deployed UI.
+The separately reviewed Web baseline of 2026-10-15 (`25704dbc`) did not call the Desktop
+subscription-connect methods. Web 2.114.57 (PR #561), merged later that day, does: Settings →
+Engines offers the button when the bridge reports `recursos.assinatura`, and the manual token
+flow remains (rechecked 2026-10-29 against Web `d8515e79`). This is a source observation, not a
+claim about an installed or deployed UI.
 
 A local Claude profile/login is distinct from the subscription token submitted to Web for
 remote execution. The latter does not pass through the page in the native connection flow;

@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.33.3 - Say that ShvIA Web calls the subscription bridge and that credential files get no adjacent backups
+
+Documentation only. Five guides still described two things as missing that exist:
+
+- **The Web caller of the subscription bridge.** README (and README_br), `docs/arquitetura.md`,
+  `docs/funcionalidades.md`, `docs/project-state.md` and `docs/code/ASSINATURA-NO-WORKSPACE.md` said
+  the reviewed Web source (`25704dbc`) did not call `claudeSubscriptionConnect`. SHVIA-WEB 2.114.57
+  (PR #561) does, from Settings → Engines when `recursos.assinatura` is true, and it reached Web's
+  master later on 2026-10-15, after that baseline. Rechecked against Web `d8515e79`. A real sign-in
+  through the installed app is still not accepted.
+- **Adjacent credential backups.** `docs/project-state.md` still called them a review finding; 1.29.2
+  replaced them with a private staged replacement (`cli_config/storage.rs`, ADR-026 update). The
+  2026-10-15 review record gets a dated follow-up note and keeps its original wording.
+
+This takes the parts of the 2026-10-26 documentation draft (#161) that are still true. The rest of
+that draft described Desktop 1.30.6, before the Pentest engine shipped in the installer (1.32.0) and
+was installed on first use (1.33.0), and is not carried over.
+
 ## 1.33.2 - Take tauri-plugin-updater 2.14.1, so the Windows build no longer links zip 4.6.1 (GHSA-m665-v7pm-7grj)
 
 - Dependabot alert #18 (critical, published 28/10/2026): `zip` up to 9.0.4 reads a different file list

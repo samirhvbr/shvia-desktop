@@ -59,8 +59,9 @@ The native capability for connecting Claude for **remote** Workspace execution i
 credential flow: when called by a compatible Web page, `claude setup-token` runs after native
 confirmation on Linux/macOS, and the shell sends the
 token to the configured ShvIA server without exposing it to the page. The server encrypts its
-copy. The reviewed Web source (`25704dbc`) has the manual token form but does not call these
-native methods yet. Windows uses that paste path. See
+copy. Web calls these native methods from Settings → Engines (`public/js/motores.js`) since
+2.114.57 (PR #561, 2026-10-15) when the bridge reports `recursos.assinatura`; its manual token
+form remains, and Windows uses that paste path. See
 [the subscription contract](code/ASSINATURA-NO-WORKSPACE.md) and
 [local account profiles](code/CONTAS-CLAUDE.md).
 

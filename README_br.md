@@ -61,13 +61,14 @@ para os limites atuais.
 | Arquivos e ferramentas | Diálogos nativos para abrir/salvar, árvore/status/diff/leitura do projeto local, salvar artefatos, suporte a colar imagens e configurar clientes CLI | [Modo Code](docs/code/MODO-CODE-20260709.md), [arquitetura](docs/arquitetura.md) |
 | Supervisão de Code | Escolha de motor/modelo/esforço, sessões por projeto, reanexação após reload, cartões de aprovação, Plano, orientação durante o turno e Run supervisionado | [Run](docs/code/RUN-20260910.md), [Codex](docs/code/MOTOR-CODEX-20260909.md) |
 | Contas dos motores | Perfis e login Claude, catálogos consultados no runtime, leitura do uso dos planos; fontes dos runners no pacote e instalação/atualização | [Contas Claude](docs/code/CONTAS-CLAUDE.md), [uso dos planos](docs/code/USO-DAS-CONTAS.md) |
-| Claude no Workspace remoto | Ponte nativa implementada: consentimento, `claude setup-token` em terminal privado e envio direto do token ao servidor configurado; exige página Web compatível para acioná-la | [Conexão da assinatura](docs/code/ASSINATURA-NO-WORKSPACE.md) |
+| Claude no Workspace remoto | Ponte nativa implementada: consentimento, `claude setup-token` em terminal privado e envio direto do token ao servidor configurado; acionada por Configurações → Motores do Web desde o SHVIA-WEB 2.114.57 | [Conexão da assinatura](docs/code/ASSINATURA-NO-WORKSPACE.md) |
 | Aparelho e navegador do agente | Operações do aparelho ativadas pelo usuário, seletor de arquivos e captura de tela; navegador isolado opcional com confirmação das ações | [Funcionalidades](docs/funcionalidades.md), ADR-039/042 |
 | Avaliações controladas | Consentimento e verificação nativa do runtime, controle/recuperação, revisão/reteste privados, histórico durável, sincronização de relatórios e visualizador local separado | [Autorização](docs/PENTEST/authorization.md), [compatibilidade](docs/pentest-compatibility.md), [visualizador](docs/pentest-viewer.md) |
 
 A conexão da assinatura é uma capacidade nativa, sem comprovar que existe um botão
-funcional em Configurações em todo deploy Web. A base Web revisada em 15/10/2026 ainda
-não acionava essa ponte; sua integração e um login real exigem aceite separado.
+funcional em Configurações em todo deploy Web. O Web aciona essa ponte em Configurações →
+Motores desde o 2.114.57 (PR #561, na master dele em 15/10/2026, depois da base revisada
+naquele dia); um login real por ela ainda exige aceite separado.
 
 As políticas de aprovação dos runners diferem. Claude possui política própria de
 ferramentas e restrições de caminhos com segredos. Codex usa o conjunto de escrita

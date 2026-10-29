@@ -56,6 +56,14 @@ capability is not evidence that every current platform was exercised.
 
 ## Code findings for owner decisions
 
+> **Follow-up, 2026-10-29.** The adjacent-backup finding below was addressed in Desktop 1.29.2:
+> [`cli_config/storage.rs`](../src-tauri/src/cli_config/storage.rs) replaces credential-bearing
+> files through a private staged file and makes no new adjacent copy; backups made before 1.29.2
+> are left untouched ([ADR-026 update](decisoes.md#credential-file-replacement-2026-10-15)). The
+> missing Web subscription caller in the table above was added by Web 2.114.57 (PR #561) later on
+> 2026-10-15; see [the handoff guide](code/ASSINATURA-NO-WORKSPACE.md). The findings below keep
+> their 2026-10-15 wording.
+
 **Adjacent backups can retain credentials.** In `src-tauri/src/cli_config.rs`, `gravar()`
 copies a preexisting client config to a fixed `.shvia-bak` path before writing. It only
 attempts `0600` for a newly created destination, and it does not harden existing

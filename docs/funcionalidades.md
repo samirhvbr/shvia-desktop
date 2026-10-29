@@ -141,10 +141,10 @@ after a native confirmation, reads the one-year token off the client's screen an
 The token never reaches the page; the page hears phases (`claude_assinatura` events). See
 [the contract and the runbook](code/ASSINATURA-NO-WORKSPACE.md) and [ADR-043](decisoes.md).
 
-This is the implemented **native half**. The reviewed Web source (`25704dbc`) has the manual
-subscription-token form but does not call these native methods yet; installing Desktop 1.29.0
-alone does not create the Web button or establish the complete sign-in flow. Its real-client
-and installed-app acceptance remain separate.
+This is the implemented **native half**. The Web half, Settings → Engines calling these
+methods when `recursos.assinatura` is true, is SHVIA-WEB 2.114.57 (PR #561, 2026-10-15); the 2026-10-15
+review baseline (`25704dbc`) predates it. A real sign-in through the installed app remains a
+separate acceptance step.
 
 ## The Codex runner where a container is the boundary (1.28.0)
 
