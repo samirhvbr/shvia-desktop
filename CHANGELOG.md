@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.33.2 - Take tauri-plugin-updater 2.14.1, so the Windows build no longer links zip 4.6.1 (GHSA-m665-v7pm-7grj)
+
+- Dependabot alert #18 (critical, published 28/10/2026): `zip` up to 9.0.4 reads a different file list
+  from the local headers than from the central directory, which can lead to files written outside the
+  extraction folder. The fix is 9.0.5.
+- `zip` reached this app only through `tauri-plugin-updater` 2.14.0 (`zip = "^4"`), and only in the
+  Windows build, where the updater unpacks the installer it downloads. Linux and macOS never compiled it.
+- `tauri-plugin-updater` 2.14.1 requires `zip = "^9"`; the lockfile now resolves `zip` 9.1.3 and drops
+  `arbitrary`/`derive_arbitrary`, adding `typed-path`. Nothing else moves, and `Cargo.toml` already accepts
+  any 2.x of the plugin. No Dependabot PR existed for this: the advisory is newer than its last run.
+- Checked locally: `cargo clippy --locked --target x86_64-pc-windows-gnu --all-targets -- -D warnings` and
+  the Linux clippy pass with the new lockfile.
+
 ## 1.33.1 - Take etherparse 0.21 for the capture sidecar, naming the ARP and IGMP packets it now decodes
 
 - Dependabot's #169 moves `etherparse` 0.14.3 → 0.21.0 in `src-tauri/traffic-capture`. On its own it does
