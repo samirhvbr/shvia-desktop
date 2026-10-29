@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.33.4 - Give the first start of an installed Pentest engine the time a Mac needs, and end what a timed-out engine started
+
+The first click on "Install the engine" on a real Mac (29/10/2026) got through the consent dialog, the download from GitHub and the
+length and SHA-256 check, and then stopped: "Nothing was installed: the file was checked, but it does not start on this computer: it did
+not answer in 20 s". Nothing was kept, as designed, and nothing worked either.
+
+- **The measurement.** The same pinned file, started in a terminal on that Mac, took **15.3 s** the first time and **5.3 s** the
+  second (`--fork-version`). Of the first, 3.2 s was CPU; the rest was waiting on the system. The install had reused the 20 s of the
+  ordinary version probe, although it is the first start of a new file, the one the system scans slowest.
+- **Deadlines.** The first start of an installed copy gets 120 s (`FIRST_START_DEADLINE`) and the consent dialog says it can take a
+  while. The probe is 60 s on macOS and stays 20 s elsewhere. The build guard in `build-local.sh` takes the same 60 s as its
+  default, because it starts the bundled engine cold, right after the build.
+- **A timed-out engine no longer leaves its tree behind.** A one-file engine runs its Python in a child of the program that was
+  started and unpacks into a `_MEI…` folder that only the parent removes; killing only the parent left both. The probe now runs in its
+  own process group: past the deadline the group gets SIGTERM, is given 3 s to finish (the whole group, not only the child), and what
+  is left gets SIGKILL (`saida_com_prazo_em_grupo`). Other callers of `saida_com_prazo` keep the plain kill on purpose: a group of its
+  own cannot read the terminal, and the interactive-shell probe may be started from one.
+- **Tests.** Five new, with real processes: the grandchild goes with the deadline, the group is asked before it is killed, what the
+  child started is asked and given time, what ignores SIGTERM is killed after the grace, and the version probe is the one that ends the
+  tree. Eight reversions (no group, no SIGTERM, no SIGKILL, no grace, child-only signal, a wait that ends with the child, the probe back
+  on the plain call, the consent line removed) each turn the matching test red. The install using `FIRST_START_DEADLINE` and not the
+  probe's deadline is **not** covered by a test: it is one line in `install`, which needs a window.
+- **Not measured:** that a start inside the app now stays within these deadlines, and why it took longer than 15.3 s there; the first
+  start being the slow one fits the numbers but is not proved the only cause. `ps` on that Mac showed no engine left after the timeout,
+  so the child had finished by itself; whether a `_MEI…` folder was left was not looked at.
+
 ## 1.33.3 - Say that ShvIA Web calls the subscription bridge and that credential files get no adjacent backups
 
 Documentation only. Five guides still described two things as missing that exist:

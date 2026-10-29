@@ -485,7 +485,8 @@ verify_macos_engine() {
   [ "$_BUILD_OS" = macOS ] || return 0
   ls src-tauri/binaries/pentest-* >/dev/null 2>&1 || return 0
   local app seconds out err pid watchdog rc started elapsed timed_out said
-  seconds="${SHVIA_ENGINE_CHECK_SECONDS:-20}"
+  # The app's own probe gives a Mac 60 s: the pinned engine took 15.3 s on its first start there and 5.3 s on the next (29/10/2026).
+  seconds="${SHVIA_ENGINE_CHECK_SECONDS:-60}"
   app="$(find "$MACOS_BUNDLE_DIR" -maxdepth 1 -name '*.app' 2>/dev/null | head -1 || true)"
   if [ -z "$app" ]; then
     {

@@ -102,8 +102,9 @@ repos/samirhvbr/strix/releases/tags/<tag> --jq '.assets[] | "\(.name) \(.size)"'
 the Desktop needs something the older engine lacks.
 
 **Probe time.** A one-file build unpacks itself on every start: `--fork-version` takes about
-2.6 s on Linux, cold or warm (measured), and a first launch on macOS also waits for Gatekeeper.
-The probe deadline is 20 s for that reason.
+2.6 s on Linux, cold or warm (measured). On one Mac it took 15.3 s the first time and 5.3 s the next
+(29/10/2026), mostly waiting on the system, so the probe deadline is 20 s on Linux and 60 s on macOS,
+and the first start of an installed copy gets 120 s (`docs/pentest-compatibility.md`).
 
 **macOS: measured on one Mac, cause not proved.** A signed 1.32.3 (hardened runtime) carried the
 engine and its About said `saiu com erro 255: [PYI-12883:ERROR] Failed to load Python shared library
@@ -117,7 +118,7 @@ default** (`scripts/pentest-bundling.mjs`: Linux yes, macOS only with `SHVIA_BUN
 Windows never; an engine named with `--pentest` is always bundled) and the app downloads the pinned
 copy when the person agrees (below). For a build that does carry the engine, `build-local.sh` runs
 `Contents/MacOS/pentest --fork-version` from inside the built `.app`, the way the app does (stdout
-only, the same 20 s deadline), **in every macOS build that carries the engine, signed or not**, and
+only, the same 60 s deadline), **in every macOS build that carries the engine, signed or not**, and
 the build does not finish if the engine does not print a version. It reports what happened (the
 exit status or signal, or that it did not answer in time) and what the engine wrote to stderr.
 A build with no standalone `.app` (`--bundles dmg` deletes it) is refused too, because the engine
