@@ -31,7 +31,7 @@ the same split:
 
 - **`pcap`**: bindings over libpcap (Linux/macOS) and Npcap's compatible API (Windows) — the engine
   Wireshark, `tshark`, `tcpdump` and `nmap` use. One dependency, one capture path on all three OSes.
-- **`etherparse`**: Ethernet/VLAN/IPv4/IPv6/TCP/UDP/ICMP header parsing for the table. The tolerant
+- **`etherparse`** (0.21): Ethernet/VLAN/ARP/IPv4/IPv6/TCP/UDP/ICMP/IGMP header parsing for the table. The tolerant
   ("lax") parser, because a NIC doing segmentation offload hands libpcap frames whose IPv4 length
   field is 0, which the strict parser refuses. No protocol-dissector framework: out of scope here.
 - **`pcap-file`**: writes the **pcapng** container. Two facts about it cost a bug each and are now

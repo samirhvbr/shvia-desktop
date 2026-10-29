@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.33.1 - Take etherparse 0.21 for the capture sidecar, naming the ARP and IGMP packets it now decodes
+
+- Dependabot's #169 moves `etherparse` 0.14.3 → 0.21.0 in `src-tauri/traffic-capture`. On its own it does
+  not compile: 0.21 decodes ARP as a network layer (`LaxNetSlice::Arp`) and IGMP as a transport
+  (`TransportSlice::Igmp`), and `parse.rs` matched both enums exhaustively without them (E0004).
+- **ARP** gets its own arm and keeps the row it had: the Ethernet addresses, named ARP. Before 0.21 it
+  never reached the network layer and was named from its EtherType, which still covers the cooked and
+  VLAN cases.
+- **IGMP** is now named IGMP, beside ICMPv4 and ICMPv6, with its IPv4 addresses; under 0.14 it showed as
+  plain IPv4.
+- Two tests build a real ARP request and an IGMP membership query. With either arm emptied, three tests
+  fail, including the existing ARP one, since 0.21 decodes its zero-filled payload as ARP too.
+
 ## 1.33.0 - Install the Pentest engine on first use, with the person's consent, where the signed app cannot start the one it carries
 
 A Mac running 1.32.3 (28/10/2026) showed, in Help → About, `saiu com erro 255: [PYI-12883:ERROR] Failed to load Python shared

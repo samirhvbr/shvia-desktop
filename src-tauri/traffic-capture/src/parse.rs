@@ -143,6 +143,9 @@ pub fn summarize(link: LinkKind, raw: &[u8], wire_len: u32) -> Summary {
             dst = ip.header().destination_addr().to_string();
             protocol = "IPv6".into();
         }
+        // etherparse decodes ARP since 0.15; before that it reached `None` below and was named
+        // from its EtherType. The row stays the same: the Ethernet addresses, named ARP.
+        Some(LaxNetSlice::Arp(_)) => protocol = "ARP".into(),
         None => {
             if let Some(name) = link_ether_type.and_then(ether_type_name) {
                 protocol = name.into();
@@ -172,6 +175,7 @@ pub fn summarize(link: LinkKind, raw: &[u8], wire_len: u32) -> Summary {
         }
         Some(TransportSlice::Icmpv4(_)) => protocol = "ICMPv4".into(),
         Some(TransportSlice::Icmpv6(_)) => protocol = "ICMPv6".into(),
+        Some(TransportSlice::Igmp(_)) => protocol = "IGMP".into(),
         None => {}
     }
 
@@ -314,6 +318,25 @@ mod tests {
         assert_eq!(s.src, "11:22:33:44:55:66");
         let odd = ethernet(0x1234, &[0u8; 10]);
         assert_eq!(summarize(LinkKind::Ethernet, &odd, 24).protocol, "ethertype 0x1234");
+    }
+
+    #[test]
+    fn a_decoded_arp_request_keeps_the_ethernet_addresses_and_is_named_arp() {
+        let mut arp = vec![0, 1, 0x08, 0x00, 6, 4, 0, 1]; // Ethernet, IPv4, request
+        arp.extend_from_slice(&[0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 10, 0, 0, 1]);
+        arp.extend_from_slice(&[0, 0, 0, 0, 0, 0, 10, 0, 0, 2]);
+        let frame = ethernet(0x0806, &arp);
+        let s = summarize(LinkKind::Ethernet, &frame, frame.len() as u32);
+        assert_eq!((s.src.as_str(), s.dst.as_str(), s.protocol.as_str()), ("11:22:33:44:55:66", "aa:bb:cc:dd:ee:ff", "ARP"));
+    }
+
+    #[test]
+    fn an_igmp_packet_is_named_igmp_with_its_ip_addresses() {
+        let mut p = ipv4_header(20 + 8, 2);
+        p.extend_from_slice(&[0x11, 100, 0, 0, 0, 0, 0, 0]); // membership query
+        let frame = ethernet(0x0800, &p);
+        let s = summarize(LinkKind::Ethernet, &frame, frame.len() as u32);
+        assert_eq!((s.src.as_str(), s.dst.as_str(), s.protocol.as_str()), ("10.0.0.1", "10.0.0.2", "IGMP"));
     }
 
     #[test]
