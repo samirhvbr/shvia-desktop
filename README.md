@@ -59,13 +59,14 @@ local filesystem access. See [Code mode](docs/code/MODO-CODE-20260709.md) and
 | Files and tools | Native pick/save dialogs, local project tree/status/diff/read, artifact saving, image-paste support and native CLI configuration | [Code mode](docs/code/MODO-CODE-20260709.md), [architecture](docs/arquitetura.md) |
 | Code supervision | Engine/model/effort selection, per-project sessions, reload reattachment, approval cards, Plan, steering and supervised Run | [Run](docs/code/RUN-20260910.md), [Codex](docs/code/MOTOR-CODEX-20260909.md) |
 | Engine accounts | Claude account profiles and login flow, runtime model catalogs, plan usage reads; bundled runner sources and install/update support | [Claude accounts](docs/code/CONTAS-CLAUDE.md), [plan usage](docs/code/USO-DAS-CONTAS.md) |
-| Claude for remote Workspace | Native bridge implemented: consent, `claude setup-token` in a private terminal and direct token submission to the configured server; requires a compatible Web page to invoke it | [Subscription handoff](docs/code/ASSINATURA-NO-WORKSPACE.md) |
+| Claude for remote Workspace | Native bridge implemented: consent, `claude setup-token` in a private terminal and direct token submission to the configured server; invoked by Web's Settings → Engines since SHVIA-WEB 2.114.57 | [Subscription handoff](docs/code/ASSINATURA-NO-WORKSPACE.md) |
 | Agent device/browser tools | Opt-in device operations, file picker and screen capture; opt-in isolated browser with confirmed actions | [Features](docs/funcionalidades.md), ADR-039/042 |
 | Controlled assessments | Native consent/runtime checks, control/recovery, private review/retest, durable history, report synchronization and separate local viewer | [Authorization](docs/PENTEST/authorization.md), [compatibility](docs/pentest-compatibility.md), [viewer](docs/pentest-viewer.md) |
 
 The subscription handoff is a native capability, not evidence of a working Settings
-button in every Web deployment. The Web baseline reviewed on 2026-10-15 did not yet
-invoke this bridge; its integration and a real sign-in need separate acceptance.
+button in every Web deployment. Web calls this bridge from Settings → Engines since
+2.114.57 (PR #561, on its master 2026-10-15, after that day's review baseline); a real
+sign-in through it still needs separate acceptance.
 
 Runner approval policies differ. Claude has its own tool policy and secret-path
 gates. Codex uses its sandbox's writable set; writes within that set can run without

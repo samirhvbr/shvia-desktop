@@ -5,10 +5,12 @@
 > the server without ever being in the page, and what was and was not proved.
 
 > **Cross-repository review, 2026-10-15:** the Desktop bridge is implemented in 1.29.0.
-> The Web baseline reviewed alongside it (`25704dbc`) does not yet call these native methods;
-> its manual subscription-token flow is separate. A compatible Web page must invoke the
-> capability before the automatic connection button is available. This contract and its
-> fixtures do not establish that the hosted Settings screen or a real sign-in used it.
+> The Web baseline reviewed alongside it (`25704dbc`) did not call these native methods yet.
+> **Update, 2026-10-29:** Web 2.114.57 (PR #561, merged 2026-10-15 after that baseline) calls
+> `claudeSubscriptionConnect`, `claudeSubscriptionCode` and `claudeSubscriptionCancel` from
+> `public/js/motores.js`, listens for `claude_assinatura` events and offers the button only when
+> `recursos.assinatura` is true; its manual token flow remains. Source on both sides does not
+> establish that the hosted Settings screen or a real sign-in used it.
 
 ## What the page can ask
 
