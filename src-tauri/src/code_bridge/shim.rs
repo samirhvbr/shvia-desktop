@@ -66,6 +66,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
     pentestStatus: function () { return post('pentestStatus'); },
     openPentestViewer: function () { return post('openPentestViewer'); },
     pentestCompatibility: function () { return post('pentestCompatibility'); },
+    pentestInstallEngine: function () { return post('pentestInstallEngine'); },
     pentestLive: function () { return post('pentestLive'); },
     pausePentest: function (localId) { return post('pausePentest', { localId: localId }); },
     continuePentest: function (o) { return post('continuePentest', o || {}); },

@@ -99,7 +99,7 @@ Format: `X.Y.Z - description in English (US)`, the same sentence as the `CHANGEL
 - **Tauri 2** (Rust) + WebView nativo do SO (WKWebView / WebView2 / WebKitGTK).
 - **Vite/TypeScript** builds the small local shell. Node 22 is used in CI; the locked Vite
   runtime requires Node 20.19+ or 22.12+.
-- **The configured sidecars are `anna` and, on Linux and macOS, the Pentest engine and `traffic-capture`.** `anna` is
+- **The configured sidecars are `anna` and, on Linux and macOS, the Pentest engine and `traffic-capture`; a Mac build does not bundle the engine by default (see `scripts/pentest-bundling.mjs`): the signed app cannot start it from inside the bundle, so the app downloads the pinned copy on first use, with consent (ADR-046).** `anna` is
   staged by `scripts/stage-anna.mjs` into `src-tauri/binaries/anna-<target-triple>`; the engine by
   `scripts/stage-pentest.mjs` into `src-tauri/binaries/pentest-<target-triple>`, from the release
   pinned in `pentest-engine.json` (SHA-256 checked, never looked up on PATH). Both are declared in

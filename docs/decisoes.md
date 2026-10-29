@@ -2869,3 +2869,49 @@ and its first packet killed it.
 - The grant is lost when the package replaces the file; the page shows its permission note again.
 - A flood is shown as a sample of rows with the rest counted; the file has everything.
 - Real-interface capture, macOS and Windows remain to be run by a person on that hardware.
+
+## ADR-046 — On a Mac the Pentest engine is installed on first use, with consent, instead of shipped inside the signed app
+
+- **Date:** 28/10/2026 · **Status:** **Accepted** (the mechanism is proved on Linux; the Mac that motivated it has not run it yet)
+
+### Context
+
+From 1.32.0 the Pentest engine travelled inside the installer (`externalBin`, beside the executable). On Linux that works, measured
+in a real `.deb`. The first Mac to run a signed 1.32.3 (28/10/2026) had the engine in the app and could not start it:
+`saiu com erro 255: [PYI-12883:ERROR] Failed to load Python shared library /var/folders/…`. The engine is a PyInstaller one-file
+program that unpacks its own libraries into a temp folder at every start, and the build proves, on the build machine, that the
+same file starts outside the bundle. The likely cause is library validation under the hardened runtime, which notarization
+requires of everything in the bundle: the unpacked libraries are signed ad hoc and carry no Team ID. That is the reading that fits,
+not a measurement; the system's own reason came after the path and the About of that build kept 80 characters.
+
+### Decision
+
+1. **A Mac build does not bundle the engine by default** (`scripts/pentest-bundling.mjs`). An engine named explicitly, or
+   `SHVIA_BUNDLE_PENTEST_ON_MAC=1`, is bundled and the build then starts it from inside the built `.app` or refuses to finish.
+2. **The app installs the pinned copy when the person agrees.** When the engine in use is missing or fails the version check,
+   `pentestCompatibility` offers it (`engine.installable`) and `pentestInstallEngine` asks in a native dialog the page cannot
+   answer. It downloads into the app's own data folder; no administrator rights, nothing outside that folder.
+3. **Everything that is fetched is fixed at build time.** Release, file, SHA-256 and exact size come from `pentest-engine.json`;
+   the page names nothing. The download is https to GitHub's hosts only, with redirects followed by hand; it is cut at the pinned
+   length, checked against the SHA-256, started with `--fork-version` and moved into place only if it answers the pinned version.
+4. **An installed copy is trusted only while it is exactly the pinned file.** It is preferred over a bundled one, re-checked at
+   every use, and a rewritten copy loses to the bundled one.
+
+### Alternatives not taken
+
+- **Sign the engine's libraries with the app's identity** (build the engine on the Mac with `--codesign-identity`): the right fix
+  for a bundled copy, and it moves the engine's build to a machine this project does not build it on.
+- **`com.apple.security.cs.disable-library-validation` for the app:** it weakens library validation for everything the app
+  loads, to serve one program that is used occasionally.
+- **Install it silently, or at launch:** the person may never use Pentest, and a download that runs a program is theirs to allow.
+
+### Consequences
+
+- The first use of Pentest on a Mac costs a consent and a download of about 90 MB; later uses cost a hash of the file, cached on
+  size and modification time.
+- The installed copy lives in a folder owned by the person's account, so anything running as them could rewrite it; the re-check
+  at every use is what keeps that from running an unpinned file. A race between the check and the start is not closed.
+- Raising the pinned engine means raising `bytes` with the SHA-256 (`docs/build.md`), and a Desktop update installs the new copy
+  the next time the person agrees.
+- Not measured: that a copy launched as a child of the hardened app starts on a real Mac. The install ends by running it, so a
+  copy that does not start is never kept, and its cause is shown.
