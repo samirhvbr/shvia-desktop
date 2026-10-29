@@ -2915,3 +2915,12 @@ not a measurement; the system's own reason came after the path and the About of 
   the next time the person agrees.
 - Not measured: that a copy launched as a child of the hardened app starts on a real Mac. The install ends by running it, so a
   copy that does not start is never kept, and its cause is shown.
+
+### Update (29/10/2026): the first real click, on a Mac
+
+The consent dialog, the download from GitHub (with its redirect) and the length and SHA-256 check all worked on a real Mac. The
+start did not: "did not answer in 20 s", and nothing was kept, as designed. The same file, started in a terminal, took 15.3 s the
+first time and 5.3 s the next, mostly waiting on the system, so the 20 s the install shared with the version probe was the
+mistake: the install is the first start of a new file, the slowest one. 1.33.4 gives that start 120 s and the macOS probe 60 s,
+and ends a timed-out engine's whole process group (SIGTERM, then SIGKILL after 3 s) instead of only the process that was started.
+That a start inside the app stays within these deadlines, and why it took longer than 15.3 s there, are not yet measured.

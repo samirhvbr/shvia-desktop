@@ -98,9 +98,10 @@ cannot start the engine from inside its bundle (see "Installing the engine" in
   names (`strix_runs/`, `strix_version` in `run.json`), recorded in runs already on disk, and
   `code_bridge/pentest.rs` names them once. A WEB older than this change reads none of the new
   names, so deploy the WEB first.
-- **Probe deadline.** 20 s, up from 5 s. A one-file build unpacks itself on every start:
-  `--fork-version` takes about 2.6 s on Linux, cold or warm (measured), and a first launch on
-  macOS also waits for Gatekeeper.
+- **Probe deadline.** 20 s on Linux (up from 5 s) and 60 s on macOS, where one Mac took 15.3 s for the
+  first start of the engine and 5.3 s for the next (29/10/2026); the first start of an installed copy gets
+  120 s. A one-file build unpacks itself on every start: `--fork-version` takes about 2.6 s on Linux, cold
+  or warm (measured). A probe that runs out of time ends the engine's whole process group.
 - **Not verified:** a signed macOS build. The hardened runtime can refuse the libraries a
   PyInstaller one-file engine unpacks; `build-local.sh` runs the engine from inside the signed
   `.app` and stops the build if it does not start (build.md explains the two remedies).

@@ -81,7 +81,7 @@ confere(r.err.includes("library validation"), `fails: still explains the usual c
 r = roda("killed", { engine: "kill -9 $$" });
 confere(r.status === 1 && r.err.includes("signal 9"), `killed: names the signal (status ${r.status}): ${r.err}`);
 
-// 5. It hangs: the build does not hang with it. One second allowed here instead of the app's 20.
+// 5. It hangs: the build does not hang with it. One second allowed here instead of the app's 60 on a Mac.
 r = roda("hangs", { engine: "sleep 30", segundos: 1 });
 confere(r.status === 1 && r.err.includes("did not answer in 1 s"), `hangs: gives up at the deadline (status ${r.status}): ${r.err}`);
 confere(r.ms < 15_000, `hangs: must not wait out the engine (${r.ms} ms)`);

@@ -86,11 +86,86 @@ pub(crate) const PRAZO_SHELL_INTERATIVO: std::time::Duration = std::time::Durati
 /// the child), and a grandchild that keeps a pipe open after the child exits — a daemon started
 /// by an rc file — cannot hold the call past the deadline: whatever arrived is returned.
 pub(crate) fn saida_com_prazo(
+    cmd: Command,
+    prazo: std::time::Duration,
+) -> std::io::Result<std::process::Output> {
+    executar(cmd, prazo, None)
+}
+
+/// How long a timed-out tree gets to clean up after SIGTERM before SIGKILL ends what is left.
+#[cfg(unix)]
+const GRACA_DO_GRUPO: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// `saida_com_prazo` for a program that starts programs of its own, and must not leave them behind
+/// when the deadline passes (29/10/2026). The child gets its own process group; past the deadline the
+/// whole group is asked to end (SIGTERM, so a program that cleans up after itself can), and what is
+/// still there after `GRACA_DO_GRUPO` is killed. The plain call above kills only the child: a PyInstaller
+/// one-file engine runs its Python in a child of the program that was started, and unpacks to a
+/// `_MEI…` folder that only the parent removes, so a SIGKILL of the parent leaves both.
+///
+/// Other callers keep the plain call on purpose: a group of its own cannot read the terminal, and the
+/// interactive shell probe (`PRAZO_SHELL_INTERATIVO`) is started from one when the app runs from a terminal.
+#[cfg(unix)]
+pub(crate) fn saida_com_prazo_em_grupo(
+    cmd: Command,
+    prazo: std::time::Duration,
+) -> std::io::Result<std::process::Output> {
+    executar(cmd, prazo, Some(GRACA_DO_GRUPO))
+}
+
+/// Whether a process is running, for tests that started one. A zombie nobody has reaped yet is not: a
+/// container's init may never reap, and `kill(pid, 0)` would call that alive forever.
+#[cfg(all(test, unix))]
+fn processo_em_execucao(pid: u32) -> bool {
+    let out = crate::processo::comando("ps").args(["-o", "stat=", "-p", &pid.to_string()]).output().unwrap();
+    let stat = String::from_utf8_lossy(&out.stdout);
+    let stat = stat.trim();
+    !stat.is_empty() && !stat.starts_with('Z')
+}
+
+/// Ends a child that ran out of time. With a grace period, it is the child's whole process group.
+fn encerrar(filho: &mut std::process::Child, grupo: Option<std::time::Duration>) {
+    #[cfg(unix)]
+    if let Some(graca) = grupo {
+        // The group was made with `process_group(0)`, so its id is the child's own.
+        let id = filho.id() as libc::pid_t;
+        // SAFETY: `killpg` only sends a signal to the group this call created (signal 0 only asks whether it exists).
+        unsafe { libc::killpg(id, libc::SIGTERM) };
+        let limite = std::time::Instant::now() + graca;
+        // The wait is for the whole group and not for the child alone: what the child started can still be cleaning
+        // up after the child is gone. The child is reaped on the way, or an exited leader would keep the group alive.
+        while std::time::Instant::now() < limite {
+            let _ = filho.try_wait();
+            if unsafe { libc::killpg(id, 0) } != 0 {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        // Whatever is still there is killed; a group that is already gone is not signalled at all.
+        if unsafe { libc::killpg(id, 0) } == 0 {
+            unsafe { libc::killpg(id, libc::SIGKILL) };
+        }
+        let _ = filho.wait();
+        return;
+    }
+    #[cfg(not(unix))]
+    let _ = grupo;
+    let _ = filho.kill();
+    let _ = filho.wait();
+}
+
+fn executar(
     mut cmd: Command,
     prazo: std::time::Duration,
+    grupo: Option<std::time::Duration>,
 ) -> std::io::Result<std::process::Output> {
     use std::io::Read;
     use std::sync::mpsc;
+    #[cfg(unix)]
+    if grupo.is_some() {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut filho = cmd.spawn()?;
     let drenar = |cano: Option<Box<dyn Read + Send>>| {
@@ -112,8 +187,7 @@ pub(crate) fn saida_com_prazo(
             break st;
         }
         if inicio.elapsed() >= prazo {
-            let _ = filho.kill();
-            let _ = filho.wait();
+            encerrar(&mut filho, grupo);
             return Err(std::io::Error::new(
                 std::io::ErrorKind::TimedOut,
                 format!("sem resposta em {} s", prazo.as_secs()),
@@ -679,11 +753,123 @@ mod tests_fora_da_ui {
     // The process tests are unix-only (`sh`); unconditional imports would be unused-import
     // errors under `-D warnings` on Windows — the blind spot 1.6.8 measured.
     #[cfg(unix)]
-    use super::{ler_url_com_prazo, saida_com_prazo};
+    use super::{executar, ler_url_com_prazo, processo_em_execucao, saida_com_prazo, saida_com_prazo_em_grupo};
     #[cfg(unix)]
     use std::process::Stdio;
     #[cfg(unix)]
     use std::time::{Duration, Instant};
+
+    /// A scratch folder for the tree tests below, and the grandchild's pid read back from it.
+    #[cfg(unix)]
+    fn pasta_da_arvore(nome: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("shvia-grupo-{}-{nome}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Waits for a process to be gone (it is killed here if it is not, so a red test leaves nothing behind).
+    #[cfg(unix)]
+    fn sumiu(pid: u32) -> bool {
+        let sumiu = (0..150).any(|_| {
+            std::thread::sleep(Duration::from_millis(20));
+            !processo_em_execucao(pid)
+        });
+        if !sumiu {
+            // SAFETY: a signal to a process this test started.
+            unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
+        }
+        sumiu
+    }
+
+    /// 🔴 The case from a Mac (29/10/2026): the engine that was started runs its Python in a child, so ending only
+    /// the process that was started leaves the child, and the folder it unpacked, behind. Past the deadline the
+    /// whole tree has to go.
+    #[cfg(unix)]
+    #[test]
+    fn em_grupo_o_estouro_encerra_tambem_o_neto() {
+        let dir = pasta_da_arvore("neto");
+        let pidfile = dir.join("neto.pid");
+        let mut c = crate::processo::comando("sh");
+        c.args(["-c", &format!("sleep 60 & echo $! > '{}'; wait", pidfile.display())]);
+        let r = saida_com_prazo_em_grupo(c, Duration::from_millis(500));
+        let neto: u32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
+        let foi = sumiu(neto);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(r.expect_err("must time out").kind(), std::io::ErrorKind::TimedOut);
+        assert!(foi, "the grandchild was still running after the deadline");
+    }
+
+    /// The tree is ASKED to end before it is killed: the program that unpacked the folder removes it on SIGTERM,
+    /// and a SIGKILL first would leave it.
+    #[cfg(unix)]
+    #[test]
+    fn em_grupo_o_estouro_pede_antes_de_matar() {
+        let dir = pasta_da_arvore("pede");
+        let marca = dir.join("limpou");
+        let mut c = crate::processo::comando("sh");
+        c.args(["-c", &format!("trap 'echo ok > \"{}\"; exit 0' TERM; sleep 60 & wait", marca.display())]);
+        let r = saida_com_prazo_em_grupo(c, Duration::from_millis(500));
+        let limpou = marca.exists();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(r.expect_err("must time out").kind(), std::io::ErrorKind::TimedOut);
+        assert!(limpou, "the child was killed before it could clean up");
+    }
+
+    /// And the request reaches what the child started, and the wait is for all of it: here the child dies at
+    /// once on SIGTERM, but its own child needs a moment to clean up after it, and a SIGKILL sent the instant
+    /// the child was gone would cut that short.
+    #[cfg(unix)]
+    #[test]
+    fn em_grupo_o_que_o_filho_iniciou_tambem_e_pedido_e_esperado() {
+        let dir = pasta_da_arvore("neto-limpa");
+        let marca = dir.join("limpou");
+        let mut c = crate::processo::comando("sh");
+        c.args([
+            "-c",
+            &format!("( trap 'sleep 0.3; echo ok > \"{}\"; exit 0' TERM; sleep 60 & wait ) & wait", marca.display()),
+        ]);
+        let r = executar(c, Duration::from_millis(500), Some(Duration::from_secs(3)));
+        let limpou = marca.exists();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(r.expect_err("must time out").kind(), std::io::ErrorKind::TimedOut);
+        assert!(limpou, "what the child started was not asked to end, or not given time to");
+    }
+
+    /// And what ignores the request does not outlive the grace: the child and its grandchild both ignore SIGTERM
+    /// here, so only the SIGKILL after the grace ends them. The call runs on a thread so that a SIGKILL that never
+    /// comes is a failure with a message and not a test that never ends.
+    #[cfg(unix)]
+    #[test]
+    fn em_grupo_quem_ignora_o_term_cai_no_kill_depois_da_graca() {
+        let dir = pasta_da_arvore("ignora");
+        let (neto_pid, casca_pid) = (dir.join("neto.pid"), dir.join("casca.pid"));
+        let mut c = crate::processo::comando("sh");
+        c.args([
+            "-c",
+            &format!(
+                "trap '' TERM; echo $$ > '{}'; sleep 60 & echo $! > '{}'; while :; do sleep 1; done",
+                casca_pid.display(),
+                neto_pid.display()
+            ),
+        ]);
+        let t = Instant::now();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(executar(c, Duration::from_millis(500), Some(Duration::from_millis(300))));
+        });
+        let r = rx.recv_timeout(Duration::from_secs(10));
+        let levou = t.elapsed();
+        let pid_de = |file: &std::path::Path| std::fs::read_to_string(file).ok().and_then(|s| s.trim().parse::<u32>().ok());
+        // `sumiu` kills what is still there, so a red run leaves nothing behind.
+        let casca_foi = pid_de(&casca_pid).is_none_or(sumiu);
+        let neto_foi = pid_de(&neto_pid).is_none_or(sumiu);
+        let _ = std::fs::remove_dir_all(&dir);
+        let r = r.expect("SIGKILL never came: the call is still waiting on a child that ignores SIGTERM");
+        assert_eq!(r.expect_err("must time out").kind(), std::io::ErrorKind::TimedOut);
+        assert!(levou >= Duration::from_millis(700), "SIGKILL came before the grace was over: {levou:?}");
+        assert!(levou < Duration::from_secs(5), "took {levou:?}");
+        assert!(casca_foi && neto_foi, "something survived the SIGKILL");
+    }
 
     #[cfg(unix)]
     #[test]
