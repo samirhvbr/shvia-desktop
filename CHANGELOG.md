@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.34.0 - Tell the person when a local assessment ends and why, and keep its SHVIA grant alive while it runs
+
+The first real runs on a Mac (30/10/2026) ended four different ways that looked exactly alike: a provider that refused the model key (401),
+one with no balance (402), a **healthy one-hour run (3 findings, 257M input tokens) that failed because its SHVIA authorization lapsed**, and
+a normal one. Nothing told the person, the page guessed ("if the provider's usage limit was reached"), and the only way to find out was
+`tail` on a log.
+
+- **A native notification when the run ends**, even with the page closed or the window in the background (the watcher that already waited
+  for the process now announces it). The text is generic (no target, model or run name: it can sit on a locked screen) and nothing is said
+  for a stop the person caused.
+- **`pentestStatus().endReason`**, one short code (`finished`, `stopped`, `budget`, `provider_window`, `authorization`, `key_refused`,
+  `balance`, `incomplete`, `failed`), `null` while running. Read from the engine's own `result.json` first, then from the tail of the run's
+  newest log for the engine's own sentences (`pentest/ending.rs`); **no line of the log reaches the page**. A run found finished after a
+  restart is classified once, on first ask.
+- **A heartbeat for the grant.** The engine renews it on every model call but asks nothing while parked (a pause, a wait for a provider's
+  usage window), and a grant that lapses mid-wait ends the run when it wakes. While the process lives the watcher makes the same
+  verification every two minutes (`sync::renew_grant`); the server renews a claimed grant for that scan (WEB "Lease").
+- **The consent says "sem limite"** when the stored cost limit is the engine's ceiling (US$ 10,000) instead of printing a number the person
+  never set.
+- **Tests.** Eight for the classifier (each real ending from the first runs, a balance error wrapped in an authentication one, the engine's
+  own class beating a provider sentence, structured reason over log, newest log only and only its tail, no log at all, a person's stop never
+  announced and no notification naming a target), one for the heartbeat against a local server (the request, the bearer token and nothing
+  else, a refusal is an error and not a panic), one for the consent text and one for the stop mark. Swapping the classifier's order fails two of them; dropping the stop mark fails
+  the stop one. **Not covered by a test:** the watcher thread itself calling the notification and the heartbeat on its timer (it needs a
+  running app and a window); each piece it calls is tested alone, and the call sites are read, not run.
+- **Not done:** resuming by itself when a provider's window renews (the engine stops resumable on a usage window, measured in its source), a
+  real Docker and credentials check before starting, and the WEB page showing the code (the page keeps its generic sentence until it does).
+
 ## 1.33.4 - Give the first start of an installed Pentest engine the time a Mac needs, and end what a timed-out engine started
 
 The first click on "Install the engine" on a real Mac (29/10/2026) got through the consent dialog, the download from GitHub and the
