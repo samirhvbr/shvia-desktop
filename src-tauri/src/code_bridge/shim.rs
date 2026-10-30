@@ -64,6 +64,13 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // sessão do agente
     startPentest: function (o) { return post('startPentest', o || {}); },
     pentestStatus: function () { return post('pentestStatus'); },
+    // Before an assessment (1.35.0): {docker:{state:'ready'|'not_running'|'missing'|'unknown'|'unsupported'},
+    // credentials:{state:'at_confirmation'}, autoResume:{enabled}}. Detection only: nothing is started or installed.
+    pentestPreflight: function () { return post('pentestPreflight'); },
+    // Resuming by itself when the provider's usage window closes (1.35.0). `o` = {enabled?: bool, cancel?: bool}; saving the switch
+    // off also cancels a wait. Resolves with the same object as pentestStatus().autoResume: {enabled, covered, state:'none'|'waiting'|
+    // 'resuming'|'cancelled'|'gave_up'|'failed', attempt, nextAttemptAt (ms since the epoch, or null), waitedMinutes, ceilingMinutes}.
+    pentestAutoResume: function (o) { return post('pentestAutoResume', o || {}); },
     openPentestViewer: function () { return post('openPentestViewer'); },
     pentestCompatibility: function () { return post('pentestCompatibility'); },
     pentestInstallEngine: function () { return post('pentestInstallEngine'); },
