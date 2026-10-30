@@ -68,6 +68,18 @@ context, or a version-2 one that does not, is refused before anything else is re
 [open-scan-authorization.md in the fork](https://github.com/samirhvbr/strix/blob/master/docs/PENTEST/open-scan-authorization.md)
 for the WEB-handoff contract this consumes; the WEB side that issues one does not exist yet.
 
+## How a local assessment ends, and what the person is told (1.34.0)
+
+The first real runs on a Mac (30/10/2026) ended four different ways that looked the same: a provider that refused the
+model key (401), one with no balance (402), a healthy one-hour run whose SHVIA authorization lapsed, and a normal one.
+From 1.34.0 the watcher that waits for the engine's process announces the end with a native notification (generic text:
+no target, model or run name; nothing for a stop the person caused), `pentestStatus().endReason` carries one short code
+(`finished`, `stopped`, `budget`, `provider_window`, `authorization`, `key_refused`, `balance`, `incomplete`, `failed`)
+and never a line of the log, and while the process lives the watcher renews its SHVIA grant every two minutes, because the
+engine asks nothing while it is parked in a pause or a provider's usage window. The consent shows "sem limite" when the
+stored cost limit is the engine's ceiling. Details, sources and what is not done:
+[PENTEST/authorization.md](PENTEST/authorization.md), "How a run ends".
+
 ## Pentest engine ships inside the installer (1.32.0)
 
 The Pentest (controlled assessment) engine used to be something the operator installed and
