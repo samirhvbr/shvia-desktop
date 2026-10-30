@@ -80,6 +80,17 @@ engine asks nothing while it is parked in a pause or a provider's usage window. 
 stored cost limit is the engine's ceiling. Details, sources and what is not done:
 [PENTEST/authorization.md](PENTEST/authorization.md), "How a run ends".
 
+## A run resumes by itself when the provider's window closes, and Docker is checked (1.35.0)
+
+A monthly plan is metered in windows of five hours, and the engine stops resumable when one closes. From 1.35.0, when the
+consent that started the run said so (a switch that is on by default and can be turned off), this computer resumes the same
+run by itself after 10, 30 and 60 minutes and then every hour, up to 12 hours, with the same target, scope and cost limit,
+and tells the person with a native notification when the wait starts and when it resumes. It never resumes after a refused
+key, a missing balance, a lapsed authorization, a cost limit or a stop by the person, and the wait keeps the SHVIA grant
+alive with its own heartbeat. `pentestStatus().autoResume`, `pentestAutoResume()` and `pentestPreflight()` (Docker:
+`ready` / `not_running` / `missing`, detection only) are the new page-facing contract. Details:
+[PENTEST/auto-resume.md](PENTEST/auto-resume.md).
+
 ## Pentest engine ships inside the installer (1.32.0)
 
 The Pentest (controlled assessment) engine used to be something the operator installed and

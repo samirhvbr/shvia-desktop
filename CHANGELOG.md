@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.35.0 - Resume a local assessment by itself when the provider's usage window closes, and check that Docker answers before one starts
+
+A monthly plan (the MiniMax M plan) is metered in windows of five hours, and the engine, run without a screen, stops resumable when one
+closes (measured in its source: it records `rate_limited` and exits, it does not wait). Until now a run that hit the window at night waited
+for someone to read the notification and press Resume. The owner decided (30/10/2026): resume by itself after 10, 30 and 60 minutes,
+switch on by default, possible to turn off.
+
+- **Resuming by itself** (`pentest/resume.rs`, contract in `docs/PENTEST/auto-resume.md`). The waits are 10, 30 and 60 minutes and then 60
+  every time, up to a ceiling of 12 hours of waiting (13 attempts, 11 h 40 min), after which it stops and says so; a resumed run that lived
+  15 minutes or more starts a new sequence. The time of the next attempt is wall-clock, so a laptop's sleep counts. The retry is the same
+  `resume_core` a press of Resume runs (it re-inspects the grant, the identities and the window), minus the dialog.
+- **The consent moved earlier.** An automatic resume has nobody to press OK, so the dialog that starts a run (or resumes it by hand) now
+  says, while the switch is on, that this computer will resume the same run by itself, when, and that it widens nothing (same target,
+  scope and cost limit). **Only a run whose consent carried that sentence is ever resumed by itself**; a run recovered after a restart or
+  started before this build is resumed by hand. It never resumes after a refused key, no balance, a lapsed authorization, a cost limit or
+  a stop, when the switch is off or turned off meanwhile, or after the wait was cancelled.
+- **The grant is kept alive during the wait.** The 1.34.0 heartbeat lives in the watcher of the engine's process and ended with it, so a
+  60-minute wait would have outlived a 60-minute lease. The wait thread renews the grant every two minutes with the same call.
+- **Page-facing contract.** `pentestStatus().autoResume` (`enabled`, `covered`, `state`, `attempt`, `nextAttemptAt`, `waitedMinutes`,
+  `ceilingMinutes`), `pentestAutoResume({enabled?, cancel?})` for the switch (persisted in a private file, default on, a file that cannot
+  be read means off) and for cancelling a wait, and native notifications, few on purpose: the first wait of a sequence, a resume that
+  has settled (alive two minutes later), the ceiling, and an attempt that could not be made (generic text, nothing for a stop the person
+  caused, nothing for the repeats of a window that is still closed). **The WEB page does not use any of it yet**: until it does,
+  closing the app is the only way to cancel a wait, and the consent sentence says the page can.
+- **`pentestPreflight()`**: `docker.state` is `ready`, `not_running`, `missing`, `unknown` or `unsupported`, from `docker info` with an 8 s
+  deadline (measured here: ready in 261 ms; an unreachable socket makes the real command exit 1 in 31 ms). Detection only, nothing is
+  started or installed. When Docker is not ready the native consent adds a warning line; it blocks nothing, because an SDK-only Docker with
+  no `docker` command on the PATH would be refused for a reason that does not exist. `credentials.state` is `at_confirmation`: the engine
+  reports whether the approved model has a key (`available`, `unknown`, `missing`) only when it inspects a grant, so the answer is still
+  given at the native confirmation (`missing` refuses, `unknown` is "not verified", as before).
+- **Tests.** The schedule and its ceiling, the reset after progress, the consent and switch gates, cancel semantics, the status object, the
+  switch file (default on, persistence, unreadable means off, private mode), the wait's decision (renew at two minutes, attempt only when due
+  and still on, never collide with a start, stop when cancelled; dropping the renewal fails the first), the Docker states against stand-in
+  commands (answers, refuses, hangs past the deadline, will not run), the consent notes, and a stop ending a wait on a run with no process.
+  **Not covered by a test:** the wait thread calling the notification and `resume_core` on its timer, and a real resume through the engine
+  (they need a running app, a window and a server); each piece is tested alone and the call sites are read, not run. Not exercised against a
+  real usage window.
+- **Not done:** the engine says `available` for the MiniMax provider with no key configured (measured 30/10/2026), so that case still ends
+  as `key_refused` after the start; the fix belongs in the engine (`inference_source.py`), not here. Persisting a wait across an app restart.
+
 ## 1.34.0 - Tell the person when a local assessment ends and why, and keep its SHVIA grant alive while it runs
 
 The first real runs on a Mac (30/10/2026) ended four different ways that looked exactly alike: a provider that refused the model key (401),
