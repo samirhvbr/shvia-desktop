@@ -55,7 +55,9 @@ belong to the target OS. See [the Windows acceptance runbook](roteiro-validacao-
 `stage-anna.mjs` selects `--from`, then `SHVIA_ANNA_BIN`, then `anna` on PATH. It probes
 `--version`, checks the minimum supported version and stages the target-named executable.
 The minimum is defined in the script; a version merely printed in an old build log is not
-a compatibility check. Absence removes a stale staged binary, and the wrappers override
+a compatibility check. Since 1.35.2 it is `anna` 0.13.6, and the script says why for every
+raise. A build machine whose PATH `anna` is older stops the build: install the current one
+from SHVIA-CODE (`./install.sh` builds it from source) or pass `--anna <path>`. Absence removes a stale staged binary, and the wrappers override
 `externalBin` with an empty list. `--no-anna`/`-NoAnna` therefore means **no bundled SHVIA
 engine**, not that every other local/remote Code engine disappears. An independently
 installed engine can still be discovered at runtime.

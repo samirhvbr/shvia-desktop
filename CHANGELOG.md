@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.35.2 - Refuse to package an anna older than 0.13.6, the engine that keeps the person's request through history compaction
+
+`scripts/stage-anna.mjs` stops the build when the `anna` it would bundle is below `ANNA_MINIMO`. The floor was 0.11.9, and
+it let through what the release machine had on its PATH: the `anna` staged for the Linux 1.35.1 build here was **0.11.15**,
+staged at 07:43 on 31/10/2026, two minutes before the Linux packages were uploaded to the 1.35.1 Release.
+
+- **The floor is now 0.13.6** (SHVIA-CODE `f145c90`). Up to 0.13.5 the engine compacted its history with a sliding window: past
+  150 messages every round dropped the oldest ones and only the leading `system` messages were protected, so a long Code turn lost
+  the person's own request and showed "histórico compactado" before almost every tool call. Seen on the owner's Mac the same day,
+  MiniMax M3.1 Flash: the 100-round ceiling at 153 tools and 4.47M tokens. 0.13.6 keeps the session's first and latest requests and
+  cuts once every ~25 rounds. The same floor carries 0.13.4's patched `rustls`, `rustls-webpki` and `webpki-roots`.
+- **What it costs a build machine:** SHVIA-CODE has no 0.13.5 or 0.13.6 Release (its workflows do not start while the account is
+  locked), so each machine builds the engine from source: `./install.sh` in SHVIA-CODE, or `build-local.sh --anna <path>`.
+- The refusal message now points at `ANNA_MINIMO`; it used to name the 422 that the 0.11.4 floor was about.
+- Proof: `prova-empacota-sem-anna.mjs` stages a fake `anna 0.13.5` (refused, nothing staged) and `anna 0.13.6` (staged). With
+  the floor reverted to 0.11.9 the first case fails: "anna 0.13.5 is below the floor and was staged".
+- `docs/build.md` states the floor and how a machine meets it.
+
 ## 1.35.1 - Keep the computer from sleeping on its own while a local assessment runs
 
 The first long run on a Mac (30/10/2026) did an hour of real work (1,200 model calls, five findings) and then the lid was closed: `pmset -g log`
