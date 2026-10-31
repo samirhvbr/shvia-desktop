@@ -157,7 +157,18 @@ if (!versao) {
 // projeto do usuário, com a página do Modo Code vindo do servidor e atualizando
 // sozinha. Piso em 0.11.4 empacotaria um motor que executa leitura de segredo sem
 // mostrar cartão, dentro do app que deu a ele a pasta.
-const ANNA_MINIMO = [0, 11, 9];
+// 0.13.6 (raised in 1.35.2, 31/10/2026): the engine's history compaction. Up to 0.13.5,
+// past 150 messages every round dropped the 2–4 oldest and only the leading `system`
+// messages were protected, so a long Code turn lost the person's own request and
+// showed "histórico compactado" before almost every tool call (the owner's Mac, MiniMax
+// M3.1 Flash: the 100-round ceiling at 153 tools and 4.47M tokens). 0.13.6 keeps the
+// first and latest requests and cuts once every ~25 rounds. The same floor carries
+// 0.13.4's patched rustls, rustls-webpki and webpki-roots (RUSTSEC-2026-0346 to -0349,
+// -0381, -0382). Why it had to be the floor and not a note: the `anna` staged for the
+// Linux 1.35.1 build on the release machine was 0.11.15, the one on its PATH, two
+// minutes before those packages were uploaded; 0.11.15 cleared the old 0.11.9 floor,
+// so nothing stopped a three-month-old engine from shipping.
+const ANNA_MINIMO = [0, 13, 6];
 
 function partesDaVersao(texto) {
   const m = /(\d+)\.(\d+)\.(\d+)/.exec(texto ?? "");
@@ -175,7 +186,7 @@ if (!partes) {
 const menor = partes.findIndex((n, i) => n !== ANNA_MINIMO[i]);
 if (menor !== -1 && partes[menor] < ANNA_MINIMO[menor]) {
   console.error(`[stage-anna] ${origem} é "${versao}", abaixo do piso ${ANNA_MINIMO.join(".")}.`);
-  console.error("            Empacotar isto entrega um Modo Code que trava no 422 do gateway em sessão longa.");
+  console.error("            Packaging it ships a Code engine without the fixes the floor exists for (see ANNA_MINIMO).");
   console.error("            Conserte instalando o anna atual e rodando de novo:");
   console.error("              cd ../SHVIA-CODE (ou ../shvia-code) && ./install.sh   # ou: --from /caminho/para/anna");
   process.exit(1);
