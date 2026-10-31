@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.35.1 - Keep the computer from sleeping on its own while a local assessment runs
+
+The first long run on a Mac (30/10/2026) did an hour of real work (1,200 model calls, five findings) and then the lid was closed: `pmset -g log`
+shows `Clamshell Sleep` at 19:02 on battery and only twenty-second wakes every quarter of an hour after that. The engine, frozen in between,
+asked the WEB whether its authorization was still good in one of those wakes and was refused; it ended `failed` at 22:36 with
+`WebAuthorizationError`. This app held nothing against the sleep.
+
+- **A system assertion for as long as the engine lives** (`pentest/awake.rs`, contract in `docs/PENTEST/keep-awake.md`). macOS: `caffeinate -i -s -w <pid>`;
+  Linux: `systemd-inhibit --what=idle:sleep --mode=block tail --pid=<pid> -f /dev/null`, falling back to `--what=idle` when the stronger one is
+  refused (measured from a remote terminal session here: `sleep` asks for an authorization, `idle` does not). Absolute paths, tied to the engine's PID
+  by the tool itself, so it ends with the engine however the engine ends, including when the app was killed first. Best effort: where the tool or the
+  bus is missing the assessment starts as before. Held for a start and for a resume of the model's run, not for a retest.
+- **The consent says it, with its limit.** Where this system can hold the computer awake, the dialog that starts a run (and the one that resumes it
+  by hand) adds that it will not sleep on its own while the run lasts, and that **closing the lid of a laptop on battery still makes it sleep**:
+  leave the lid open and the charger in. Where it cannot, the sentence is not added, so it never promises what will not happen.
+- **Measured and not measured.** On Linux the real `hold` was run against a stand-in process: one `SHVIA` lock listed while it lived, none a few seconds
+  after it died. The arguments are covered by a test (a tool that holds forever would keep the computer awake for good). **Nothing was run on a Mac**:
+  `pmset -g assertions | grep -i caffeinate` during a run is the check, and whether `-s` also survives a closed lid on AC power is unknown.
+
 ## 1.35.0 - Resume a local assessment by itself when the provider's usage window closes, and check that Docker answers before one starts
 
 A monthly plan (the MiniMax M plan) is metered in windows of five hours, and the engine, run without a screen, stops resumable when one
