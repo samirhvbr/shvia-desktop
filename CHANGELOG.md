@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.35.4 - Give the page the facts it needs to tell the truth about a run
+## 1.35.5 - Give the page the facts it needs to tell the truth about a run
 
 On 02/11/2026 a first attempt with engine 1.2.46 on a Mac ended three seconds after it started: Docker Desktop was not open, so the
 engine printed its "DOCKER NOT AVAILABLE" banner and exited with 1, before it created any run. The page then said "o log não traz um
@@ -24,6 +24,16 @@ The Desktop knew enough to say better; it did not send it. Three facts now reach
 - Not in this version: the page side (a separate pull request in the WEB repository: honest headings, the evidence ladder, the clock),
   and a button that opens Docker.
 - `docs/PENTEST/authorization.md` and `docs/funcionalidades.md` list the new code and the new fields.
+
+## 1.35.4 - Rebuild instead of reusing the bundle on disk when it carries another anna than this run would package
+
+`build-local.sh` reuses the bundle on disk when `release.json` matches the version, every artifact's SHA-256 still matches and no source is newer than the artifacts. Staging the `anna` runs only on the rebuild path, so the reuse never saw the engine: `./build-local.sh --anna <path>` against a reused bundle printed "[reuso] ✅ sim" and kept the engine the bundle was built with. It happened twice on the owner's Mac: 1.35.1 on 31/10/2026, and 1.35.3 on 02/11/2026, where the `anna` passed with `--anna` was 0.15.3, built just before, and the reused bundle was from 13:45 that day.
+
+- **Step 5 of the reuse check.** `scripts/stage-anna.mjs --reuse-check` resolves the `anna` with the same lookup it stages with (`--anna`, then `$SHVIA_ANNA_BIN`, then PATH), compares its version with the staged `src-tauri/binaries/anna-<triple>` (the file Tauri bundled) and changes nothing on disk. The reuse is refused, with the reason printed, when an `anna` asked for by name is another version than the bundle's, in either direction; when the one on PATH is newer than the bundle's (the Linux build machine after `SHVIA-CODE/install.sh`); when the bundle has no `anna` and this run would package one; and with `--no-anna` when the bundle carries one. An older `anna` on PATH does not displace the bundle's, so a `--publish` run that leaves out the `--anna` of the build before it does not swap in an older engine.
+- **The reuse report says which engine it keeps:** "anna in the bundle: anna 0.15.3".
+- **Proof.** `prova:reuso` runs the real `can_reuse_build`, cut out of `build-local.sh`, in a temporary tree with stand-in `anna` binaries: seven cases, and the staged file is checked to be untouched after each. `prova:sem-anna` and `prova:bump` pass.
+- **Not covered.** `--pentest <path>` against a reused bundle is still ignored. The engine is pinned by `pentest-engine.json`, and a pin change comes with a version bump, which already prevents the reuse.
+- `docs/build.md` and the header of `build-local.sh` say what step 5 checks.
 
 ## 1.35.3 - Pin the Pentest engine at 1.2.46, for the two platforms this Desktop is published for
 

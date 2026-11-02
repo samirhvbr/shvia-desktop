@@ -12,10 +12,15 @@
  *  1. consistency — every resource, icon and external binary `tauri.conf.json` bundles has its
  *     root in the list (read from the config, not copied here, so a new resource fails this);
  *  2. behavior — the real `find`, cut out of the script, sees a newer runner file and ignores a
- *     newer file under node_modules.
+ *     newer file under node_modules;
+ *  3. the engine (1.35.4) — the real `can_reuse_build`, cut out of the script and run in a temp tree
+ *     with stand-in `anna` binaries, refuses the reuse when `--anna` names another version than the
+ *     bundle's, or PATH has a newer one, and keeps it otherwise. Before 1.35.4 the owner's Mac
+ *     reused 1.35.3 with `--anna` 0.15.3 and the bundle kept its older engine.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, utimesSync } from "node:fs";
+import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, utimesSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,8 +66,74 @@ try {
   if (!roda().includes("claude-runner/claude-runner.mjs")) { falhas++; console.error("🔴 a newer runner file did not stop the reuse"); }
 } finally { rmSync(dir, { recursive: true, force: true }); }
 
+// 3. the engine: the real can_reuse_build against stand-in annas. Shell stand-ins, so not on Windows,
+// which has no reuse path (build-local.ps1 always rebuilds).
+let casosAnna = 0;
+if (process.platform !== "win32") {
+  const corta = (nome) => {
+    const a = FONTE.indexOf(`\n${nome}() {`);
+    const b = FONTE.indexOf("\n}\n", a);
+    if (a < 0 || b < 0) { falhas++; console.error(`🔴 ${nome}() moved out of build-local.sh`); return ""; }
+    return FONTE.slice(a, b + 3);
+  };
+  const FUNCOES = corta("_sha256") + corta("can_reuse_build");
+  const triple = /host: (\S+)/.exec(execFileSync("rustc", ["-vV"], { encoding: "utf8" }))[1];
+  const plataforma = { darwin: "macos", linux: "linux" }[process.platform];
+  const falso = (caminho, versao) => writeFileSync(caminho, `#!/bin/sh\necho 'anna ${versao}'\n`, { mode: 0o755 });
+
+  // [no bundle staged = null] [--anna version or null] [PATH version] [--no-anna] → reuse?
+  const casos = [
+    { bundle: "0.15.1", flag: "0.15.3", path: "0.15.1", reusa: false, porque: "--anna newer than the bundle's (the owner's Mac, 1.35.3)" },
+    { bundle: "0.15.3", flag: "0.15.3", path: "0.15.1", reusa: true, porque: "--anna is the bundle's version" },
+    { bundle: "0.15.3", flag: "0.15.1", path: "0.15.3", reusa: false, porque: "--anna older than the bundle's: asked for by name, it wins either way" },
+    { bundle: "0.15.3", flag: null, path: "0.15.1", reusa: true, porque: "an older anna on PATH does not displace the bundle's" },
+    { bundle: "0.15.1", flag: null, path: "0.15.3", reusa: false, porque: "a newer anna on PATH (install.sh ran after the build)" },
+    { bundle: null, flag: "0.15.3", path: "0.15.3", reusa: false, porque: "the bundle has no anna and this run would package one" },
+    { bundle: "0.15.3", flag: null, path: "0.15.3", noAnna: true, reusa: false, porque: "--no-anna and the bundle carries anna" },
+  ];
+  for (const c of casos) {
+    const dir = mkdtempSync(join(tmpdir(), "shvia-reuso-anna-"));
+    try {
+      mkdirSync(join(dir, "scripts"));
+      mkdirSync(join(dir, "src-tauri/binaries"), { recursive: true });
+      mkdirSync(join(dir, "src-tauri/target/release/bundle/deb"), { recursive: true });
+      mkdirSync(join(dir, "bin"));
+      copyFileSync(join(RAIZ, "scripts/stage-anna.mjs"), join(dir, "scripts/stage-anna.mjs"));
+      writeFileSync(join(dir, "version.md"), "9.9.9\n");
+      const artefato = join(dir, "src-tauri/target/release/bundle/deb/ShvIA_9.9.9_amd64.deb");
+      writeFileSync(artefato, "pacote");
+      const sha = createHash("sha256").update("pacote").digest("hex");
+      writeFileSync(join(dir, "release.json"), JSON.stringify({ version: "9.9.9", platforms: { [plataforma]: { artifacts: [{ file: "ShvIA_9.9.9_amd64.deb", sha256: sha }] } } }));
+      const noBundle = join(dir, `src-tauri/binaries/anna-${triple}`);
+      if (c.bundle) {
+        falso(noBundle, c.bundle);
+        const antigo = new Date(Date.now() - 3600_000); // older than the artifact: step 4 passes
+        utimesSync(noBundle, antigo, antigo);
+      }
+      falso(join(dir, "bin/anna"), c.path);
+      if (c.flag) falso(join(dir, "pedido"), c.flag);
+      const script = `set -euo pipefail
+FORCE_BUILD=0; NO_ANNA=${c.noAnna ? 1 : 0}; ANNA_FROM=${c.flag ? JSON.stringify(join(dir, "pedido")) : '""'}
+REUSE_REF=""; REUSE_N=0; REUSE_MOTIVO=""; REUSE_ANNA=""
+${FUNCOES}
+if can_reuse_build; then printf 'REUSA|%s' "$REUSE_ANNA"; else printf 'NAO|%s' "$REUSE_MOTIVO"; fi`;
+      const out = execFileSync("bash", ["-c", script], { cwd: dir, encoding: "utf8", env: { ...process.env, PATH: `${join(dir, "bin")}:${process.env.PATH}`, SHVIA_ANNA_BIN: "" } });
+      casosAnna++;
+      const reusou = out.startsWith("REUSA|");
+      if (reusou !== c.reusa) {
+        falhas++;
+        console.error(`🔴 ${c.porque}: expected ${c.reusa ? "reuse" : "rebuild"}, got ${out}`);
+      }
+      if (c.bundle && readFileSync(noBundle, "utf8") !== `#!/bin/sh\necho 'anna ${c.bundle}'\n`) {
+        falhas++;
+        console.error(`🔴 ${c.porque}: the reuse check changed the staged anna`);
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+}
+
 if (falhas) {
   console.error(`\n${falhas} problem(s): a commit that changed only a bundled input would ship the old bundle.`);
   process.exit(1);
 }
-console.log(`[reuso] ${exigidos.size} entradas do bundle na lista de frescor · runner novo invalida o reuso, node_modules não`);
+console.log(`[reuso] ${exigidos.size} entradas do bundle na lista de frescor · runner novo invalida o reuso, node_modules não · ${casosAnna} casos do anna`);
