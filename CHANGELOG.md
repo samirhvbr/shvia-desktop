@@ -17,6 +17,9 @@ The owner asked on 02/11/2026 for the About dialog to show the Codex engine belo
 - One test, on the row's text: an old runner's output is never read as a version, and "não encontrado" is said only by a runner
   that can look. The dialog itself was checked rendered.
 - Doc: `docs/funcionalidades.md`, `codex-runner/README.md`.
+- Separately, the Windows clippy (`x86_64-pc-windows-gnu`, `--all-targets`) was red on master since 1.35.5: the test of the engine's
+  last-write clock calls `newest_write_ms` and `std::os::unix::fs::symlink`, which exist only on Unix, and the test was not gated.
+  It is `#[cfg(unix)]` now, like the function; clippy is clean on both targets.
 
 ## 1.35.8 - Show the Workspace's production version in the About dialog
 
