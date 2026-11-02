@@ -74,7 +74,7 @@ The first real runs on a Mac (30/10/2026) ended four different ways that looked 
 model key (401), one with no balance (402), a healthy one-hour run whose SHVIA authorization lapsed, and a normal one.
 From 1.34.0 the watcher that waits for the engine's process announces the end with a native notification (generic text:
 no target, model or run name; nothing for a stop the person caused), `pentestStatus().endReason` carries one short code
-(`finished`, `stopped`, `budget`, `provider_window`, `authorization`, `key_refused`, `balance`, `incomplete`, `failed`)
+(`finished`, `stopped`, `budget`, `provider_window`, `authorization`, `key_refused`, `balance`, `incomplete`, `docker_unavailable`, `failed`)
 and never a line of the log, and while the process lives the watcher renews its SHVIA grant every two minutes, because the
 engine asks nothing while it is parked in a pause or a provider's usage window. The consent shows "sem limite" when the
 stored cost limit is the engine's ceiling. Details, sources and what is not done:
