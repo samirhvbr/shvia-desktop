@@ -59,16 +59,18 @@ function targetTriple() {
   return null;
 }
 
+// `pedido` names how the binary was asked for by name (`--anna`, `$SHVIA_ANNA_BIN`); null when it
+// was only found on PATH. The --reuse-check mode below treats the two differently.
 function acharAnna() {
   const doFlag = opt("--from");
-  if (doFlag) return resolve(doFlag);
-  if (process.env.SHVIA_ANNA_BIN) return resolve(process.env.SHVIA_ANNA_BIN);
+  if (doFlag) return { caminho: resolve(doFlag), pedido: "--anna" };
+  if (process.env.SHVIA_ANNA_BIN) return { caminho: resolve(process.env.SHVIA_ANNA_BIN), pedido: "$SHVIA_ANNA_BIN" };
 
   const cmd = process.platform === "win32" ? "where" : "which";
   try {
     const saida = execFileSync(cmd, ["anna"], { encoding: "utf8" }).trim();
     const primeira = saida.split(/\r?\n/)[0]?.trim();
-    if (primeira) return primeira;
+    if (primeira) return { caminho: primeira, pedido: null };
   } catch {
     /* não está no PATH */
   }
@@ -89,7 +91,47 @@ if (!triple) {
   process.exit(1);
 }
 
-const origem = acharAnna();
+const achado = acharAnna();
+const origem = achado?.caminho ?? null;
+
+// ── --reuse-check: would a rebuild package a different anna? (1.35.4) ─────────
+// build-local.sh reuses the bundle on disk when the version and the sources match, and staging
+// runs only on the rebuild path. So `--anna <newer>` against a reused bundle was ignored in
+// silence: on the owner's Mac, 1.35.1 (31/10/2026) and again 1.35.3 (02/11/2026, anna 0.15.3
+// built a minute before) printed "[reuso] ✅ sim" and kept the engine the bundle was built with.
+// This mode answers before the reuse is taken, with the same lookup that stages. It changes
+// nothing on disk. Exit 0: the reuse keeps the right engine (stdout says which). Exit 3: rebuild,
+// with the reason on stdout.
+//
+// The rule: an anna asked for by name (--anna, $SHVIA_ANNA_BIN) must be the version in the
+// bundle, in either direction. One found only on PATH displaces the bundle's only when it is
+// NEWER — a `--publish` run that left out the `--anna` of the build before it must not swap an
+// older engine from PATH into the release. Versions, not hashes, are compared: the staged file
+// is the one Tauri bundled, and every anna release bumps its version.
+if (args.includes("--reuse-check")) {
+  const noBundle = join(DESTINO_DIR, `anna-${triple}${process.platform === "win32" ? ".exe" : ""}`);
+  const vBundle = existsSync(noBundle) ? versaoDo(noBundle) : null;
+  const pBundle = partesDaVersao(vBundle);
+  const recusa = (motivo) => { console.log(motivo); process.exit(3); };
+
+  if (!achado) {
+    console.log(`anna in the bundle: ${vBundle ?? "none"} (no other anna found)`);
+    process.exit(0);
+  }
+  const de = `${achado.pedido ?? "PATH"}: ${origem}`;
+  if (!existsSync(origem)) recusa(`the anna this run asks for does not exist (${de})`);
+  const vAqui = versaoDo(origem);
+  const pAqui = partesDaVersao(vAqui);
+  if (!pAqui) recusa(`the anna this run would package did not answer --version (${de})`);
+  if (!pBundle) recusa(`the bundle on disk has no anna; this run would package ${vAqui} (${de})`);
+  const d = compara(pAqui, pBundle);
+  if (achado.pedido ? d !== 0 : d > 0) {
+    recusa(`the bundle on disk carries ${vBundle}; this run would package ${vAqui} (${de})`);
+  }
+  const fica = d < 0 ? ` (the one on PATH, ${vAqui}, is older and stays out)` : "";
+  console.log(`anna in the bundle: ${vBundle}${fica}`);
+  process.exit(0);
+}
 
 // Ausência NÃO é erro de build. O app continua funcionando sem o `anna`
 // empacotado — o `resolve_bin()` ainda procura no PATH em runtime, que é o
@@ -173,6 +215,12 @@ const ANNA_MINIMO = [0, 13, 6];
 function partesDaVersao(texto) {
   const m = /(\d+)\.(\d+)\.(\d+)/.exec(texto ?? "");
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+/** Sign of a − b, decided by the first component that differs. */
+function compara(a, b) {
+  const i = a.findIndex((n, k) => n !== b[k]);
+  return i === -1 ? 0 : a[i] - b[i];
 }
 
 const partes = partesDaVersao(versao);

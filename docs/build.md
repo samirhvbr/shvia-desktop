@@ -677,6 +677,16 @@ inteiro só para subir arquivo que já existe — na prática, 2s em vez de minu
 qualquer fonte for mais nova que o artefato** — senão editar código sem bumpar a
 versão publicaria binário velho, assinado, como se fosse a versão nova.
 
+**The engine is checked too (1.35.4).** Staging the `anna` runs only on the rebuild path, so until
+1.35.3 a reused bundle ignored `--anna` (the owner's Mac reused 1.35.3 with `--anna` 0.15.3 and kept
+the older engine). Before reusing, `scripts/stage-anna.mjs --reuse-check` finds the `anna` this run
+would package, with the same lookup it stages with, and compares its version with the staged
+`src-tauri/binaries/anna-<triple>`. The build is redone when an `anna` asked for by name
+(`--anna`, `$SHVIA_ANNA_BIN`) is another version than the bundle's, when the one on PATH is
+**newer**, when the bundle has none and this run would package one, and with `--no-anna` when the
+bundle carries one. An older `anna` on PATH does not displace the bundle's. The reuse line says
+which engine it keeps ("anna in the bundle: …").
+
 Para forçar: `--force`, ou apague `src-tauri/target/release/bundle`.
 
 > **Windows:** o `build-local.ps1` ainda **não** tem o `--publish` — publique à mão

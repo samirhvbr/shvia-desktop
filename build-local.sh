@@ -56,6 +56,9 @@
 # se qualquer fonte (src/, src-tauri/src/, capabilities/, binaries/, manifests)
 # for mais nova que o artefato, ele RECOMPILA — senão editar código sem bumpar a
 # versão publicaria binário velho assinado como se fosse a versão nova.
+# It also REBUILDS when the `anna` this run would package is not the one in the
+# bundle (1.35.4): `--anna`/`$SHVIA_ANNA_BIN` of another version, or an anna on
+# PATH NEWER than the bundle's. Before that, a reused bundle ignored `--anna`.
 # Para forçar: --force, ou apague src-tauri/target/release/bundle.
 #
 # CHAVE DO UPDATER: como o bundle gera artefato de updater (ADR-022), o build
@@ -1048,6 +1051,30 @@ can_reuse_build() {
     return 1
   fi
 
+  # Step 5 (1.35.4): the engine this run would package. Staging runs only on the rebuild path,
+  # so step 4 never saw a new `anna`: `--anna <newer>` against a reused bundle was ignored in
+  # silence (owner's Mac, 1.35.1 and 1.35.3). stage-anna answers with the lookup it stages with
+  # (scripts/stage-anna.mjs, --reuse-check) and changes nothing. Two branches, not an array of
+  # arguments: macOS bash 3.2 aborts on an empty array under `set -u`.
+  if [ "$NO_ANNA" = "1" ]; then
+    if ls src-tauri/binaries/anna-* >/dev/null 2>&1; then
+      REUSE_MOTIVO="--no-anna, and the bundle on disk carries anna"
+      return 1
+    fi
+  else
+    local anna_rc=0
+    if [ -n "$ANNA_FROM" ]; then
+      REUSE_ANNA="$(node scripts/stage-anna.mjs --reuse-check --from "$ANNA_FROM" 2>&1)" || anna_rc=$?
+    else
+      REUSE_ANNA="$(node scripts/stage-anna.mjs --reuse-check 2>&1)" || anna_rc=$?
+    fi
+    if [ "$anna_rc" -ne 0 ]; then
+      REUSE_MOTIVO="$REUSE_ANNA"
+      REUSE_ANNA=""
+      return 1
+    fi
+  fi
+
   REUSE_REF="$ref"; REUSE_N="$n"
   return 0
 }
@@ -1349,6 +1376,7 @@ BUNDLES=""
 REUSE_REF=""
 REUSE_N=0
 REUSE_MOTIVO=""
+REUSE_ANNA=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --skip-npm-ci)  SKIP_NPM_CI=1 ;;
@@ -1517,6 +1545,9 @@ if can_reuse_build; then
     if _dt="$(date -r "$REUSE_REF" '+%d/%m %H:%M' 2>/dev/null)"; then
       echo "       gerado em $_dt"
     fi
+  fi
+  if [ -n "$REUSE_ANNA" ]; then
+    echo "       $REUSE_ANNA"
   fi
   echo "       Pulando npm ci / version:sync / tauri build."
   echo "       Para reconstruir: --force (ou apague src-tauri/target/release/bundle)."
