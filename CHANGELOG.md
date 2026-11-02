@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.35.6 - Accept the engine's own process as the owner of its control channel
+
+On 02/11/2026 the first real assessment with the packaged engine ran for fourteen minutes, called the model (MiniMax's usage went
+from 0% to 1% and a sandbox container was up) and the page still said "Preparando o ambiente" the whole time. The Desktop never
+received any live progress, pause or resume state from it, and had never been able to: the check that binds the engine's control
+descriptor to "the process this app started" compared the descriptor's `pid` for equality, and the engine is a one-file executable.
+The process `spawn` returns is a small launcher that runs the real engine as its child, so the engine writes the child's pid
+(`os.getpid()`), never the launcher's.
+
+- **Measured on the owner's Mac, not inferred:** `control.json` said `pid` 11243; the process table said the Desktop started
+  11238 (whose parent is the app) and that 11243 is its child. On Linux the same two-process shape was shown with the real 1.2.46
+  binary (the launched process and a Python child, parent and child pids consecutive). The earlier tests used scripts as the
+  engine, which are one process, so they could not see it.
+- **The fix** (`pentest/control.rs`): the descriptor's pid is accepted when it is the pid this app started or one of its descendants
+  (up to four levels, read from `/proc` on Linux and from `ps` elsewhere, and remembered per run so the page's polling does not
+  start a process every time). The token, the controller and the scan name must still match, so a descriptor of another run is
+  still refused; this only changes what "the process this app started" means for a launcher.
+- **Everything that goes through the channel was affected:** `pentestLive`, pause and continue, the "Consultar execução local"
+  checklist and the live part of the history upload.
+- **Not enough on its own, said plainly:** the same real run showed a second blocker that this Desktop cannot fix. The engine closes
+  its control connection with `transport.abort()` right after `drain()`, which discards what is still buffered; with a small socket
+  buffer such as macOS's, an answer of a few dozen KB reaches the client cut short (measured with the same code pattern: 41 KB sent,
+  8,064 bytes received) and this app, which requires the answer to end in a newline, reports it unavailable. That fix is in the engine
+  (the 1.2.47 work); until it is pinned here, the live view can work for the first moments of a run and then drop out.
+- Proof: `the_pid_the_engine_writes_may_be_the_launchers_child_and_no_stranger` starts a real launcher with a real child and checks
+  the launcher, its child, a stranger, init and malformed values; with the old equality rule it fails at "its child, which is what
+  the engine writes". `cargo test pentest` passes (98 serially) and the clippy gate is clean. Not run on a Mac: the macOS path
+  (`ps`) is the one the new test also exercises on Linux (`parent_of_with_ps`), and it was not exercised on the Mac.
+- `docs/PENTEST/authorization.md` says which pid the descriptor may carry.
+
 ## 1.35.5 - Give the page the facts it needs to tell the truth about a run
 
 On 02/11/2026 a first attempt with engine 1.2.46 on a Mac ended three seconds after it started: Docker Desktop was not open, so the
