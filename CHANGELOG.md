@@ -6,7 +6,7 @@ On 02/11/2026 a first attempt with engine 1.2.46 on a Mac ended three seconds af
 engine printed its "DOCKER NOT AVAILABLE" banner and exited with 1, before it created any run. The page then said "o log não traz um
 motivo que esta página possa nomear", offered "Abrir o visualizador" and "Retomar" for a run that never existed (the viewer refused
 every click behind one generic sentence), and the screen kept saying "Avaliação em andamento" for runs that had made no model call.
-The Desktop knew enough to say better; it did not send it. Three facts now reach the page, all from `pentestStatus()`:
+The Desktop knew enough to say better; it did not send it. Four facts now reach the page, all from `pentestStatus()`:
 
 - **Why it never started.** `endReason: "docker_unavailable"` (`pentest/ending.rs`): the engine's own banner in the tail of the run's
   log, and only for a process that exited with an error (a clean exit that happens to quote the words stays `finished`). The native
@@ -17,6 +17,12 @@ The Desktop knew enough to say better; it did not send it. Three facts now reach
 - **When the process began.** `startedAtMs`, milliseconds since the Unix epoch, held by the Desktop with the run (set at start and again
   at each resume, `null` for a run found after a restart). The page anchors its clock on it, so a reload or a visit to another screen
   continues the count instead of restarting it; a clock that lived in the page could not do that.
+- **When the engine last wrote.** `lastActivityAtMs`: the newest modification time among the engine's own files for the run
+  (`strix.log`, `run.json`, `coverage.json`), read from the disk on every answer, `null` before the run exists. It does not
+  depend on the control channel and survives a reload. It is needed because the engine's live snapshot keeps the OLDEST 256
+  events (`ORDER BY started_at LIMIT 256`): after a few minutes of a real run (234 events in about twelve) the times inside it
+  stop moving, and a page that read them would call a healthy run silent. Proof: `the_engines_last_write_is_the_newest_of_its_own_files_and_nothing_else`
+  (fails with `min` in place of `max`: `Some(1000000)` instead of `Some(3000000)`); `cargo test pentest` passes (98 serially).
 - Proof: `a_docker_that_was_not_running_is_named_and_a_clean_exit_never_is` classifies the real banner text of that run (user name
   removed) and fails when the new branch is disabled ("left: Failed, right: DockerUnavailable"); the distinct-codes test lists the new
   code. `cargo test pentest` passes (97 serially). The status fields themselves are built from a window and were not unit-tested; they
