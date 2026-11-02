@@ -98,10 +98,23 @@ server and keeps the floor in the script equal to the one in `compatibility.rs`.
 platform and the Windows build never asks for one.
 
 **Raising the engine.** Publish the fork's Release (`pentest-binaries.yml` with `release_tag`),
-copy the four SHA-256 values from its `SHA256SUMS` and the four sizes (`gh api
+copy one SHA-256 from its `SHA256SUMS` and one size per platform (`gh api
 repos/samirhvbr/strix/releases/tags/<tag> --jq '.assets[] | "\(.name) \(.size)"'`) into
 `pentest-engine.json` with the new version, and raise the floor in `stage-pentest.mjs` and `compatibility.rs` together only if
 the Desktop needs something the older engine lacks.
+
+**Which platforms the pin carries.** The ones this Desktop is published for: the Mac build is Apple Silicon only and the Linux
+packages are x86_64 only (release 1.35.2), so the pin lists `aarch64-apple-darwin` and `x86_64-unknown-linux-gnu`, and
+`npm run prova:pentest` and the Rust test `the_pin_offers_a_file_for_each_platform_and_refuses_a_malformed_one` refuse a pin
+that forgets one of them. The pin has one version, and a platform's file has to answer exactly that version, so a platform
+with no binary for it cannot stay on an older engine: it is left out, and a build for it carries no engine
+(`E_PENTEST_NOT_BUNDLED`). Put the entry back with the binary built for it.
+
+**While GitHub Actions is locked** (since 26/10/2026) the Release's files come from `scripts/build-pentest-local.sh --upload`,
+run once on each machine from a clean checkout of the tag (the fork's `docs/PENTEST/pentest-binaries.md`, "Without Actions").
+Pin the digest that the `--upload` run prints at its end, not the one of an earlier run without `--upload`: the build does not
+reproduce the same bytes twice, and the file on the Release is the one the upload run built. Check the pin against the
+Release before committing it: `gh api repos/samirhvbr/strix/releases/tags/<tag> --jq '.assets[] | "\(.name) \(.size) \(.digest)"'`.
 
 **Probe time.** A one-file build unpacks itself on every start: `--fork-version` takes about
 2.6 s on Linux, cold or warm (measured). On one Mac it took 15.3 s the first time and 5.3 s the next
