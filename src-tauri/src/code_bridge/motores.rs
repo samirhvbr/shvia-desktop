@@ -194,6 +194,55 @@ pub(crate) fn versao_do_anna() -> String {
     }
 }
 
+/// The first `codex-runner` that answers `--codex-version`. An older runner does not know the
+/// flag and would start in host mode with it, so it is never asked.
+const CODEX_VERSION_DESDE: &str = "1.7.0";
+
+/// The About dialog's "Motor do Codex" row: the Codex CLI the runner would start, then the runner.
+///
+/// The runner is asked, not the PATH: only its `resolverCodex` knows which `codex` it starts
+/// (`SHVIA_CODEX_BIN`, install dirs outside the app's PATH, `node codex.js` on Windows). Two
+/// Node starts, so the caller runs this off the UI thread.
+pub(crate) fn versao_do_codex() -> String {
+    let Some(lancamento) = resolve_runner("codex-runner") else {
+        return "não instalado".into();
+    };
+    let perguntar = |flag: &str| -> String {
+        let mut sonda = lancamento.comando();
+        sonda.arg(flag);
+        saida_com_prazo(sonda, PRAZO_VERSAO)
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default()
+    };
+    let runner = perguntar("--version");
+    let sabe = versao_limpa(&runner)
+        .is_some_and(|v| super::atualizacao::comparar(&v, CODEX_VERSION_DESDE) != std::cmp::Ordering::Less);
+    let codex = if sabe { perguntar("--codex-version") } else { String::new() };
+    texto_do_codex(&runner, &codex, sabe)
+}
+
+/// A version as a runner prints it, or `None` for anything else (empty, NDJSON, a sentence).
+fn versao_limpa(bruto: &str) -> Option<String> {
+    let s = bruto.trim();
+    let ok = s.starts_with(|c: char| c.is_ascii_digit())
+        && s.len() <= 32
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+' | '_'));
+    ok.then(|| s.to_string())
+}
+
+/// The row's text from the two answers. "codex não encontrado" only when a runner that knows how
+/// to look says so; a runner too old to ask leaves the Codex version unknown.
+fn texto_do_codex(runner: &str, codex: &str, runner_sabe: bool) -> String {
+    let runner = versao_limpa(runner).map_or_else(|| "runner ?".to_string(), |v| format!("runner {v}"));
+    match versao_limpa(codex) {
+        Some(v) => format!("v{v} ({runner})"),
+        None if runner_sabe => format!("codex não encontrado ({runner})"),
+        None => format!("? ({runner})"),
+    }
+}
+
 /// Ausência do `claude-runner`, dita de um jeito que resolve — texto ÚNICO.
 ///
 /// É string de TELA (i18n de produto, por isso em português) e sai dos DOIS pontos que
@@ -553,6 +602,17 @@ pub fn engine_status(base: &str) -> serde_json::Value {
 #[cfg(test)]
 mod tests_motor {
     use super::*;
+
+    /// The About row never prints what is not a version, and says "not found" only when the runner
+    /// that knows how to look said so.
+    #[test]
+    fn the_codex_row_reads_only_versions_and_blames_codex_only_when_the_runner_could_look() {
+        assert_eq!(texto_do_codex("1.7.0", "0.164.0", true), "v0.164.0 (runner 1.7.0)");
+        assert_eq!(texto_do_codex("1.7.0", "", true), "codex não encontrado (runner 1.7.0)");
+        assert_eq!(texto_do_codex("1.6.0", "", false), "? (runner 1.6.0)");
+        assert_eq!(texto_do_codex("{\"type\":\"error\"}", "", false), "? (runner ?)");
+        assert_eq!(texto_do_codex("1.7.0", "{\"type\":\"model\"}", true), "codex não encontrado (runner 1.7.0)");
+    }
 
     /// A bundled program is the file beside the executable and nothing else: a program that IS on
     /// PATH (`sh`, `cmd`) is not found, and a file placed beside the executable is.

@@ -345,6 +345,12 @@ for the Linux/macOS profile, Windows refusal and pending integrated pilot.
   02/11/2026: the version the server reads from the Workspace's `/health`, asked as `GET /api/v1/version?workspace=1`
   (shvia-web #649) apart from the page-load version gate, so a normal page load never waits on the Workspace. It says
   `v0.35.9`, `não configurado`, `sem resposta`, or `—` with an older server or in the local shell; Copiar carries it.
+- **About shows the Codex engine (1.35.9).** A *Motor do Codex* row under *Motor do Code*, the owner's request of
+  02/11/2026: the version of the `codex` CLI the Codex runner would start, then the runner's own (`v0.164.0 (runner 1.7.0)`).
+  The runner is asked (`codex-runner --codex-version`, runner 1.7.0+), not the PATH, because only its `resolverCodex` knows
+  which `codex` it starts. Two Node starts, so the row says `verificando…` and a background thread fills it in. It says
+  `não instalado` with no runner, `codex não encontrado (runner …)`, or `? (runner 1.6.0)` for a runner older than the flag,
+  which is never asked; Copiar carries it.
 
 ## Local Code, the bridge and session capabilities
 

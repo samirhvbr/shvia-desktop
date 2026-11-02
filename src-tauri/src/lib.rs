@@ -487,6 +487,7 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
     '<dt>ShvIA servidor</dt><dd id="shvia-about-server" aria-live="polite">…</dd>' +
     '<dt>Workspace</dt><dd id="shvia-about-workspace" aria-live="polite">…</dd>' +
     '<dt>Motor do Code</dt><dd id="shvia-about-anna"></dd>' +
+    '<dt>Motor do Codex</dt><dd id="shvia-about-codex" aria-live="polite">verificando…</dd>' +
     '<dt>Motor do Pentest</dt><dd id="shvia-about-pentest" aria-live="polite"></dd>' +
     '<dt id="shvia-about-pentest-required-label">Pentest exigido</dt><dd id="shvia-about-pentest-required"></dd>' +
     '<dt>Servidor</dt><dd id="shvia-about-host"></dd>' +
@@ -640,9 +641,10 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
     // MESMAS linhas do modal. Motor do Code incluído: foi a linha ausente que fez
     // o diagnóstico de 19/08 custar uma manhã.
     var pentestFound = card.querySelector('#shvia-about-pentest').textContent;
+    var codexFound = card.querySelector('#shvia-about-codex').textContent;
     var text = 'ShvIA Desktop\nBuild (desktop): v__SHVIA_BUILD__\nShvIA (servidor): ' + serverVersion +
       '\nWorkspace: ' + workspaceVersion +
-      '\nMotor do Code: __SHVIA_ANNA__\nMotor do Pentest: ' + pentestFound +
+      '\nMotor do Code: __SHVIA_ANNA__\nMotor do Codex: ' + codexFound + '\nMotor do Pentest: ' + pentestFound +
       (pentestRequired ? ' · exigido ' + pentestRequired : '') + '\nServidor: ' + host + '\n' + env;
     function done(ok) {
       copyBtn.textContent = ok ? 'Copiado ✓' : 'Falhou';
@@ -1638,6 +1640,17 @@ pub fn run() {
                     let _ = win.unminimize();
                     let _ = win.set_focus();
                     let _ = win.eval(&js);
+                    // The Codex row asks the runner, two Node starts: off the UI thread, like the Pentest probe.
+                    {
+                        let win = win.clone();
+                        std::thread::spawn(move || {
+                            let texto = code_bridge::versao_do_codex();
+                            let literal = serde_json::to_string(&texto).unwrap_or_else(|_| "\"?\"".into());
+                            let _ = win.eval(format!(
+                                "(function(){{var e=document.getElementById('shvia-about-codex');if(e){{e.textContent={literal};}}}})();"
+                            ));
+                        });
+                    }
                     if pentest_agora.is_none() {
                         let win = win.clone();
                         std::thread::spawn(move || {
