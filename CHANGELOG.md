@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.35.4 - Give the page the facts it needs to tell the truth about a run
+
+On 02/11/2026 a first attempt with engine 1.2.46 on a Mac ended three seconds after it started: Docker Desktop was not open, so the
+engine printed its "DOCKER NOT AVAILABLE" banner and exited with 1, before it created any run. The page then said "o log não traz um
+motivo que esta página possa nomear", offered "Abrir o visualizador" and "Retomar" for a run that never existed (the viewer refused
+every click behind one generic sentence), and the screen kept saying "Avaliação em andamento" for runs that had made no model call.
+The Desktop knew enough to say better; it did not send it. Three facts now reach the page, all from `pentestStatus()`:
+
+- **Why it never started.** `endReason: "docker_unavailable"` (`pentest/ending.rs`): the engine's own banner in the tail of the run's
+  log, and only for a process that exited with an error (a clean exit that happens to quote the words stays `finished`). The native
+  notification says "Avaliação não iniciada" and what to do. Still no line of the log leaves the computer.
+- **Whether there is anything to open.** `canResume` and `canReview` are true only for a finished run that has an engine run on disk
+  (`strix_runs/<name>/run.json`). They used to be true whenever the process had exited, which is what made the page offer a viewer for
+  nothing. An older page keeps working: it asks for the same fields and now gets the truer answer.
+- **When the process began.** `startedAtMs`, milliseconds since the Unix epoch, held by the Desktop with the run (set at start and again
+  at each resume, `null` for a run found after a restart). The page anchors its clock on it, so a reload or a visit to another screen
+  continues the count instead of restarting it; a clock that lived in the page could not do that.
+- Proof: `a_docker_that_was_not_running_is_named_and_a_clean_exit_never_is` classifies the real banner text of that run (user name
+  removed) and fails when the new branch is disabled ("left: Failed, right: DockerUnavailable"); the distinct-codes test lists the new
+  code. `cargo test pentest` passes (97 serially). The status fields themselves are built from a window and were not unit-tested; they
+  were read in the code and are exercised by the page that consumes them.
+- Not in this version: the page side (a separate pull request in the WEB repository: honest headings, the evidence ladder, the clock),
+  and a button that opens Docker.
+- `docs/PENTEST/authorization.md` and `docs/funcionalidades.md` list the new code and the new fields.
+
 ## 1.35.3 - Pin the Pentest engine at 1.2.46, for the two platforms this Desktop is published for
 
 `pentest-engine.json` pinned 1.2.43 (Strix 1.7.0 + 15 commits). It now pins **1.2.46**, three fork deliveries later:
