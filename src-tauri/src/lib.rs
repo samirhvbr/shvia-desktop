@@ -404,6 +404,12 @@ const NATIVE_NOTIFY_JS: &str = r#"(function () {
 ///   from `versaoDoServidor` because that helper is also the page-load version gate. The server
 ///   answers `{version, state}`; `not_configured` and `no_answer` are said in words, an older
 ///   server (no field) and the local shell show "—".
+/// - **Pentest** (02/11/2026, the owner's request): three rows that must not be mistaken for one another.
+///   *Motor do Pentest* is what is installed here; *Pentest deste app* is the engine THIS build carries
+///   (its pin, compiled in, read by `pentest_about_expected`; it used to be labelled "exigido", which
+///   reads as a minimum); *Pentest mínimo* is the minimum the server enforces, asked in the same
+///   request as the Workspace as `?pentest=1` (shvia-web: `{engine_min, desktop_min}`). The last two
+///   disappear where the engine is not offered (Windows); an older server shows "—".
 /// - **Visual**: usa os design tokens do ShvIA (`tokens.css` do servidor) via
 ///   `var(--token, fallback)` — na página remota herda o tema real; na casca
 ///   local os fallbacks reproduzem os mesmos valores. Esc/backdrop fecham,
@@ -488,7 +494,8 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
     '<dt>Workspace</dt><dd id="shvia-about-workspace" aria-live="polite">…</dd>' +
     '<dt>Motor do Code</dt><dd id="shvia-about-anna"></dd>' +
     '<dt>Motor do Pentest</dt><dd id="shvia-about-pentest" aria-live="polite"></dd>' +
-    '<dt id="shvia-about-pentest-required-label">Pentest exigido</dt><dd id="shvia-about-pentest-required"></dd>' +
+    '<dt id="shvia-about-pentest-required-label" title="O motor que esta versão do Desktop traz fixado">Pentest deste app</dt><dd id="shvia-about-pentest-required"></dd>' +
+    '<dt id="shvia-about-pentest-min-label" title="O mínimo que o servidor exige do motor do Pentest">Pentest mínimo</dt><dd id="shvia-about-pentest-min" aria-live="polite">…</dd>' +
     '<dt>Servidor</dt><dd id="shvia-about-host"></dd>' +
     '</dl>' +
     '<p class="shvia-about-env" id="shvia-about-env"></p>' +
@@ -516,6 +523,9 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
   if (!pentestRequired) {
     card.querySelector('#shvia-about-pentest-required-label').style.display = 'none';
     card.querySelector('#shvia-about-pentest-required').style.display = 'none';
+    // The server's minimum is about an engine this OS does not offer either (Windows): no row, not a dash.
+    card.querySelector('#shvia-about-pentest-min-label').style.display = 'none';
+    card.querySelector('#shvia-about-pentest-min').style.display = 'none';
   }
   card.querySelector('#shvia-about-host').textContent = host;
   card.querySelector('#shvia-about-env').textContent = env;
@@ -593,13 +603,24 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
     workspaceVersion = v;
     workspaceDd.textContent = v;
   }
+  // The minimum engine the SERVER enforces for the Pentest quick start (shvia-web `?pentest=1`): the number the
+  // /pentest page says as "needs X or later". It is not "Pentest deste app", which is the engine THIS build
+  // carries (its pin, compiled in): on 02/11/2026 the dialog showed only the pin, under a label that read as a
+  // minimum, and the owner took it for the server's. Asked in the same request as the Workspace. A server without
+  // the field (older), or a page that is not remote, shows "—".
+  var pentestMinDd = card.querySelector('#shvia-about-pentest-min');
+  var pentestMin = '—';
+  function setPentestMin(v) {
+    pentestMin = v;
+    pentestMinDd.textContent = v;
+  }
   if (remoto) {
     var wh = { 'Accept': 'application/json' };
     try {
       var wtk = window.localStorage.getItem('access_token');
       if (wtk) { wh['Authorization'] = 'Bearer ' + wtk; }
     } catch (e) { /* storage bloqueado: segue só com o cookie */ }
-    fetch('/api/v1/version?workspace=1', { headers: wh, credentials: 'same-origin' })
+    fetch('/api/v1/version?workspace=1&pentest=1', { headers: wh, credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) {
         var w = j && j.workspace;
@@ -607,9 +628,11 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
         else if (w && w.state === 'not_configured') { setWorkspace('não configurado'); }
         else if (w && w.state === 'no_answer') { setWorkspace('sem resposta'); }
         else { setWorkspace('—'); }
+        var pm = j && j.pentest && j.pentest.engine_min;
+        setPentestMin(pm ? 'v' + String(pm).replace(/^v/, '') : '—');
       })
-      .catch(function () { setWorkspace('—'); });
-  } else { setWorkspace('—'); }
+      .catch(function () { setWorkspace('—'); setPentestMin('—'); });
+  } else { setWorkspace('—'); setPentestMin('—'); }
 
   var copyBtn = card.querySelector('#shvia-about-copy');
   var closeBtn = card.querySelector('#shvia-about-close');
@@ -643,7 +666,8 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
     var text = 'ShvIA Desktop\nBuild (desktop): v__SHVIA_BUILD__\nShvIA (servidor): ' + serverVersion +
       '\nWorkspace: ' + workspaceVersion +
       '\nMotor do Code: __SHVIA_ANNA__\nMotor do Pentest: ' + pentestFound +
-      (pentestRequired ? ' · exigido ' + pentestRequired : '') + '\nServidor: ' + host + '\n' + env;
+      (pentestRequired ? ' · deste app ' + pentestRequired + '\nPentest mínimo (servidor): ' + pentestMin : '') +
+      '\nServidor: ' + host + '\n' + env;
     function done(ok) {
       copyBtn.textContent = ok ? 'Copiado ✓' : 'Falhou';
       setTimeout(function () { copyBtn.textContent = 'Copiar'; }, 1600);

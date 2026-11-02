@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.35.9 - Tell the engine this app carries from the minimum the server asks for, in the About dialog
+
+On 02/11/2026 the About dialog read "Pentest exigido v1.2.47" right under "Motor do Pentest v1.2.47 (instalado)". The first is the
+engine THIS build carries (its pin, `pentest-engine.json`, compiled in); it is not a minimum, and with everything in order it always
+equals the installed one. The owner read it as the server's minimum and, seeing the same number twice, concluded the dialog was
+"pulling the same variable". The server's real minimum (the number the `/pentest` page says as "needs 1.2.43 or later") was not
+on screen at all, because nothing could answer it.
+
+- **Renamed:** "Pentest exigido" is now "Pentest deste app". Same value, same source (`pentest_about_expected`).
+- **Added:** "Pentest mínimo", the server's minimum, read from `GET /api/v1/version?workspace=1&pentest=1` (`pentest.engine_min`), asked in
+  the same request as the Workspace row. (A longer label, "Pentest mínimo (servidor)", made the label column grow and the values of
+  the rows above wrap onto two lines in the rendered dialog, so the label is short and a tooltip says whose minimum it is.) An older server (no field), a failed request and the local shell show "—"; where the engine is not
+  offered (Windows) both Pentest rows are left out. "Copiar" carries the new line and says "deste app" where it said "exigido".
+- **Needs the server first:** shvia-web `?pentest=1` (PR #656). Until it is deployed the new row shows "—", and nothing else changes.
+- **Not touched:** the pin (still 1.2.47), the install flow, the floor (1.2.39).
+- Checked on the rendered dialog, not by a test that reads the label text: the About JS, run in a real Chromium against the
+  server branch, is shown to the owner. `prova:*` and `cargo test --locked` + clippy: see the pull request.
+
 ## 1.35.8 - Show the Workspace's production version in the About dialog
 
 The owner asked on 02/11/2026 for the About dialog to show the Workspace's version next to the server's, to see at a glance
