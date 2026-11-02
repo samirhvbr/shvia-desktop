@@ -399,6 +399,11 @@ const NATIVE_NOTIFY_JS: &str = r#"(function () {
 ///   é **relativo** e só sai em página remota: da casca local a origem é
 ///   `tauri://localhost`, que o CORS do servidor não libera (nem deve), então
 ///   absoluto seria barrado na leitura e cairia em "—" de qualquer jeito.
+/// - **Workspace** (02/11/2026, the owner's request): the version the server reads from the
+///   Workspace's `/health`, asked as `GET /api/v1/version?workspace=1` (shvia-web #649), apart
+///   from `versaoDoServidor` because that helper is also the page-load version gate. The server
+///   answers `{version, state}`; `not_configured` and `no_answer` are said in words, an older
+///   server (no field) and the local shell show "—".
 /// - **Visual**: usa os design tokens do ShvIA (`tokens.css` do servidor) via
 ///   `var(--token, fallback)` — na página remota herda o tema real; na casca
 ///   local os fallbacks reproduzem os mesmos valores. Esc/backdrop fecham,
@@ -480,6 +485,7 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
     '<dl class="shvia-about-rows">' +
     '<dt>Build desktop</dt><dd id="shvia-about-build"></dd>' +
     '<dt>ShvIA servidor</dt><dd id="shvia-about-server" aria-live="polite">…</dd>' +
+    '<dt>Workspace</dt><dd id="shvia-about-workspace" aria-live="polite">…</dd>' +
     '<dt>Motor do Code</dt><dd id="shvia-about-anna"></dd>' +
     '<dt>Motor do Pentest</dt><dd id="shvia-about-pentest" aria-live="polite"></dd>' +
     '<dt id="shvia-about-pentest-required-label">Pentest exigido</dt><dd id="shvia-about-pentest-required"></dd>' +
@@ -577,6 +583,34 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
       .catch(function () { if (!temRodape) { setServer('—'); } });
   } else if (!temRodape) { setServer('—'); }
 
+  // Workspace: the version the server reads from the Workspace's `/health` (shvia-web #649,
+  // `?workspace=1`). Asked apart from `versaoDoServidor` on purpose: that helper is also the
+  // version gate of every page load, and only this dialog wants the Workspace. A server without
+  // the field (older), or a page that is not remote, shows "—".
+  var workspaceDd = card.querySelector('#shvia-about-workspace');
+  var workspaceVersion = '—';
+  function setWorkspace(v) {
+    workspaceVersion = v;
+    workspaceDd.textContent = v;
+  }
+  if (remoto) {
+    var wh = { 'Accept': 'application/json' };
+    try {
+      var wtk = window.localStorage.getItem('access_token');
+      if (wtk) { wh['Authorization'] = 'Bearer ' + wtk; }
+    } catch (e) { /* storage bloqueado: segue só com o cookie */ }
+    fetch('/api/v1/version?workspace=1', { headers: wh, credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        var w = j && j.workspace;
+        if (w && w.state === 'ok' && w.version) { setWorkspace('v' + String(w.version).replace(/^v/, '')); }
+        else if (w && w.state === 'not_configured') { setWorkspace('não configurado'); }
+        else if (w && w.state === 'no_answer') { setWorkspace('sem resposta'); }
+        else { setWorkspace('—'); }
+      })
+      .catch(function () { setWorkspace('—'); });
+  } else { setWorkspace('—'); }
+
   var copyBtn = card.querySelector('#shvia-about-copy');
   var closeBtn = card.querySelector('#shvia-about-close');
 
@@ -607,6 +641,7 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
     // o diagnóstico de 19/08 custar uma manhã.
     var pentestFound = card.querySelector('#shvia-about-pentest').textContent;
     var text = 'ShvIA Desktop\nBuild (desktop): v__SHVIA_BUILD__\nShvIA (servidor): ' + serverVersion +
+      '\nWorkspace: ' + workspaceVersion +
       '\nMotor do Code: __SHVIA_ANNA__\nMotor do Pentest: ' + pentestFound +
       (pentestRequired ? ' · exigido ' + pentestRequired : '') + '\nServidor: ' + host + '\n' + env;
     function done(ok) {

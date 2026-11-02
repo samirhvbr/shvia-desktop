@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.35.7 - Show the Workspace's production version in the About dialog
+
+The owner asked on 02/11/2026 for the About dialog to show the Workspace's version next to the server's, to see at a glance
+what each side runs.
+
+- A *Workspace* row under *ShvIA servidor*, and in Copiar. It asks `GET /api/v1/version?workspace=1` (shvia-web #649), which
+  answers `{version, state}` read by the server from the Workspace's own `/health`: the Desktop does not need to know where
+  the Workspace lives.
+- Asked apart from `versaoDoServidor` on purpose: that helper is also the version gate of every page load, which must not
+  wait on a second server. The two copies of the helper are unchanged.
+- It says `v0.35.9`, `não configurado`, `sem resposta`, or `—` with a server older than #649 or in the local shell.
+- Checked on the rendered dialog (the real `ABOUT_MODAL_JS` in headless Chromium, the server stubbed), the three cases:
+  a version, no answer, and an older server. No new test: a dialog row, per the owner's rule of 30/10/2026.
+- Doc: `docs/funcionalidades.md`.
+
 ## 1.35.6 - Accept the engine's own process as the owner of its control channel
 
 On 02/11/2026 the first real assessment with the packaged engine ran for fourteen minutes, called the model (MiniMax's usage went
