@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.35.7 - Show the Workspace's production version in the About dialog
+## 1.35.8 - Show the Workspace's production version in the About dialog
 
 The owner asked on 02/11/2026 for the About dialog to show the Workspace's version next to the server's, to see at a glance
 what each side runs.
@@ -14,6 +14,49 @@ what each side runs.
 - Checked on the rendered dialog (the real `ABOUT_MODAL_JS` in headless Chromium, the server stubbed), the three cases:
   a version, no answer, and an older server. No new test: a dialog row, per the owner's rule of 30/10/2026.
 - Doc: `docs/funcionalidades.md`.
+
+## 1.35.7 - Pin the Pentest engine at 1.2.47, which answers the control channel in full
+
+`pentest-engine.json` pinned 1.2.46. It now pins **1.2.47**, the engine that fixes what the first real assessment with the packaged
+engine on a Mac (02/11/2026) showed and this Desktop cannot fix from its side. 1.35.6 made the app accept the engine's own process as
+the owner of its control channel; the engine answering whole is the other half, and without it the live view works for the first
+moments of a run and then drops out.
+
+- **What 1.2.47 changes for this Desktop** (the fork's Release `shvia-v1.2.47`, Strix 1.7.0 + 64 commits):
+  - *The control socket no longer cuts its answer.* The engine closed the connection with `abort()` right after writing, which
+    discards what is still buffered; on a small socket buffer such as macOS's, a live status of a few dozen KB reached this app cut
+    short and without its closing newline, so the app reported the channel unavailable. Measured on the owner's Mac with 1.2.46:
+    three requests, each answered with 139,264 bytes, none of them valid JSON. The engine now closes, waits up to one second for the
+    buffer to flush and aborts only when that wait runs out.
+  - *The live snapshot keeps the newest 256 events and incidents,* in chronological order. It kept the oldest 256, so after a few
+    minutes of a real run the list stopped changing and anything read from it as "the latest" was wrong for the rest of the run.
+  - *MiniMax with no key is `missing`, not `available`.* The consent said `credentials: available` with no key anywhere, and the
+    30/10 run died with a 401.
+  - *An account model key can live in the engine's memory only* (`STRIX_RUN_LLM_API_KEY`, removed from the environment first thing,
+    never written to disk; a run on it ignores the person's own provider variables). It does nothing until a Desktop hands the engine
+    a key, and this one does not.
+- **The pin.** Release `shvia-v1.2.47`, built on 02/11/2026 with `scripts/build-pentest-local.sh --upload`, one machine each:
+  `aarch64-apple-darwin` 95,364,112 bytes, SHA-256 `2ad55acd…c5c8` (the owner's Apple Silicon Mac), and `x86_64-unknown-linux-gnu`
+  107,630,248 bytes, SHA-256 `bfd40c79…73e8` (the Linux build machine). The digests are the ones GitHub's REST API reports for the files
+  on the Release and the ones in its `SHA256SUMS`, and the pin was compared with the bytes of both files downloaded from the Release:
+  size and SHA-256 are equal.
+- **How a Mac that already has 1.2.46 gets it.** An installed copy counts only when it is exactly the pinned file, and its folder is
+  named after the pinned version (`engine::installed_in`), so the installed 1.2.46 stops counting as soon as this build runs. About
+  reads "não instalado" and "PENTEST EXIGIDO v1.2.47", the pre-flight offers the install, and after the person's consent the app
+  downloads, checks and installs 1.2.47 and removes the older version. This is read from `engine.rs` and `compatibility.rs`; it has
+  not been seen on a Mac with this pin yet.
+- **The floor stays 1.2.39.** It is the oldest engine this Desktop can talk to, not the one it carries. Nothing else in the Desktop
+  changed for 1.2.47.
+- **Proof.** `prova:bump`, `prova:pentest`, `prova:runner-version` and `prova:politica` pass. The real `scripts/stage-pentest.mjs` on
+  Linux x86_64 downloaded the file from the published Release, matched its SHA-256 against this pin and got `1.2.47` from
+  `--fork-version`. The Mac file was downloaded and its size and SHA-256 compared with the pin, and its header read as a Mach-O arm64
+  executable; it was not executed (the checking machine is Linux). Refusing a wrong hash is what `prova:pentest` already proves with
+  a fake engine; this change moves a pin and adds no rule, so it adds no ruler.
+- **Rust.** `cargo test --locked` with the inert sidecar stand-ins CI uses: 449 passed, 0 failed, 4 ignored; `cargo clippy
+  --all-targets -- -D warnings` is clean. No test needed changing for the raise: the ones that read the pin take its version, size and
+  checksum from `pentest-engine.json`.
+- **Not done.** A real assessment with the 1.2.47 engine through this Desktop (it needs Docker and a model call), and the Mac file
+  started and probed through this Desktop's install flow.
 
 ## 1.35.6 - Accept the engine's own process as the owner of its control channel
 
