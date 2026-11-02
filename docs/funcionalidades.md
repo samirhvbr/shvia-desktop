@@ -341,6 +341,10 @@ for the Linux/macOS profile, Windows refusal and pending integrated pilot.
   `o sistema bloqueou a execução`, `arquivo não encontrado`, `resposta ilegível`), and Copiar carries it. The page's code is
   unchanged. On macOS, `build-local.sh` now starts the engine inside the built `.app` in every build and stops if it does not
   answer ([build.md](build.md), "macOS signing").
+- **About shows the Workspace's version (1.35.8).** A *Workspace* row under *ShvIA servidor*, the owner's request of
+  02/11/2026: the version the server reads from the Workspace's `/health`, asked as `GET /api/v1/version?workspace=1`
+  (shvia-web #649) apart from the page-load version gate, so a normal page load never waits on the Workspace. It says
+  `v0.35.9`, `não configurado`, `sem resposta`, or `—` with an older server or in the local shell; Copiar carries it.
 
 ## Local Code, the bridge and session capabilities
 
