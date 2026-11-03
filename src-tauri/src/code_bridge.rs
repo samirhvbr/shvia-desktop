@@ -64,7 +64,7 @@ pub(crate) use pentest::engine_init as pentest_engine_init;
 mod traffic;
 pub(crate) use traffic::release as release_traffic;
 pub use sessao::Sidecars;
-pub(crate) use motores::{engine_status, versao_do_anna};
+pub(crate) use motores::{engine_status, versao_do_anna, versao_do_codex};
 
 /// How long each external call may take before the bridge gives up on it (1.6.19).
 ///

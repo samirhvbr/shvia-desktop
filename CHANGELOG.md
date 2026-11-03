@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.35.9 - Tell the engine this app carries from the minimum the server asks for, in the About dialog
+## 1.35.10 - Tell the engine this app carries from the minimum the server asks for, in the About dialog
 
 On 02/11/2026 the About dialog read "Pentest exigido v1.2.47" right under "Motor do Pentest v1.2.47 (instalado)". The first is the
 engine THIS build carries (its pin, `pentest-engine.json`, compiled in); it is not a minimum, and with everything in order it always
@@ -17,6 +17,27 @@ on screen at all, because nothing could answer it.
 - **Not touched:** the pin (still 1.2.47), the install flow, the floor (1.2.39).
 - Checked on the rendered dialog, not by a test that reads the label text: the About JS, run in a real Chromium against the
   server branch, is shown to the owner. `prova:*` and `cargo test --locked` + clippy: see the pull request.
+
+## 1.35.9 - Show the Codex engine's version in the About dialog
+
+The owner asked on 02/11/2026 for the About dialog to show the Codex engine below the Code engine.
+
+- A *Motor do Codex* row under *Motor do Code*, and in Copiar: the version of the `codex` CLI the Codex runner would start, then
+  the runner's own, as `v0.164.0 (runner 1.7.0)`. With no runner it says `não instalado`; when the runner finds no `codex` that
+  answers, `codex não encontrado (runner 1.7.0)`.
+- The runner is asked, not the PATH. Only its `resolverCodex` knows which `codex` it starts: `SHVIA_CODEX_BIN`, the install
+  dirs outside the app's PATH, and `node codex.js` behind the npm shim on Windows. `codex-runner --codex-version` (runner
+  **1.7.0**) prints that `codex`'s bare version and exits, starting nothing else; it exits 1 when that `codex` does not answer.
+- A runner older than 1.7.0 does not know the flag and would start in host mode with it, so it is never asked: the row says
+  `? (runner 1.6.0)` until the app's start replaces the runner (ADR-040). Anything a runner prints that is not a version is
+  not shown.
+- Two Node starts, so the row opens as `verificando…` and a background thread fills it in, like the Pentest row.
+- One test, on the row's text: an old runner's output is never read as a version, and "não encontrado" is said only by a runner
+  that can look. The dialog itself was checked rendered.
+- Doc: `docs/funcionalidades.md`, `codex-runner/README.md`.
+- Separately, the Windows clippy (`x86_64-pc-windows-gnu`, `--all-targets`) was red on master since 1.35.5: the test of the engine's
+  last-write clock calls `newest_write_ms` and `std::os::unix::fs::symlink`, which exist only on Unix, and the test was not gated.
+  It is `#[cfg(unix)]` now, like the function; clippy is clean on both targets.
 
 ## 1.35.8 - Show the Workspace's production version in the About dialog
 
