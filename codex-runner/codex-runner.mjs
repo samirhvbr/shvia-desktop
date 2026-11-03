@@ -100,6 +100,27 @@ if (process.argv.includes("--version")) {
   process.exit(0);
 }
 
+// `--codex-version` prints the version of the `codex` THIS runner would start (bare, as in
+// `0.164.0`), then exits; nothing printed and exit 1 when that `codex` does not answer. The
+// desktop's About dialog asks the runner instead of looking for `codex` itself, because only
+// `resolverCodex` knows the answer: `SHVIA_CODEX_BIN`, the install dirs outside the app's PATH,
+// and on Windows `node codex.js` behind the npm shim. Like `--version`, nothing else starts.
+if (process.argv.includes("--codex-version")) {
+  const { spawnSync } = await import("node:child_process");
+  const alvo = resolverCodex({ existe: existsSync, listar: readdirSync });
+  const r = spawnSync(alvo.comando, [...alvo.prefixo, "--version"], {
+    encoding: "utf8",
+    timeout: 8000,
+    stdio: ["ignore", "pipe", "ignore"],
+    windowsHide: true,
+  });
+  // `codex --version` answers `codex-cli 0.164.0`: the last word is the version.
+  const v = r.status === 0 ? String(r.stdout ?? "").trim().split(/\s+/).pop() ?? "" : "";
+  if (!/^\d+\.\d+/.test(v)) process.exit(1);
+  process.stdout.write(v + "\n");
+  process.exit(0);
+}
+
 const PROJECT_DIR = argOf("--cwd") || process.cwd();
 const MODEL = argOf("--model");
 const EFFORT = argOf("--effort");

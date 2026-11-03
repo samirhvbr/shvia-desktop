@@ -101,7 +101,7 @@ pub(crate) enum Decisao {
 }
 
 /// `x.y.z` compared as numbers; a part that is not a number counts as 0.
-fn comparar(a: &str, b: &str) -> Ordering {
+pub(super) fn comparar(a: &str, b: &str) -> Ordering {
     let partes = |v: &str| -> Vec<u64> { v.trim().split('.').map(|p| p.parse().unwrap_or(0)).collect() };
     let (pa, pb) = (partes(a), partes(b));
     for i in 0..pa.len().max(pb.len()) {
