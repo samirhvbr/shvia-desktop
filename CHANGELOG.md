@@ -37,6 +37,12 @@ Documented in the same commit: [ADR-047](docs/decisoes.md), a new section of `do
   accepted after, another run refused, another model refused, an unknown bearer refused, and a request carrying `Origin` answered 403.
 - **Not measured**: a real run on a Mac with a real provider key, and the page option that creates an account grant (the WEB slice that
   turns the switch on does not exist yet).
+- **A flaky test, fixed here because it blocks the gate**: `a_daemon_that_answers_a_daemon_that_does_not_and_one_that_hangs_are_three_different_things`
+  (`docker.rs`) writes a script and runs it, and the kernel refuses to run a file that is open for writing ("text file busy") while another
+  test's child, forked at that moment, still holds the handle. Measured under full CPU load (24 busy loops) with this change's new tests
+  skipped: 3 failures in 8 whole-suite runs, always `Unknown` where `Ready` or `NotRunning` was expected, so the new tests are not the cause. The
+  test now asks again while the answer is `Unknown` (a file that is really no program stays `Unknown`, and its own test calls `ask` directly).
+  After the fix, 1 failure in 37 whole-suite runs under the same load, and none without it; the one that remains was not captured.
 
 ## 1.35.10 - Tell the engine this app carries from the minimum the server asks for, in the About dialog
 
