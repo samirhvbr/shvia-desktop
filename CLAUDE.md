@@ -115,6 +115,11 @@ Format: `X.Y.Z - description in English (US)`, the same sentence as the `CHANGEL
   in the normal Tauri build. The product calls it Pentest everywhere a person or this repository's
   code reads it; the only `strix` names left are the engine's own file format (`strix_runs/`,
   `strix_version`), named once in `code_bridge/pentest.rs`.
+- **The model key of a Pentest account grant is the one secret this app fetches for a run**
+  (`code_bridge/pentest/credential.rs`, ADR-047). It is never a field of `Run`, `Recovery`, the outgoing record or anything
+  that is serialized, logged or returned to the page; it lives in a wiping buffer until the one spawn that needs it and
+  reaches the engine only as `STRIX_RUN_LLM_API_KEY` in that child's environment. A new use of it, or a new place it can be
+  written, needs a new ADR.
 - Commands below run **from the repository root**. Before Rust checks or `tauri dev`, stage
   a usable `anna` with `npm run anna:stage` and the engine with `npm run pentest:stage` (or
   their explicit `--from` paths). A clean clone has no staged sidecar because binaries are

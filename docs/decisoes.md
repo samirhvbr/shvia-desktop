@@ -2924,3 +2924,72 @@ first time and 5.3 s the next, mostly waiting on the system, so the 20 s the ins
 mistake: the install is the first start of a new file, the slowest one. 1.33.4 gives that start 120 s and the macOS probe 60 s,
 and ends a timed-out engine's whole process group (SIGTERM, then SIGKILL after 3 s) instead of only the process that was started.
 That a start inside the app stays within these deadlines, and why it took longer than 15.3 s there, are not yet measured.
+
+
+## ADR-047 — The model key of an account grant is asked of the server after consent and handed to one child, never kept
+
+- **Date:** 03/11/2026 · **Status:** **Accepted** (the server half is deployed with its switch off; the page that turns it on is not built, and no real run has used it yet)
+
+### Context
+
+Until 1.35 the key that paid for a Pentest model call was whatever the person had configured on this computer. On 30/10/2026 the
+owner chose that it should come from the SHVIA account, where it already exists ("a chave já existe na sessão web"): PT-31. That
+reverses a standing rule ("WEB BYOK secrets are never passed to the native process") for one case, and it makes the server's
+`model-credential` route the first place in the product that returns a stored provider key in the clear. The rules around it
+matter more than the code. Three findings of the read-only investigation of 02/11/2026 shaped them:
+
+- The engine's `persist_current()` copies every environment variable that is an alias of a setting, `LLM_API_KEY` included, into
+  `~/.strix/cli-config.json` (measured on the unmodified 1.2.46 engine). A key passed the obvious way would be written to the
+  person's disk on every run and would outlive a revoked grant.
+- With LiteLLM 1.101.0 a person's own `<PROVIDER>_API_KEY` goes on the wire ahead of a key the engine pinned, for seven of nine
+  providers. A key handed over is not a key used unless the person's own connection is removed first.
+- A script on the page that can mint a grant could fetch the key unless something else stops it, and ADR-043 already refuses to
+  let a secret cross the page.
+
+### Decision
+
+1. **The grant says whose key pays; it never carries the key.** The approved `inference` block gains `credential: "account"`.
+   The engine (1.2.47) echoes it at inspection as `credential` and `credentials`, both `"account"`. The app treats any other
+   combination as a refusal, so an account grant is never shown as "your local credentials".
+2. **The app asks, after the person agrees, over HTTPS, with the grant's bearer as the only credential.** `check` before the
+   dialog (nothing handed over), `start` once after the consent, `resume` at every resume. A retest calls no model and asks for
+   nothing. The request names a purpose and, for a resume, the run: never a user, a server or a model. The answer must name the
+   provider and model the engine approved and is read with unknown fields refused.
+3. **The key goes to one child through one variable the app names**, `STRIX_RUN_LLM_API_KEY`, which is not an alias of any
+   setting and so is never persisted. The server cannot name a variable. The person's own model connection (the engine's aliases
+   for it, and the key and base variables LiteLLM reads for each provider an account key can pay for) is removed from that child,
+   as a closed list: the engine reads web-search, Postman and dedupe-model settings from the same environment and they must keep
+   working. Every other use of the engine has the variable removed.
+4. **Memory only.** The key lives in a wiping buffer from the socket to the one `Command::env` call and is dropped right after
+   the spawn. Its type cannot be printed, cloned or serialized, and no struct that is written to disk has a field for it. A
+   test spawns through the real recording path and searches every file it wrote.
+5. **No fallback.** Every refusal, timeout or malformed answer for an account grant ends the start. The engine would refuse to run
+   an account grant without its key anyway.
+6. **The page never sees the key.** The page still passes only the grant's token; no bridge method returns the key. What the
+   page's own script can do with the bearer is not closed by this (owner decision of 02/11/2026: accept and document); the
+   server refuses browser callers, hands `start` over once, caps resumes and audits each call, which narrows it.
+
+### Alternatives not taken
+
+- **`LLM_API_KEY` and `STRIX_LLM` in the child's environment, no engine change.** It writes the key to disk (finding 1).
+- **`--config <file>` holding the key.** A disk write by definition.
+- **Let the server name the variables, or send a ready environment.** Arbitrary environment injection into the child: whoever
+  holds a valid certificate could set `LD_PRELOAD` or `PATH`.
+- **Put the key in the `verify` envelope.** The engine would carry it through hundreds of verifications and the history path.
+- **Let the page fetch the key and pass it to `startPentest`.** Exactly what ADR-043 rejected.
+- **An inherited pipe instead of the environment.** Strictly better against other processes of the same user, still child-only
+  and no disk. The owner chose the environment; the engine reads it in one function, so a later switch is local.
+- **The inference gateway (PT-21), where the key never leaves the server.** Still the better long-term target, and a separate,
+  paid, unmeasured phase.
+
+### Consequences
+
+- A failure between the server handing over a `start` and the spawn costs the person the grant (one shot): the page asks for a
+  new evaluation. It keeps a stolen bearer from fetching later.
+- Removing the key from the account does not stop a running engine; revoking the grant does (the engine verifies it before every
+  model call). A resume picks up the key as it is in the account then, so a fixed key is picked up by pressing Resume.
+- During a run the key is in the environment of the engine and of its one-file launcher: not on disk, readable by processes of the
+  same user. Wiping is best effort; the HTTP client, the TLS stack and `Command` keep copies.
+- Needs Desktop 1.36.0 and engine 1.2.47; an older pair keeps running on local configuration, unchanged.
+- Not measured: a real run, with a real provider, a real server and a real Mac. The parts are proved separately (the engine's own
+  tests, the server's tests, this app's parser and spawn tests against a fake server).

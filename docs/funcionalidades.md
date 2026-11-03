@@ -30,6 +30,18 @@ record follows below. Work not yet produced stays in
   takeover are separate lifecycles. The architecture's persistence table says which state stays
   on this computer and which service owns the rest.
 
+## The Pentest model key can come from the SHVIA account (1.36.0)
+
+A Pentest authorization can say that the key paying for the approved model is the person's own key for that provider, stored in
+their SHVIA account (PT-31). The engine says so when it inspects the grant (`credential` and `credentials`, both `account`) and the
+consent dialog then says where the key lives. After the person agrees, this app asks the server for the key over HTTPS with the
+grant's bearer, hands it to the one engine process that runs the model through `STRIX_RUN_LLM_API_KEY` (a name the engine never
+persists), and wipes its own copy. Nothing is written to disk, nothing reaches the page, and there is no fallback to the local
+configuration: a refusal ends the start with `E_ACCOUNT_KEY_MISSING`, `E_ACCOUNT_KEY_UNAVAILABLE` or `E_ACCOUNT_KEY_ENGINE_TOO_OLD`.
+The key is asked again at every resume, by hand or by itself, and never for a retest. It needs engine 1.2.47 (pinned since 1.35.7)
+and is invisible until the server's switch is turned on and the page offers the option. Details:
+[PENTEST/authorization.md](PENTEST/authorization.md#account-model-key-1360) and [ADR-047](decisoes.md).
+
 ## Packet capture for the Network "Traffic" tool (1.32.1)
 
 A separate crate (`src-tauri/traffic-capture/`) is the only part of this repository that links `pcap`
