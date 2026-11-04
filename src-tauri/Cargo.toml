@@ -1,6 +1,6 @@
 [package]
 name = "shvia-desktop"
-version = "1.35.10"
+version = "1.36.0"
 description = "ShvIA Desktop — cliente desktop multiplataforma do ShvIA (shell fino Tauri 2)"
 authors = ["Samir Hanna Verza <samirhv@me.com>"]
 edition = "2021"
@@ -65,6 +65,9 @@ socket2 = "0.6"
 reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "rustls-no-provider"] }
 sha2 = "0.11"
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
+# The Pentest account model key (`code_bridge/pentest/credential.rs`): wiped from memory when dropped.
+# Already in the lockfile through other crates; this makes it a direct dependency.
+zeroize = "1"
 
 # Persiste tamanho/posição das janelas entre reinícios (F2). É **DESKTOP-only** —
 # no mobile a WebView é tela cheia e não existe o conceito de geometria de janela.

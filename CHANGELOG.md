@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.36.0 - The Pentest model key can come from the SHVIA account
+
+PT-31, option B chosen by the owner on 30/10/2026 ("a chave já existe na sessão web"): instead of a key in a file on this computer
+(`~/.strix/cli-config.json`), a Pentest authorization can say that the key paying for the approved model is the person's own key for
+that provider, stored in their SHVIA account. This is the Desktop half. The engine half is 1.2.47 (pinned since 1.35.7) and the server
+half is deployed with its switch off (shvia-web #645 and #650). Nothing changes for anyone until the server's switch is turned on and
+the page offers the option; a grant that is not an account grant takes exactly the path it took before.
+
+Documented in the same commit: [ADR-047](docs/decisoes.md), a new section of `docs/PENTEST/authorization.md`, `auto-resume.md`,
+`pentest-compatibility.md`, `funcionalidades.md`, and a standing rule in `CLAUDE.md` and `AGENTS.md`.
+
+- **When it asks the server** (`credential.rs`): `check` before the dialog, so a missing key is told before the person agrees to
+  anything and nothing is handed over; `start` once, after the consent and as late as possible (before the run state is locked, so the
+  page's status polls never wait on a request); `resume` at every resume, by hand or by itself, because the process that held the last
+  key is gone. Never for a retest, which calls no model.
+- **What it accepts back**: a body of at most 4 KiB, unknown fields refused (the server cannot name an environment variable), the
+  same provider and model the engine approved, no `api_base`, and a key of printable ASCII without whitespace, 8 to 512 characters,
+  never trimmed into shape. The consent dialog shows an account grant as one (the engine's `credential` and `credentials` must agree),
+  never as "your local credentials".
+- **Where the key goes**: one variable the app names, `STRIX_RUN_LLM_API_KEY` (not `LLM_API_KEY`: the engine copies every aliased
+  variable into the person's config file), in the environment of that one child, after the person's own model connection is removed from it
+  (the engine's aliases for it, and the key and base variables LiteLLM reads for each provider an account key can pay for; a closed
+  list and not "every `*_API_KEY`", because the engine reads the web-search keys, Postman and the dedupe model from the same
+  environment). Every other use of the engine has the variable removed. The
+  app's copy is wiped right after the spawn; the type cannot be printed, cloned or serialized, and no struct written to disk has a field for it.
+- **No fallback**: every refusal, timeout, redirect or malformed answer ends the start with `E_ACCOUNT_KEY_MISSING`,
+  `E_ACCOUNT_KEY_UNAVAILABLE`, `E_ACCOUNT_KEY_ENGINE_TOO_OLD` or the existing authorization refusal. The engine floor for this path is
+  1.2.47 (`account_key_supported`); the general floor stays 1.2.39.
+- **Evidence**: eight new tests in `credential.rs`, one in `compatibility.rs` and a longer table in the consent test, and each line
+  they guard was reverted on purpose (19 reversions, every one turned its test red): the parser's strictness, the request's exact
+  bytes and its lack of `Origin`, every refusal against a fake server, the HTTPS-only client, a real child that gets the key and none
+  of the person's own connection, the variable removed from every other command, a key type that cannot be printed, the
+  web-search, Postman and dedupe settings that must survive, and a search of every file the start writes. The same client was also run against the real WEB server locally: `check`,
+  `start` (the key handed over was the one stored), a second `start` refused, `resume` refused until the engine claims the grant and
+  accepted after, another run refused, another model refused, an unknown bearer refused, and a request carrying `Origin` answered 403.
+- **Not measured**: a real run on a Mac with a real provider key, and the page option that creates an account grant (the WEB slice that
+  turns the switch on does not exist yet).
+- **A flaky test, fixed here because it blocks the gate**: `a_daemon_that_answers_a_daemon_that_does_not_and_one_that_hangs_are_three_different_things`
+  (`docker.rs`) writes a script and runs it, and the kernel refuses to run a file that is open for writing ("text file busy") while another
+  test's child, forked at that moment, still holds the handle. Measured under full CPU load (24 busy loops) with this change's new tests
+  skipped: 3 failures in 8 whole-suite runs, always `Unknown` where `Ready` or `NotRunning` was expected, so the new tests are not the cause. The
+  test now asks again while the answer is `Unknown` (a file that is really no program stays `Unknown`, and its own test calls `ask` directly).
+  After the fix, 1 failure in 37 whole-suite runs under the same load, and none without it; the one that remains was not captured.
+
 ## 1.35.10 - Tell the engine this app carries from the minimum the server asks for, in the About dialog
 
 On 02/11/2026 the About dialog read "Pentest exigido v1.2.47" right under "Motor do Pentest v1.2.47 (instalado)". The first is the
