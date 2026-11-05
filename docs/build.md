@@ -29,7 +29,10 @@ decision.
 
 Saída em `src-tauri/target/release/bundle/`. Opções (Linux/macOS): `--skip-npm-ci`,
 `--bundles <deb|appimage|rpm|dmg|app>`, `--anna <path>`, `--no-anna`, `--pentest <path>`,
-`--no-pentest`, `--no-sign`, `--skip-git-pull`, `--force` and `--publish`. Windows uses PowerShell parameters:
+`--no-pentest`, `--no-traffic`, `--no-sign`, `--skip-git-pull`, `--force` (`-f`), `--publish`
+with `--dest <dest>` and `--base-url <url>`, and `--transicao-de-chave` for the one updater-key
+transition release (see [Rotating the updater key](#rotating-the-updater-key-prepared-in-1640-publishing-it-is-the-owners-act));
+`./build-local.sh --help` prints the script's own list. Windows uses PowerShell parameters:
 `-SkipNpmCi`, `-SkipGitPull`, `-Anna <path>`, `-NoAnna`, `-NoSign`; it has no publish/reuse
 switch. These are different scripts, not interchangeable command-line syntaxes.
 
@@ -47,7 +50,7 @@ belong to the target OS. See [the Windows acceptance runbook](roteiro-validacao-
 | Local shell | Root `npm ci`, TypeScript and Vite (`npm run build`) | Offline/loading/settings shell; the main application page is remote |
 | Native app | `src-tauri/Cargo.toml`, `Cargo.lock` and OS-specific Tauri dependencies | WebView and OS permissions; capabilities differ by OS |
 | SHVIA engine | `scripts/stage-anna.mjs`, then `bundle.externalBin` | Optional `anna` executable matching the build host's target triple |
-| Pentest engine | `scripts/stage-pentest.mjs` (release pinned in `pentest-engine.json`), then `bundle.externalBin` in `tauri.linux.conf.json` / `tauri.macos.conf.json` | Linux and macOS only. The engine ships in the installer; Docker and the sandbox image it pulls on first use are separate requirements |
+| Pentest engine | `scripts/stage-pentest.mjs` (release pinned in `pentest-engine.json`), then `bundle.externalBin` in `tauri.linux.conf.json` / `tauri.macos.conf.json` | Linux: ships in the installer. macOS: not bundled by default (`scripts/pentest-bundling.mjs`); the app installs the pinned copy on first use, with consent. Windows: none. Docker and the sandbox image the engine pulls on first use are separate requirements |
 | Packet-capture sidecar | `scripts/stage-traffic-capture.mjs` (builds `src-tauri/traffic-capture` with `cargo build --release` and runs it once before staging), then `bundle.externalBin` in `tauri.linux.conf.json` / `tauri.macos.conf.json` | Linux and macOS only; `build-local.sh --no-traffic` skips it. The Linux build machine needs `libpcap-dev`, the `.deb`/`.rpm` depend on `libpcap0.8`/`libpcap`, and capture needs a permission grant at run time ([TRAFFIC/README.md](TRAFFIC/README.md)) |
 | Claude runner | Bundled `.mjs`/`.json` and installers under `claude-runner/` | Node, runner installation, SDK and authorized Claude credentials; see [runner README](../claude-runner/README.md) |
 | Codex runner | Bundled modules/installers/schema under `codex-runner/` | Node, installed runner and Codex CLI/app-server/login; see [runner README](../codex-runner/README.md) |
@@ -76,12 +79,16 @@ MB per platform) by that repository's `pentest-binaries.yml`, and published on i
 Release as `pentest-<target triple>` plus a `SHA256SUMS`. It is built there, not here: this
 repository has no Python source and this build has no `pip` step.
 
-**Where it lands.** `externalBin` puts it beside the executable: `Contents/MacOS/pentest` on
-macOS, and `/usr/bin/pentest` in the `.deb` (measured: `ShvIA_1.32.0_amd64.deb` is 117.7 MB, the engine 111.8 MB of it, and the packaged
-`pentest --fork-version` runs). The `.rpm` and the AppImage were not built here. The app looks for it there and nowhere
-else (`motores::bundled_bin`): no lookup on PATH, so what runs is always the build the
-installer carried. A build that carries none answers `E_PENTEST_NOT_BUNDLED`, which the page
-translates, instead of "update Pentest". Help → About shows both halves (the engine beside the executable, and the one this Desktop requires, from `pentest-engine.json`), so "Pentest not detected" on the page can be told apart from a broken engine without opening the bundle.
+**Where it lands.** When a build carries it, `externalBin` puts it beside the executable:
+`/usr/bin/pentest` in the `.deb` (measured: `ShvIA_1.32.0_amd64.deb` is 117.7 MB, the engine 111.8 MB of it, and the packaged
+`pentest --fork-version` runs), or `Contents/MacOS/pentest` in a Mac build made with
+`SHVIA_BUNDLE_PENTEST_ON_MAC=1` or `--pentest <path>`. The `.rpm` and the AppImage were not built here. Since 1.33.0 the
+app uses, in this order, a verified copy it installed itself (`<app data>/pentest-engine/<version>/pentest`, below), then
+the one beside the executable (`motores::bundled_bin`), then none: no lookup on PATH, so what runs is always a pinned
+build. With neither, it answers `E_PENTEST_NOT_BUNDLED`, which the page translates, instead of "update Pentest". Help →
+About shows the engine in use and where it came from (`instalado`, `empacotado` or `não instalado`), the engine this
+build pins (`pentest-engine.json`) and, from 1.35.10, the minimum the server asks for, so "Pentest not detected" on the
+page can be told apart from a broken engine without opening the bundle.
 
 **Staging.** `scripts/stage-pentest.mjs` takes `--from`, then `SHVIA_PENTEST_BIN`, then the
 release pinned in `pentest-engine.json`: a version, the release URL and one SHA-256 per
@@ -205,10 +212,15 @@ npm run prova:politica
 npm run prova:runner-version
 ```
 
-For Rust checks, first stage a usable `anna` with `npm run anna:stage` (and, on Linux or macOS, the
-engine with `npm run pentest:stage`), and install the
-Codex runner as described by its [README](../codex-runner/README.md). The suite contains an
-installed-runner `--version` smoke check. Then:
+For Rust checks, first stage every sidecar the platform's Tauri config declares (the Tauri build
+script refuses a missing `externalBin` file): a usable `anna` with `npm run anna:stage`, and on
+Linux or macOS also the capture sidecar with `npm run traffic-capture:stage` and the engine with
+`npm run pentest:stage`. On macOS the last one stages nothing by default (see
+[Pentest engine](#pentest-engine)) while `tauri.macos.conf.json` still declares it, so use
+`SHVIA_BUNDLE_PENTEST_ON_MAC=1 npm run pentest:stage` or override `externalBin` with
+`TAURI_CONFIG`. Then install the Codex runner as described by its
+[README](../codex-runner/README.md). The suite contains an installed-runner `--version` smoke
+check. Then:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml --locked
@@ -216,7 +228,8 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D w
 ```
 
 A clean checkout has no `src-tauri/binaries/` because those files are ignored. CI prepares
-an inert `anna-<triple>` stand-in before Rust tests; it never packages that file. Its separate
+inert `anna-<triple>`, `traffic-capture-<triple>` and `pentest-<triple>` stand-ins before Rust
+tests; it never packages those files. Its separate
 no-sidecar compile check uses `TAURI_CONFIG='{"bundle":{"externalBin":[]}}'`. Do not ship a
 stand-in or mistake that compile override for a working Code engine. The full preparation,
 PowerShell prerequisites and additional packaging/signing contract proofs live in
@@ -227,6 +240,11 @@ PowerShell prerequisites and additional packaging/signing contract proofs live i
 `version.md` é a **fonte única**. O `scripts/sync-version.mjs` propaga para
 `package.json`, `tauri.conf.json`, `Cargo.toml` e os lock files — roda no `prebuild`
 (npm) e via `npm run version:sync` (o `build-local` chama antes de buildar).
+The six carriers are `package.json`, `package-lock.json`, `claude-runner/package.json` (the
+runner answers `--version` from it), `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` and
+`src-tauri/tauri.conf.json`; `npm run prova:bump` checks them and the pre-commit hook refuses a
+commit whose staged carriers disagree with `version.md`. The Codex runner keeps its own version
+in `codex-runner/package.json`, which is not a carrier.
 
 ## Rodar o app empacotado numa VM/sem GPU
 
@@ -717,14 +735,18 @@ both. Until then the ordering is harmless, because nothing is signed.
 and manual dispatch. On Ubuntu it prepares Node 22, stable Rust/Clippy and Tauri system
 dependencies, then runs:
 
-- Runner policy/protocol tests, the runner module-load probe, a real SDK shell-directory
-  regression and the PowerShell installer checks.
+- The splash's server-settings proof (`prova:bootstrap`), runner policy/protocol tests, the
+  runner module-load probe, a real SDK shell-directory regression and the PowerShell
+  installer checks.
 - Version carriers, the pre-commit guard, document-version freshness and the installer,
-  manifest, updater-key, Apple-signing, notarization, reuse, no-sidecar and publication
-  contract proofs named by `package.json`.
-- An installed Codex-runner smoke check through `cargo test --locked`, Clippy with
-  `--locked --all-targets -- -D warnings`, a no-sidecar `cargo check --locked`, and
-  `cargo-deny check` for advisories, bans, licenses and sources.
+  manifest, updater-key, key-transition, Apple-signing, notarization, reuse, no-sidecar,
+  Pentest-engine staging (`prova:pentest`), macOS engine start (`prova:motor-no-mac`),
+  committed-tree, Windows build-script and Dependabot proofs named by `package.json`.
+- With inert stand-ins for the three sidecars: an installed Codex-runner smoke check through
+  `cargo test --locked`, Clippy with `--locked --all-targets -- -D warnings`, the capture
+  sidecar crate's own `cargo test` and Clippy, a no-sidecar `cargo check --locked`, and
+  `cargo-deny check` for advisories, bans, licenses and sources on both lock files (the app's
+  and `src-tauri/traffic-capture`'s, against the same `deny.toml`).
 
 The workflow file is the complete gate list; the description above is not a claim that
 the latest remote run passed. Several packaging proofs use temporary files, fake tools or
@@ -750,7 +772,7 @@ when `src-tauri/**` or that workflow changes, and by manual dispatch:
   MinGW-w64: `tauri-build` compiles the icon and manifest resource with
   `x86_64-w64-mingw32-windres` (through `embed-resource`) even for a check.
 - **macOS** — `cargo clippy --locked --all-targets -- -D warnings` and `cargo test --locked` on `macos-latest`, the platform the
-  releases are built on.
+  releases are built on, plus the capture sidecar crate's `cargo test` and Clippy (its macOS-only code is compiled there).
 - **Windows MSVC** (since 1.12.4) — Clippy with the same locked/all-targets/warnings gate
   and `cargo test --locked` on `windows-latest`, matching the installer toolchain.
 

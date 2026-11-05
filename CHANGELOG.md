@@ -1,5 +1,116 @@
 # Changelog
 
+## 1.36.2 - Say in the Claude-engine diagnosis that the app installs a missing runner by itself
+
+Section 2 of `docs/code/MOTOR-CLAUDE-DIAGNOSTICO.md` still read "the runner is not bundled … absence is an optional install that
+was never done", from before 1.13.0. A dated note above it says what is current: the app installs a missing runner at start when
+Node 18+ is present (ADR-040, `SHVIA_RUNNERS_AUTO=0` turns it off) and updates an older one at every start (ADR-036), so the message
+now usually means no Node, the switch off or a failed install; and `externalBin` lists the Pentest engine and `traffic-capture`
+beside `anna` on Linux and macOS. The original paragraphs keep their date.
+
+## 1.36.2 - Mark where PRODUCT.md's synthesis is older than the brand and architecture decisions
+
+`PRODUCT.md`, the Impeccable skill's product source, still described the azure `#34B3EC` ShvIA/Blue3 identity, "zero UI
+reescrita" and a client with "no secrets". A note at its top, in English, names the three divergences and the documents that
+win: Shield (`brand/README.md`; SHVIA-WEB's `--azure` token is `#2350E6` as read on 2026-11-05), ADR-035 for desktop-only
+screens, and the persistence table and ADR-047 for local state and the account model key. The Portuguese body is unchanged.
+
+## 1.36.2 - Describe the project's Claude Code settings as `settings.json` has them
+
+`.claude/README.md` still said that the deny-list blocks `.env` reads, `rm -rf`, `git push --force`, `git reset --hard`,
+`git clean -fd` and `curl|sh`. Since 1.6.55 deny holds only the key-file reads and `rm -rf` and `curl`/`wget | sh` ask. It now
+lists the deny and ask lists as they are, the Impeccable `PostToolUse` hook, `launch.json`, `prompts/` and `skills/`, and the
+stack line no longer announces the Python sidecar planned for F2, which was never built.
+
+## 1.36.2 - Complete the codex-runner's file table and point it at the external sandbox mode
+
+- The layout table of `codex-runner/README.md` now lists `plataforma.mjs` (which `codex` to start on each OS), `uso.mjs` (plan
+  limits), `install.ps1` and the test files `npm run prova:politica` runs, and names the flags `codex-runner.mjs` handles.
+- A short section points to the external sandbox mode of 1.28.0 (`SHVIA_CODEX_SANDBOX_EXTERNO`), whose contract lives in
+  `docs/code/MOTOR-CODEX-20260909.md` and which the README did not mention.
+- The comparison with the Claude runner cited `politica.mjs:130-150`, lines that now hold other functions; it names `decidir()`.
+
+## 1.36.2 - Document the claude-runner's approval levels, plan turns and command-line flags
+
+`claude-runner/README.md` described one behaviour ("reads run, everything else becomes a card"), which is the `manual` level only.
+A new section, in English, says what `--aprovacao manual|edit|auto` changes and what asks at every level, as `decidir()` in
+`politica.mjs` decides it; that a plan turn denies every non-read tool before the level is consulted (`decidirNoPlano`); and what
+`--version`, `--modelos`, `--uso`, `--model`, `--effort` and `--cwd` do. The command checks are described as the pattern checks
+they are, with the functions and their tests as the exact contract. The account is the desktop's choice, through the profile's
+variable, not a flag.
+
+## 1.36.2 - Map the capabilities added since 1.29.0 in the current-state documents
+
+The capability map, the READMEs and the architecture still described the 2026-10-15 baseline (1.29.0). Seven minors later,
+IPv4 Search (1.31.0), packet capture (1.32.1), the Pentest engine's distribution (1.32.0, 1.33.0), its run lifecycle
+(1.34.0–1.35.7), the About dialog's version rows (1.32.2–1.35.10) and the account model key (1.36.0) were documented only in
+their own pages and `docs/funcionalidades.md`.
+
+- `docs/project-state.md`: new rows for those capabilities and for IPv4 Search and capture in the platform table; the `recursos`
+  flags the shim declares today; the local state those features keep. The header names its baseline and leaves "the current
+  version" to `version.md`.
+- `README.md`: the review line, a Network tools and a version-diagnostics row, the assessment row, the Windows and Linux platform
+  limits, and the capture crate and engine pin in the repository table.
+- `docs/README.md`: indexes `code/IPV4-SEARCH.md`, `PENTEST/auto-resume.md` and `PENTEST/keep-awake.md`, which were not
+  listed, under a new Network tools table; names the archived fork's real tag.
+- `docs/arquitetura.md`: the layers diagram, the bridge-file table (`ipv4_search.rs`, `traffic.rs`, every `pentest/` module),
+  a Network tools section and five persistence rows (`tray.json`, the installed engine, the capture file, the account key).
+- `docs/funcionalidades.md`: one entry for 1.35.1–1.35.7 (keep-awake, the page's facts, the control channel's owner, engine
+  1.2.47).
+- `docs/documentation-review-20261015.md` and `README_br.md`: a note at the top saying what is dated and where the current text
+  is. The Portuguese README is not retranslated; its note, in English, names what it lacks.
+
+## 1.36.2 - Bring the build guide's options, version carriers and CI gate list in line with the scripts
+
+- `docs/build.md`, TL;DR: the `build-local.sh` options now include `--no-traffic`, `-f`, `--dest`, `--base-url` and
+  `--transicao-de-chave`, as its argument loop reads them.
+- `docs/build.md`, "Versão": the six carriers by name, `claude-runner/package.json` included (it was missing), the pre-commit
+  guard, and that `codex-runner/package.json` keeps its own version.
+- `docs/build.md`, CI: `ci.yml` also runs `prova:bootstrap`, `prova:pentest`, `prova:motor-no-mac`, the capture sidecar
+  crate's tests and Clippy, and `cargo-deny` on that crate's own lock file; the macOS job of `plataformas.yml` builds and tests
+  the capture sidecar too. Stand-ins are written for all three sidecars.
+- `docs/arquitetura.md`, "Build & empacotamento": the carriers point to `docs/build.md`, the Arch package is listed with the
+  Linux targets, and a bullet names the capture sidecar and the Pentest engine beside `anna`.
+
+## 1.36.2 - Name every sidecar a local Rust check or `tauri dev` has to stage first
+
+`tauri.linux.conf.json` and `tauri.macos.conf.json` declare three sidecars (`anna`, `pentest`, `traffic-capture`), and the
+Tauri build script refuses to run while any declared file is missing; CI writes inert stand-ins for all three. The developer
+instructions named only `anna` and the engine, so a Linux or macOS `cargo test` from a clean clone stopped on the capture
+sidecar, and on macOS `npm run pentest:stage` stages nothing by default.
+
+- `CLAUDE.md` and `AGENTS.md` (mirrored), `docs/build.md` ("Local verification before packaging") and `README.md` ("Develop
+  from source") now list `npm run traffic-capture:stage` (Linux needs `libpcap-dev`), and say that on macOS the engine needs
+  `SHVIA_BUNDLE_PENTEST_ON_MAC=1 npm run pentest:stage` or a `TAURI_CONFIG` `externalBin` override.
+- `README.md` says what the empty `externalBin` override leaves at runtime: an installed `anna`, an engine the app installed,
+  and, in a debug build only, a capture sidecar built in `src-tauri/traffic-capture/target/release` (`code_bridge/traffic.rs`).
+
+## 1.36.2 - Say that a Mac build installs the Pentest engine on first use instead of carrying it
+
+Since 1.33.0 (ADR-046) a default Mac build does not bundle the engine, and the app prefers a verified copy it installed itself
+over a bundled one. Five current documents still said the installer carries it "on Linux and macOS" or that the copy beside
+the executable is "the only one run":
+
+- `README.md`: the develop-from-source paragraph and the macOS platform row (which also says the published Mac builds were
+  Apple Silicon only as of release 1.35.2, as `docs/build.md` records).
+- `docs/build.md`: the packaging table row and "Where it lands", which now gives the lookup order (installed, then bundled,
+  never PATH) and what Help → About shows since 1.35.10.
+- `docs/arquitetura.md` (review note), `docs/project-state.md` (opening paragraph) and `docs/PENTEST/authorization.md`
+  (opening paragraph).
+- `docs/funcionalidades.md`: the 1.32.0 "Resolution" bullet is marked as superseded in part by 1.33.0.
+
+## 1.36.2 - Link ADRs by the full heading anchor GitHub generates, not a short one it does not
+
+First commit of the 2026-11-05 documentation review (baseline `origin/master` 2dcc057, 1.36.0). The version is 1.36.2
+because the open PR #194 already claims 1.36.1. Only Markdown and the version carriers change in this review.
+
+- Fifteen links pointed at `#adr-001`, `#adr-019`, `#adr-022`, `#adr-026`, `#adr-034` and similar short anchors. GitHub builds a
+  heading's anchor from its whole text, so none of them existed and each landed at the top of `decisoes.md`. They now use the
+  full slug, the form the other links in the register already used: `docs/decisoes.md` (12), `docs/funcionalidades.md`,
+  `docs/code/CONTAS-CLAUDE.md` and `docs/code/RUN-20260910.md` (one each).
+- `docs/decisoes.md` says how to link an ADR and records that ADR-024 and ADR-025 were each used for two decisions. They keep
+  their numbers because commits and documents already cite them.
+
 ## 1.36.1 - Refuse to package an anna older than 0.15.8, the engine where a late approval no longer decides the next gate
 
 `scripts/stage-anna.mjs` stops the build when the `anna` it would bundle is below `ANNA_MINIMO`. The floor was 0.13.6, and Desktop 1.36.0 went out for Linux with **anna 0.15.3**, read from `usr/bin/anna` in the `ShvIA_1.36.0_amd64.deb` the update server serves (SHA-256 `da1d037b…`). That was the `anna` on the build machine's PATH; SHVIA-CODE was at 0.15.8.

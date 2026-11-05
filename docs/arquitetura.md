@@ -5,13 +5,14 @@ Rust bridge. The server owns accounts and shared application data; local engines
 folders, browser profiles and assessment artifacts remain on the computer. See
 [the current capability map](project-state.md) and [the decision records](decisoes.md).
 
-> **Reviewed against source on 2026-10-15, Desktop 1.29.0.** This describes implementation
+> **Reviewed against source on 2026-10-15, Desktop 1.29.0; the layers, bridge files, network
+> tools and persistence table were rechecked on 2026-11-05 against 1.36.0.** This describes implementation
 > contracts, not a deployed server or installed-client acceptance. Dated measurements below
 > retain their original scope. The original Python-sidecar/F2 sketch is superseded as a design:
 > there is no Python `sidecar/` directory in this repository. Native services are Rust; local
 > Code uses anna and the Node-based Claude/Codex runners; the Pentest engine is the one Python
-> program the app carries, built in its own repository and bundled as a sidecar on Linux and
-> macOS (see [build.md](build.md)).
+> program the app runs, built in its own repository, bundled as a sidecar on Linux and installed
+> by the app on first use on macOS (ADR-046; see [build.md](build.md#pentest-engine)).
 
 ---
 
@@ -26,6 +27,8 @@ Local bootstrap (src/, Vite/TypeScript)
           └─ Custom native bridge → Rust capability dispatch
               ├─ Authorized local folder → anna / claude-runner / codex-runner
               ├─ Native file dialogs, notifications, device and browser actions
+              ├─ Network tools: IPv4 Search (in-process TCP probes) and
+              │   packet capture (separate traffic-capture sidecar, libpcap)
               └─ Controlled Pentest assessment → private local artifacts/outbox
 
 Remote Code is a separate path owned by the Web UI:
@@ -242,7 +245,9 @@ path used from outside (`code_bridge::handle_message`, `::reply`, `::Sidecars`, 
 | `contas_claude.rs` | local account registry, alias/function discovery, child environment and isolated usage cache |
 | `code_bridge/aparelho.rs` | tray-enabled device info, notifications, native file picking and consented screen capture |
 | `code_bridge/navegador.rs`, `code_bridge/navegador.js` | the agent's separate browser/profile, site and interaction confirmations |
-| `code_bridge/pentest.rs`, `code_bridge/pentest/` | controlled assessments, runtime compatibility, consent, recovery, telemetry, review/retest, private sync and external viewer |
+| `code_bridge/pentest.rs`, `code_bridge/pentest/` | controlled assessments: `compatibility.rs` (version probe, About rows), `engine.rs` (first-use install of the pinned engine), `control.rs` (live control channel), `recovery.rs`, `review.rs`, `sync.rs` (history/report outbox), `viewer.rs`, `ending.rs` (end reason), `docker.rs` (preflight), `resume.rs` (automatic resume), `awake.rs` (keep-awake), `credential.rs` (account model key) |
+| `code_bridge/ipv4_search.rs` | IPv4 Search: target/port parsing, the private-range policy, the native confirmation and the two-pass TCP probe (ADR-044) |
+| `code_bridge/traffic.rs` | packet capture: finds and spawns the `traffic-capture` sidecar, its native confirmation, permission request and export; never opens a device itself (ADR-045) |
 
 Each file's tests sit at its end. The source rulers read the file that holds what they check:
 the dispatch rulers read `code_bridge.rs`, the login rulers read `login.rs`.
@@ -286,6 +291,18 @@ consent, and its capability URL is not returned to the Web page. See
 [authorization](PENTEST/authorization.md), [compatibility](pentest-compatibility.md) and
 [viewer lifecycle](pentest-viewer.md). Source checks do not replace the installed operator pilot.
 
+### Network tools
+
+Both tools serve SHVIA-WEB's Network pages and act from this computer only, after a native
+confirmation the page cannot answer. **IPv4 Search** runs inside the shell: TCP connects that
+send no data, one private range (RFC 1918, CGNAT or `198.18.0.0/15`, at most a /16), one scan
+at a time app-wide, stopped by its window, a new document or quitting. The limits are decided
+in `code_bridge/ipv4_search.rs`, not by the page ([IPv4 Search](code/IPV4-SEARCH.md), ADR-044).
+**Packet capture** is the one capability that needs OS capture rights, so it lives in a separate
+`traffic-capture` program that alone links libpcap and runs only while a capture runs; the GUI
+process never gets capture capability ([Traffic](TRAFFIC/README.md), ADR-045). Windows builds do
+not bundle that sidecar.
+
 ---
 
 ## Build & empacotamento
@@ -303,14 +320,24 @@ consent, and its capability URL is not returned to the Web page. See
   SO é empacotado numa máquina diferente**, e essa é a restrição que molda o resto.
 - **Versão:** `version.md` é a fonte única; o `scripts/sync-version.mjs` a propaga
   para `package.json`, `tauri.conf.json`, `Cargo.toml` e os locks (roda no `prebuild`).
+  The complete list of six carriers, including `claude-runner/package.json`, is in
+  [build.md](build.md#versão).
 - **Targets:** macOS (`.dmg` + `.app.tar.gz`), Windows (`.msi` WiX + `-setup.exe`
-  NSIS), Linux (`.AppImage` + `.deb` + `.rpm`).
+  NSIS), Linux (`.AppImage` + `.deb` + `.rpm`, plus the Arch `.pkg.tar.zst` repackaged
+  from the `.deb`).
 - **Motor empacotado** (item D5): o `anna` viaja no instalador como `externalBin`
   (sidecar), preparado por `scripts/stage-anna.mjs` antes do `tauri build`. Era o
   **gargalo de adoção** do Modo Code — o binário era pré-requisito externo. O
   empacotado **vence o do PATH** (é o testado com esta versão do app), e o
   `engineStatus` da ponte responde `found`/`bundled`/`version`/`path`. Ver
   [ADR-021](decisoes.md#adr-021--o-anna-viaja-no-instalador-externalbin-e-o-empacotado-vence-o-do-path).
+- **Other sidecars (Linux and macOS only).** `traffic-capture`, this repository's own crate and
+  the only code that links libpcap, is built and staged by `scripts/stage-traffic-capture.mjs`
+  (ADR-045). The Pentest engine is staged from the release pinned in `pentest-engine.json` by
+  `scripts/stage-pentest.mjs`; a Mac build leaves it out by default and the app installs it on
+  first use (ADR-046). Both are declared only in `tauri.linux.conf.json` and
+  `tauri.macos.conf.json`, and `build-local.sh` builds the `externalBin` list from what was
+  staged, so any one of the three sidecars can be absent without dropping the others.
 - **PATH do sidecar** (`src/user_env.rs`, 1.1.24): app de GUI não herda PATH de
   shell — no macOS o launchd entrega o mínimo do sistema, e as ferramentas que o
   agente roda com `sh -c` não encontram `npx`/`node`/`cargo`/`php`. O PATH vem do
@@ -371,8 +398,12 @@ be reported as a confirmed compatible server.
 | Credential-profile usage cache | App cache `uso-claude/<account id>` | Isolates the usage read; it does not move the person's configuration home |
 | Live local sessions and replay log | Rust process memory | Reload continuity within a window, not app-restart persistence |
 | Page snapshot, queue and unsent Code transcript | Web `sessionStorage` / `localStorage`, by their contracts | Client state/outboxes; saved transcript blocks are also stored on ShvIA Web |
+| Tray switches | App config `tray.json` (`tray.rs`) | Close-to-tray, and the device-command and agent-browser switches; only the tray menu writes it, no bridge action does |
 | Agent-browser profile | App data `navegador-do-agente` outside macOS; dedicated WebKit data-store ID on macOS | Separate site cookies/logins, not the ShvIA window's profile |
 | Controlled assessment | Private app config `pentest/` | Grants, recovery descriptor, runs/artifacts and outgoing snapshots; upload requires its native consent/receipt contract |
+| Installed Pentest engine | App data `pentest-engine/<version>/pentest` (`pentest/engine.rs`) | Written only after the native install dialog; re-checked against the pinned SHA-256 at every use |
+| Packet capture file | App cache `traffic/` (`code_bridge/traffic.rs`) | pcapng, `0600`; deleted when its page, window or the app goes away, leftovers removed at the next start |
+| Account model key | Memory of the start/resume that needs it, then the one engine child's environment | Never written to disk or returned to the page (ADR-047) |
 
 No relational database runs in this client. That does not mean it is stateless: local files,
 client credentials, browser state and private assessment artifacts have their own lifecycles.

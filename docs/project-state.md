@@ -1,9 +1,10 @@
 # ShvIA Desktop: current product and capability map
 
-**Reviewed:** 2026-10-15 · **Implementation baseline:** `983f2aa`, version 1.29.0.
-The documentation delivery uses patch 1.29.1 and synchronizes version metadata only.
-This review describes source behavior; it does not certify an installed application,
-a signed installer, a live login or the current hosted server.
+**Reviewed:** 2026-11-05 · **Implementation baseline:** `origin/master` at `2dcc057`
+(Desktop 1.36.0). The previous review was 2026-10-15 at `983f2aa` (1.29.0). The repository's
+current version is whatever [`version.md`](../version.md) says; this page names a version only
+where a capability arrived. This review describes source behavior; it does not certify an
+installed application, a signed installer, a live login or the current hosted server.
 
 ## What the application is today
 
@@ -13,7 +14,8 @@ loaded from the configured ShvIA Web server. Rust provides native windows, the c
 bridge and local capabilities. Code uses SHVIA's `anna` engine plus the Claude Code and
 Codex runners. This repository holds no Python source; the Pentest engine (a PyInstaller
 build of the SHVIA fork of Strix, built in its own repository) ships as a bundled sidecar on
-Linux and macOS.
+Linux, and on macOS the app installs the pinned copy on first use, with consent (ADR-046),
+because a signed app cannot start it from inside its bundle.
 
 | Component | Owns | Update boundary |
 |---|---|---|
@@ -25,7 +27,12 @@ Linux and macOS.
 
 The Web screen checks bridge capabilities (`recursos`) before offering native features.
 A new server can meet an older shell, so capability checks are more precise than assuming
-all actions exist because the page is current. The separate compatibility banner compares
+all actions exist because the page is current. The flags the shim declares today
+(`code_bridge/shim.rs`) are `imagem`, `conta`, `run`, `sessoes`, `retomada`, `plano`, `orientar`,
+`aparelho`, `uso`, `assinatura` (true on Linux/macOS only), `varreduraIPv4` and `captura`; newer
+Pentest actions (`pentestInstallEngine`, `pentestPreflight`, `pentestAutoResume`) are detected by
+the method's presence instead. A flag says the shell implements a path, not that it is enabled
+or permitted on this machine. The separate compatibility banner compares
 the installed Desktop version with the server's `clients.desktop.min_version`; it warns
 and can be dismissed. It is not a hard startup block or a minimum-server-version gate.
 
@@ -51,7 +58,13 @@ and can be dismissed. It is not a hard startup block or a minimum-server-version
 | Device commands | A fixed set of device operations behind native tray enablement and command-specific consent | `code_bridge/aparelho.rs`, `tray.rs` | [Features](funcionalidades.md); `recursos.aparelho` reports implementation, not whether it is enabled |
 | Agent browser | Separate local browser window/profile; bounded read/click/type/open/close; site and per-action consent | `code_bridge/navegador.rs`, `navegador.js` | ADR-042 in [decisions](decisoes.md), [features](funcionalidades.md); not control of the person's existing Chrome session |
 | Controlled assessments | Native authorization/consent, one supervised local process, status/stop/control, recovery/review/retest and private history/report outbox | `code_bridge/pentest.rs`, `pentest/` | [Authorization](PENTEST/authorization.md), [compatibility](pentest-compatibility.md); supported Unix path only, fresh consent and runtime/version checks |
+| Pentest engine distribution | Engine pinned by `pentest-engine.json`; bundled on Linux, installed by the app on first use on macOS after a native dialog, checked against the pinned SHA-256 at every use (1.32.0, 1.33.0) | `pentest/engine.rs`, `pentest/compatibility.rs`, `scripts/stage-pentest.mjs` | [Compatibility](pentest-compatibility.md), [build](build.md#pentest-engine), ADR-046; Windows has no engine |
+| Assessment run lifecycle | End reason and native notice (1.34.0), Docker preflight and automatic resume after a provider usage window (1.35.0), keep-awake while the engine runs (1.35.1), start/last-activity times for the page (1.35.5) | `pentest/ending.rs`, `docker.rs`, `resume.rs`, `awake.rs` | [Authorization](PENTEST/authorization.md#how-a-run-ends-and-what-the-person-is-told-1340), [auto-resume](PENTEST/auto-resume.md), [keep-awake](PENTEST/keep-awake.md) |
+| Account model key | For a grant whose approved model says `credential: "account"`, the key is asked of the server after consent and handed to the one engine process (1.36.0) | `pentest/credential.rs` | [Account model key](PENTEST/authorization.md#account-model-key-1360), ADR-047; inactive until the server's switch is on and the page offers it |
 | Assessment viewer | Separate OS browser, loopback/private viewer session and child cleanup | `code_bridge/pentest/viewer.rs` | [Viewer](pentest-viewer.md); Web does not receive viewer capabilities or local paths |
+| IPv4 Search | TCP connect scan of one private IPv4 range (up to a /16) from this computer, after a native confirmation; limits enforced natively (1.31.0) | `code_bridge/ipv4_search.rs` | [IPv4 Search](code/IPV4-SEARCH.md), ADR-044; `recursos.varreduraIPv4`; the page is SHVIA-WEB's `/network/ipv4-search` |
+| Packet capture (Network "Traffic") | Separate privileged sidecar that alone links libpcap; per-capture native confirmation, pcapng export through a save dialog (1.32.1) | `code_bridge/traffic.rs`, `src-tauri/traffic-capture/` | [Traffic](TRAFFIC/README.md), ADR-045; `recursos.captura`; Linux/macOS builds only |
+| Version diagnostics | Help → About shows the Desktop build, server, Workspace, Code/Codex engines and the Pentest engine in use, pinned and server minimum (1.32.2–1.35.10) | `lib.rs` (`ABOUT_MODAL_JS`), `code_bridge/pentest/compatibility.rs` | [Features](funcionalidades.md); a row reports what was read, not a compatibility verdict |
 | Branding | Shield assets, app/tray/splash icon usage and regeneration | `brand/`, `src-tauri/icons/`, `public/brand-mark.svg` | [Brand guide](brand.md), [asset provenance](../brand/README.md); earlier Portal assets are historical |
 
 ## Platform and lifecycle limits
@@ -61,7 +74,9 @@ and can be dismissed. It is not a hard startup block or a minimum-server-version
 | Shared interface/native shell | WebKitGTK path | WKWebView path | WebView2 path |
 | Local Code bridge/runners | Implemented | Implemented | Implemented with Windows transport/install paths; use the Windows acceptance procedure |
 | Claude subscription connect through the app | Implemented | Implemented | Native capability off; use the Web's manual token flow |
-| Controlled assessment execution/recovery | Implemented with runtime preflight | Implemented with runtime preflight | Explicitly refused |
+| Controlled assessment execution/recovery | Implemented with runtime preflight; engine bundled | Implemented with runtime preflight; engine installed on first use | Explicitly refused |
+| IPv4 Search | Implemented | Implemented | Implemented; a refused port is made final with `SIO_TCP_INITIAL_RTO` (best effort) |
+| Packet capture | Implemented; measured with real packets in a network namespace; the permission grant (one polkit prompt, for the sidecar only) not yet run on a real interface; not grantable in the AppImage | Implemented, not run; needs BPF access (Wireshark's ChmodBPF) | Not bundled; capture reports unavailable |
 | Microphone/image paste | WebView/system behavior needs the [Linux procedure](roteiro-microfone-e-colar.md) | OS permission/WebView acceptance required | OS permission/WebView acceptance required |
 | Packaging/updater | Local packaging and publication path | Local signing/notarization/publication path | Local packaging/signing/publication path |
 
@@ -83,8 +98,11 @@ there. This option does not by itself make remote Codex available in ShvIA Web.
 
 The server owns account data and stored application content. The client still keeps local
 state: configured server URL, WebView cookies/storage, project bindings and authorized
-folders, Claude profile metadata, engine caches and the agent browser's separate profile.
-Assessment descriptors/outboxes are a separate native private store. See
+folders, Claude profile metadata, engine caches, the tray switches, the agent browser's
+separate profile, a Pentest engine the app installed and, while its page lives, a packet
+capture file. Assessment descriptors/outboxes are a separate native private store. An
+account model key for an assessment is held in memory for one spawn and never written
+(ADR-047). See
 [architecture and persistence](arquitetura.md) for exact files and boundaries.
 
 The separately reviewed Web baseline of 2026-10-15 (`25704dbc`) did not call the Desktop
@@ -101,9 +119,9 @@ Never describe “no application database” as “no local state” or “no cr
 ## Build, release and acceptance
 
 [`version.md`](../version.md) is the version source. The synchronization script propagates
-it to six carriers, checked by `npm run prova:bump`. This documentation patch changes only
-Markdown and those required version fields; dependency versions and application code stay
-the same.
+it to six carriers, checked by `npm run prova:bump` ([list](build.md#versão)). A documentation
+review changes only Markdown and those required version fields; dependency versions and
+application code stay the same.
 
 Read [build.md](build.md) before packaging. A frontend build, Rust tests/Clippy, a native
 package, OS signature/notarization, published artifacts, a GitHub Release, a matching update
@@ -112,5 +130,5 @@ replace the local signed-release process. No installer or runtime update was pro
 this documentation review.
 
 Start from [the documentation index](README.md) for procedures and dated design history.
-The [review record](documentation-review-20261015.md) lists remaining gaps and code findings
-for owner decisions; it is not an implementation roadmap approved by this review.
+The [2026-10-15 review record](documentation-review-20261015.md) lists the gaps and code findings
+it left for owner decisions; it is not an implementation roadmap approved by a review.

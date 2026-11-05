@@ -8,12 +8,13 @@ file dialogs, desktop integration and controlled access to this machine.
 The default server is [ai.shvia.org](https://ai.shvia.org); the owner can configure
 another trusted ShvIA server. Internal project documentation.
 
-**Reviewed on 2026-10-15 against runtime baseline 1.29.0.** The current repository
-version is in [`version.md`](version.md). This overview describes implemented
-capabilities, not a claim that every platform or installed build passed acceptance.
+**Reviewed on 2026-11-05 against `origin/master` 2dcc057 (1.36.0); previously on 2026-10-15
+(1.29.0).** The current repository version is in [`version.md`](version.md). This overview
+describes implemented capabilities, not a claim that every platform or installed build passed
+acceptance.
 
-Start with [Project state](docs/project-state.md), [documentation review](docs/documentation-review-20261015.md)
-and the [documentation index](docs/README.md). Development conventions are in
+Start with [Project state](docs/project-state.md) and the [documentation index](docs/README.md).
+The [2026-10-15 documentation review](docs/documentation-review-20261015.md) is a dated record. Development conventions are in
 [AGENTS.md](AGENTS.md); decisions are in [the ADR register](docs/decisoes.md).
 
 ## Product and architecture
@@ -61,7 +62,9 @@ local filesystem access. See [Code mode](docs/code/MODO-CODE-20260709.md) and
 | Engine accounts | Claude account profiles and login flow, runtime model catalogs, plan usage reads; bundled runner sources and install/update support | [Claude accounts](docs/code/CONTAS-CLAUDE.md), [plan usage](docs/code/USO-DAS-CONTAS.md) |
 | Claude for remote Workspace | Native bridge implemented: consent, `claude setup-token` in a private terminal and direct token submission to the configured server; invoked by Web's Settings → Engines since SHVIA-WEB 2.114.57 | [Subscription handoff](docs/code/ASSINATURA-NO-WORKSPACE.md) |
 | Agent device/browser tools | Opt-in device operations, file picker and screen capture; opt-in isolated browser with confirmed actions | [Features](docs/funcionalidades.md), ADR-039/042 |
-| Controlled assessments | Native consent/runtime checks, control/recovery, private review/retest, durable history, report synchronization and separate local viewer | [Authorization](docs/PENTEST/authorization.md), [compatibility](docs/pentest-compatibility.md), [viewer](docs/pentest-viewer.md) |
+| Controlled assessments | Native consent/runtime checks, control/recovery, private review/retest, durable history, report synchronization and separate local viewer; end reasons, automatic resume after a provider usage window, keep-awake while a run lasts and an optional account model key | [Authorization](docs/PENTEST/authorization.md), [compatibility](docs/pentest-compatibility.md), [viewer](docs/pentest-viewer.md), [auto-resume](docs/PENTEST/auto-resume.md), [keep-awake](docs/PENTEST/keep-awake.md) |
+| Network tools | IPv4 Search (TCP connect scan of one private range, up to a /16) and packet capture for the Network "Traffic" tool through a separate sidecar; each run is confirmed in a native dialog | [IPv4 Search](docs/code/IPV4-SEARCH.md), [Traffic](docs/TRAFFIC/README.md), ADR-044/045 |
+| Version diagnostics | Help → About: Desktop build, server, Workspace, Code and Codex engines, and the Pentest engine in use, pinned and required by the server | [Features](docs/funcionalidades.md) |
 
 The subscription handoff is a native capability, not evidence of a working Settings
 button in every Web deployment. Web calls this bridge from Settings → Engines since
@@ -83,9 +86,9 @@ calls. Client-reported plan usage is a separate measure from server API spend.
 
 | Platform | Implementation and limits |
 |---|---|
-| macOS | WKWebView; local engines and native bridge; Claude subscription handoff and controlled assessment use the Unix implementation. Signing/notarization and installed acceptance are separate release steps |
-| Windows | WebView2; native bridge and PowerShell runner installers exist. Claude subscription handoff and the controlled assessment profile are unsupported in this version. Native badge count is unsupported; use the [Windows validation guide](docs/roteiro-validacao-windows.md) for installed behavior |
-| Linux | WebKitGTK 4.1; native media/paste and TTS integration exist, with microphone and real image-paste acceptance tracked in the [media checklist](docs/roteiro-microfone-e-colar.md). On Wayland, bind a system shortcut to `xdg-open shvia://rapida`; do not assume the app can register a global shortcut |
+| macOS | WKWebView; local engines and native bridge; Claude subscription handoff and controlled assessment use the Unix implementation. The Pentest engine is installed by the app on first use, not carried in the signed bundle. Published Mac builds were Apple Silicon only as of release 1.35.2 ([build.md](docs/build.md#pentest-engine)). Signing/notarization and installed acceptance are separate release steps |
+| Windows | WebView2; native bridge and PowerShell runner installers exist. Claude subscription handoff, the controlled assessment profile and packet capture (no sidecar is bundled; it would need Npcap) are unsupported in this version; IPv4 Search is implemented. Native badge count is unsupported; use the [Windows validation guide](docs/roteiro-validacao-windows.md) for installed behavior |
+| Linux | WebKitGTK 4.1; native media/paste and TTS integration exist, with microphone and real image-paste acceptance tracked in the [media checklist](docs/roteiro-microfone-e-colar.md). On Wayland, bind a system shortcut to `xdg-open shvia://rapida`; do not assume the app can register a global shortcut. Packet capture needs a one-time polkit grant to its sidecar and does not work from the AppImage; published packages were x86_64 only as of release 1.35.2 |
 
 Screen capture needs OS permission/portal support. The agent browser has an isolated
 profile, blocks pop-ups/downloads and may not support login flows that require them.
@@ -108,14 +111,20 @@ npm run prova:politica
 ```
 
 `npm run build` builds the local startup shell, not an installer. To develop the
-native app with the gateway engine, stage a compatible `anna` from SHVIA-CODE first:
+native app with the gateway engine, stage a compatible `anna` from SHVIA-CODE first.
+On Linux and macOS the platform config also declares the packet-capture sidecar and the
+Pentest engine, and Tauri refuses to build while any declared file is missing, so stage
+those too (the capture sidecar is built from `src-tauri/traffic-capture`; Linux needs
+`libpcap-dev`):
 
 ```bash
 npm run anna:stage -- --from /absolute/path/to/anna
+npm run traffic-capture:stage   # Linux and macOS
+npm run pentest:stage           # Linux; on macOS add SHVIA_BUNDLE_PENTEST_ON_MAC=1
 npm run tauri dev
 ```
 
-If no `anna` is being bundled, Tauri's `externalBin` declaration must be overridden;
+If a declared sidecar is not staged, Tauri's `externalBin` declaration must be overridden;
 a clean clone does not contain a staged binary. For shell/other-engine development:
 
 ```bash
@@ -123,18 +132,23 @@ TAURI_CONFIG='{"bundle":{"externalBin":[]}}' npm run tauri dev
 ```
 
 On PowerShell, set `$env:TAURI_CONFIG` to the same JSON before `npm run tauri dev`.
-The override omits the bundled gateway engine; an installed external `anna` can
-still be resolved at runtime. Never create a fake engine to ship a release.
+The override omits every bundled sidecar from the build. At runtime the app can still
+find an installed external `anna`, a Pentest engine it installed itself and, in a debug
+build only, a capture sidecar built at `src-tauri/traffic-capture/target/release`;
+otherwise capture reports that it is unavailable. Never create a fake engine to ship a
+release.
 
 The Claude runner requires Node 18+ and its SDK dependencies; the Codex runner
 requires Node 18+ and an installed, authenticated Codex CLI. The app can install/update
 runners from bundled sources; see [Claude runner](claude-runner/README.md) and
-[Codex runner](codex-runner/README.md). On Linux and macOS the installer also carries the
-Pentest engine (the controlled assessment profile) as a sidecar next to `anna`: a PyInstaller
-build of the SHVIA fork of Strix, published by that repository and pinned here by SHA-256, so
-updating the Desktop updates it. Docker is a separate requirement; see
-[docs/build.md](docs/build.md). Optional tools and other assessment runtimes have their own
-dependencies.
+[Codex runner](codex-runner/README.md). The Pentest engine (the controlled assessment profile)
+is a PyInstaller build of the SHVIA fork of Strix, published by that repository and pinned here
+by SHA-256 in `pentest-engine.json`. On Linux the installer carries it as a sidecar next to
+`anna`, so updating the Desktop updates it. On macOS a default build does **not** carry it (a
+signed app cannot start it from inside its bundle): the app offers to download and verify the
+pinned copy the first time Pentest is opened, with the person's consent (ADR-046). Windows has
+no engine. Docker is a separate requirement; see [docs/build.md](docs/build.md#pentest-engine).
+Optional tools and other assessment runtimes have their own dependencies.
 
 Rust checks run from `src-tauri` (`cargo test --locked`,
 `cargo clippy --locked --all-targets -- -D warnings`), with the same engine staging
@@ -175,7 +189,9 @@ explicitly; a new commit or green CI does not update anyone's installed app.
 | Path | Responsibility |
 |---|---|
 | `src/`, `index.html` | Local TypeScript/Vite startup and connection shell |
-| `src-tauri/src/` | Rust windows, bridge, engines, OS integration and assessment lifecycle |
+| `src-tauri/src/` | Rust windows, bridge, engines, OS integration, network tools and assessment lifecycle |
+| `src-tauri/traffic-capture/` | Packet-capture sidecar: its own crate, the only code that links libpcap |
+| `pentest-engine.json` | The pinned Pentest engine release: version, URL, SHA-256 and size per platform |
 | `claude-runner/`, `codex-runner/` | Node runners, protocol/policy modules and installers |
 | `scripts/`, `build-local.*`, `packaging/` | Staging, validation, packaging and publication tooling |
 | `src-tauri/icons/`, `brand/`, `public/` | Native exports and Shield assets |

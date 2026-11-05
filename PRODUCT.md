@@ -4,6 +4,19 @@
 > e [docs/decisoes.md](docs/decisoes.md). Fonte estratégica para os comandos do
 > Impeccable; se divergir dos docs acima, os docs vencem.
 
+> **Known divergences (note in English, 2026-11-05).** Parts of this synthesis predate later
+> decisions; the linked documents win:
+> - **Identity:** the desktop identity is **Shield** ([brand/README.md](brand/README.md)), kept
+>   distinct from Blue3's corporate identity ([README.md](README.md)). The Web's `--azure` token is
+>   `#2350E6` per SHVIA-WEB 2.114.133 `public/css/tokens.css` (read 2026-11-05); `#34B3EC` there is
+>   now `--azure-deep`.
+> - **"Zero UI reescrita":** desktop-only screens are allowed since ADR-035
+>   ([decisoes.md](docs/decisoes.md#adr-035--the-desktop-may-have-screens-of-its-own)).
+> - **"Sem banco nem segredos":** no application database runs here, but the client keeps local
+>   state and engine credentials, and an assessment can hold an account model key in memory for
+>   one engine process (ADR-047). See the persistence table in
+>   [docs/arquitetura.md](docs/arquitetura.md#local-persistence).
+
 ## Register
 
 product
