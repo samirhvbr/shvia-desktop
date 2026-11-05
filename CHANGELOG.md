@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.36.2 - Describe the project's Claude Code settings as `settings.json` has them
+
+`.claude/README.md` still said that the deny-list blocks `.env` reads, `rm -rf`, `git push --force`, `git reset --hard`,
+`git clean -fd` and `curl|sh`. Since 1.6.55 deny holds only the key-file reads and `rm -rf` and `curl`/`wget | sh` ask. It now
+lists the deny and ask lists as they are, the Impeccable `PostToolUse` hook, `launch.json`, `prompts/` and `skills/`, and the
+stack line no longer announces the Python sidecar planned for F2, which was never built.
+
 ## 1.36.2 - Complete the codex-runner's file table and point it at the external sandbox mode
 
 - The layout table of `codex-runner/README.md` now lists `plataforma.mjs` (which `codex` to start on each OS), `uso.mjs` (plan
