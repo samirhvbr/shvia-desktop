@@ -75,7 +75,8 @@ why it exists here. Proof: `plano.test.mjs`, against a fake app-server that reco
 
 ### Against `claude-runner`'s Auto, honestly
 
-Read from `politica.mjs:130-150`, not from memory:
+Read from `decidir()` in `claude-runner/politica.mjs`, not from memory (the line numbers this
+sentence once gave have moved):
 
 | | claude-runner Auto | this engine |
 |---|---|---|
@@ -94,6 +95,16 @@ level via `caminhoProibido()`; Codex reads it and hands back the secret. This ru
 **cannot** close that: it learns of a command from `item/started`, which arrives once the
 command has begun, and there is no execpolicy surface to force a prompt (measured — see
 the doc). Anyone shipping this engine is accepting that gap knowingly.
+
+## External sandbox mode (1.28.0)
+
+Where a container is the boundary and Codex's own sandbox cannot run inside it, the host sets
+`SHVIA_CODEX_SANDBOX_EXTERNO=<an absolute directory it guarantees read-only>`. Every turn then
+starts with `externalSandbox` (network `restricted`), the startup ruler proves a write into that
+directory is refused, and a plan turn is refused because its read-only sandbox does not run
+there. The default mode is unchanged. Contract and measurements:
+[MOTOR-CODEX-20260909.md](../docs/code/MOTOR-CODEX-20260909.md#external-sandbox-1280); test:
+`externo.test.mjs`.
 
 ## The startup ruler
 
@@ -128,9 +139,12 @@ app-server stand-in; it does not require account access or an inference request.
 |---|---|
 | `protocolo.mjs` | the pure translation (policy, notifications, gates, decisions). Everything testable lives here |
 | `protocolo.test.mjs` | `node --test protocolo.test.mjs` |
-| `codex-runner.mjs` | the process: spawn, framing, gate queue, startup ruler |
+| `codex-runner.mjs` | the process: spawn, framing, gate queue, startup ruler, `--version`, `--codex-version`, `--modelos`, `--uso` |
+| `plataforma.mjs` | which `codex` to start on each OS (`resolverCodex`: `SHVIA_CODEX_BIN`, PATH, the usual install dirs, the npm shim on Windows) |
+| `uso.mjs` | the account's plan limits for the Usage tab (`--uso`), in the same shape as `claude-runner/uso.mjs` |
 | `esquema.mjs` + `schemas/` | every outgoing payload is validated against Codex's own generated schema before it goes on the wire |
-| `install.sh` | install + a load proof, so a missing file fails here and not on the user's first turn |
+| `install.sh`, `install.ps1` | install (Linux/macOS, Windows) + a load proof, so a missing file fails here and not on the user's first turn |
+| `*.test.mjs` | `npm run prova:politica` runs them all: protocol, catalogue, turn cycle, external mode, plan, steering, platform, usage |
 
 ⚠️ **Green unit tests are not evidence about this protocol.** Five defects — including
 a turn that ended on the ack, a usage counter stuck at zero and a first card that hung

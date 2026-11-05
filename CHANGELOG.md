@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.36.2 - Complete the codex-runner's file table and point it at the external sandbox mode
+
+- The layout table of `codex-runner/README.md` now lists `plataforma.mjs` (which `codex` to start on each OS), `uso.mjs` (plan
+  limits), `install.ps1` and the test files `npm run prova:politica` runs, and names the flags `codex-runner.mjs` handles.
+- A short section points to the external sandbox mode of 1.28.0 (`SHVIA_CODEX_SANDBOX_EXTERNO`), whose contract lives in
+  `docs/code/MOTOR-CODEX-20260909.md` and which the README did not mention.
+- The comparison with the Claude runner cited `politica.mjs:130-150`, lines that now hold other functions; it names `decidir()`.
+
 ## 1.36.2 - Document the claude-runner's approval levels, plan turns and command-line flags
 
 `claude-runner/README.md` described one behaviour ("reads run, everything else becomes a card"), which is the `manual` level only.
