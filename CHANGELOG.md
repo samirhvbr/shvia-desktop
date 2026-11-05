@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.36.2 - Say that a Mac build installs the Pentest engine on first use instead of carrying it
+
+Since 1.33.0 (ADR-046) a default Mac build does not bundle the engine, and the app prefers a verified copy it installed itself
+over a bundled one. Five current documents still said the installer carries it "on Linux and macOS" or that the copy beside
+the executable is "the only one run":
+
+- `README.md`: the develop-from-source paragraph and the macOS platform row (which also says the published Mac builds were
+  Apple Silicon only as of release 1.35.2, as `docs/build.md` records).
+- `docs/build.md`: the packaging table row and "Where it lands", which now gives the lookup order (installed, then bundled,
+  never PATH) and what Help → About shows since 1.35.10.
+- `docs/arquitetura.md` (review note), `docs/project-state.md` (opening paragraph) and `docs/PENTEST/authorization.md`
+  (opening paragraph).
+- `docs/funcionalidades.md`: the 1.32.0 "Resolution" bullet is marked as superseded in part by 1.33.0.
+
 ## 1.36.2 - Link ADRs by the full heading anchor GitHub generates, not a short one it does not
 
 First commit of the 2026-11-05 documentation review (baseline `origin/master` 2dcc057, 1.36.0). The version is 1.36.2

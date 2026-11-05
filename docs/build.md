@@ -47,7 +47,7 @@ belong to the target OS. See [the Windows acceptance runbook](roteiro-validacao-
 | Local shell | Root `npm ci`, TypeScript and Vite (`npm run build`) | Offline/loading/settings shell; the main application page is remote |
 | Native app | `src-tauri/Cargo.toml`, `Cargo.lock` and OS-specific Tauri dependencies | WebView and OS permissions; capabilities differ by OS |
 | SHVIA engine | `scripts/stage-anna.mjs`, then `bundle.externalBin` | Optional `anna` executable matching the build host's target triple |
-| Pentest engine | `scripts/stage-pentest.mjs` (release pinned in `pentest-engine.json`), then `bundle.externalBin` in `tauri.linux.conf.json` / `tauri.macos.conf.json` | Linux and macOS only. The engine ships in the installer; Docker and the sandbox image it pulls on first use are separate requirements |
+| Pentest engine | `scripts/stage-pentest.mjs` (release pinned in `pentest-engine.json`), then `bundle.externalBin` in `tauri.linux.conf.json` / `tauri.macos.conf.json` | Linux: ships in the installer. macOS: not bundled by default (`scripts/pentest-bundling.mjs`); the app installs the pinned copy on first use, with consent. Windows: none. Docker and the sandbox image the engine pulls on first use are separate requirements |
 | Packet-capture sidecar | `scripts/stage-traffic-capture.mjs` (builds `src-tauri/traffic-capture` with `cargo build --release` and runs it once before staging), then `bundle.externalBin` in `tauri.linux.conf.json` / `tauri.macos.conf.json` | Linux and macOS only; `build-local.sh --no-traffic` skips it. The Linux build machine needs `libpcap-dev`, the `.deb`/`.rpm` depend on `libpcap0.8`/`libpcap`, and capture needs a permission grant at run time ([TRAFFIC/README.md](TRAFFIC/README.md)) |
 | Claude runner | Bundled `.mjs`/`.json` and installers under `claude-runner/` | Node, runner installation, SDK and authorized Claude credentials; see [runner README](../claude-runner/README.md) |
 | Codex runner | Bundled modules/installers/schema under `codex-runner/` | Node, installed runner and Codex CLI/app-server/login; see [runner README](../codex-runner/README.md) |
@@ -76,12 +76,16 @@ MB per platform) by that repository's `pentest-binaries.yml`, and published on i
 Release as `pentest-<target triple>` plus a `SHA256SUMS`. It is built there, not here: this
 repository has no Python source and this build has no `pip` step.
 
-**Where it lands.** `externalBin` puts it beside the executable: `Contents/MacOS/pentest` on
-macOS, and `/usr/bin/pentest` in the `.deb` (measured: `ShvIA_1.32.0_amd64.deb` is 117.7 MB, the engine 111.8 MB of it, and the packaged
-`pentest --fork-version` runs). The `.rpm` and the AppImage were not built here. The app looks for it there and nowhere
-else (`motores::bundled_bin`): no lookup on PATH, so what runs is always the build the
-installer carried. A build that carries none answers `E_PENTEST_NOT_BUNDLED`, which the page
-translates, instead of "update Pentest". Help → About shows both halves (the engine beside the executable, and the one this Desktop requires, from `pentest-engine.json`), so "Pentest not detected" on the page can be told apart from a broken engine without opening the bundle.
+**Where it lands.** When a build carries it, `externalBin` puts it beside the executable:
+`/usr/bin/pentest` in the `.deb` (measured: `ShvIA_1.32.0_amd64.deb` is 117.7 MB, the engine 111.8 MB of it, and the packaged
+`pentest --fork-version` runs), or `Contents/MacOS/pentest` in a Mac build made with
+`SHVIA_BUNDLE_PENTEST_ON_MAC=1` or `--pentest <path>`. The `.rpm` and the AppImage were not built here. Since 1.33.0 the
+app uses, in this order, a verified copy it installed itself (`<app data>/pentest-engine/<version>/pentest`, below), then
+the one beside the executable (`motores::bundled_bin`), then none: no lookup on PATH, so what runs is always a pinned
+build. With neither, it answers `E_PENTEST_NOT_BUNDLED`, which the page translates, instead of "update Pentest". Help →
+About shows the engine in use and where it came from (`instalado`, `empacotado` or `não instalado`), the engine this
+build pins (`pentest-engine.json`) and, from 1.35.10, the minimum the server asks for, so "Pentest not detected" on the
+page can be told apart from a broken engine without opening the bundle.
 
 **Staging.** `scripts/stage-pentest.mjs` takes `--from`, then `SHVIA_PENTEST_BIN`, then the
 release pinned in `pentest-engine.json`: a version, the release URL and one SHA-256 per

@@ -83,7 +83,7 @@ calls. Client-reported plan usage is a separate measure from server API spend.
 
 | Platform | Implementation and limits |
 |---|---|
-| macOS | WKWebView; local engines and native bridge; Claude subscription handoff and controlled assessment use the Unix implementation. Signing/notarization and installed acceptance are separate release steps |
+| macOS | WKWebView; local engines and native bridge; Claude subscription handoff and controlled assessment use the Unix implementation. The Pentest engine is installed by the app on first use, not carried in the signed bundle. Published Mac builds were Apple Silicon only as of release 1.35.2 ([build.md](docs/build.md#pentest-engine)). Signing/notarization and installed acceptance are separate release steps |
 | Windows | WebView2; native bridge and PowerShell runner installers exist. Claude subscription handoff and the controlled assessment profile are unsupported in this version. Native badge count is unsupported; use the [Windows validation guide](docs/roteiro-validacao-windows.md) for installed behavior |
 | Linux | WebKitGTK 4.1; native media/paste and TTS integration exist, with microphone and real image-paste acceptance tracked in the [media checklist](docs/roteiro-microfone-e-colar.md). On Wayland, bind a system shortcut to `xdg-open shvia://rapida`; do not assume the app can register a global shortcut |
 
@@ -129,12 +129,14 @@ still be resolved at runtime. Never create a fake engine to ship a release.
 The Claude runner requires Node 18+ and its SDK dependencies; the Codex runner
 requires Node 18+ and an installed, authenticated Codex CLI. The app can install/update
 runners from bundled sources; see [Claude runner](claude-runner/README.md) and
-[Codex runner](codex-runner/README.md). On Linux and macOS the installer also carries the
-Pentest engine (the controlled assessment profile) as a sidecar next to `anna`: a PyInstaller
-build of the SHVIA fork of Strix, published by that repository and pinned here by SHA-256, so
-updating the Desktop updates it. Docker is a separate requirement; see
-[docs/build.md](docs/build.md). Optional tools and other assessment runtimes have their own
-dependencies.
+[Codex runner](codex-runner/README.md). The Pentest engine (the controlled assessment profile)
+is a PyInstaller build of the SHVIA fork of Strix, published by that repository and pinned here
+by SHA-256 in `pentest-engine.json`. On Linux the installer carries it as a sidecar next to
+`anna`, so updating the Desktop updates it. On macOS a default build does **not** carry it (a
+signed app cannot start it from inside its bundle): the app offers to download and verify the
+pinned copy the first time Pentest is opened, with the person's consent (ADR-046). Windows has
+no engine. Docker is a separate requirement; see [docs/build.md](docs/build.md#pentest-engine).
+Optional tools and other assessment runtimes have their own dependencies.
 
 Rust checks run from `src-tauri` (`cargo test --locked`,
 `cargo clippy --locked --all-targets -- -D warnings`), with the same engine staging

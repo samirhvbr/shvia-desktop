@@ -10,8 +10,8 @@ folders, browser profiles and assessment artifacts remain on the computer. See
 > retain their original scope. The original Python-sidecar/F2 sketch is superseded as a design:
 > there is no Python `sidecar/` directory in this repository. Native services are Rust; local
 > Code uses anna and the Node-based Claude/Codex runners; the Pentest engine is the one Python
-> program the app carries, built in its own repository and bundled as a sidecar on Linux and
-> macOS (see [build.md](build.md)).
+> program the app runs, built in its own repository, bundled as a sidecar on Linux and installed
+> by the app on first use on macOS (ADR-046; see [build.md](build.md#pentest-engine)).
 
 ---
 

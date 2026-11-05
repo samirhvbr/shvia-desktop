@@ -13,7 +13,8 @@ loaded from the configured ShvIA Web server. Rust provides native windows, the c
 bridge and local capabilities. Code uses SHVIA's `anna` engine plus the Claude Code and
 Codex runners. This repository holds no Python source; the Pentest engine (a PyInstaller
 build of the SHVIA fork of Strix, built in its own repository) ships as a bundled sidecar on
-Linux and macOS.
+Linux, and on macOS the app installs the pinned copy on first use, with consent (ADR-046),
+because a signed app cannot start it from inside its bundle.
 
 | Component | Owns | Update boundary |
 |---|---|---|

@@ -118,7 +118,9 @@ cannot start the engine from inside its bundle (see "Installing the engine" in
   (`motores::bundled_bin("pentest")`) and nothing else: no lookup on `PATH`, so a program
   with the same name elsewhere on the machine is never run. A build that carries none answers
   `E_PENTEST_NOT_BUNDLED` before any flow starts, which the page translates, instead of the
-  old "update Pentest".
+  old "update Pentest". **Superseded in part by 1.33.0:** a verified copy the app installed
+  itself (`<app data>/pentest-engine/<version>/pentest`) is now preferred, then the bundled one,
+  and still never PATH (`code_bridge/pentest/engine.rs`).
 - **Staging.** `scripts/stage-pentest.mjs` takes `--from`, `SHVIA_PENTEST_BIN` or the release
   pinned in `pentest-engine.json` (a SHA-256 per platform), and refuses an engine that does not
   run, is below the floor or is not the version the manifest pins. `externalBin` lists it only
