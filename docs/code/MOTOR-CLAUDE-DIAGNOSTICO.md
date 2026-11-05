@@ -150,6 +150,15 @@ block a turn — but now by choice rather than by distrust.
 
 ## 2. `claude-runner não encontrado`
 
+> **Current behaviour (note added 2026-11-05).** Since 1.13.0 the app installs a missing
+> runner by itself at start, from the source its installer carries, when the machine has
+> Node 18+ (ADR-040; `SHVIA_RUNNERS_AUTO=0` turns that off), and since 1.7.1 it brings an
+> older installed runner up to date at every start (ADR-036). So on a current app this message
+> usually means no Node, the switch set to off, or a failed install (the "Instalar runner"
+> button returns the installer's whole output). The runner is still not an executable sidecar: `externalBin` lists `anna` (and,
+> on Linux and macOS, the Pentest engine and `traffic-capture`); the runner travels as
+> bundled resources. The paragraphs below keep their original date.
+
 The runner is **not bundled**. `tauri.conf.json` declares `externalBin: ["binaries/anna"]`
 and nothing else, so an installed bundle carries `anna` and `shvia-desktop` only. Absence of
 the runner is an optional install that was never done — never a packaging regression.

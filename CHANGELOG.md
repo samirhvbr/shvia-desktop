@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.36.2 - Say in the Claude-engine diagnosis that the app installs a missing runner by itself
+
+Section 2 of `docs/code/MOTOR-CLAUDE-DIAGNOSTICO.md` still read "the runner is not bundled … absence is an optional install that
+was never done", from before 1.13.0. A dated note above it says what is current: the app installs a missing runner at start when
+Node 18+ is present (ADR-040, `SHVIA_RUNNERS_AUTO=0` turns it off) and updates an older one at every start (ADR-036), so the message
+now usually means no Node, the switch off or a failed install; and `externalBin` lists the Pentest engine and `traffic-capture`
+beside `anna` on Linux and macOS. The original paragraphs keep their date.
+
 ## 1.36.2 - Mark where PRODUCT.md's synthesis is older than the brand and architecture decisions
 
 `PRODUCT.md`, the Impeccable skill's product source, still described the azure `#34B3EC` ShvIA/Blue3 identity, "zero UI
