@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.36.2 - Document the claude-runner's approval levels, plan turns and command-line flags
+
+`claude-runner/README.md` described one behaviour ("reads run, everything else becomes a card"), which is the `manual` level only.
+A new section, in English, says what `--aprovacao manual|edit|auto` changes and what asks at every level, as `decidir()` in
+`politica.mjs` decides it; that a plan turn denies every non-read tool before the level is consulted (`decidirNoPlano`); and what
+`--version`, `--modelos`, `--uso`, `--model`, `--effort` and `--cwd` do. The command checks are described as the pattern checks
+they are, with the functions and their tests as the exact contract. The account is the desktop's choice, through the profile's
+variable, not a flag.
+
 ## 1.36.2 - Map the capabilities added since 1.29.0 in the current-state documents
 
 The capability map, the READMEs and the architecture still described the 2026-10-15 baseline (1.29.0). Seven minors later,

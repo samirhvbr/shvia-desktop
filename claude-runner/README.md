@@ -84,3 +84,37 @@ A política é um **PreToolUse hook + `settingSources: []`** (o hook é a autori
 pessoal do usuário de auto-aprovar). Leitura (`Read`/`Glob`/…) = auto; o resto vira
 `gate_request` (bloqueia) → decisão do card → `allow`/`deny`. O `gate_request.id`
 é o `tool_use_id` real (casa com o `tool_result`).
+
+## Approval levels, plan turns and the other flags
+
+`--aprovacao manual|edit|auto` (default `manual`) mirrors `anna`'s three levels; the SDK's
+`permissionMode` is not used, because the `PreToolUse` hook is what emits the `gate_request`
+the page renders. `bypassPermissions` and `dontAsk` are never used (ADR-032). What each level
+does is decided by `decidir()` in [`politica.mjs`](politica.mjs):
+
+- **Every level:** a read inside the project folder runs without a card; a read outside it asks
+  (`confirm`). Reading a protected path (the secret denylist shared with `anna`: `.env`, keys,
+  `.ssh`, `.aws`, `.git`, `credentials`, …), network egress (`WebFetch`, `WebSearch`, and a `Bash`
+  command `comandoDeRede()` recognizes as network), a command `comandoDestrutivo()` recognizes as
+  destructive and a command in which `caminhoProtegidoNoComando()` finds a protected path always
+  ask, with an `always` card the page never approves by itself. These are pattern checks over the
+  command text; the functions and their tests are the exact contract.
+- **`edit`:** file edits also run without a card.
+- **`auto`:** what is not in the "always ask" set above runs without a card.
+
+A **plan turn** (`plano: true` on the user message, the page's "Plan") denies every tool that
+is not a read before the level is consulted (`decidirNoPlano`), so no approval can release a
+write in that turn. Tests: `politica.test.mjs`, `plano.test.mjs`.
+
+| Flag | What it does |
+|---|---|
+| `--version` | Prints `claude-runner <version>` from `package.json` (a version carrier of this repository) and exits |
+| `--modelos` | Prints the Claude Code catalogue from the SDK's `supportedModels()` and exits; a control request, no turn |
+| `--uso` | Prints the plan limits of the account it was started under (`uso.mjs`) and exits; no turn, no tokens |
+| `--model`, `--effort`, `--cwd` | Model, effort level and project folder of the session |
+| `--aprovacao` | The approval level above |
+| `--parada host`, `--teto-custo`, `--teto-iteracoes` | The Run (section above) |
+
+The account is chosen by the desktop, not by a flag: it sets the profile's variable
+(`CLAUDE_CONFIG_DIR` or `CLAUDE_SECURESTORAGE_CONFIG_DIR`) in the runner's environment
+([docs/code/CONTAS-CLAUDE.md](../docs/code/CONTAS-CLAUDE.md)).
