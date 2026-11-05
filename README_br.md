@@ -2,6 +2,15 @@
 
 [English (US)](README.md)
 
+> **Translation status (note in English, added 2026-11-05).** This Portuguese overview was last
+> synchronized with [README.md](README.md) on 2026-10-15 (Desktop 1.29.0). Since then the English
+> README covers IPv4 Search and packet capture (Network tools), the Pentest run lifecycle and the
+> optional account model key, the About dialog's version rows, and two corrections that also
+> apply here: **on macOS a default build does not carry the Pentest engine**, which the app
+> installs on first use with consent (ADR-046), and on Linux and macOS a local Rust check or
+> `tauri dev` must also stage the `traffic-capture` sidecar. Where the two differ, README.md is
+> current.
+
 ShvIA Desktop é o cliente nativo **Tauri 2 + Rust** do ShvIA para macOS, Windows
 e Linux. Ele abre a interface hospedada do ShvIA e acrescenta motores locais de
 Code, diálogos nativos de arquivos, integração com o sistema e acesso controlado

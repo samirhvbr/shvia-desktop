@@ -1,5 +1,9 @@
 # Documentation review — 2026-10-15
 
+> **Dated record.** The current state is in [project-state.md](project-state.md), rechecked on
+> 2026-11-05 against Desktop 1.36.0 (IPv4 Search, packet capture, the Pentest engine's
+> distribution and run lifecycle, the account model key). This page keeps its 2026-10-15 wording.
+
 ## Scope and evidence
 
 The owner requested a project-wide documentation review, Web first and Desktop second,

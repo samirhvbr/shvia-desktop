@@ -9,6 +9,8 @@ record follows below. Work not yet produced stays in
 > that time. It is not a claim that the same limit still holds or that every supported OS has
 > installed-app acceptance. Later entries and the current contracts supersede earlier behavior.
 > This documentation review did not exercise a real engine, account login, OS dialog or deployment.
+> The 2026-11-05 review (baseline 1.36.0) added the 1.35.1–1.35.7 entry below and marked the
+> 1.32.0 engine-resolution bullet as superseded in part; the other entries keep their wording.
 
 ## Reading the current product
 
@@ -102,6 +104,26 @@ key, a missing balance, a lapsed authorization, a cost limit or a stop by the pe
 alive with its own heartbeat. `pentestStatus().autoResume`, `pentestAutoResume()` and `pentestPreflight()` (Docker:
 `ready` / `not_running` / `missing`, detection only) are the new page-facing contract. Details:
 [PENTEST/auto-resume.md](PENTEST/auto-resume.md).
+
+## A local assessment on a real Mac: awake, honest status and a whole control channel (1.35.1 → 1.35.7)
+
+The first long runs on the owner's Mac (30/10 and 02/11/2026) found what a Linux test could not:
+
+- **Keep-awake (1.35.1).** While the engine lives, the app holds a system assertion tied to its PID: `caffeinate -i -s -w
+  <pid>` on macOS, `systemd-inhibit` on Linux (falling back to `--what=idle` when `sleep` is refused). The consent says so,
+  and that closing a laptop's lid on battery still makes it sleep. Not measured on a Mac.
+  [PENTEST/keep-awake.md](PENTEST/keep-awake.md).
+- **Facts for the page (1.35.5).** `pentestStatus()` gains `endReason: "docker_unavailable"` for an engine that exited
+  because Docker was not running, `canResume`/`canReview` only when an engine run exists on disk, `startedAtMs` and
+  `lastActivityAtMs` (the newest write among the engine's own files).
+- **The control channel's owner (1.35.6).** The engine is a one-file launcher that runs the real program as its child, so
+  its control descriptor carries the child's PID. The app now accepts the PID it started or one of its descendants (up to
+  four levels); token, controller and scan name must still match.
+- **Engine 1.2.47 (1.35.7)** answers the control channel in full and keeps the newest 256 live events; it is also the floor
+  for the account model key of 1.36.0.
+
+Details and what was not measured: [PENTEST/authorization.md](PENTEST/authorization.md) and the CHANGELOG entries of each
+version.
 
 ## Pentest engine ships inside the installer (1.32.0)
 

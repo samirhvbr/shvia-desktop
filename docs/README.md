@@ -1,7 +1,8 @@
 # ShvIA Desktop documentation
 
 Start with the current capability map, then choose the contract or operator check for the
-task. The 2026-10-15 review describes source, not installed-device acceptance. Work not yet
+task. The reviews of 2026-10-15 and 2026-11-05 describe source, not installed-device
+acceptance. Work not yet
 produced stays in [`.continue/`](../.continue/); historical designs and dated measurements
 remain evidence of the decisions they led to.
 
@@ -10,7 +11,7 @@ remain evidence of the decisions they led to.
 | Document | What it answers |
 |---|---|
 | [project-state.md](project-state.md) | What Desktop does today, Web/Workspace boundaries, requirements, platform support and acceptance limits |
-| [documentation-review-20261015.md](documentation-review-20261015.md) | What the documentation review corrected, what remains uncertain and what needs a separate decision |
+| [documentation-review-20261015.md](documentation-review-20261015.md) | Dated record of the 2026-10-15 review: what it corrected, what remained uncertain and what needed a separate decision |
 | [funcionalidades.md](funcionalidades.md) | Current capability summary and the chronological implementation record; old behavior is labeled when superseded |
 | [arquitetura.md](arquitetura.md) | Shared Web UI, native bridge, trust boundary, local/remote sessions, persistence, updater and assessment architecture |
 | [build.md](build.md) | Development and local packaging/signing/publication; CI checks and release/deployment are separate stages |
@@ -38,9 +39,17 @@ shipped remote Codex option in ShvIA Web. Refer to each component's current capa
 
 | Document | What it answers |
 |---|---|
-| [PENTEST/authorization.md](PENTEST/authorization.md) | Native authorization, local process supervision, recovery, telemetry, review/retest and private report/history synchronization |
-| [pentest-compatibility.md](pentest-compatibility.md) | Installed runtime preflight, Unix support, fork-version check and reviewed version pairs |
+| [PENTEST/authorization.md](PENTEST/authorization.md) | Native authorization, local process supervision, how a run ends, recovery, telemetry, review/retest, the account model key and private report/history synchronization |
+| [PENTEST/auto-resume.md](PENTEST/auto-resume.md) | Automatic resume after a provider usage window, its consent and schedule, and the Docker/credential preflight before a run |
+| [PENTEST/keep-awake.md](PENTEST/keep-awake.md) | The system assertion that keeps the computer from sleeping while the engine runs, and what it cannot prevent |
+| [pentest-compatibility.md](pentest-compatibility.md) | Installed runtime preflight, Unix support, fork-version check, reviewed version pairs and installing the engine on first use |
 | [pentest-viewer.md](pentest-viewer.md) | Viewer in the OS browser, native consent, private session capability and lifecycle |
+
+## Network tools
+
+| Document | What it answers |
+|---|---|
+| [code/IPV4-SEARCH.md](code/IPV4-SEARCH.md) | IPv4 Search: the TCP connect scan of one private range, its native limits and confirmation, the bridge contract and what was not measured |
 | [TRAFFIC/README.md](TRAFFIC/README.md) | Native packet capture for the Network "Traffic" tool — the `traffic-capture` sidecar, the privilege-separation rationale, per-OS permission steps and what has and has not been verified |
 
 ## Acceptance and historical foundations
@@ -69,4 +78,4 @@ This repository owns the Tauri client, Rust bridge and local runners.
 [ShvIA Web](https://github.com/samirhvbr/shvia-web) owns Laravel and the shared interface;
 [ShvIA Workspace](https://github.com/samirhvbr/shvia-workspace) owns remote repositories and
 execution. SHVTERM was the technical foundation, not a merged application. The discarded
-Claude Desktop fork remains historical under `archive/claude-fork`.
+Claude Desktop fork remains historical as the Git tag `archive/claude-fork-v0.2.2`.

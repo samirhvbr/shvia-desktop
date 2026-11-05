@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.36.2 - Map the capabilities added since 1.29.0 in the current-state documents
+
+The capability map, the READMEs and the architecture still described the 2026-10-15 baseline (1.29.0). Seven minors later,
+IPv4 Search (1.31.0), packet capture (1.32.1), the Pentest engine's distribution (1.32.0, 1.33.0), its run lifecycle
+(1.34.0–1.35.7), the About dialog's version rows (1.32.2–1.35.10) and the account model key (1.36.0) were documented only in
+their own pages and `docs/funcionalidades.md`.
+
+- `docs/project-state.md`: new rows for those capabilities and for IPv4 Search and capture in the platform table; the `recursos`
+  flags the shim declares today; the local state those features keep. The header names its baseline and leaves "the current
+  version" to `version.md`.
+- `README.md`: the review line, a Network tools and a version-diagnostics row, the assessment row, the Windows and Linux platform
+  limits, and the capture crate and engine pin in the repository table.
+- `docs/README.md`: indexes `code/IPV4-SEARCH.md`, `PENTEST/auto-resume.md` and `PENTEST/keep-awake.md`, which were not
+  listed, under a new Network tools table; names the archived fork's real tag.
+- `docs/arquitetura.md`: the layers diagram, the bridge-file table (`ipv4_search.rs`, `traffic.rs`, every `pentest/` module),
+  a Network tools section and five persistence rows (`tray.json`, the installed engine, the capture file, the account key).
+- `docs/funcionalidades.md`: one entry for 1.35.1–1.35.7 (keep-awake, the page's facts, the control channel's owner, engine
+  1.2.47).
+- `docs/documentation-review-20261015.md` and `README_br.md`: a note at the top saying what is dated and where the current text
+  is. The Portuguese README is not retranslated; its note, in English, names what it lacks.
+
 ## 1.36.2 - Bring the build guide's options, version carriers and CI gate list in line with the scripts
 
 - `docs/build.md`, TL;DR: the `build-local.sh` options now include `--no-traffic`, `-f`, `--dest`, `--base-url` and
