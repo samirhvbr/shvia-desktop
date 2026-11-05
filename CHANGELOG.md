@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.36.1 - Refuse to package an anna older than 0.15.8, the engine where a late approval no longer decides the next gate
+
+`scripts/stage-anna.mjs` stops the build when the `anna` it would bundle is below `ANNA_MINIMO`. The floor was 0.13.6, and Desktop 1.36.0 went out for Linux with **anna 0.15.3**, read from `usr/bin/anna` in the `ShvIA_1.36.0_amd64.deb` the update server serves (SHA-256 `da1d037b…`). That was the `anna` on the build machine's PATH; SHVIA-CODE was at 0.15.8.
+
+- **The floor is now 0.15.8** (SHVIA-CODE `99999cb`). Since 0.14.0 one reader thread queues the host's lines and a `cancel` closes a pending gate. An approval sent for that gate a moment too late stayed in the queue, and the next gate, another command, took it as its own: a command the person never saw would run. 0.15.8 ignores a decision whose `id` is not the waiting gate's.
+- **Why it is this app's floor.** The Desktop forwards the page's decision lines to the engine as they are, `id` included (`code_bridge/sessao.rs`), and keeps open gates across a reload and while the page is in the background, which is where a decision arrives late.
+- **Carried with it:** 0.15.4 asks before writing an instruction file even with session approval, and 0.15.7 refuses to overwrite a file the model has not seen as it is now.
+- **What a build machine needs:** the current `anna` (`SHVIA-CODE/install.sh`, or `cargo build --release --locked` and `--anna <path>`). With an older one the build stops and says so.
+- **Proof.** `prova:sem-anna` case 1c: 0.15.7 refused and nothing staged, 0.15.8 staged; against the 0.13.6 floor the first case fails. The real `stage-anna.mjs` refuses this machine's `anna` 0.15.3.
+- `docs/build.md` names the new floor.
+
 ## 1.36.0 - The Pentest model key can come from the SHVIA account
 
 PT-31, option B chosen by the owner on 30/10/2026 ("a chave já existe na sessão web"): instead of a key in a file on this computer
