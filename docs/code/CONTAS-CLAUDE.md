@@ -195,7 +195,7 @@ with the last account's numbers — measured, and written up in [USO-DAS-CONTAS.
 
 ## O "Conectar meu CLI" segue o perfil também
 
-`cli_config.rs` ([ADR-026](../decisoes.md#adr-026)) grava as três variáveis `ANTHROPIC_*`
+`cli_config.rs` ([ADR-026](../decisoes.md#adr-026--a-config-de-cli-é-escrita-pelo-nativo-a-página-só-propõe-valores)) grava as três variáveis `ANTHROPIC_*`
 no `settings.json` do Claude Code, para apontar o CLI ao gateway do ShvIA. O destino era
 `~/.claude/settings.json` **fixo**.
 

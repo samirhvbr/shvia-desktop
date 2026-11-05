@@ -4,6 +4,15 @@ Registro das decisões estruturais, formato ADR (contexto → decisão →
 consequências → alternativas). Não relitigar uma decisão aqui dentro de um
 how-to; linkar o ADR.
 
+> **Linking an ADR (note added 2026-11-05).** GitHub builds a heading's anchor from its whole
+> text, so a link must use the full slug, e.g.
+> `decisoes.md#adr-019--servidor-configurável-probe-no-rust-e-o-csp-que-destravou`. A short
+> `#adr-019` does not exist on the rendered page and lands at the top. Two numbers were also
+> used twice: **ADR-024** names both the build-reuse/updater-key decision and the tray decision,
+> and **ADR-025** names both the Linux updater-artifact decision and the Diagnostics/About
+> decision. They keep their numbers because commits and other documents already cite them;
+> the full heading anchor is what tells them apart.
+
 ---
 
 ## ADR-001 — Base = SHVTERM (Tauri 2); fork Claude descartado
@@ -1076,7 +1085,7 @@ um só não bastaria:
 #### O estado é LIDO, não lembrado
 
 O menu é reconstruído a cada mudança, consultando o estado real: `is_enabled()` do
-autostart e o host configurado do [ADR-019](#adr-019). Guardar cópias dos itens e
+autostart e o host configurado do [ADR-019](#adr-019--servidor-configurável-probe-no-rust-e-o-csp-que-destravou). Guardar cópias dos itens e
 atualizá-las deixaria a bandeja **mentir** no dia em que algo mudasse por fora —
 alguém apagando o LaunchAgent na mão, por exemplo. Bandeja que mostra estado errado é
 pior que bandeja sem estado: a primeira faz o usuário confiar.
@@ -1087,9 +1096,9 @@ e até aqui só o modal "Sobre" respondia.
 
 #### Sem capability para a página remota
 
-Igual ao updater ([ADR-022](#adr-022)): o plugin de autostart é dirigido **só pelo
+Igual ao updater ([ADR-022](#adr-022--auto-update-ligado-o-par-minisign-existe-e-o-updater-é-dirigido-pelo-rust)): o plugin de autostart é dirigido **só pelo
 Rust**. Autostart alcançável pelo servidor deixaria um servidor comprometido decidir que
-o app sobe com a máquina — o [ADR-001](#adr-001) segue valendo.
+o app sobe com a máquina — o [ADR-001](#adr-001--base--shvterm-tauri-2-fork-claude-descartado) segue valendo.
 
 #### `tray.json`, separado do `server.json`
 
@@ -1223,11 +1232,11 @@ não foi "o que dá para medir", foi "o que hoje quebra sem avisar":
 |---|---|
 | **Servidor alcançável** | janela abre em branco, ou a tarja offline aparece "sem motivo" |
 | **Permissão de notificação** | o alerta de preço do [ADR-011](#adr-011--notificações-nativas-dos-alertas-de-preço-ponte-via-canal-do-modo-code) **nunca** chega, e nada acusa — nem log, nem erro |
-| **Motor `anna`** | o Modo Code não responde e parece travado ([D5](#adr-021)) |
+| **Motor `anna`** | o Modo Code não responde e parece travado ([D5](#adr-021--o-anna-viaja-no-instalador-externalbin-e-o-empacotado-vence-o-do-path)) |
 | **Local de instalação** | rodando de dentro do DMG, o auto-update **nunca** instala e o sintoma não aponta para a causa |
 | **Bandeja criada** | com o [ADR-024](#adr-024--bandejamenubar-e-fechar-a-janela-deixa-de-encerrar-o-app) ligado, fechar a janela faria o app **desaparecer** |
 
-O item do motor separa `found` de `version` porque o [ADR-021](#adr-021) já tinha
+O item do motor separa `found` de `version` porque o [ADR-021](#adr-021--o-anna-viaja-no-instalador-externalbin-e-o-empacotado-vence-o-do-path) já tinha
 separado: binário que existe e não responde `--version` está corrompido ou sem permissão
 de execução, e isso é **diferente** de binário ausente — a ação do usuário é outra.
 
@@ -1245,7 +1254,7 @@ auditar a lista para descobrir.
 
 **Nada de comando novo exposto à página.** Os dados são resolvidos no Rust e embutidos
 como JSON num `eval` autocontido — mesmo desenho do modal "Sobre". O
-[ADR-001](#adr-001) segue valendo: um servidor comprometido não ganha um `invoke` que
+[ADR-001](#adr-001--base--shvterm-tauri-2-fork-claude-descartado) segue valendo: um servidor comprometido não ganha um `invoke` que
 enumera caminhos de arquivo do host.
 
 ### Um bug do ADR-024 que este item revelou
@@ -1273,7 +1282,7 @@ apareceu ao ter de **explicar por escrito** o que o painel checaria e por quê.
   em Windows/Linux. O caminho de falha do `permission_state` também não foi exercitado —
   exige negar a permissão no SO.
 - **Fica de fora:** verificar a **versão mínima exigida pelo servidor**. Ela é comparada
-  no [ADR-018](#adr-018), em JS, contra o `/api/v1/version`; trazer isso para o Rust
+  no [ADR-018](#adr-018--gate-de-versão-clienteservidor-avisa-nunca-bloqueia), em JS, contra o `/api/v1/version`; trazer isso para o Rust
   duplicaria a regra de comparação — que é justamente onde o ADR-018 registra o erro
   clássico de comparar versão como string. Melhor um lugar só.
 
@@ -1295,7 +1304,7 @@ em que a maioria desiste — **descobrir onde colar**. Cada cliente guarda a con
 lugar, e um JSON colado por cima apaga o que a pessoa já tinha.
 
 Escrever arquivo no host a pedido de uma página remota é, no entanto, exatamente o tipo de
-privilégio que o [ADR-001](#adr-001) nega. A pergunta do item não era "como escrever", era
+privilégio que o [ADR-001](#adr-001--base--shvterm-tauri-2-fork-claude-descartado) nega. A pergunta do item não era "como escrever", era
 **"quanta autoridade a página ganha"**.
 
 ### Decisão
@@ -1449,10 +1458,10 @@ segurança dos navegadores, e não deveria ser mesmo.
 
 **A casca abre o diálogo (`pickFiles`) e devolve os BYTES; a página faz o upload.**
 
-É o desenho do `saveFile` ([ADR-026](#adr-026) segue a mesma linha: o nativo executa, a
+É o desenho do `saveFile` ([ADR-026](#adr-026--a-config-de-cli-é-escrita-pelo-nativo-a-página-só-propõe-valores) segue a mesma linha: o nativo executa, a
 página propõe) na direção contrária. A alternativa — devolver caminhos e o Rust subir o
 arquivo — foi descartada pelo mesmo motivo de sempre: a sessão autenticada mora na WebView,
-e mandar o token de sessão para o lado nativo é privilégio que o [ADR-001](#adr-001) nega.
+e mandar o token de sessão para o lado nativo é privilégio que o [ADR-001](#adr-001--base--shvterm-tauri-2-fork-claude-descartado) nega.
 
 **A última pasta é estado do DISPOSITIVO,** em `ultimas-pastas.json` no `app_config_dir`,
 ao lado do `modo-code-bindings.json`. Não sobe para o servidor e não segue a pessoa para
@@ -1884,8 +1893,8 @@ independentes até o mesmo binário.
 
 **A página manda um `accountId` de uma lista fechada; o Rust traduz.** Nunca um caminho.
 
-É a mesma linha do [ADR-026](#adr-026) (a página propõe valores, o nativo monta o arquivo)
-e do [ADR-031](#adr-031) (a cerca vem do gesto, não do caminho que a página manda). O ator
+É a mesma linha do [ADR-026](#adr-026--a-config-de-cli-é-escrita-pelo-nativo-a-página-só-propõe-valores) (a página propõe valores, o nativo monta o arquivo)
+e do [ADR-031](#adr-031--a-cerca-do-modo-code-vem-do-gesto-do-usuário-não-do-caminho-que-a-página-manda) (a cerca vem do gesto, não do caminho que a página manda). O ator
 é o mesmo dos dois: um XSS no SHVIA-WEB — cuja CSP nasce desligada — roda na origem que
 tem o token da ponte. Se ele pudesse nomear o diretório, apontaria as credenciais do
 agente para onde quisesse.

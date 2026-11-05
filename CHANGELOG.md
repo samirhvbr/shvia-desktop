@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.36.2 - Link ADRs by the full heading anchor GitHub generates, not a short one it does not
+
+First commit of the 2026-11-05 documentation review (baseline `origin/master` 2dcc057, 1.36.0). The version is 1.36.2
+because the open PR #194 already claims 1.36.1. Only Markdown and the version carriers change in this review.
+
+- Fifteen links pointed at `#adr-001`, `#adr-019`, `#adr-022`, `#adr-026`, `#adr-034` and similar short anchors. GitHub builds a
+  heading's anchor from its whole text, so none of them existed and each landed at the top of `decisoes.md`. They now use the
+  full slug, the form the other links in the register already used: `docs/decisoes.md` (12), `docs/funcionalidades.md`,
+  `docs/code/CONTAS-CLAUDE.md` and `docs/code/RUN-20260910.md` (one each).
+- `docs/decisoes.md` says how to link an ADR and records that ADR-024 and ADR-025 were each used for two decisions. They keep
+  their numbers because commits and documents already cite them.
+
 ## 1.36.0 - The Pentest model key can come from the SHVIA account
 
 PT-31, option B chosen by the owner on 30/10/2026 ("a chave já existe na sessão web"): instead of a key in a file on this computer

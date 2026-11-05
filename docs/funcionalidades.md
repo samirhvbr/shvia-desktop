@@ -464,7 +464,7 @@ for the Linux/macOS profile, Windows refusal and pending integrated pilot.
 ## Phase 4 — the Run in Code mode (1.5.x)
 
 The plan is [`code/RUN-20260910.md`](code/RUN-20260910.md), the decision is
-[ADR-034](decisoes.md#adr-034), and the screen is
+[ADR-034](decisoes.md#adr-034--the-run-is-a-posture-of-the-turn-and-the-orchestrator-is-a-gateway-profile), and the screen is
 [`code/modo-code-run-mockup.html`](code/modo-code-run-mockup.html).
 
 **What the Run is.** Code mode continuing its own turns and stopping only where a person
