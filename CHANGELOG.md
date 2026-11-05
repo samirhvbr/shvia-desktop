@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.36.2 - Mark where PRODUCT.md's synthesis is older than the brand and architecture decisions
+
+`PRODUCT.md`, the Impeccable skill's product source, still described the azure `#34B3EC` ShvIA/Blue3 identity, "zero UI
+reescrita" and a client with "no secrets". A note at its top, in English, names the three divergences and the documents that
+win: Shield (`brand/README.md`; SHVIA-WEB's `--azure` token is `#2350E6` as read on 2026-11-05), ADR-035 for desktop-only
+screens, and the persistence table and ADR-047 for local state and the account model key. The Portuguese body is unchanged.
+
 ## 1.36.2 - Describe the project's Claude Code settings as `settings.json` has them
 
 `.claude/README.md` still said that the deny-list blocks `.env` reads, `rm -rf`, `git push --force`, `git reset --hard`,
