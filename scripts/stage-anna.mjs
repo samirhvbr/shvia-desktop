@@ -221,7 +221,14 @@ if (!versao) {
 // instruction file, even with session approval) and 0.15.7 (refuses to overwrite a file
 // the model has not seen as it is now). Desktop 1.36.0 was published for Linux with
 // 0.15.3, the engine on that build machine's PATH, which cleared the 0.13.6 floor.
-const ANNA_MINIMO = [0, 15, 8];
+// 0.15.10 (raised in 1.36.3, 05/11/2026): a rate-limited round waits at least the backoff.
+// The gateway's throttle counts per ACCOUNT, every open agent together, and answers
+// `Retry-After: 0` in the last second of its window; up to 0.15.9 the engine took it as given
+// and sent its four retries in the same second. It bites here: this app parks a working agent
+// when the person switches project, so two agents on one account is this app's normal case —
+// the owner's Run on MiniMax stopped at its first iteration that way ("nova tentativa em 0 s
+// (4 de 4)"), and the Run counts a failed turn as the end.
+const ANNA_MINIMO = [0, 15, 10];
 
 function partesDaVersao(texto) {
   const m = /(\d+)\.(\d+)\.(\d+)/.exec(texto ?? "");
