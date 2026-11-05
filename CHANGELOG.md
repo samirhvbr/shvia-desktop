@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.36.3 - Refuse to package an anna older than 0.15.10, the engine that waits the backoff when the gateway says 0
+
+`scripts/stage-anna.mjs` raises `ANNA_MINIMO` from 0.15.8 to 0.15.10. The gateway throttles `/code/chat` per account, every
+open agent together, and Laravel answers `Retry-After: 0` in the last second of its window; up to 0.15.9 `anna` took it as given
+and sent its four retries in the same second. This app parks a working agent when the person switches project, so two agents on
+one account is its normal case: on 05/11/2026 the owner's Run on MiniMax stopped at its first iteration that way, with "nova
+tentativa em 0 s (4 de 4)". 0.15.10 (shvia-code #21) waits the 2, 4, 8, 16 s backoff or the gateway's `Retry-After`, whichever is
+longer. `scripts/prova-empacota-sem-anna.mjs` now refuses 0.15.9 and stages 0.15.10; `docs/build.md` names the new floor.
+
 ## 1.36.2 - Say in the Claude-engine diagnosis that the app installs a missing runner by itself
 
 Section 2 of `docs/code/MOTOR-CLAUDE-DIAGNOSTICO.md` still read "the runner is not bundled … absence is an optional install that
