@@ -210,7 +210,18 @@ if (!versao) {
 // Linux 1.35.1 build on the release machine was 0.11.15, the one on its PATH, two
 // minutes before those packages were uploaded; 0.11.15 cleared the old 0.11.9 floor,
 // so nothing stopped a three-month-old engine from shipping.
-const ANNA_MINIMO = [0, 13, 6];
+// 0.15.8 (raised in 1.36.1, 04/11/2026): a late approval no longer decides the next gate.
+// Since 0.14.0 one reader thread queues the host's lines and a `cancel` closes a pending gate;
+// an approval sent for that gate a moment too late stayed in the queue, and the NEXT gate,
+// another command, took it as its own, so a command the person never saw would run. 0.15.8
+// ignores a decision whose `id` is not the waiting gate's. It bites here: this app forwards
+// the page's decision lines to the engine as they are (`code_bridge/sessao.rs`), with the
+// `id`, and keeps open gates across reloads and the page going to the background, which is
+// where a decision arrives late. The same floor carries 0.15.4 (asks before writing an
+// instruction file, even with session approval) and 0.15.7 (refuses to overwrite a file
+// the model has not seen as it is now). Desktop 1.36.0 was published for Linux with
+// 0.15.3, the engine on that build machine's PATH, which cleared the 0.13.6 floor.
+const ANNA_MINIMO = [0, 15, 8];
 
 function partesDaVersao(texto) {
   const m = /(\d+)\.(\d+)\.(\d+)/.exec(texto ?? "");
