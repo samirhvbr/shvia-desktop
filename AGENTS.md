@@ -121,10 +121,16 @@ Format: `X.Y.Z - description in English (US)`, the same sentence as the `CHANGEL
   reaches the engine only as `STRIX_RUN_LLM_API_KEY` in that child's environment. A new use of it, or a new place it can be
   written, needs a new ADR.
 - Commands below run **from the repository root**. Before Rust checks or `tauri dev`, stage
-  a usable `anna` with `npm run anna:stage` and the engine with `npm run pentest:stage` (or
-  their explicit `--from` paths). A clean clone has no staged sidecar because binaries are
-  ignored. CI uses inert stand-ins for tests;
-  it must never be distributed. Its separate no-sidecar `cargo check` uses `TAURI_CONFIG`.
+  every sidecar the platform's Tauri config declares, because the Tauri build script requires
+  each `externalBin` file to exist: `npm run anna:stage` everywhere, and on Linux and macOS also
+  `npm run traffic-capture:stage` (it builds `src-tauri/traffic-capture`; Linux needs
+  `libpcap-dev`) and `npm run pentest:stage` (or their explicit `--from` paths). On macOS
+  `pentest:stage` stages nothing by default (`scripts/pentest-bundling.mjs`) while
+  `tauri.macos.conf.json` still declares the engine: use
+  `SHVIA_BUNDLE_PENTEST_ON_MAC=1 npm run pentest:stage` or a `TAURI_CONFIG` `externalBin`
+  override. A clean clone has no staged sidecar because binaries are ignored. CI uses inert
+  stand-ins for all three for tests; they must never be distributed. Its separate no-sidecar
+  `cargo check` uses `TAURI_CONFIG`.
   ```bash
   npm ci
   npm run prova:bump

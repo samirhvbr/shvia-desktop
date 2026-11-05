@@ -209,10 +209,15 @@ npm run prova:politica
 npm run prova:runner-version
 ```
 
-For Rust checks, first stage a usable `anna` with `npm run anna:stage` (and, on Linux or macOS, the
-engine with `npm run pentest:stage`), and install the
-Codex runner as described by its [README](../codex-runner/README.md). The suite contains an
-installed-runner `--version` smoke check. Then:
+For Rust checks, first stage every sidecar the platform's Tauri config declares (the Tauri build
+script refuses a missing `externalBin` file): a usable `anna` with `npm run anna:stage`, and on
+Linux or macOS also the capture sidecar with `npm run traffic-capture:stage` and the engine with
+`npm run pentest:stage`. On macOS the last one stages nothing by default (see
+[Pentest engine](#pentest-engine)) while `tauri.macos.conf.json` still declares it, so use
+`SHVIA_BUNDLE_PENTEST_ON_MAC=1 npm run pentest:stage` or override `externalBin` with
+`TAURI_CONFIG`. Then install the Codex runner as described by its
+[README](../codex-runner/README.md). The suite contains an installed-runner `--version` smoke
+check. Then:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml --locked
@@ -220,7 +225,8 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D w
 ```
 
 A clean checkout has no `src-tauri/binaries/` because those files are ignored. CI prepares
-an inert `anna-<triple>` stand-in before Rust tests; it never packages that file. Its separate
+inert `anna-<triple>`, `traffic-capture-<triple>` and `pentest-<triple>` stand-ins before Rust
+tests; it never packages those files. Its separate
 no-sidecar compile check uses `TAURI_CONFIG='{"bundle":{"externalBin":[]}}'`. Do not ship a
 stand-in or mistake that compile override for a working Code engine. The full preparation,
 PowerShell prerequisites and additional packaging/signing contract proofs live in

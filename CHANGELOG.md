@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.36.2 - Name every sidecar a local Rust check or `tauri dev` has to stage first
+
+`tauri.linux.conf.json` and `tauri.macos.conf.json` declare three sidecars (`anna`, `pentest`, `traffic-capture`), and the
+Tauri build script refuses to run while any declared file is missing; CI writes inert stand-ins for all three. The developer
+instructions named only `anna` and the engine, so a Linux or macOS `cargo test` from a clean clone stopped on the capture
+sidecar, and on macOS `npm run pentest:stage` stages nothing by default.
+
+- `CLAUDE.md` and `AGENTS.md` (mirrored), `docs/build.md` ("Local verification before packaging") and `README.md` ("Develop
+  from source") now list `npm run traffic-capture:stage` (Linux needs `libpcap-dev`), and say that on macOS the engine needs
+  `SHVIA_BUNDLE_PENTEST_ON_MAC=1 npm run pentest:stage` or a `TAURI_CONFIG` `externalBin` override.
+- `README.md` says what the empty `externalBin` override leaves at runtime: an installed `anna`, an engine the app installed,
+  and, in a debug build only, a capture sidecar built in `src-tauri/traffic-capture/target/release` (`code_bridge/traffic.rs`).
+
 ## 1.36.2 - Say that a Mac build installs the Pentest engine on first use instead of carrying it
 
 Since 1.33.0 (ADR-046) a default Mac build does not bundle the engine, and the app prefers a verified copy it installed itself

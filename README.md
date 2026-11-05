@@ -108,14 +108,20 @@ npm run prova:politica
 ```
 
 `npm run build` builds the local startup shell, not an installer. To develop the
-native app with the gateway engine, stage a compatible `anna` from SHVIA-CODE first:
+native app with the gateway engine, stage a compatible `anna` from SHVIA-CODE first.
+On Linux and macOS the platform config also declares the packet-capture sidecar and the
+Pentest engine, and Tauri refuses to build while any declared file is missing, so stage
+those too (the capture sidecar is built from `src-tauri/traffic-capture`; Linux needs
+`libpcap-dev`):
 
 ```bash
 npm run anna:stage -- --from /absolute/path/to/anna
+npm run traffic-capture:stage   # Linux and macOS
+npm run pentest:stage           # Linux; on macOS add SHVIA_BUNDLE_PENTEST_ON_MAC=1
 npm run tauri dev
 ```
 
-If no `anna` is being bundled, Tauri's `externalBin` declaration must be overridden;
+If a declared sidecar is not staged, Tauri's `externalBin` declaration must be overridden;
 a clean clone does not contain a staged binary. For shell/other-engine development:
 
 ```bash
@@ -123,8 +129,11 @@ TAURI_CONFIG='{"bundle":{"externalBin":[]}}' npm run tauri dev
 ```
 
 On PowerShell, set `$env:TAURI_CONFIG` to the same JSON before `npm run tauri dev`.
-The override omits the bundled gateway engine; an installed external `anna` can
-still be resolved at runtime. Never create a fake engine to ship a release.
+The override omits every bundled sidecar from the build. At runtime the app can still
+find an installed external `anna`, a Pentest engine it installed itself and, in a debug
+build only, a capture sidecar built at `src-tauri/traffic-capture/target/release`;
+otherwise capture reports that it is unavailable. Never create a fake engine to ship a
+release.
 
 The Claude runner requires Node 18+ and its SDK dependencies; the Codex runner
 requires Node 18+ and an installed, authenticated Codex CLI. The app can install/update
