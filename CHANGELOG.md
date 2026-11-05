@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.36.2 - Bring the build guide's options, version carriers and CI gate list in line with the scripts
+
+- `docs/build.md`, TL;DR: the `build-local.sh` options now include `--no-traffic`, `-f`, `--dest`, `--base-url` and
+  `--transicao-de-chave`, as its argument loop reads them.
+- `docs/build.md`, "Versão": the six carriers by name, `claude-runner/package.json` included (it was missing), the pre-commit
+  guard, and that `codex-runner/package.json` keeps its own version.
+- `docs/build.md`, CI: `ci.yml` also runs `prova:bootstrap`, `prova:pentest`, `prova:motor-no-mac`, the capture sidecar
+  crate's tests and Clippy, and `cargo-deny` on that crate's own lock file; the macOS job of `plataformas.yml` builds and tests
+  the capture sidecar too. Stand-ins are written for all three sidecars.
+- `docs/arquitetura.md`, "Build & empacotamento": the carriers point to `docs/build.md`, the Arch package is listed with the
+  Linux targets, and a bullet names the capture sidecar and the Pentest engine beside `anna`.
+
 ## 1.36.2 - Name every sidecar a local Rust check or `tauri dev` has to stage first
 
 `tauri.linux.conf.json` and `tauri.macos.conf.json` declare three sidecars (`anna`, `pentest`, `traffic-capture`), and the

@@ -303,14 +303,24 @@ consent, and its capability URL is not returned to the Web page. See
   SO é empacotado numa máquina diferente**, e essa é a restrição que molda o resto.
 - **Versão:** `version.md` é a fonte única; o `scripts/sync-version.mjs` a propaga
   para `package.json`, `tauri.conf.json`, `Cargo.toml` e os locks (roda no `prebuild`).
+  The complete list of six carriers, including `claude-runner/package.json`, is in
+  [build.md](build.md#versão).
 - **Targets:** macOS (`.dmg` + `.app.tar.gz`), Windows (`.msi` WiX + `-setup.exe`
-  NSIS), Linux (`.AppImage` + `.deb` + `.rpm`).
+  NSIS), Linux (`.AppImage` + `.deb` + `.rpm`, plus the Arch `.pkg.tar.zst` repackaged
+  from the `.deb`).
 - **Motor empacotado** (item D5): o `anna` viaja no instalador como `externalBin`
   (sidecar), preparado por `scripts/stage-anna.mjs` antes do `tauri build`. Era o
   **gargalo de adoção** do Modo Code — o binário era pré-requisito externo. O
   empacotado **vence o do PATH** (é o testado com esta versão do app), e o
   `engineStatus` da ponte responde `found`/`bundled`/`version`/`path`. Ver
   [ADR-021](decisoes.md#adr-021--o-anna-viaja-no-instalador-externalbin-e-o-empacotado-vence-o-do-path).
+- **Other sidecars (Linux and macOS only).** `traffic-capture`, this repository's own crate and
+  the only code that links libpcap, is built and staged by `scripts/stage-traffic-capture.mjs`
+  (ADR-045). The Pentest engine is staged from the release pinned in `pentest-engine.json` by
+  `scripts/stage-pentest.mjs`; a Mac build leaves it out by default and the app installs it on
+  first use (ADR-046). Both are declared only in `tauri.linux.conf.json` and
+  `tauri.macos.conf.json`, and `build-local.sh` builds the `externalBin` list from what was
+  staged, so any one of the three sidecars can be absent without dropping the others.
 - **PATH do sidecar** (`src/user_env.rs`, 1.1.24): app de GUI não herda PATH de
   shell — no macOS o launchd entrega o mínimo do sistema, e as ferramentas que o
   agente roda com `sh -c` não encontram `npx`/`node`/`cargo`/`php`. O PATH vem do

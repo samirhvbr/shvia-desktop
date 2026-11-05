@@ -29,7 +29,10 @@ decision.
 
 Saída em `src-tauri/target/release/bundle/`. Opções (Linux/macOS): `--skip-npm-ci`,
 `--bundles <deb|appimage|rpm|dmg|app>`, `--anna <path>`, `--no-anna`, `--pentest <path>`,
-`--no-pentest`, `--no-sign`, `--skip-git-pull`, `--force` and `--publish`. Windows uses PowerShell parameters:
+`--no-pentest`, `--no-traffic`, `--no-sign`, `--skip-git-pull`, `--force` (`-f`), `--publish`
+with `--dest <dest>` and `--base-url <url>`, and `--transicao-de-chave` for the one updater-key
+transition release (see [Rotating the updater key](#rotating-the-updater-key-prepared-in-1640-publishing-it-is-the-owners-act));
+`./build-local.sh --help` prints the script's own list. Windows uses PowerShell parameters:
 `-SkipNpmCi`, `-SkipGitPull`, `-Anna <path>`, `-NoAnna`, `-NoSign`; it has no publish/reuse
 switch. These are different scripts, not interchangeable command-line syntaxes.
 
@@ -237,6 +240,11 @@ PowerShell prerequisites and additional packaging/signing contract proofs live i
 `version.md` é a **fonte única**. O `scripts/sync-version.mjs` propaga para
 `package.json`, `tauri.conf.json`, `Cargo.toml` e os lock files — roda no `prebuild`
 (npm) e via `npm run version:sync` (o `build-local` chama antes de buildar).
+The six carriers are `package.json`, `package-lock.json`, `claude-runner/package.json` (the
+runner answers `--version` from it), `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` and
+`src-tauri/tauri.conf.json`; `npm run prova:bump` checks them and the pre-commit hook refuses a
+commit whose staged carriers disagree with `version.md`. The Codex runner keeps its own version
+in `codex-runner/package.json`, which is not a carrier.
 
 ## Rodar o app empacotado numa VM/sem GPU
 
@@ -727,14 +735,18 @@ both. Until then the ordering is harmless, because nothing is signed.
 and manual dispatch. On Ubuntu it prepares Node 22, stable Rust/Clippy and Tauri system
 dependencies, then runs:
 
-- Runner policy/protocol tests, the runner module-load probe, a real SDK shell-directory
-  regression and the PowerShell installer checks.
+- The splash's server-settings proof (`prova:bootstrap`), runner policy/protocol tests, the
+  runner module-load probe, a real SDK shell-directory regression and the PowerShell
+  installer checks.
 - Version carriers, the pre-commit guard, document-version freshness and the installer,
-  manifest, updater-key, Apple-signing, notarization, reuse, no-sidecar and publication
-  contract proofs named by `package.json`.
-- An installed Codex-runner smoke check through `cargo test --locked`, Clippy with
-  `--locked --all-targets -- -D warnings`, a no-sidecar `cargo check --locked`, and
-  `cargo-deny check` for advisories, bans, licenses and sources.
+  manifest, updater-key, key-transition, Apple-signing, notarization, reuse, no-sidecar,
+  Pentest-engine staging (`prova:pentest`), macOS engine start (`prova:motor-no-mac`),
+  committed-tree, Windows build-script and Dependabot proofs named by `package.json`.
+- With inert stand-ins for the three sidecars: an installed Codex-runner smoke check through
+  `cargo test --locked`, Clippy with `--locked --all-targets -- -D warnings`, the capture
+  sidecar crate's own `cargo test` and Clippy, a no-sidecar `cargo check --locked`, and
+  `cargo-deny check` for advisories, bans, licenses and sources on both lock files (the app's
+  and `src-tauri/traffic-capture`'s, against the same `deny.toml`).
 
 The workflow file is the complete gate list; the description above is not a claim that
 the latest remote run passed. Several packaging proofs use temporary files, fake tools or
@@ -760,7 +772,7 @@ when `src-tauri/**` or that workflow changes, and by manual dispatch:
   MinGW-w64: `tauri-build` compiles the icon and manifest resource with
   `x86_64-w64-mingw32-windres` (through `embed-resource`) even for a check.
 - **macOS** — `cargo clippy --locked --all-targets -- -D warnings` and `cargo test --locked` on `macos-latest`, the platform the
-  releases are built on.
+  releases are built on, plus the capture sidecar crate's `cargo test` and Clippy (its macOS-only code is compiled there).
 - **Windows MSVC** (since 1.12.4) — Clippy with the same locked/all-targets/warnings gate
   and `cargo test --locked` on `windows-latest`, matching the installer toolchain.
 
