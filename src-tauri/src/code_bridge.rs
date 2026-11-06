@@ -265,6 +265,10 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
         "pentestLive" => fora_da_ui(window, &req, move |w| match pentest::live(w, &v, "status") {
             Ok(data) => (true, data), Err(e) => (false, serde_json::json!(e)),
         }),
+        "pentestActivity" => fora_da_ui(window, &req, move |w| match pentest::activity(w, &v) {
+            Ok(data) => (true, data),
+            Err(e) => (false, serde_json::json!(e)),
+        }),
         "pausePentest" => fora_da_ui(window, &req, move |w| match pentest::live(w, &v, "pause") {
             Ok(data) => (true, data), Err(e) => (false, serde_json::json!(e)),
         }),
@@ -961,7 +965,7 @@ mod tests_fora_da_ui {
         for acao in [
             "gitStatus", "listTree", "gitDiff", "readFile", "codexModels", "claudeAuthStatus", "claudeUsage", "codexUsage",
             "claudeAuthLoginStart", "claudeSubscriptionConnect", "claudeSubscriptionCode", "claudeModels", "claudeRunnerInstall", "claudeAccountsDetect",
-            "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "pentestPreflight", "pentestAutoResume", "openPentestViewer", "pentestCompatibility", "pentestInstallEngine", "stopPentest", "resumePentest", "reviewPentest", "retestPentest", "pentestLive", "pausePentest", "continuePentest", "ipv4SearchStart",
+            "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "pentestPreflight", "pentestAutoResume", "openPentestViewer", "pentestCompatibility", "pentestInstallEngine", "stopPentest", "resumePentest", "reviewPentest", "retestPentest", "pentestLive", "pentestActivity", "pausePentest", "continuePentest", "ipv4SearchStart",
         ] {
             let chave = format!("\"{acao}\" =>");
             let a = corpo.find(&chave).unwrap_or_else(|| panic!("{acao}: arm not found"));

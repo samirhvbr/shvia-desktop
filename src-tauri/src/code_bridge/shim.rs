@@ -75,6 +75,12 @@ pub const BRIDGE_JS: &str = r#"(function () {
     pentestCompatibility: function () { return post('pentestCompatibility'); },
     pentestInstallEngine: function () { return post('pentestInstallEngine'); },
     pentestLive: function () { return post('pentestLive'); },
+    // What the agents of the local assessment are doing (1.37.0), from the engine's own files on this computer: nothing
+    // here goes to the server. `o` = {after?: row id}; without it, the newest window. Resolves with {localId, activity:
+    // {events:[{id, at, agent, kind:'say'|'user'|'call'|'result', text, tool?, truncated?}], agents:[{id, name, status}],
+    // lastId, more}}; send `lastId` back as `after` to follow a running assessment. Credentials are masked by the engine
+    // (best effort) and text is clipped. Rejects with a short text when the engine is too old or the run has no files yet.
+    pentestActivity: function (o) { return post('pentestActivity', o || {}); },
     pausePentest: function (localId) { return post('pausePentest', { localId: localId }); },
     continuePentest: function (o) { return post('continuePentest', o || {}); },
     stopPentest: function () { return post('stopPentest'); },
