@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.36.5 - Refuse a Pentest engine file that is not a program before the Mac shell can run it
+
+`probe` in `code_bridge/pentest/compatibility.rs` now reads the first bytes of the engine it is about to start and refuses a
+file that is neither ELF, Mach-O (thin or universal) nor a `#!` script with ENOEXEC, which the About dialog and the
+engine install already word as "formato de arquivo inválido". On Linux the kernel refused such a file that way already. On
+macOS it did not: Apple's `posix_spawnp` takes ENOEXEC as "a shell script with no `#!`" and runs the file again through
+/bin/sh, so a header-less file was executed line by line by the shell and the refusal read "saiu com erro 127: … not: command
+not found". That is why `the_file_must_also_start_and_say_the_pinned_version_before_it_is_used` failed on the macOS job of
+`plataformas.yml` from #193 to #196 and on #197. The install still never moved such a file into place; now it is never run,
+and the cause reads the same on both systems. A file we may not execute keeps the system's EACCES, and a program found on PATH
+is not inspected. Two new tests prove a non-program is refused without the shell reading it (a marker file it would have
+created stays absent) and that each accepted header passes.
+
 ## 1.36.4 - Refuse to package an anna older than 0.16.0, the engine that asks for a new key on a 401
 
 `scripts/stage-anna.mjs` raises `ANNA_MINIMO` from 0.15.10 to 0.16.0. The page hands the engine a 12-hour Code token at spawn,
