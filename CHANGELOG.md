@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.36.4 - Refuse to package an anna older than 0.16.0, the engine that asks for a new key on a 401
+
+`scripts/stage-anna.mjs` raises `ANNA_MINIMO` from 0.15.10 to 0.16.0. The page hands the engine a 12-hour Code token at spawn,
+and this app keeps an agent alive across project switches and pauses: on 06/11/2026 the owner's autonomous Run paused at 19:57,
+resumed at 07:51 with that token expired, got a 401 and ended. 0.16.0 (shvia-code #24) emits `credential_expired`, takes
+`{"type":"credential"}` on stdin and repeats the request once with the new key; the page answers it (shvia-web #686). With an
+older engine only the page's renewal before a turn protects a run, and a 401 in the middle of a long turn still ends it.
+`scripts/prova-empacota-sem-anna.mjs` now refuses 0.15.11 and stages 0.16.0; `docs/build.md` names the new floor.
+
 ## 1.36.3 - Refuse to package an anna older than 0.15.10, the engine that waits the backoff when the gateway says 0
 
 `scripts/stage-anna.mjs` raises `ANNA_MINIMO` from 0.15.8 to 0.15.10. The gateway throttles `/code/chat` per account, every

@@ -60,11 +60,11 @@ if (process.platform !== "win32") {
   rmSync(dir, { recursive: true, force: true });
 }
 
-// 1c. the floor (1.35.2, raised in 1.36.3): the last anna below it is refused and nothing is
-// staged; the floor itself is staged. Run against the 0.15.8 floor, the first case fails:
-// 0.15.9 was staged.
+// 1c. the floor (1.35.2, raised in 1.36.4): the last anna below it is refused and nothing is
+// staged; the floor itself is staged. Run against the 0.15.10 floor, the first case fails:
+// 0.15.11 was staged.
 if (process.platform !== "win32") {
-  for (const [versao, aceita] of [["0.15.9", false], ["0.15.10", true]]) {
+  for (const [versao, aceita] of [["0.15.11", false], ["0.16.0", true]]) {
     const dir = arvore();
     const falso = join(dir, "anna");
     writeFileSync(falso, `#!/bin/sh\necho 'anna ${versao}'\n`, { mode: 0o755 });
