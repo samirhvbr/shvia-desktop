@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.36.6 - Fence the claude-runner's file writes like its reads, so no level writes a secret, an instruction file or outside the project unasked
+
+At the `edit` and `auto` levels `decidir()` released every `Write`, `Edit`, `MultiEdit` and `NotebookEdit` before it looked at the
+path, so ADR-032's "the fence comes before the shortcut" held for reads only (review of 02/11/2026). Measured end to end with the
+real runner and SDK 0.3.314 at `auto`, every card rejected: on master `.env` and `CLAUDE.md` in the project were written with no
+card. `~/.bashrc`, `.git/hooks/pre-commit` and `.claude/settings.json` were not, but only because the SDK refused them on its own,
+which this policy does not control. With this change all five are `always` cards, nothing is written, and an ordinary file in
+the project is still written without a card.
+
+- A write goes through `cercaDoCaminho()`, the fence a read already had (`~` expanded, symlinks followed, the secret denylist on
+  the requested and the real path). A protected path asks as `always`.
+- Agent instruction files (`ANNA.md`, `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, the list in `anna` 0.15.4) and Claude Code's
+  `.claude/settings.json` and `settings.local.json`, whose hooks run commands, ask as `always`, by name or by a link's target.
+- A write outside the project asks as `always`, not the read's `confirm`: `anna` refuses such a write outright, and this policy
+  never denies, so the nearest it comes is a card the page approves neither in Auto, nor under "Confiar neste projeto".
+- A read outside the project that the card shows as a path inside it (a committed symlink, `dados -> /etc`) is `always` now; as
+  `confirm` the page's check read `dados/passwd` as inside and its Auto mode approved the card by itself.
+
+`politica.test.mjs` holds the writes at the three levels and the symlink cases (a write through a link out of the project, a
+link named otherwise that leads to `CLAUDE.md`); run against master's `politica.mjs` both tests fail. ADR-032 has a dated note,
+and `claude-runner/README.md` describes the levels as they are now.
+
 ## 1.36.6 - Read the claude-runner's shell commands the way the shell runs them before the auto level lets one through
 
 The 02/11/2026 review measured, with `decidir()` itself, that the `auto` level released commands its destructive, network and

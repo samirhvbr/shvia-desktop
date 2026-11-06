@@ -641,6 +641,31 @@ export const LEITURA = new Set([
  */
 export const EDICAO = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
+/**
+ * The file each EDIT tool writes. The fence confines it like a read's path (1.36.6).
+ */
+export const ALVO_DA_EDICAO = {
+  Write: "file_path",
+  Edit: "file_path",
+  MultiEdit: "file_path",
+  NotebookEdit: "notebook_path",
+};
+
+/**
+ * Files an agent loads as its own instructions or configuration in every later session: the
+ * same four names as `anna`'s `eh_arquivo_de_instrucao` (SHVIA-CODE 0.15.4), and the Claude Code
+ * settings files, whose `hooks` run commands with no card at all. A write to one of them, by the
+ * requested name or by where it really leads, asks as `always` (1.36.6): one injected turn would
+ * otherwise plant an instruction, or a command, that outlives the session.
+ */
+export function arquivoDeInstrucao(p) {
+  const alvo = String(p ?? "").replace(/\\/g, "/").toLowerCase();
+  const segs = alvo.split("/").filter(Boolean);
+  const base = segs[segs.length - 1] ?? "";
+  if (["anna.md", "agents.md", "claude.md", "claude.local.md"].includes(base)) return true;
+  return segs[segs.length - 2] === ".claude" && (base === "settings.json" || base === "settings.local.json");
+}
+
 /** Ferramentas de leitura cujo alvo é um CAMINHO — as que a cerca confina. */
 export const PATH_ARG = {
   Read: "file_path",
@@ -674,21 +699,12 @@ export const PATH_ARG = {
  */
 export function decidir({ projectDir, toolName, toolInput = {}, nivel = "manual", leitura, edicao }) {
   if (leitura.has(toolName)) {
-    const alvo = toolInput[PATH_ARG[toolName]];
-    // The denylist is checked on what was ASKED and on where it really LEADS — `~` expanded,
-    // symlinks followed. Inside the project the real path is judged relative to the root, so
-    // a project folder named `credentials-service` does not make every file protected.
-    let real = "";
-    if (alvo !== undefined && alvo !== null && alvo !== "") {
-      const raiz = caminhoReal(path.resolve(projectDir));
-      const abs = caminhoReal(path.resolve(projectDir, expandirHome(alvo)));
-      real = abs.startsWith(raiz + path.sep) ? path.relative(raiz, abs) : abs;
+    const cerca = cercaDoCaminho(projectDir, toolInput[PATH_ARG[toolName]]);
+    if (cerca.protegido) {
+      return { acao: "gate", motivo: `leitura de caminho protegido (${cerca.alvo})`, politica: "always" };
     }
-    if (caminhoProibido(alvo) || caminhoProibido(real)) {
-      return { acao: "gate", motivo: `leitura de caminho protegido (${alvo})`, politica: "always" };
-    }
-    if (!dentroDoProjeto(projectDir, alvo)) {
-      return { acao: "gate", motivo: `leitura fora da pasta do projeto (${alvo})`, politica: "confirm" };
+    if (cerca.fora) {
+      return { acao: "gate", motivo: `leitura fora da pasta do projeto (${cerca.alvo})`, politica: cerca.politicaFora };
     }
     return { acao: "allow", motivo: "leitura (auto)" };
   }
@@ -711,13 +727,68 @@ export function decidir({ projectDir, toolName, toolInput = {}, nivel = "manual"
       return { acao: "gate", motivo: `comando que a política não consegue ler: ${ilegivel}`, politica: "always" };
     }
   }
-  if (nivel !== "manual" && edicao.has(toolName)) {
-    return { acao: "allow", motivo: `edição liberada pelo nível "${nivel}"` };
+  if (edicao.has(toolName)) {
+    // 🔴 Until 1.36.6 the `edit` and `auto` levels released every write here, with no fence:
+    // `Write ~/.bashrc`, `Edit .git/hooks/pre-commit` and `Write .env` were automatic, while a
+    // READ of the same paths asked (review of 02/11/2026). The fence comes before the shortcut
+    // for writes too (ADR-032).
+    const alvo = toolInput[ALVO_DA_EDICAO[toolName]] ?? toolInput.path;
+    const cerca = cercaDoCaminho(projectDir, alvo);
+    if (cerca.protegido) {
+      return { acao: "gate", motivo: `escrita em caminho protegido (${cerca.alvo})`, politica: "always" };
+    }
+    if (arquivoDeInstrucao(alvo) || arquivoDeInstrucao(cerca.real)) {
+      return { acao: "gate", motivo: `escrita em arquivo de instrução do agente (${cerca.alvo})`, politica: "always" };
+    }
+    // `always`, not the read's `confirm`: `anna` refuses a write outside the project outright
+    // (`guard`), and this policy never denies, so the nearest it comes is a card the page never
+    // approves by itself — not in Auto, not under "Confiar neste projeto", not by an allow rule.
+    if (cerca.fora) {
+      return { acao: "gate", motivo: `escrita fora da pasta do projeto (${cerca.alvo})`, politica: "always" };
+    }
+    if (nivel !== "manual") {
+      return { acao: "allow", motivo: `edição liberada pelo nível "${nivel}"` };
+    }
   }
   if (nivel === "auto") {
     return { acao: "allow", motivo: 'liberado pelo nível "auto"' };
   }
   return { acao: "gate", motivo: "", politica: "confirm" };
+}
+
+/**
+ * Where a tool's path really leads, judged once for reads and writes alike.
+ *
+ * The denylist is checked on what was ASKED and on where it really LEADS — `~` expanded,
+ * symlinks followed. Inside the project the real path is judged relative to the root, so a
+ * project folder named `credentials-service` does not make every file protected.
+ *
+ * `politicaFora` is the card for a path outside the project. `confirm` when the page can see it
+ * is outside, from the path the card shows (absolute, `~`, `..`). `always` when only the real
+ * path is outside: through a symlink committed in the project (`dados -> /etc`), the card shows
+ * `dados/passwd`, the page's check reads that as inside and its Auto mode approves a `confirm`
+ * card by itself. Until 1.36.6 that case was `confirm` too.
+ *
+ * Without a path the tool did not say where it works, and the `cwd` decides (`dentroDoProjeto`).
+ */
+export function cercaDoCaminho(projectDir, alvo) {
+  if (alvo === undefined || alvo === null || alvo === "") {
+    return { alvo, real: "", protegido: false, fora: false, politicaFora: "confirm" };
+  }
+  const raiz = caminhoReal(path.resolve(projectDir));
+  const lexico = path.resolve(projectDir, expandirHome(alvo));
+  const abs = caminhoReal(lexico);
+  const real = abs.startsWith(raiz + path.sep) ? path.relative(raiz, abs) : abs;
+  const fora = !(abs === raiz || abs.startsWith(raiz + path.sep));
+  const raizLexica = path.resolve(projectDir);
+  const pareceDentro = lexico === raizLexica || lexico.startsWith(raizLexica + path.sep);
+  return {
+    alvo,
+    real,
+    protegido: caminhoProibido(alvo) || caminhoProibido(real),
+    fora,
+    politicaFora: pareceDentro ? "always" : "confirm",
+  };
 }
 
 /**

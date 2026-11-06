@@ -99,7 +99,14 @@ does is decided by `decidir()` in [`politica.mjs`](politica.mjs):
   destructive and a command in which `caminhoProtegidoNoComando()` finds a protected path always
   ask, with an `always` card the page never approves by itself. These are pattern checks over the
   command text; the functions and their tests are the exact contract.
-- **`edit`:** file edits also run without a card.
+- **Every level, writes (1.36.6):** a write (`Write`, `Edit`, `MultiEdit`, `NotebookEdit`) goes
+  through the same fence as a read before any level releases it. A protected path, an agent
+  instruction file (`ANNA.md`, `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, as in `anna` 0.15.4)
+  or Claude Code's `.claude/settings.json` / `settings.local.json`, and any path outside the
+  project folder ask with an `always` card, by the requested name or by where a symlink really
+  leads. A read outside the project whose card shows only a path inside it (through a symlink)
+  asks as `always` too, because the page's check would read that card as inside.
+- **`edit`:** file edits inside the fence also run without a card.
 - **`auto`:** what is not in the "always ask" set above runs without a card. The command is read
   the way the shell runs it (1.36.6): quotes and backslashes resolved, `$(…)` and backticks judged
   as scripts of their own even inside double quotes, the shell's keywords (`then`, `do`, `!`)

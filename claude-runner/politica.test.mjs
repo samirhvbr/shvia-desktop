@@ -190,6 +190,18 @@ test("a symlink out of the project is outside, and one into .ssh is protected", 
     assert.equal(chave.politica, "always", "its real path is under .ssh");
     // A file that does not exist yet resolves through its nearest existing parent.
     assert.equal(v("dados/ainda-nao-existe.txt").acao, "gate");
+    // 1.36.6: the card shows `dados/segredo.txt`, which the page's check reads as inside, so a
+    // `confirm` card would be approved by its Auto mode. Only the real path is outside: `always`.
+    assert.equal(escape.politica, "always");
+    const w = (p) => decidir({ projectDir: projeto, toolName: "Write", toolInput: { file_path: p, content: "x" },
+      nivel: "auto", leitura: LEITURA, edicao: EDICAO });
+    assert.equal(w("normal.txt").acao, "allow");
+    assert.equal(w("dados/novo.txt").politica, "always", "a write through the symlink lands outside");
+    fs.symlinkSync(path.join(projeto, "normal.txt"), path.join(projeto, "notas.md"));
+    assert.equal(w("notas.md").acao, "allow", "a link that stays inside is an ordinary file");
+    fs.writeFileSync(path.join(projeto, "CLAUDE.md"), "x");
+    fs.symlinkSync(path.join(projeto, "CLAUDE.md"), path.join(projeto, "instrucoes.md"));
+    assert.equal(w("instrucoes.md").politica, "always", "a link writes what CLAUDE.md shows");
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
   }
@@ -273,6 +285,34 @@ test("reading more of the shell keeps the ordinary command automatic", () => {
   ];
   for (const c of comuns) {
     assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${JSON.stringify(c)}`);
+  }
+});
+
+// 🔴 1.36.6. At `edit` and `auto` every write was released with no fence, while a READ of the same
+// path asked: `Write ~/.bashrc`, `Edit .git/hooks/pre-commit` and `Write .env` were automatic.
+test("a write is fenced like a read, and outside the project it always asks", () => {
+  const sempre = [
+    ["Write", { file_path: "~/.bashrc", content: "x" }],
+    ["Write", { file_path: "/etc/cron.d/x", content: "x" }],
+    ["Write", { file_path: "../outro/src/a.rs", content: "x" }],
+    ["Edit", { file_path: ".git/hooks/pre-commit", old_string: "a", new_string: "b" }],
+    ["Write", { file_path: ".env", content: "x" }],
+    ["MultiEdit", { file_path: "deploy/id_rsa", edits: [] }],
+    // Instruction files, as in `anna` 0.15.4, and Claude Code's settings, whose hooks run commands.
+    ["Edit", { file_path: "CLAUDE.md", old_string: "a", new_string: "b" }],
+    ["Write", { file_path: "app/AGENTS.md", content: "x" }],
+    ["Write", { file_path: ".claude/settings.json", content: "{}" }],
+  ];
+  for (const nivel of ["auto", "edit", "manual"]) {
+    for (const [t, i] of sempre) {
+      const r = decide(t, i, nivel);
+      assert.equal(r.acao, "gate", `${nivel}: ${t} ${i.file_path} must ask`);
+      assert.equal(r.politica, "always", `${nivel}: ${t} ${i.file_path} must never be auto-approved`);
+    }
+  }
+  for (const nivel of ["auto", "edit"]) {
+    assert.equal(decide("Write", { file_path: "src/a.rs", content: "x" }, nivel).acao, "allow");
+    assert.equal(decide("Edit", { file_path: "docs/README.md", old_string: "a", new_string: "b" }, nivel).acao, "allow");
   }
 });
 
