@@ -228,7 +228,15 @@ if (!versao) {
 // when the person switches project, so two agents on one account is this app's normal case —
 // the owner's Run on MiniMax stopped at its first iteration that way ("nova tentativa em 0 s
 // (4 de 4)"), and the Run counts a failed turn as the end.
-const ANNA_MINIMO = [0, 15, 10];
+// 0.16.0 (raised in 1.36.4, 06/11/2026): a 401 asks for a new key instead of ending the turn.
+// The page hands the engine a 12-hour Code token at spawn, and this app keeps an agent alive
+// across project switches and pauses: the owner's autonomous Run paused at 19:57, resumed at
+// 07:51 with the token expired, got a 401 and ended with the agent's history. 0.16.0
+// (shvia-code #24) emits `credential_expired`, takes `{"type":"credential"}` on stdin and repeats
+// the request once; the page (shvia-web #686) answers it. An older engine ignores the line, so
+// only the renewal before a turn would protect it, and a 401 in the middle of a long turn would
+// still end the run.
+const ANNA_MINIMO = [0, 16, 0];
 
 function partesDaVersao(texto) {
   const m = /(\d+)\.(\d+)\.(\d+)/.exec(texto ?? "");
