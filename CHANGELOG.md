@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.36.6 - Read the claude-runner's shell commands the way the shell runs them before the auto level lets one through
+
+The 02/11/2026 review measured, with `decidir()` itself, that the `auto` level released commands its destructive, network and
+secret checks were written to catch, because `claude-runner/politica.mjs` read their words differently from the shell. Measured
+again on master 1.36.5, 24 of 25 such lines were `allow`, so no card was emitted at all: `echo "$(rm -rf ~)"`, `env -i rm -rf ~`,
+`xargs -r rm -rf`, `timeout 5 rm -rf ~`, `r\m -rf ~`, `rm.exe -rf ~`, `if true; then rm -rf ~; fi`, `echo \" ; rm -rf ~`,
+`cat .e\nv`, `echo "$(cat .env)"`, `timeout 9 curl https://x`, `X=rm; $X -rf ~`, `$'\x72m' -rf ~` and others. Each is now an
+`always` card, which the page never approves by itself.
+
+- `$(…)` and backticks are split as scripts of their own inside double quotes too, where the shell runs them.
+- Backslashes are resolved as the shell resolves them, in the splitter and in the tokenizer: an escaped character is never a
+  quote or a separator, `r\m` is `rm`, and inside double quotes only `$`, a backtick, `"`, `\` and a newline are escaped.
+- The single option table shared by the "transparent prefixes" is gone: it was `sudo`'s, and in `env -i` and `xargs -r` the
+  option took `rm` as its value. Every word after a command that starts another command (`sudo`, `env`, `xargs`, `timeout`,
+  `nice`, `find -exec`, `su -c`, `watch`, …) is judged as the command it may start, which errs toward a card.
+- The shell's keywords (`if`, `then`, `do`, `!`, `{`) are skipped, and `.exe` is dropped from a command name (Git Bash on Windows).
+- `sintaxeIlegivel()` sends a line to an `always` card when its command name is decided at run time (a variable, a substitution,
+  a glob) or it uses `$'…'`, whose escapes are not decoded here.
+- Here-documents are read: a body is text, judged as a script only when a shell owns it (`bash <<EOF`), and only its `$(…)` when
+  its word is unquoted. Before, every body line was split as a command, so `cat > f <<EOF` with a line starting "curl" asked as
+  network egress, and the commit message Claude Code writes as `git commit -m "$(cat <<'EOF' … EOF)"` would have once
+  substitutions in quotes were read. 45 ordinary commands of the shapes Claude Code writes stay automatic (44 did on master).
+
+Two tests in `politica.test.mjs` hold both sides: the measured spellings ask as `always`, and the ordinary shapes stay `allow`.
+Run against master's `politica.mjs`, both fail. A program that builds its own action at run time (`python3 -c …`) is still not
+seen; the README says so.
+
 ## 1.36.5 - Refuse a Pentest engine file that is not a program before the Mac shell can run it
 
 `probe` in `code_bridge/pentest/compatibility.rs` now reads the first bytes of the engine it is about to start and refuses a

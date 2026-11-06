@@ -242,6 +242,40 @@ test("the shell's way out — network and secrets — always asks, at every leve
   }
 });
 
+// 🔴 1.36.6, review of 02/11/2026. Measured with this `decidir()` on master 1.36.5: every line
+// below was `allow` at the `auto` level, so no card was emitted at all (only `\rm` was caught).
+test("the spellings the 02/11 review measured ask as `always` at the auto level", () => {
+  const sempre = [
+    'echo "$(rm -rf ~)"', 'echo "`rm -rf ~`"', 'echo "$(cat .env)"', "env -i rm -rf ~",
+    "timeout 5 rm -rf ~", "nice -n 5 rm -rf ~", "sudo -i rm -rf /", "find . -type f | xargs -r rm -rf",
+    "find . -name x -exec rm -rf {} +", "timeout 9 curl https://x", "r\\m -rf ~", "cat .e\\nv",
+    'echo \\" ; rm -rf ~', "rm.exe -rf ~", "git.exe push --force", "if true; then rm -rf ~; fi",
+    "for f in a; do rm -rf $f; done", "X=rm; $X -rf ~", "$(echo rm) -rf ~", "$'\\x72m' -rf ~",
+    "bash <<EOF\nrm -rf ~\nEOF", "cat <<EOF\n$(rm -rf ~)\nEOF",
+  ];
+  for (const c of sempre) {
+    const r = decide("Bash", { command: c }, "auto");
+    assert.equal(r.acao, "gate", `must ask: ${JSON.stringify(c)}`);
+    assert.equal(r.politica, "always", `must never be auto-approved: ${JSON.stringify(c)}`);
+  }
+});
+
+// The other side of the same test: the fix reads more of the shell, and reading more must not
+// turn the agent's ordinary commands into cards. These are the shapes Claude Code writes.
+test("reading more of the shell keeps the ordinary command automatic", () => {
+  const comuns = [
+    "git commit -m \"$(cat <<'EOF'\nFix: don't crash when curl fails\n\nrm -rf build is gone\nEOF\n)\"",
+    "cat > out.txt <<EOF\nhello $USER\ncurl is fine here\nEOF", "cat <<'EOF'\n$(rm -rf ~)\nEOF",
+    'echo "Done: $(date)"', "timeout 60 npm test", "env NODE_ENV=test npm test", 'grep "a\\|b" src',
+    "cargo test \\\n  --locked", 'for f in src/*.rs; do wc -l "$f"; done', "if [ -f x ]; then echo y; fi",
+    "[[ -d node_modules ]] || npm ci", 'find . -name "*.rs" | xargs grep -l foo', "echo $((1+2))",
+    "python3 - <<'EOF'\nprint('rm -rf ~')\nEOF",
+  ];
+  for (const c of comuns) {
+    assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${JSON.stringify(c)}`);
+  }
+});
+
 // 🔴 1.6.16. `codex-runner/protocolo.test.mjs` had 18 passing tests and nothing ran it — not an
 // npm script, not CI — the same class as 1.5.10 ("the catalogue test stops being a file nobody
 // runs"). A test file is only a test once something runs it: every one in the two runner

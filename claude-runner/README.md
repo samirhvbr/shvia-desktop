@@ -100,7 +100,15 @@ does is decided by `decidir()` in [`politica.mjs`](politica.mjs):
   ask, with an `always` card the page never approves by itself. These are pattern checks over the
   command text; the functions and their tests are the exact contract.
 - **`edit`:** file edits also run without a card.
-- **`auto`:** what is not in the "always ask" set above runs without a card.
+- **`auto`:** what is not in the "always ask" set above runs without a card. The command is read
+  the way the shell runs it (1.36.6): quotes and backslashes resolved, `$(…)` and backticks judged
+  as scripts of their own even inside double quotes, the shell's keywords (`then`, `do`, `!`)
+  skipped, and every word after a command that starts another command (`sudo`, `env`, `xargs`,
+  `timeout`, `nice`, `find -exec`, …) judged as the command it may start. A here-document body is
+  text unless a shell runs it. A line whose command name is decided when it runs (a variable, a
+  substitution, a glob) or that uses `$'…'` asks as `always` (`sintaxeIlegivel()`). A program that
+  builds its own action at run time (`python3 -c …`) is still not seen: the level trusts the agent
+  with the shell, and these checks catch spellings, not intent.
 
 A **plan turn** (`plano: true` on the user message, the page's "Plan") denies every tool that
 is not a read before the level is consulted (`decidirNoPlano`), so no approval can release a
