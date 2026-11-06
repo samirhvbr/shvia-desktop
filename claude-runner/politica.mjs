@@ -126,27 +126,43 @@ export function comandoDestrutivo(cmd) {
 
 /**
  * The segments a line really runs, including what hides inside a quoted script: `bash -c
- * "rm -rf /"`, `sh -c "$(curl …)"`, `eval "…"`. The quote-aware splitter keeps a quoted
- * script as ONE argument, so without this step the command inside it was never judged
- * (1.6.15). Depth-limited: a script that nests scripts past 4 levels is judged as it stands.
+ * "rm -rf /"`, `sh -c "$(curl …)"`, `eval "…"`, `su -c "…"`, `watch 'rm -rf ~'`. The quote-aware
+ * splitter keeps a quoted script as ONE argument, so without this step the command inside it was
+ * never judged (1.6.15). Every command a segment may start is looked at, not only its first word
+ * (`comandosDoSegmento`), so `sudo -i bash -c "…"` and `xargs sh -c '…'` reach the script too.
+ * Depth-limited: a script that nests scripts past 4 levels is judged as it stands.
  */
 export function segmentosEfetivos(cmd, profundidade = 0) {
   const out = [];
   for (const seg of segmentosDeComando(cmd)) {
     out.push(seg);
     if (profundidade >= 4) continue;
-    const ca = comandoEArgs(seg);
-    if (!ca) continue;
-    let script = null;
-    if (["sh", "bash", "zsh", "dash", "ksh"].includes(ca.cmd)) {
-      const i = ca.args.findIndex((a) => a === "-c" || (/^-[a-z]*c[a-z]*$/i.test(a) && !a.startsWith("--")));
-      if (i >= 0 && i + 1 < ca.args.length) script = ca.args[i + 1];
-    } else if (ca.cmd === "eval") {
-      script = ca.args.join(" ");
+    for (const ca of comandosDoSegmento(seg)) {
+      for (const script of scriptsDoComando(ca)) out.push(...segmentosEfetivos(script, profundidade + 1));
     }
-    if (script) out.push(...segmentosEfetivos(script, profundidade + 1));
   }
   return out;
+}
+
+const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "ash", "fish"]);
+/** Commands whose `-c` (or `--command`) value is a shell script: `su -c "rm -rf ~"`. */
+const SCRIPT_NO_C = new Set(["su", "runuser", "script", "flock"]);
+/** Commands that hand each argument to a shell as a script: `watch 'rm -rf ~'`. */
+const SCRIPT_NOS_ARGS = new Set(["watch", "parallel"]);
+
+/** The scripts one command runs through a shell, as text to be split again. */
+function scriptsDoComando({ cmd, args }) {
+  if (SHELLS.has(cmd)) {
+    const i = args.findIndex((a) => a === "-c" || (/^-[a-z]*c[a-z]*$/i.test(a) && !a.startsWith("--")));
+    return i >= 0 && i + 1 < args.length ? [args[i + 1]] : [];
+  }
+  if (SCRIPT_NO_C.has(cmd)) {
+    const i = args.findIndex((a) => a === "-c" || a === "--command");
+    return i >= 0 && i + 1 < args.length ? [args[i + 1]] : [];
+  }
+  if (cmd === "eval") return [args.join(" ")];
+  if (SCRIPT_NOS_ARGS.has(cmd)) return args.filter((a) => !a.startsWith("-"));
+  return [];
 }
 
 /**
@@ -163,10 +179,7 @@ const REDE = new Set([
 export function comandoDeRede(cmd) {
   const c = String(cmd ?? "");
   if (/\/dev\/(tcp|udp)\//.test(c)) return true;
-  return segmentosEfetivos(c).some((seg) => {
-    const ca = comandoEArgs(seg);
-    return ca !== null && REDE.has(ca.cmd);
-  });
+  return segmentosEfetivos(c).some((seg) => comandosDoSegmento(seg).some((ca) => REDE.has(ca.cmd)));
 }
 
 /**
@@ -197,45 +210,239 @@ function padraoDeLinhaDestrutivo(c) {
 
 /**
  * The command line split into the commands it runs. Quotes are kept (the tokenizer resolves
- * them); `$(…)`, backticks and parentheses open segments of their own, so `echo $(rm -rf /)`
- * cannot hide `rm` as an argument. Redirection stays in the segment, with its target.
+ * them); parentheses open segments of their own, and the script inside `$(…)` or backticks is
+ * split as a line of its own, so `echo $(rm -rf /)` cannot hide `rm` as an argument. The
+ * substitution also stays whole in the word it is part of, so `$(echo rm) -rf ~` still shows a
+ * command whose name is decided at run time (`sintaxeIlegivel`). Redirection stays in the
+ * segment, with its target.
+ *
+ * ## What the shell runs that this used to read as text (1.36.6, review of 02/11/2026)
+ *
+ * - **`$(…)` and backticks inside DOUBLE quotes.** The shell runs them there too; only single
+ *   quotes make them literal. `echo "$(rm -rf ~)"` was one quoted argument of `echo`, and
+ *   `allow` at the `auto` level. The substitution is now split as a script of its own, inside
+ *   quotes or not.
+ * - **A backslash.** Outside single quotes it makes the next character ordinary: `echo \" ; rm
+ *   -rf ~` has no quote in it, and `rm` runs. The splitter treated `\"` as an opening quote and
+ *   swallowed the rest of the line.
+ * - **`$'…'`** (ANSI-C quoting), where `\'` does not close the quote. Its content is not decoded
+ *   here; `sintaxeIlegivel` sends any line that uses it to a card instead.
  */
 export function segmentosDeComando(cmd) {
   const segs = [];
+  const internos = [];
+  const heredocs = []; // pending `<<WORD`s: { fim, literal, tabs, dono }
   let atual = "";
-  let aspa = null;
+  let aspa = null; // "'", '"', or "$'"
   for (let i = 0; i < cmd.length; i++) {
     const ch = cmd[i];
-    if (aspa) {
-      if (ch === aspa) aspa = null;
+    if (ch === "\n" && aspa === null && heredocs.length > 0) {
+      segs.push(atual); atual = "";
+      i = lerCorposDeHeredoc(cmd, i + 1, heredocs, segs, internos) - 1;
+      heredocs.length = 0;
+      continue;
+    }
+    if (ch === "<" && aspa === null && cmd[i + 1] === "<" && cmd[i + 2] !== "<") {
+      const h = marcaDeHeredoc(cmd, i + 2);
+      if (h) {
+        heredocs.push({ ...h, dono: segs.length });
+        atual += cmd.slice(i, h.depois);
+        i = h.depois - 1;
+        continue;
+      }
+    }
+    if (ch === "\\" && aspa !== "'") {
+      // An escaped character is never a quote, a separator or the start of a substitution.
+      atual += ch + (cmd[i + 1] ?? "");
+      i++;
+      continue;
+    }
+    if (aspa === "'" || aspa === "$'") {
+      if (ch === "'") aspa = null;
       atual += ch;
       continue;
     }
+    if (aspa === '"') {
+      if (ch === '"') { aspa = null; atual += ch; continue; }
+      const sub = substituicaoEm(cmd, i);
+      if (sub) {
+        internos.push(sub.script);
+        atual += cmd.slice(i, sub.fim);
+        i = sub.fim - 1;
+        continue;
+      }
+      atual += ch;
+      continue;
+    }
+    if (ch === "$" && cmd[i + 1] === "'") { aspa = "$'"; atual += "$'"; i++; continue; }
     if (ch === "'" || ch === '"') { aspa = ch; atual += ch; continue; }
     if (ch === ";" || ch === "\n" || ch === "|" || ch === "&") {
       if (cmd[i + 1] === ch) i++;
       segs.push(atual); atual = "";
       continue;
     }
-    if (ch === "`" || ch === "(" || ch === ")") { segs.push(atual); atual = ""; continue; }
-    if (ch === "$" && cmd[i + 1] === "(") { i++; segs.push(atual); atual = ""; continue; }
+    if (ch === "`" || (ch === "$" && cmd[i + 1] === "(")) {
+      const sub = substituicaoEm(cmd, i);
+      internos.push(sub.script);
+      atual += cmd.slice(i, sub.fim);
+      i = sub.fim - 1;
+      continue;
+    }
+    if (ch === "(" || ch === ")") { segs.push(atual); atual = ""; continue; }
     atual += ch;
   }
   segs.push(atual);
-  return segs.filter((s) => s.trim() !== "");
+  const out = segs.filter((s) => s.trim() !== "");
+  for (const script of internos) out.push(...segmentosDeComando(script));
+  return out;
 }
 
-/** Tokens of a segment with quotes resolved: `cat '.env'` and `cat ".env"` are `cat .env`. */
+/**
+ * The word after `<<` (from `inicio`, just past the two `<`): `-` strips leading tabs from the
+ * body, and a quoted word (`'EOF'`, `"EOF"`, `\EOF`) makes the body literal. Null if no word.
+ */
+function marcaDeHeredoc(cmd, inicio) {
+  let i = inicio;
+  const tabs = cmd[i] === "-";
+  if (tabs) i++;
+  while (cmd[i] === " " || cmd[i] === "\t") i++;
+  let palavra = "";
+  let literal = false;
+  while (i < cmd.length && !/[\s;&|<>()]/.test(cmd[i])) {
+    const c = cmd[i];
+    if (c === "'" || c === '"') {
+      literal = true;
+      const fim = cmd.indexOf(c, i + 1);
+      const ate = fim < 0 ? cmd.length : fim;
+      palavra += cmd.slice(i + 1, ate);
+      i = ate + 1;
+      continue;
+    }
+    if (c === "\\") { literal = true; palavra += cmd[i + 1] ?? ""; i += 2; continue; }
+    palavra += c;
+    i++;
+  }
+  return palavra === "" ? null : { fim: palavra, literal, tabs, depois: i };
+}
+
+/**
+ * Reads the bodies of the pending here-documents from `inicio` (the line after the command) and
+ * returns where the command line goes on. A body is TEXT handed to a command, not commands, with
+ * two exceptions that decide what is judged (1.36.6):
+ *
+ * - when the command that owns it is a shell (`bash <<EOF`), the body is its script, and it is
+ *   split like any other line;
+ * - when its word is unquoted (`<<EOF`), the shell expands `$(…)` and backticks in it, and runs
+ *   them, so those are split as scripts of their own.
+ *
+ * Before 1.36.6 every body line was split as a command at the top level, and not at all inside
+ * `"$(…)"`, so the commit message Claude Code writes as `git commit -m "$(cat <<'EOF' … EOF\n)"`
+ * would have had each of its lines judged as a command once substitutions in quotes were read:
+ * a line starting with "curl" would ask as network egress.
+ */
+function lerCorposDeHeredoc(cmd, inicio, heredocs, segs, internos) {
+  let i = inicio;
+  for (const h of heredocs) {
+    const linhas = [];
+    while (i < cmd.length) {
+      const nl = cmd.indexOf("\n", i);
+      const ate = nl < 0 ? cmd.length : nl;
+      const linha = cmd.slice(i, ate);
+      i = nl < 0 ? cmd.length : nl + 1;
+      if ((h.tabs ? linha.replace(/^\t+/, "") : linha) === h.fim) break;
+      linhas.push(linha);
+    }
+    const corpo = linhas.join("\n");
+    const dono = segs[h.dono] ?? "";
+    if (comandosDoSegmento(dono).some((c) => SHELLS.has(c.cmd))) internos.push(corpo);
+    else if (!h.literal) internos.push(...substituicoesDoTexto(corpo));
+  }
+  return i;
+}
+
+/** The scripts of every `$(…)` and backtick in a text the shell expands but does not run. */
+function substituicoesDoTexto(texto) {
+  const out = [];
+  for (let i = 0; i < texto.length; i++) {
+    if (texto[i] === "\\") { i++; continue; }
+    const sub = substituicaoEm(texto, i);
+    if (sub) { out.push(sub.script); i = sub.fim - 1; }
+  }
+  return out;
+}
+
+/**
+ * A command substitution that starts at `i`: `$(…)` up to its matching
+ * parenthesis (quotes inside it are its own), or a backtick up to the next unescaped one.
+ * Unterminated, it runs to the end of the line, as the shell would read it.
+ */
+function substituicaoEm(cmd, i) {
+  if (cmd[i] === "$" && cmd[i + 1] === "(") {
+    let prof = 1;
+    let aspa = null;
+    for (let j = i + 2; j < cmd.length; j++) {
+      const c = cmd[j];
+      if (c === "\\" && aspa !== "'") { j++; continue; }
+      if (aspa) { if (c === aspa) aspa = null; continue; }
+      if (c === "'" || c === '"') { aspa = c; continue; }
+      if (c === "(") prof++;
+      else if (c === ")" && --prof === 0) return { script: cmd.slice(i + 2, j), fim: j + 1 };
+    }
+    return { script: cmd.slice(i + 2), fim: cmd.length };
+  }
+  if (cmd[i] === "`") {
+    for (let j = i + 1; j < cmd.length; j++) {
+      if (cmd[j] === "\\") { j++; continue; }
+      if (cmd[j] === "`") return { script: cmd.slice(i + 1, j), fim: j + 1 };
+    }
+    return { script: cmd.slice(i + 1), fim: cmd.length };
+  }
+  return null;
+}
+
+/**
+ * Tokens of a segment with quotes and backslashes resolved the way the shell resolves them:
+ * `cat '.env'`, `cat ".env"` and `cat .e\nv` are all `cat .env`, and `r\m` is `rm`.
+ *
+ * Outside quotes a backslash makes the next character ordinary (a backslash-newline joins two
+ * lines). Inside double quotes it only escapes `$`, a backtick, `"`, `\` and a newline, and
+ * stays otherwise, so `grep "a\|b"` keeps its pattern. Inside single quotes nothing is escaped.
+ * Until 1.36.6 every backslash was kept, so `r\m -rf ~` named a command `m` (the basename
+ * split on `\`) and `cat .e\nv` named a file that is not `.env`, while the shell ran `rm` and
+ * opened `.env`.
+ */
 export function tokensDoSegmento(seg) {
   const out = [];
   let atual = "";
-  let aspa = null;
+  let aspa = null; // "'", '"', or "$'"
   let tem = false;
-  for (const ch of seg) {
-    if (aspa) {
-      if (ch === aspa) aspa = null; else atual += ch;
+  for (let i = 0; i < seg.length; i++) {
+    const ch = seg[i];
+    if (aspa === "'") {
+      if (ch === "'") aspa = null; else atual += ch;
       continue;
     }
+    if (aspa === "$'") {
+      // Not decoded: `sintaxeIlegivel` gates the line. Kept raw so the word is still a word.
+      if (ch === "\\") { atual += ch + (seg[i + 1] ?? ""); i++; continue; }
+      if (ch === "'") aspa = null; else atual += ch;
+      continue;
+    }
+    if (ch === "\\") {
+      const prox = seg[i + 1];
+      i++;
+      if (prox === undefined) { atual += ch; tem = true; continue; }
+      if (prox === "\n") continue;
+      if (aspa === '"' && !"$`\"\\".includes(prox)) atual += ch;
+      atual += prox;
+      tem = true;
+      continue;
+    }
+    if (aspa === '"') {
+      if (ch === '"') aspa = null; else atual += ch;
+      continue;
+    }
+    if (ch === "$" && seg[i + 1] === "'") { aspa = "$'"; tem = true; i++; continue; }
     if (ch === "'" || ch === '"') { aspa = ch; tem = true; continue; }
     if (/\s/.test(ch)) {
       if (tem || atual !== "") { out.push(atual); atual = ""; tem = false; }
@@ -247,34 +454,115 @@ export function tokensDoSegmento(seg) {
   return out;
 }
 
-/** Prefixes that are not the real command — `sudo rm -rf /` is `rm -rf /`. */
-const PREFIXOS_TRANSPARENTES = new Set(["sudo", "doas", "env", "command", "nohup", "time", "exec", "xargs"]);
-/** Options of THOSE prefixes that take a value in the next token (`sudo -u root rm …`). */
-const OPCOES_COM_VALOR = new Set(["-u", "-g", "-p", "-t", "-c", "-r", "-h", "-n", "-i", "-d", "-a", "-s", "-e", "-l"]);
+/**
+ * Words the shell's grammar puts before a command: `if rm -rf ~; then …`, `then rm -rf ~`,
+ * `do rm -rf "$f"`, `! rm -rf ~`, `{ rm -rf ~; }`. Until 1.36.6 the keyword was read as the
+ * command, and the `rm` after it as its argument.
+ */
+const PALAVRAS_DO_SHELL = new Set([
+  "if", "then", "else", "elif", "do", "while", "until", "!", "{", "}", "time", "coproc",
+]);
 
-/** The command (basename, lowercase) and its arguments, past prefixes and `KEY=value`. */
-export function comandoEArgs(seg) {
+/**
+ * Commands that START another command from their arguments. Every word after one of them that
+ * is not an option is judged as the command it may start (`comandosDoSegmento`).
+ *
+ * 🔴 Until 1.36.6 a short list of these was skipped as "transparent prefixes", with ONE table
+ * of options that take a value shared by all of them. The table was `sudo`'s and was wrong for
+ * the others: in `env -i rm -rf ~` the `-i` took `rm` as its value, and so did `-r` in `xargs -r
+ * rm -rf`; `sudo -i` takes no value either. `timeout 5 rm -rf ~`, `nice -n 5 rm -rf ~` and `find
+ * . -exec rm -rf {} +` were not on the list. All of them were `allow` at the `auto` level
+ * (review of 02/11/2026). Each runner has its own option grammar, and no table here would
+ * follow them all, so the judgment no longer depends on knowing it.
+ */
+const EXECUTORES = new Set([
+  "sudo", "doas", "env", "command", "builtin", "exec", "nohup", "xargs", "timeout", "nice", "ionice",
+  "setsid", "stdbuf", "chrt", "taskset", "unbuffer", "caffeinate", "watch", "strace", "ltrace",
+  "flock", "chroot", "busybox", "toybox", "find", "su", "runuser", "nsenter", "unshare",
+  "systemd-run", "fakeroot", "firejail", "parallel", "script",
+]);
+
+/** `KEY=value` before a command (or among a runner's arguments, as `env` takes them). */
+function atribuicao(tok) {
+  const eq = tok.indexOf("=");
+  return eq > 0 && /^[A-Za-z_][A-Za-z0-9_]*$/.test(tok.slice(0, eq));
+}
+
+/**
+ * A word as a command name: its basename, lowercase, without `.exe`. On Windows the SDK's
+ * shell is Git Bash, where `rm.exe -rf ~` and `git.exe push` run the same programs; until
+ * 1.36.6 they were the commands `rm.exe` and `git.exe`, which nothing here knew.
+ */
+function nomeDoComando(tok) {
+  return tok.toLowerCase().split(/[\\/]/).pop().replace(/\.exe$/, "");
+}
+
+/**
+ * Every command a segment may run, as `{ cmd, args, palavra }`: its own (past `KEY=value` and
+ * the shell's keywords), and, when that one is a runner (`EXECUTORES`), one for each later word
+ * that is not an option, with the words after it as its arguments.
+ *
+ * Judging every such word errs toward a card, by design: in `sudo -u root rm -rf /` the word
+ * `root` is judged as a command too, and is harmless; in `timeout 60 grep curl log.txt` the
+ * word `curl` is judged as a command, and the line asks as network egress. A card the dev did
+ * not need is the price of not knowing thirty option grammars; a command that ran unseen
+ * would be the price of guessing them.
+ */
+export function comandosDoSegmento(seg) {
   const toks = tokensDoSegmento(seg);
   let i = 0;
-  while (i < toks.length) {
-    const t = toks[i].toLowerCase();
-    const eq = t.indexOf("=");
-    if (eq > 0 && /^[a-z0-9_]+$/.test(t.slice(0, eq))) { i++; continue; }
-    if (PREFIXOS_TRANSPARENTES.has(t)) {
-      i++;
-      while (i < toks.length && toks[i].startsWith("-")) {
-        const opc = toks[i].toLowerCase();
-        i++;
-        if (OPCOES_COM_VALOR.has(opc) && i < toks.length) i++;
-      }
-      continue;
+  while (i < toks.length && (atribuicao(toks[i]) || PALAVRAS_DO_SHELL.has(toks[i]))) i++;
+  if (i >= toks.length) return [];
+  const out = [{ cmd: nomeDoComando(toks[i]), args: toks.slice(i + 1), palavra: toks[i] }];
+  if (EXECUTORES.has(out[0].cmd)) {
+    for (let j = i + 1; j < toks.length; j++) {
+      if (toks[j].startsWith("-") || atribuicao(toks[j])) continue;
+      out.push({ cmd: nomeDoComando(toks[j]), args: toks.slice(j + 1), palavra: toks[j] });
     }
-    break;
   }
-  if (i >= toks.length) return null;
-  const cmd = toks[i].toLowerCase();
-  const nome = cmd.split(/[\\/]/).pop();
-  return { cmd: nome, args: toks.slice(i + 1) };
+  return out;
+}
+
+/**
+ * Syntax whose effect this policy cannot read from the words, or null. A line that uses it asks
+ * as `always`, at every level: the page cannot read it either, and its "inside the project?"
+ * check would approve a `confirm` card for it by itself (1.36.6).
+ *
+ * - `$'…'` decodes escapes when the shell runs it: `$'\x72m' -rf ~` is `rm -rf ~`.
+ * - A command whose NAME is decided when the line runs: a variable or substitution (`X=rm; $X
+ *   -rf ~`) or a glob (`/bin/r? -rf ~`). `[` and `[[` are the test command, not a glob.
+ *
+ * It reads the first command of each segment. A program that builds its own action at run time
+ * (`python3 -c "import shutil; …"`, a variable handed to a runner) is still not seen: this is a
+ * tripwire for spellings, not a sandbox, and the `auto` level remains the dev's choice to trust
+ * the agent with the shell.
+ */
+export function sintaxeIlegivel(cmd) {
+  const c = String(cmd ?? "");
+  for (const seg of segmentosEfetivos(c)) {
+    if (/(^|[^\\])\$'/.test(seg) && aspasSimplesNaoCobrem(seg)) return "$'…'";
+    const [primeiro] = comandosDoSegmento(seg);
+    if (!primeiro) continue;
+    const w = primeiro.palavra;
+    if (w === "[" || w === "[[") continue;
+    if (/[$`]/.test(w)) return `o nome do comando só se sabe ao rodar (${w})`;
+    if (/[*?]/.test(w) || /\[.*\]/.test(w)) return `o nome do comando é um glob (${w})`;
+  }
+  return null;
+}
+
+/** Is a `$'` in this segment outside single quotes, where the shell decodes it? */
+function aspasSimplesNaoCobrem(seg) {
+  let aspa = null;
+  for (let i = 0; i < seg.length; i++) {
+    const ch = seg[i];
+    if (aspa === "'") { if (ch === "'") aspa = null; continue; }
+    if (ch === "\\") { i++; continue; }
+    if (aspa === '"') { if (ch === '"') aspa = null; continue; }
+    if (ch === "$" && seg[i + 1] === "'") return true;
+    if (ch === "'" || ch === '"') aspa = ch;
+  }
+  return false;
 }
 
 /** Does any grouped short flag (`-rvf`) or long flag (`--recursive`) carry this one? */
@@ -303,9 +591,10 @@ function gitSubcomando(args) {
 }
 
 function segmentoDestrutivo(seg) {
-  const ca = comandoEArgs(seg);
-  if (!ca) return false;
-  const { cmd, args } = ca;
+  return comandosDoSegmento(seg).some(destrutivo);
+}
+
+function destrutivo({ cmd, args }) {
   if (cmd === "rm") return temFlag(args, "r", ["recursive", "dir"]);
   if (cmd.startsWith("mkfs")) return true;
   if (cmd === "dd") return true;
@@ -352,6 +641,31 @@ export const LEITURA = new Set([
  */
 export const EDICAO = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
+/**
+ * The file each EDIT tool writes. The fence confines it like a read's path (1.36.6).
+ */
+export const ALVO_DA_EDICAO = {
+  Write: "file_path",
+  Edit: "file_path",
+  MultiEdit: "file_path",
+  NotebookEdit: "notebook_path",
+};
+
+/**
+ * Files an agent loads as its own instructions or configuration in every later session: the
+ * same four names as `anna`'s `eh_arquivo_de_instrucao` (SHVIA-CODE 0.15.4), and the Claude Code
+ * settings files, whose `hooks` run commands with no card at all. A write to one of them, by the
+ * requested name or by where it really leads, asks as `always` (1.36.6): one injected turn would
+ * otherwise plant an instruction, or a command, that outlives the session.
+ */
+export function arquivoDeInstrucao(p) {
+  const alvo = String(p ?? "").replace(/\\/g, "/").toLowerCase();
+  const segs = alvo.split("/").filter(Boolean);
+  const base = segs[segs.length - 1] ?? "";
+  if (["anna.md", "agents.md", "claude.md", "claude.local.md"].includes(base)) return true;
+  return segs[segs.length - 2] === ".claude" && (base === "settings.json" || base === "settings.local.json");
+}
+
 /** Ferramentas de leitura cujo alvo é um CAMINHO — as que a cerca confina. */
 export const PATH_ARG = {
   Read: "file_path",
@@ -385,21 +699,12 @@ export const PATH_ARG = {
  */
 export function decidir({ projectDir, toolName, toolInput = {}, nivel = "manual", leitura, edicao }) {
   if (leitura.has(toolName)) {
-    const alvo = toolInput[PATH_ARG[toolName]];
-    // The denylist is checked on what was ASKED and on where it really LEADS — `~` expanded,
-    // symlinks followed. Inside the project the real path is judged relative to the root, so
-    // a project folder named `credentials-service` does not make every file protected.
-    let real = "";
-    if (alvo !== undefined && alvo !== null && alvo !== "") {
-      const raiz = caminhoReal(path.resolve(projectDir));
-      const abs = caminhoReal(path.resolve(projectDir, expandirHome(alvo)));
-      real = abs.startsWith(raiz + path.sep) ? path.relative(raiz, abs) : abs;
+    const cerca = cercaDoCaminho(projectDir, toolInput[PATH_ARG[toolName]]);
+    if (cerca.protegido) {
+      return { acao: "gate", motivo: `leitura de caminho protegido (${cerca.alvo})`, politica: "always" };
     }
-    if (caminhoProibido(alvo) || caminhoProibido(real)) {
-      return { acao: "gate", motivo: `leitura de caminho protegido (${alvo})`, politica: "always" };
-    }
-    if (!dentroDoProjeto(projectDir, alvo)) {
-      return { acao: "gate", motivo: `leitura fora da pasta do projeto (${alvo})`, politica: "confirm" };
+    if (cerca.fora) {
+      return { acao: "gate", motivo: `leitura fora da pasta do projeto (${cerca.alvo})`, politica: cerca.politicaFora };
     }
     return { acao: "allow", motivo: "leitura (auto)" };
   }
@@ -417,14 +722,73 @@ export function decidir({ projectDir, toolName, toolInput = {}, nivel = "manual"
     if (protegido) {
       return { acao: "gate", motivo: `comando cita caminho protegido (${protegido})`, politica: "always" };
     }
+    const ilegivel = sintaxeIlegivel(toolInput.command);
+    if (ilegivel) {
+      return { acao: "gate", motivo: `comando que a política não consegue ler: ${ilegivel}`, politica: "always" };
+    }
   }
-  if (nivel !== "manual" && edicao.has(toolName)) {
-    return { acao: "allow", motivo: `edição liberada pelo nível "${nivel}"` };
+  if (edicao.has(toolName)) {
+    // 🔴 Until 1.36.6 the `edit` and `auto` levels released every write here, with no fence:
+    // `Write ~/.bashrc`, `Edit .git/hooks/pre-commit` and `Write .env` were automatic, while a
+    // READ of the same paths asked (review of 02/11/2026). The fence comes before the shortcut
+    // for writes too (ADR-032).
+    const alvo = toolInput[ALVO_DA_EDICAO[toolName]] ?? toolInput.path;
+    const cerca = cercaDoCaminho(projectDir, alvo);
+    if (cerca.protegido) {
+      return { acao: "gate", motivo: `escrita em caminho protegido (${cerca.alvo})`, politica: "always" };
+    }
+    if (arquivoDeInstrucao(alvo) || arquivoDeInstrucao(cerca.real)) {
+      return { acao: "gate", motivo: `escrita em arquivo de instrução do agente (${cerca.alvo})`, politica: "always" };
+    }
+    // `always`, not the read's `confirm`: `anna` refuses a write outside the project outright
+    // (`guard`), and this policy never denies, so the nearest it comes is a card the page never
+    // approves by itself — not in Auto, not under "Confiar neste projeto", not by an allow rule.
+    if (cerca.fora) {
+      return { acao: "gate", motivo: `escrita fora da pasta do projeto (${cerca.alvo})`, politica: "always" };
+    }
+    if (nivel !== "manual") {
+      return { acao: "allow", motivo: `edição liberada pelo nível "${nivel}"` };
+    }
   }
   if (nivel === "auto") {
     return { acao: "allow", motivo: 'liberado pelo nível "auto"' };
   }
   return { acao: "gate", motivo: "", politica: "confirm" };
+}
+
+/**
+ * Where a tool's path really leads, judged once for reads and writes alike.
+ *
+ * The denylist is checked on what was ASKED and on where it really LEADS — `~` expanded,
+ * symlinks followed. Inside the project the real path is judged relative to the root, so a
+ * project folder named `credentials-service` does not make every file protected.
+ *
+ * `politicaFora` is the card for a path outside the project. `confirm` when the page can see it
+ * is outside, from the path the card shows (absolute, `~`, `..`). `always` when only the real
+ * path is outside: through a symlink committed in the project (`dados -> /etc`), the card shows
+ * `dados/passwd`, the page's check reads that as inside and its Auto mode approves a `confirm`
+ * card by itself. Until 1.36.6 that case was `confirm` too.
+ *
+ * Without a path the tool did not say where it works, and the `cwd` decides (`dentroDoProjeto`).
+ */
+export function cercaDoCaminho(projectDir, alvo) {
+  if (alvo === undefined || alvo === null || alvo === "") {
+    return { alvo, real: "", protegido: false, fora: false, politicaFora: "confirm" };
+  }
+  const raiz = caminhoReal(path.resolve(projectDir));
+  const lexico = path.resolve(projectDir, expandirHome(alvo));
+  const abs = caminhoReal(lexico);
+  const real = abs.startsWith(raiz + path.sep) ? path.relative(raiz, abs) : abs;
+  const fora = !(abs === raiz || abs.startsWith(raiz + path.sep));
+  const raizLexica = path.resolve(projectDir);
+  const pareceDentro = lexico === raizLexica || lexico.startsWith(raizLexica + path.sep);
+  return {
+    alvo,
+    real,
+    protegido: caminhoProibido(alvo) || caminhoProibido(real),
+    fora,
+    politicaFora: pareceDentro ? "always" : "confirm",
+  };
 }
 
 /**
