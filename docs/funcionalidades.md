@@ -40,6 +40,15 @@ up running agents and their snapshot. A verified account change or sign-out
 clears them. Renewed credentials are verified before delivery to an agent.
 This capability requires the companion Web support. See [ADR-037](decisoes.md#adr-037--a-reload-does-not-stop-the-agent-the-page-lets-go-of-it-and-the-next-page-takes-it-back).
 
+## The Pentest page can show what the agents are doing (1.37.0)
+
+`pentestActivity({after?})` answers a window of what the local assessment's agents said, the commands they ran and what came back,
+for a running or a finished run. It runs the engine's read-only `activity` command (fork 1.2.49) on the run this window owns and
+returns it validated: rows of kind `say`, `user`, `call` or `result`, clipped, with the usual credentials masked by the engine
+(best effort), newest window first and then everything after the cursor. Nothing leaves this computer from here: no request, no
+history record, no file; the page keeps the rows in memory (ADR-048). It needs engine 1.2.49 and a WEB page that calls it; an older
+pair shows "Update the Desktop" or the Desktop's own sentence. Details: [PENTEST/activity.md](PENTEST/activity.md).
+
 ## The Pentest model key can come from the SHVIA account (1.36.0)
 
 A Pentest authorization can say that the key paying for the approved model is the person's own key for that provider, stored in

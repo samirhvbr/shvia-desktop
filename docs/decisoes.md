@@ -1864,6 +1864,18 @@ Nada disso **bloqueia**: o que sai do automático vira **cartão**, e quem decid
 > page's check. ⚠️ The page side (SHVIA-WEB) still auto-approves any `confirm` card it misjudges
 > as inside — for the `anna` engine too — and is not changed here.
 
+> **06/11/2026 — writes had no fence until 1.36.6.** At the `edit` and `auto` levels `decidir`
+> released every `Write`/`Edit` before looking at its path, so the "fence before the shortcut" held
+> for reads only. Measured end to end with the real runner and SDK 0.3.314 on master 1.36.5:
+> `.env` and `CLAUDE.md` in the project were written with no card. Outside the project, and in
+> `.git/hooks` and `.claude/settings.json`, the SDK refused the write itself — a boundary this
+> policy does not own, the reason it was extracted in the first place. From 1.36.6 a write passes
+> the read's fence first and asks as `always` for a protected path, an instruction file, Claude
+> Code's settings or any path outside the project. In the same release the `auto` level reads
+> shell commands the way the shell runs them (substitutions inside double quotes, backslashes,
+> runners such as `env -i`, `xargs -r` and `timeout`, the shell's keywords), which the 02/11/2026
+> review found it did not. See `claude-runner/README.md` for what each level does now.
+
 ### Consequência de desenho: a política virou módulo
 
 `claude-runner.mjs` roda ao ser importado, então nada dentro dele era testável — a única prova
@@ -3016,3 +3028,29 @@ matter more than the code. Three findings of the read-only investigation of 02/1
 - Needs Desktop 1.36.0 and engine 1.2.47; an older pair keeps running on local configuration, unchanged.
 - Not measured: a real run, with a real provider, a real server and a real Mac. The parts are proved separately (the engine's own
   tests, the server's tests, this app's parser and spawn tests against a fake server).
+
+## ADR-048 — Agent text reaches the Pentest page, masked, from local files only, and this app keeps no copy
+
+**Context.** The owner asked on 29/10 and 30/10/2026 to see what an assessment is doing from the SHVIA page, and approved sending
+the engine's log to the server (PT-32). Reading the code showed that `runtime.log` does not hold it (in `-n` mode the engine prints a
+startup panel, one panel per vulnerability and tracebacks) and that what the agents say and run is in the transcript the separate
+viewer reads, unmasked. Until now the page received only the engine's sanitized metadata (tests, model use, incidents).
+
+**Decision.**
+
+1. **The text goes from the engine's files to the page and nowhere else.** `pentestActivity` runs the engine's read-only
+   `activity` command against the run this window owns and returns a validated window. The server gets no copy, so the Pentest
+   consent text and the retention rule do not change; the run folder's own retention is the only one. (The earlier design,
+   storing masked lines on the server, was not taken: it is a new data flow that can carry the target's data, and the owner's
+   question never needed another device.)
+2. **The engine masks, this app validates.** The engine masks the usual credentials before it clips; this app refuses, as a
+   whole, an answer that is not exactly the contract (kinds, sizes, control characters, cursor). It adds no second masking pass,
+   because a pattern it would add is one the engine already has and the two would drift.
+3. **The page is trusted with the text as it is with the rest of the local run.** It is the configured server's page (the
+   authority is checked against the run's), and it receives agent text that may carry what a target returned. **Nothing in this
+   app stops a page from sending that text on**; the shipped script does not (a face test fails if it sends anything), and the
+   section tells the person not to share the screen. This is the same trust ADR-047 accepted for the grant's bearer, now
+   for text instead of a key.
+
+**Consequences.** Needs Desktop 1.37.0 and engine 1.2.49; an older pair shows "Update the Desktop" or the Desktop's sentence and
+nothing else changes. Masking is best effort and its limit is said on the page. Not measured: a real run's rows on the owner's Mac.
