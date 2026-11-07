@@ -38,6 +38,9 @@ import { execFileSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// 0.16.2 carries subprocess environment filtering as well as the NDJSON credential frame.
+const ANNA_MINIMO = [0, 16, 2];
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DESTINO_DIR = join(ROOT, "src-tauri/binaries");
 
@@ -110,9 +113,13 @@ const origem = achado?.caminho ?? null;
 // is the one Tauri bundled, and every anna release bumps its version.
 if (args.includes("--reuse-check")) {
   const noBundle = join(DESTINO_DIR, `anna-${triple}${process.platform === "win32" ? ".exe" : ""}`);
-  const vBundle = existsSync(noBundle) ? versaoDo(noBundle) : null;
+  const temBundle = existsSync(noBundle);
+  const vBundle = temBundle ? versaoDo(noBundle) : null;
   const pBundle = partesDaVersao(vBundle);
   const recusa = (motivo) => { console.log(motivo); process.exit(3); };
+
+  if (temBundle && !pBundle) recusa("the staged Anna did not report a release version");
+  if (pBundle && compara(pBundle, ANNA_MINIMO) < 0) recusa(`the bundle carries ${vBundle}, below Anna ${ANNA_MINIMO.join(".")}`);
 
   if (!achado) {
     console.log(`anna in the bundle: ${vBundle ?? "none"} (no other anna found)`);
@@ -236,10 +243,10 @@ if (!versao) {
 // the request once; the page (shvia-web #686) answers it. An older engine ignores the line, so
 // only the renewal before a turn would protect it, and a 401 in the middle of a long turn would
 // still end the run.
-const ANNA_MINIMO = [0, 16, 0];
+
 
 function partesDaVersao(texto) {
-  const m = /(\d+)\.(\d+)\.(\d+)/.exec(texto ?? "");
+  const m = /^anna (\d+)\.(\d+)\.(\d+)$/.exec(texto ?? "");
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
 }
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.38.3 - Send the local Anna gateway credential on stdin
+
+The native Code host strips the inherited gateway key from Anna's environment and
+writes the initial credential frame before exposing the session to the page.
+Packaging and launch require Anna 0.16.2 or newer.
+
+
 ## 1.38.1 - Pin the Pentest engine at 1.2.49, the first that answers the agents' activity window
 
 `pentest-engine.json` pinned 1.2.47. It now pins **1.2.49**, the engine build that has the read-only `activity` command 1.37.0's
