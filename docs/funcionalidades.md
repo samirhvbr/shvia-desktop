@@ -138,6 +138,8 @@ The first long runs on the owner's Mac (30/10 and 02/11/2026) found what a Linux
   four levels); token, controller and scan name must still match.
 - **Engine 1.2.47 (1.35.7)** answers the control channel in full and keeps the newest 256 live events; it is also the floor
   for the account model key of 1.36.0.
+- **Engine 1.2.49 (1.38.1)** has the read-only `activity` command that `pentestActivity()` (1.37.0) runs, and runs the sandbox
+  image `strix-sandbox:1.3.1` (1.2.48), downloaded again once by a computer that has 1.3.0.
 
 Details and what was not measured: [PENTEST/authorization.md](PENTEST/authorization.md) and the CHANGELOG entries of each
 version.

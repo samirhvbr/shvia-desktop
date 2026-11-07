@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.38.1 - Pin the Pentest engine at 1.2.49, the first that answers the agents' activity window
+
+`pentest-engine.json` pinned 1.2.47. It now pins **1.2.49**, the engine build that has the read-only `activity` command 1.37.0's
+`pentestActivity()` runs. 1.2.47 has no such command, so every call answered "Atividade indisponível. Confira se o motor do
+Pentest está atualizado" and the page's "What the agents are doing" section could never show a row.
+
+- **What 1.2.48 and 1.2.49 change for this Desktop** (the fork's Releases `shvia-v1.2.48` and `shvia-v1.2.49`, Strix 1.7.0 + 64 commits):
+  - *`strix activity RUN_DIR` (1.2.49).* It opens the run's transcript read-only and prints one JSON line with the newest rows, or
+    the rows after a cursor: what the agents said, the commands they ran and what came back, clipped, with the usual credentials
+    masked by the engine before the clip (best effort). This app validates that line and hands it to the page; nothing leaves the
+    computer (ADR-048).
+  - *The sandbox image moves from `strix-sandbox:1.3.0` to `1.3.1` (1.2.48).* It carries the `libbrotli1` patch for CVE-2026-111497.
+    A computer that already has 1.3.0 downloads 1.3.1 on its next run, about 1.4 GB once per computer and platform.
+- **The pin.** Release `shvia-v1.2.49`, built on 07/11/2026 with `scripts/build-pentest-local.sh --upload`, one machine each:
+  `aarch64-apple-darwin` 95,373,312 bytes, SHA-256 `61dd0eb9…3db9`, and `x86_64-unknown-linux-gnu` 107,637,880 bytes, SHA-256
+  `b8cddda6…0a79`. The digests are the ones GitHub's REST API reports for the files on the Release and the ones in its `SHA256SUMS`.
+  Both files were downloaded from the Release and their size and SHA-256 compared with the pin; the Linux binary answers
+  `--fork-version` with `1.2.49`.
+- **No Desktop code changed.** A Mac that has 1.2.47 installed is offered the install of 1.2.49 and decides by its own consent.
+  Not measured: a real run with 1.2.49 on a Mac, and the arm64 sandbox image.
+
 ## 1.38.0 - Keep the Desktop Code grant when a navigation is canceled
 
 Ignore a navigation completion without a new document load. A canceled
