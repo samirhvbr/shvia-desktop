@@ -675,6 +675,38 @@ pub(super) fn sessao_do_pedido(v: &serde_json::Value) -> Result<String, ()> {
     }
 }
 
+fn anna_compativel(stdout: &[u8]) -> bool {
+    let Ok(text) = std::str::from_utf8(stdout) else { return false };
+    let Some(version) = text.trim().strip_prefix("anna ") else { return false };
+    let mut parts = version.split('.').map(str::parse::<u64>);
+    match (parts.next(), parts.next(), parts.next(), parts.next()) {
+        (Some(Ok(major)), Some(Ok(minor)), Some(Ok(patch)), None) => (major, minor, patch) >= (0, 16, 2),
+        _ => false,
+    }
+}
+
+fn credencial_inicial(mut stdin: impl Write, key: &str) -> std::io::Result<()> {
+    let line = serde_json::json!({ "type": "credential", "api_key": key });
+    writeln!(stdin, "{line}")?;
+    stdin.flush()
+}
+
+#[cfg(test)]
+#[test]
+fn anna_requires_a_compatible_binary_and_receives_one_credential_line() {
+    assert!(!anna_compativel(b"anna 0.16.0"));
+    assert!(!anna_compativel(b"anna 0.16.2-rc.1"));
+    assert!(anna_compativel(b"anna 0.16.2\r\n"));
+    assert!(anna_compativel(b"anna 1.0.0"));
+    let mut stdin = Vec::new();
+    credencial_inicial(&mut stdin, "fixture\nonly").unwrap();
+    assert_eq!(stdin.iter().filter(|&&b| b == b'\n').count(), 1);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&stdin).unwrap(),
+        serde_json::json!({ "type": "credential", "api_key": "fixture\nonly" }),
+    );
+}
+
 pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value, owner_window: &str, owner_scope: String) {
     let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or_default().to_string();
     let Ok(sessao) = sessao_do_pedido(v) else {
@@ -731,7 +763,7 @@ pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value, ow
     }
     let (model, effort, url, key) = (s("model"), s("effort"), s("url"), s("apiKey"));
 
-    // `url` vem da PÁGINA e viaja junto com SHVIA_API_KEY (a chave do usuário) —
+    // `url` vem da PÁGINA e a Anna envia a credencial do usuário a esse endereço —
     // então é entrada não confiável no caminho de um segredo, e passa pela MESMA
     // allowlist do resto do perímetro (`crate::SERVER_HOSTS`). Sem esta checagem,
     // um XSS na página do ShvIA — ou um asset de terceiro comprometido; a CSP do
@@ -845,8 +877,18 @@ pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value, ow
         if !url.is_empty() {
             cmd.args(["--url", &url]);
         }
-        if !key.is_empty() {
-            cmd.env("SHVIA_API_KEY", &key); // chave do usuário, repassada pelo web (nunca logada)
+        // The Web already proved this key before invoking spawn. Never give it to
+        // the process as an environment entry, including a key inherited from Desktop.
+        cmd.env_remove("SHVIA_API_KEY");
+        let mut probe = lancamento.comando();
+        probe.arg("--version").env_remove("SHVIA_API_KEY");
+        let compatible = super::saida_com_prazo(probe, Duration::from_secs(2))
+            .is_ok_and(|output| output.status.success() && anna_compativel(&output.stdout));
+        if !compatible {
+            return reply(window, req, false, serde_json::json!({
+                "error": "Atualize a Anna para 0.16.2 ou superior para iniciar o Code.",
+                "codigo": "anna_desatualizada",
+            }));
         }
     }
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -868,7 +910,16 @@ pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value, ow
     };
     let stdout = child.stdout.take().expect("stdout piped");
     let stderr = child.stderr.take().expect("stderr piped");
-    let stdin = child.stdin.take().expect("stdin piped");
+    let mut stdin = child.stdin.take().expect("stdin piped");
+    if exe_base == "anna" && credencial_inicial(&mut stdin, &key).is_err() {
+        drop(stdin);
+        let _ = child.kill();
+        let _ = child.wait();
+        return reply(window, req, false, serde_json::json!({
+            "error": "Não foi possível entregar a credencial ao motor Code.",
+            "codigo": "credencial_indisponivel",
+        }));
+    }
 
     // A page that re-attaches after a reload says so, and gives what a page coming back with
     // nothing of its own needs to serve the session again (1.8.2). Only a named session can be

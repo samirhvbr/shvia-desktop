@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.38.3 - Send the local Anna gateway credential on stdin
+
+The native Code host strips the inherited gateway key from Anna's environment and
+writes the initial credential frame before exposing the session to the page.
+Packaging and launch require Anna 0.16.2 or newer.
+
+
 ## 1.38.2 - Bind local Pentest runs and recovery to the signed-in account
 
 Verify the current page's account and the grant used to launch the run. Store the

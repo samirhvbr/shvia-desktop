@@ -64,7 +64,7 @@ if (process.platform !== "win32") {
 // staged; the floor itself is staged. Run against the 0.15.10 floor, the first case fails:
 // 0.15.11 was staged.
 if (process.platform !== "win32") {
-  for (const [versao, aceita] of [["0.15.11", false], ["0.16.0", true]]) {
+  for (const [versao, aceita] of [["0.16.0", false], ["0.16.2", true]]) {
     const dir = arvore();
     const falso = join(dir, "anna");
     writeFileSync(falso, `#!/bin/sh\necho 'anna ${versao}'\n`, { mode: 0o755 });

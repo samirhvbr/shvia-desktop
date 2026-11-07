@@ -83,13 +83,14 @@ if (process.platform !== "win32") {
 
   // [no bundle staged = null] [--anna version or null] [PATH version] [--no-anna] → reuse?
   const casos = [
-    { bundle: "0.15.1", flag: "0.15.3", path: "0.15.1", reusa: false, porque: "--anna newer than the bundle's (the owner's Mac, 1.35.3)" },
-    { bundle: "0.15.3", flag: "0.15.3", path: "0.15.1", reusa: true, porque: "--anna is the bundle's version" },
-    { bundle: "0.15.3", flag: "0.15.1", path: "0.15.3", reusa: false, porque: "--anna older than the bundle's: asked for by name, it wins either way" },
-    { bundle: "0.15.3", flag: null, path: "0.15.1", reusa: true, porque: "an older anna on PATH does not displace the bundle's" },
-    { bundle: "0.15.1", flag: null, path: "0.15.3", reusa: false, porque: "a newer anna on PATH (install.sh ran after the build)" },
-    { bundle: null, flag: "0.15.3", path: "0.15.3", reusa: false, porque: "the bundle has no anna and this run would package one" },
-    { bundle: "0.15.3", flag: null, path: "0.15.3", noAnna: true, reusa: false, porque: "--no-anna and the bundle carries anna" },
+    { bundle: "0.16.2", flag: "0.16.3", path: "0.16.2", reusa: false, porque: "--anna newer than the bundle's " },
+    { bundle: "0.16.3", flag: "0.16.3", path: "0.16.2", reusa: true, porque: "--anna is the bundle's version" },
+    { bundle: "0.16.3", flag: "0.16.2", path: "0.16.3", reusa: false, porque: "--anna older than the bundle's: asked for by name, it wins either way" },
+    { bundle: "0.16.3", flag: null, path: "0.16.2", reusa: true, porque: "an older anna on PATH does not displace the bundle's" },
+    { bundle: "0.16.2", flag: null, path: "0.16.3", reusa: false, porque: "a newer anna on PATH (install.sh ran after the build)" },
+    { bundle: null, flag: "0.16.3", path: "0.16.3", reusa: false, porque: "the bundle has no anna and this run would package one" },
+    { bundle: "0.16.3", flag: null, path: "0.16.3", noAnna: true, reusa: false, porque: "--no-anna and the bundle carries anna" },
+    { bundle: "0.16.1", flag: null, path: "0.16.1", reusa: false, porque: "a staged Anna below the credential floor cannot ship" },
   ];
   for (const c of casos) {
     const dir = mkdtempSync(join(tmpdir(), "shvia-reuso-anna-"));
