@@ -1864,6 +1864,18 @@ Nada disso **bloqueia**: o que sai do automático vira **cartão**, e quem decid
 > page's check. ⚠️ The page side (SHVIA-WEB) still auto-approves any `confirm` card it misjudges
 > as inside — for the `anna` engine too — and is not changed here.
 
+> **06/11/2026 — writes had no fence until 1.36.6.** At the `edit` and `auto` levels `decidir`
+> released every `Write`/`Edit` before looking at its path, so the "fence before the shortcut" held
+> for reads only. Measured end to end with the real runner and SDK 0.3.314 on master 1.36.5:
+> `.env` and `CLAUDE.md` in the project were written with no card. Outside the project, and in
+> `.git/hooks` and `.claude/settings.json`, the SDK refused the write itself — a boundary this
+> policy does not own, the reason it was extracted in the first place. From 1.36.6 a write passes
+> the read's fence first and asks as `always` for a protected path, an instruction file, Claude
+> Code's settings or any path outside the project. In the same release the `auto` level reads
+> shell commands the way the shell runs them (substitutions inside double quotes, backslashes,
+> runners such as `env -i`, `xargs -r` and `timeout`, the shell's keywords), which the 02/11/2026
+> review found it did not. See `claude-runner/README.md` for what each level does now.
+
 ### Consequência de desenho: a política virou módulo
 
 `claude-runner.mjs` roda ao ser importado, então nada dentro dele era testável — a única prova

@@ -19,6 +19,55 @@ channel; a run whose engine has not created its files yet answers an empty windo
   call is in the list of arms that must run off the UI thread. Not covered: a real run on a real computer. Docs:
   `docs/PENTEST/activity.md`, ADR-048, the call in `shim.rs`. Needs the engine 1.2.49 pin (a separate change, after its Release).
 
+## 1.36.6 - Fence the claude-runner's file writes like its reads, so no level writes a secret, an instruction file or outside the project unasked
+
+At the `edit` and `auto` levels `decidir()` released every `Write`, `Edit`, `MultiEdit` and `NotebookEdit` before it looked at the
+path, so ADR-032's "the fence comes before the shortcut" held for reads only (review of 02/11/2026). Measured end to end with the
+real runner and SDK 0.3.314 at `auto`, every card rejected: on master `.env` and `CLAUDE.md` in the project were written with no
+card. `~/.bashrc`, `.git/hooks/pre-commit` and `.claude/settings.json` were not, but only because the SDK refused them on its own,
+which this policy does not control. With this change all five are `always` cards, nothing is written, and an ordinary file in
+the project is still written without a card.
+
+- A write goes through `cercaDoCaminho()`, the fence a read already had (`~` expanded, symlinks followed, the secret denylist on
+  the requested and the real path). A protected path asks as `always`.
+- Agent instruction files (`ANNA.md`, `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, the list in `anna` 0.15.4) and Claude Code's
+  `.claude/settings.json` and `settings.local.json`, whose hooks run commands, ask as `always`, by name or by a link's target.
+- A write outside the project asks as `always`, not the read's `confirm`: `anna` refuses such a write outright, and this policy
+  never denies, so the nearest it comes is a card the page approves neither in Auto, nor under "Confiar neste projeto".
+- A read outside the project that the card shows as a path inside it (a committed symlink, `dados -> /etc`) is `always` now; as
+  `confirm` the page's check read `dados/passwd` as inside and its Auto mode approved the card by itself.
+
+`politica.test.mjs` holds the writes at the three levels and the symlink cases (a write through a link out of the project, a
+link named otherwise that leads to `CLAUDE.md`); run against master's `politica.mjs` both tests fail. ADR-032 has a dated note,
+and `claude-runner/README.md` describes the levels as they are now.
+
+## 1.36.6 - Read the claude-runner's shell commands the way the shell runs them before the auto level lets one through
+
+The 02/11/2026 review measured, with `decidir()` itself, that the `auto` level released commands its destructive, network and
+secret checks were written to catch, because `claude-runner/politica.mjs` read their words differently from the shell. Measured
+again on master 1.36.5, 24 of 25 such lines were `allow`, so no card was emitted at all: `echo "$(rm -rf ~)"`, `env -i rm -rf ~`,
+`xargs -r rm -rf`, `timeout 5 rm -rf ~`, `r\m -rf ~`, `rm.exe -rf ~`, `if true; then rm -rf ~; fi`, `echo \" ; rm -rf ~`,
+`cat .e\nv`, `echo "$(cat .env)"`, `timeout 9 curl https://x`, `X=rm; $X -rf ~`, `$'\x72m' -rf ~` and others. Each is now an
+`always` card, which the page never approves by itself.
+
+- `$(…)` and backticks are split as scripts of their own inside double quotes too, where the shell runs them.
+- Backslashes are resolved as the shell resolves them, in the splitter and in the tokenizer: an escaped character is never a
+  quote or a separator, `r\m` is `rm`, and inside double quotes only `$`, a backtick, `"`, `\` and a newline are escaped.
+- The single option table shared by the "transparent prefixes" is gone: it was `sudo`'s, and in `env -i` and `xargs -r` the
+  option took `rm` as its value. Every word after a command that starts another command (`sudo`, `env`, `xargs`, `timeout`,
+  `nice`, `find -exec`, `su -c`, `watch`, …) is judged as the command it may start, which errs toward a card.
+- The shell's keywords (`if`, `then`, `do`, `!`, `{`) are skipped, and `.exe` is dropped from a command name (Git Bash on Windows).
+- `sintaxeIlegivel()` sends a line to an `always` card when its command name is decided at run time (a variable, a substitution,
+  a glob) or it uses `$'…'`, whose escapes are not decoded here.
+- Here-documents are read: a body is text, judged as a script only when a shell owns it (`bash <<EOF`), and only its `$(…)` when
+  its word is unquoted. Before, every body line was split as a command, so `cat > f <<EOF` with a line starting "curl" asked as
+  network egress, and the commit message Claude Code writes as `git commit -m "$(cat <<'EOF' … EOF)"` would have once
+  substitutions in quotes were read. 45 ordinary commands of the shapes Claude Code writes stay automatic (44 did on master).
+
+Two tests in `politica.test.mjs` hold both sides: the measured spellings ask as `always`, and the ordinary shapes stay `allow`.
+Run against master's `politica.mjs`, both fail. A program that builds its own action at run time (`python3 -c …`) is still not
+seen; the README says so.
+
 ## 1.36.5 - Refuse a Pentest engine file that is not a program before the Mac shell can run it
 
 `probe` in `code_bridge/pentest/compatibility.rs` now reads the first bytes of the engine it is about to start and refuses a
