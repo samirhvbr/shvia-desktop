@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.38.4 - Answer an activity call the engine fails with the activity sentence, not the review's
+
+`activity()` ran the engine through the review's bounded helper and passed its failure on as it came: "Revisão indisponível. Encerre a
+execução e confira o histórico e se o Desktop está atualizado." An engine that does not know the command exits non-zero, so the page's
+"What the agents are doing" section told the person to end the run and check the Desktop, while `docs/PENTEST/activity.md` promised
+the activity sentence, the one that names the engine ("Atividade indisponível. Confira se o motor do Pentest está atualizado e tente de
+novo."). 1.38.1 pins 1.2.49 for new installs, but a computer that has 1.2.47 keeps it until the person agrees to the install.
+
+- **What changes.** `read_window` asks `review::bounded_call` and answers this module's sentence to a call that failed, ran out of time
+  or printed what the page must not get. The review and the history exports keep the helper's own sentence.
+- **Proof.** `a_call_the_engine_does_not_answer_gets_the_activity_sentence`, red with the review's sentence; it also reads a correct
+  answer through the same path.
+
 ## 1.38.4 - Give the activity window the probe's per-platform deadline
 
 `strix activity` ran with a 15 s deadline on every system. The call is the engine's own start, a one-file build that unpacks itself
