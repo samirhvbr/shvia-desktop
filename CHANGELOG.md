@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.38.4 - Wait 30 s before asking the engine for activity again after a call ran out of time
+
+The page asks for the window 6 s after each answer, and a call that ran out of time was followed 6 s later by another one that
+unpacked and started the engine again, for as long as the engine kept not answering. After a call that ran out of time, the calls of the
+next 30 s now answer the activity sentence at once and start nothing.
+
+- **The number.** 30 s is the page's own pause after repeated failures (`SLOW` in `pentest-activity.js`), chosen so the Desktop and the
+  page agree on how long a struggling engine is left alone. It is not a measurement; no Mac was timed.
+- **What starts no pause.** A call that failed on its own: an engine that does not know the command answers at once, and the page already
+  slows down by itself after three failures.
+- **Not changed.** Two reads in flight at once (a page reloaded while the Desktop is still waiting for the engine) are not limited; the page
+  asks one at a time.
+- **Proof.** `after_a_call_that_ran_out_of_time_the_engine_is_left_alone_until_the_pause_is_over`: the engine is not started inside the
+  pause, is read again after it, and a failed call starts none. Red three ways: with the pause never consulted, never started, and
+  started by a failure.
+
 ## 1.38.4 - Answer an activity call the engine fails with the activity sentence, not the review's
 
 `activity()` ran the engine through the review's bounded helper and passed its failure on as it came: "Revisão indisponível. Encerre a
