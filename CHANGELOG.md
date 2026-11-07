@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.38.4 - Let an engine call that ran out of time clean up before it is killed
+
+The helper behind the review, the history exports and the activity window (`review::bounded_output`) ended a call that ran out of
+time with SIGKILL to its process group at once. The Pentest engine is a one-file build: it unpacks itself into a folder that only
+the program that was started removes, and runs its Python in a child, so killing that program outright leaves the folder and the
+child behind. The version probe has ended its group gently since 29/10/2026 (`saida_com_prazo_em_grupo`: SIGTERM to the group,
+3 s, then SIGKILL); these calls had not.
+
+- **What changes.** `review::bounded_call` is now the helper's body and tells a call that ran out of time from one that failed
+  (`Refused::TimedOut`, `Refused::Failed`); `bounded_output` keeps its signature and its answer for the review and the history
+  exports. A call that ran out of time, failed or went over the output cap ends the way the probe does. A call that ended by itself
+  and handed over its output keeps the SIGKILL sweep of its group.
+- **Proof.** Three tests in `code_bridge/pentest/review.rs`, each red without the change: a stand-in for the engine's parent removes
+  what it unpacked when it is asked to end (an immediate SIGKILL left it), an engine that ignores the request is still killed once the
+  grace is over (after the deadline plus the grace, not after the 3 s of the real grace nor the sleep it was running), and the refusal
+  says whether the call ran out of time.
+- **Not measured.** What a real one-file engine leaves behind on a Mac after each way of ending. The numbers behind the choice are the
+  ones recorded for the probe in `docs/pentest-compatibility.md` (about 2.6 s per call on Linux; on one Mac, 15.3 s the first start
+  and 5.3 s the next).
+
 ## 1.38.3 - Send the local Anna gateway credential on stdin
 
 The native Code host strips the inherited gateway key from Anna's environment and
