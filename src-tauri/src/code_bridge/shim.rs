@@ -34,6 +34,10 @@ pub fn inject_token(js: &str) -> String {
         .replace("__SHVIA_ASSINATURA__", if cfg!(unix) { "true" } else { "false" })
 }
 
+pub(crate) fn inject_code_document(nonce: &str) -> String {
+    inject_token(BRIDGE_JS).replace("__SHVIA_CODE_DOCUMENT__", nonce)
+}
+
 /// O shim injetado em cada página (`on_page_load`). Define `window.__shviaCode`
 /// (a API que a UI do Modo Code no SHVIA-WEB chama) e `window.__shviaDesktop`
 /// (flag p/ o web mostrar o Modo Code SÓ onde a ponte existe). Autocontido, ES5,
@@ -48,11 +52,13 @@ pub const BRIDGE_JS: &str = r#"(function () {
   var wk = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.shviaCode;
   var w2 = window.chrome && window.chrome.webview;
   if (!wk && !w2) return;
+  var documento = '__SHVIA_CODE_DOCUMENT__';
+  Object.defineProperty(window, '__shviaCodeDocument', { value: documento });
   function sendNative(str) { if (wk) { wk.postMessage(str); } else { w2.postMessage(str); } }
   var reqs = {}, seq = 0, listeners = [];
   function post(action, data) {
     return new Promise(function (res, rej) {
-      var id = 'r' + (++seq);
+      var id = documento + '-r' + (++seq);
       reqs[id] = { res: res, rej: rej };
       var msg = { action: action, reqId: id };
       if (data) for (var k in data) msg[k] = data[k];
@@ -107,6 +113,9 @@ pub const BRIDGE_JS: &str = r#"(function () {
     spawn: function (o) { return post('spawn', o || {}); },   // erro de motor ausente vem {error, codigo} — ver claudeModels;  {projectDir, apiKey, model?, effort?, url?, engine?, modelDoClaude?, accountId?, autonomy?}  autonomy:{stopByHost, maxIterations, maxCostUsd} = a Run (RUN-20260910), só no motor claude;  engine:'claude' = assinatura; modelDoClaude:true = model/effort vieram de claudeModels(), nao do gateway; accountId = perfil de conta (ver claudeAccounts); sessao + retomavel:true + meta:{projectId, rotulo} = a sessão sobrevive a um reload e a página seguinte a retoma (recursos.retomada)
     send:  function (o, sessao) { return post('send', sessao ? { payload: o, sessao: sessao } : { payload: o }); }, // {type:'user',text} | {id,decision}; sessao = which session (recursos.sessoes)
     kill:  function (sessao) { return post('kill', sessao ? { sessao: sessao } : null); }, // sem sessao = a sessão única de antes da 1.8.0
+    bindAgentOwner: function (token) { return post('bindAgentOwner', { token: token }); },
+    clearAgentOwner: function () { return post('clearAgentOwner'); },
+    saveAgentResumeState: function (snapshot) { return post('saveAgentResumeState', { snapshot: snapshot }); },
     sessions: function () { return post('sessions'); }, // {janela, sessoes:[{sessao, seq, ocupado, encerrada, anexada, abertos, info}]} — as retomáveis desta janela (recursos.retomada)
     attach: function (sessao, desde) { return post('attach', { sessao: sessao, desde: desde || 0 }); }, // {ate, lacuna, encerrada}; as linhas depois de `desde` chegam em seguida pelo onEvent
     onEvent: function (cb) { if (typeof cb === 'function') listeners.push(cb); },
@@ -314,7 +323,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
     //           shell CAN capture, not that it is allowed to on this machine yet — that is what `trafficPermissionStatus`
     //           answers. Without the flag the page shows the "desktop required" panel, the same way it already does when this
     //           whole object is absent on a plain browser.
-    recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true, plano: true, orientar: true, aparelho: true, uso: true, assinatura: __SHVIA_ASSINATURA__, varreduraIPv4: true, captura: true },
+    recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true, retomadaPorConta: true, plano: true, orientar: true, aparelho: true, uso: true, assinatura: __SHVIA_ASSINATURA__, varreduraIPv4: true, captura: true },
     // chamados pelo Rust (eval):
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
     _emit: function (evt, sessao, seq) { if (evt && typeof evt === 'object') { if (sessao) evt.sessao = sessao; if (seq) evt.seq = seq; } for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }

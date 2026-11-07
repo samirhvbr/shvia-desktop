@@ -28,11 +28,13 @@ because a signed app cannot start it from inside its bundle.
 The Web screen checks bridge capabilities (`recursos`) before offering native features.
 A new server can meet an older shell, so capability checks are more precise than assuming
 all actions exist because the page is current. The flags the shim declares today
-(`code_bridge/shim.rs`) are `imagem`, `conta`, `run`, `sessoes`, `retomada`, `plano`, `orientar`,
+(`code_bridge/shim.rs`) are `imagem`, `conta`, `run`, `sessoes`, `retomada`, `retomadaPorConta`, `plano`, `orientar`,
 `aparelho`, `uso`, `assinatura` (true on Linux/macOS only), `varreduraIPv4` and `captura`; newer
 Pentest actions (`pentestInstallEngine`, `pentestPreflight`, `pentestAutoResume`) are detected by
 the method's presence instead. A flag says the shell implements a path, not that it is enabled
-or permitted on this machine. The separate compatibility banner compares
+or permitted on this machine. Since 1.38.0, local Code requires the companion Web
+owner-proof endpoint and handshake. A resumable agent and its UI snapshot belong
+to the verified account and exact server origin in that window. The separate compatibility banner compares
 the installed Desktop version with the server's `clients.desktop.min_version`; it warns
 and can be dismissed. It is not a hard startup block or a minimum-server-version gate.
 

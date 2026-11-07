@@ -2203,6 +2203,19 @@ being rewritten, and says so.
 
 ## ADR-037 — A reload does not stop the agent: the page lets go of it and the next page takes it back
 
+**2026-11-07 (1.38.0).** The window alone is not an account boundary. A new
+document proves the owner of its narrow dashboard Code token to
+`GET /api/v1/code/desktop-owner` on its actual WebView origin. The native
+client follows no redirects. Account and origin scope the agent's name,
+input, list and replay. A new document must prove its owner again, and
+queued replies/events check its nonce before the WebView evaluates them.
+The shell retains the UI resume snapshot in memory under the same grant.
+An explicit logout or a verified owner change clears old local state.
+A refreshed gateway token must prove the same account before the shell
+will pass it to the agent.
+Deploy the companion Web support before distributing this Desktop build.
+
+
 - **Date:** 26/09/2026 · **Status:** **Accepted**, by the owner's request in the session ("mesmo
   que eu navegue em outros projetos, esse projeto não pare o que eu pedi … um reload na tela")
 - **Supersedes:** the decision of 1.6.11 that a new document in the window ends its agent (the

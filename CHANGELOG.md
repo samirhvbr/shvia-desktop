@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.38.0 - Bind resumed local Code agents to the authenticated account and origin
+
+A different ShvIA account in the same window could inherit an earlier account's
+agent, pending approvals and browser snapshot. Each document now proves the owner
+of its dashboard Code token to its exact server origin. The shell scopes every agent
+operation to that owner, guards queued replies and events by the document nonce and
+keeps the resume snapshot in native memory. Reloading as the same account keeps
+the agent. Signing out or verifying a different owner clears that window's agents
+and snapshot. A renewed PAT is verified before it can reach an existing agent. Deploy the companion Web support before distributing this build.
+
 ## 1.36.5 - Refuse a Pentest engine file that is not a program before the Mac shell can run it
 
 `probe` in `code_bridge/pentest/compatibility.rs` now reads the first bytes of the engine it is about to start and refuses a
