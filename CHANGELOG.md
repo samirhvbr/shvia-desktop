@@ -1,5 +1,90 @@
 # Changelog
 
+## 1.38.4 - Add the activity page to the documentation index
+
+`docs/PENTEST/activity.md` came with 1.37.0 and is linked from `docs/funcionalidades.md`, but `docs/README.md`, the index that tells a
+reader which document answers which question, did not list it. It is now the first row of the "Controlled assessment" table.
+
+## 1.38.4 - Say what is wrong with the run folder instead of answering an empty activity window
+
+`activity()` took every failure of `saved_run` for "the engine has not made its files yet" and answered an empty window. That is true of one
+case, a runs folder with nothing in it, and false of the others: a folder that is missing or not private, an entry that is not a run
+directory, a run without its record or with another run's, two runs. For those the page said "no activity yet" for as long as the run
+lasted, while the review and the history exports, which read the same folder, refused with a sentence.
+
+- **What changes.** `saved_run_started` is `saved_run` with one difference: an empty runs folder is `Ok(None)`. `saved_run` is built on it
+  and answers what it always answered, for the empty folder too, so the review, the resume, the viewer and the exports are unchanged.
+  The activity window answers an empty window only for `Ok(None)` and rejects with the folder's own sentence otherwise.
+- **A limit.** A run directory that exists without its `run.json` is still a failure ("Execução sem registro durável."). The engine makes
+  the directory and writes the record right after (`_persist_run_record`: `mkdir`, then an atomic write), so only a read that lands between
+  the two sees it, and the page asks again 6 s later. Counting that as "not yet" would also hide an engine that stopped between the two.
+- **Proof.** `an_empty_runs_folder_is_an_empty_window_and_one_that_cannot_be_trusted_is_an_error` (eight folders, with the engine stood in
+  for by a script that must not run for the seven that are empty or cannot be trusted; red with the old "any error is an empty window",
+  and with an empty folder taken as an error) and `an_empty_runs_folder_is_not_yet_for_a_reader_and_still_not_one_run_for_the_rest` (red with the empty folder taken as an
+  error). The existing `recovery_requires_one_matching_durable_run_without_creating_history` passes unchanged.
+
+## 1.38.4 - Wait 30 s before asking the engine for activity again after a call ran out of time
+
+The page asks for the window 6 s after each answer, and a call that ran out of time was followed 6 s later by another one that
+unpacked and started the engine again, for as long as the engine kept not answering. After a call that ran out of time, the calls of the
+next 30 s now answer the activity sentence at once and start nothing.
+
+- **The number.** 30 s is the page's own pause after repeated failures (`SLOW` in `pentest-activity.js`), chosen so the Desktop and the
+  page agree on how long a struggling engine is left alone. It is not a measurement; no Mac was timed.
+- **What starts no pause.** A call that failed on its own: an engine that does not know the command answers at once, and the page already
+  slows down by itself after three failures.
+- **Not changed.** Two reads in flight at once (a page reloaded while the Desktop is still waiting for the engine) are not limited; the page
+  asks one at a time.
+- **Proof.** `after_a_call_that_ran_out_of_time_the_engine_is_left_alone_until_the_pause_is_over`: the engine is not started inside the
+  pause, is read again after it, and a failed call starts none. Red three ways: with the pause never consulted, never started, and
+  started by a failure.
+
+## 1.38.4 - Answer an activity call the engine fails with the activity sentence, not the review's
+
+`activity()` ran the engine through the review's bounded helper and passed its failure on as it came: "Revisão indisponível. Encerre a
+execução e confira o histórico e se o Desktop está atualizado." An engine that does not know the command exits non-zero, so the page's
+"What the agents are doing" section told the person to end the run and check the Desktop, while `docs/PENTEST/activity.md` promised
+the activity sentence, the one that names the engine ("Atividade indisponível. Confira se o motor do Pentest está atualizado e tente de
+novo."). 1.38.1 pins 1.2.49 for new installs, but a computer that has 1.2.47 keeps it until the person agrees to the install.
+
+- **What changes.** `read_window` asks `review::bounded_call` and answers this module's sentence to a call that failed, ran out of time
+  or printed what the page must not get. The review and the history exports keep the helper's own sentence.
+- **Proof.** `a_call_the_engine_does_not_answer_gets_the_activity_sentence`, red with the review's sentence; it also reads a correct
+  answer through the same path.
+
+## 1.38.4 - Give the activity window the probe's per-platform deadline
+
+`strix activity` ran with a 15 s deadline on every system. The call is the engine's own start, a one-file build that unpacks itself
+every time, plus a read of at most 80 rows. The version probe has a deadline for that same start, measured and recorded in
+`docs/pentest-compatibility.md`: about 2.6 s per call on Linux, and on one Mac (Apple silicon, 29/10/2026) 15.3 s for the first
+start and 5.3 s for the next. 15 s was under that Mac's first start, and the page asks again 6 s after each answer.
+
+- **What changes.** The window uses `compatibility::PROBE_DEADLINE`, 20 s on Linux and 60 s on macOS. It is the same constant, so a
+  change to the probe's deadline moves this one too: both are one start of the same engine.
+- **Not changed.** The review and the history exports keep their 20 s. This is about the call the page repeats.
+- **Proof.** `the_deadline_clears_the_first_start_measured_on_a_mac`, red with the 15 s the call had.
+- **Not measured.** `strix activity` itself on a Mac. Its start is the probe's start, but no Mac was timed running this command.
+
+## 1.38.4 - Let an engine call that ran out of time clean up before it is killed
+
+The helper behind the review, the history exports and the activity window (`review::bounded_output`) ended a call that ran out of
+time with SIGKILL to its process group at once. The Pentest engine is a one-file build: it unpacks itself into a folder that only
+the program that was started removes, and runs its Python in a child, so killing that program outright leaves the folder and the
+child behind. The version probe has ended its group gently since 29/10/2026 (`saida_com_prazo_em_grupo`: SIGTERM to the group,
+3 s, then SIGKILL); these calls had not.
+
+- **What changes.** `review::bounded_call` is now the helper's body and tells a call that ran out of time from one that failed
+  (`Refused::TimedOut`, `Refused::Failed`); `bounded_output` keeps its signature and its answer for the review and the history
+  exports. A call that ran out of time, failed or went over the output cap ends the way the probe does. A call that ended by itself
+  and handed over its output keeps the SIGKILL sweep of its group.
+- **Proof.** Three tests in `code_bridge/pentest/review.rs`, each red without the change: a stand-in for the engine's parent removes
+  what it unpacked when it is asked to end (an immediate SIGKILL left it), an engine that ignores the request is still killed once the
+  grace is over (after the deadline plus the grace, not after the 3 s of the real grace nor the sleep it was running), and the refusal
+  says whether the call ran out of time.
+- **Not measured.** What a real one-file engine leaves behind on a Mac after each way of ending. The numbers behind the choice are the
+  ones recorded for the probe in `docs/pentest-compatibility.md` (about 2.6 s per call on Linux; on one Mac, 15.3 s the first start
+  and 5.3 s the next).
+
 ## 1.38.3 - Send the local Anna gateway credential on stdin
 
 The native Code host strips the inherited gateway key from Anna's environment and

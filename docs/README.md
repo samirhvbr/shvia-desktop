@@ -39,6 +39,7 @@ shipped remote Codex option in ShvIA Web. Refer to each component's current capa
 
 | Document | What it answers |
 |---|---|
+| [PENTEST/activity.md](PENTEST/activity.md) | `pentestActivity`: what the page may ask about the local agents' messages, calls and results, how the Desktop reads the engine's window, what it refuses, and how long it waits |
 | [PENTEST/authorization.md](PENTEST/authorization.md) | Native authorization, local process supervision, how a run ends, recovery, telemetry, review/retest, the account model key and private report/history synchronization |
 | [PENTEST/auto-resume.md](PENTEST/auto-resume.md) | Automatic resume after a provider usage window, its consent and schedule, and the Docker/credential preflight before a run |
 | [PENTEST/keep-awake.md](PENTEST/keep-awake.md) | The system assertion that keeps the computer from sleeping while the engine runs, and what it cannot prevent |
