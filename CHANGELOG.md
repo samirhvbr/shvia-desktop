@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.38.2 - Bind local Pentest runs and recovery to the signed-in account
+
+Verify the current page's account and the grant used to launch the run. Store the
+account with recovery and check it on reads, controls, and after native consent.
+Close the viewer when the page changes. Older recovery records without an account
+remain on disk but are not reattached. The matching Web identity endpoints are required.
+
+
 ## 1.38.1 - Pin the Pentest engine at 1.2.49, the first that answers the agents' activity window
 
 `pentest-engine.json` pinned 1.2.47. It now pins **1.2.49**, the engine build that has the read-only `activity` command 1.37.0's
