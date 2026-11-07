@@ -248,14 +248,11 @@ impl ResumeOwners {
         {
             return false;
         }
-        // Invalidate pending HTTP proofs as well as the authorization.
-        if w.bound {
-            *w = WindowOwner::default();
-            clear();
-        } else {
-            w.page = None;
-            w.binding = false;
-        }
+        // Signing out revokes the entire window, like closing it. A trusted
+        // current document can do this before proof finishes, but cannot list,
+        // attach, send to or kill a named agent without a verified grant.
+        *w = WindowOwner::default();
+        clear();
         true
     }
 }
@@ -531,6 +528,44 @@ mod tests {
         assert!(cleared);
         assert!(!owners.allows_token("window", &grant, "A-renewed"));
         assert!(!owners.allows_token("window", &grant, "B-renewed"));
+    }
+
+    #[test]
+    fn logout_clears_the_detached_owner_and_snapshot_even_with_a_proof_pending() {
+        let owners = ResumeOwners::default();
+        let origin = "https://ai.shvia.org";
+        let first = owners.finished("window", origin.into()).unwrap();
+        let proof = owners.begin("window", &first, origin).unwrap();
+        let old_scope = owners
+            .complete("window", &proof, Some(7), "account-A", || panic!())
+            .unwrap();
+        let old_grant = owners.grant("window", &first, origin).unwrap();
+        assert!(owners.save_snapshot("window", &old_grant, Some(&json!({"private":"account A"}))));
+
+        owners.started("window");
+        let new_page = owners.finished("window", origin.into()).unwrap();
+        let pending = owners.begin("window", &new_page, origin).unwrap();
+        assert!(!owners.clear("window", &first, origin, || panic!()));
+        assert!(!owners.clear("window", &new_page, "https://ia.shvia.org", || panic!()));
+        let mut cleared = false;
+        assert!(owners.clear("window", &new_page, origin, || cleared = true));
+        assert!(cleared);
+        assert!(owners
+            .complete("window", &pending, Some(7), "account-A", || panic!())
+            .is_none());
+
+        let reloaded = owners.finished("window", origin.into()).unwrap();
+        let proof = owners.begin("window", &reloaded, origin).unwrap();
+        assert_ne!(
+            owners.complete("window", &proof, Some(7), "account-A", || panic!()),
+            Some(old_scope)
+        );
+        assert!(owners
+            .snapshot(
+                "window",
+                &owners.grant("window", &reloaded, origin).unwrap()
+            )
+            .is_none());
     }
 
     #[test]

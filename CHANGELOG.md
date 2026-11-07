@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.38.0 - Clear detached local Code agents when the dashboard signs out
+
+Sign-out revokes the current window before the native owner proof finishes,
+so a reload followed by logout cannot leave the previous account's detached
+agent and snapshot running. A late proof cannot revive that state.
+
 ## 1.38.0 - Bind resumed local Code agents to the authenticated account and origin
 
 A different ShvIA account in the same window could inherit an earlier account's

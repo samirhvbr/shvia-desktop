@@ -2211,6 +2211,7 @@ input, list and replay. A new document must prove its owner again, and
 queued replies/events check its nonce before the WebView evaluates them.
 The shell retains the UI resume snapshot in memory under the same grant.
 An explicit logout or a verified owner change clears old local state.
+The current document can revoke its window even while a proof is pending.
 A refreshed gateway token must prove the same account before the shell
 will pass it to the agent.
 Deploy the companion Web support before distributing this Desktop build.
