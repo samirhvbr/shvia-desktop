@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.38.4 - Give the activity window the probe's per-platform deadline
+
+`strix activity` ran with a 15 s deadline on every system. The call is the engine's own start, a one-file build that unpacks itself
+every time, plus a read of at most 80 rows. The version probe has a deadline for that same start, measured and recorded in
+`docs/pentest-compatibility.md`: about 2.6 s per call on Linux, and on one Mac (Apple silicon, 29/10/2026) 15.3 s for the first
+start and 5.3 s for the next. 15 s was under that Mac's first start, and the page asks again 6 s after each answer.
+
+- **What changes.** The window uses `compatibility::PROBE_DEADLINE`, 20 s on Linux and 60 s on macOS. It is the same constant, so a
+  change to the probe's deadline moves this one too: both are one start of the same engine.
+- **Not changed.** The review and the history exports keep their 20 s. This is about the call the page repeats.
+- **Proof.** `the_deadline_clears_the_first_start_measured_on_a_mac`, red with the 15 s the call had.
+- **Not measured.** `strix activity` itself on a Mac. Its start is the probe's start, but no Mac was timed running this command.
+
 ## 1.38.4 - Let an engine call that ran out of time clean up before it is killed
 
 The helper behind the review, the history exports and the activity window (`review::bounded_output`) ended a call that ran out of
