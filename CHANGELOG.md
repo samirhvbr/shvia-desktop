@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.38.4 - Add the activity page to the documentation index
+
+`docs/PENTEST/activity.md` came with 1.37.0 and is linked from `docs/funcionalidades.md`, but `docs/README.md`, the index that tells a
+reader which document answers which question, did not list it. It is now the first row of the "Controlled assessment" table.
+
 ## 1.38.4 - Say what is wrong with the run folder instead of answering an empty activity window
 
 `activity()` took every failure of `saved_run` for "the engine has not made its files yet" and answered an empty window. That is true of one
