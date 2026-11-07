@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.37.0 - The page can ask what the local assessment's agents are doing, read from the engine's own files and never sent anywhere
+
+New bridge call `pentestActivity({after?})` (`code_bridge/pentest/activity.rs`). It runs the engine's new read-only
+`activity` command (fork 1.2.49) on the run this window owns and answers `{localId, activity: {events, agents, lastId, more}}`:
+rows of what the agents said, the commands they ran and what came back, clipped and with the usual credentials masked by the
+engine, newest window first and then everything after the cursor. It works for a running and a finished run and needs no control
+channel; a run whose engine has not created its files yet answers an empty window.
+
+- **Validated, not forwarded:** the answer is refused as a whole when it is not exactly the contract (schema, row kinds, sizes,
+  control characters other than a line break, cursor). A window on another server's authority reads nothing, and an answer is
+  dropped if the run was replaced while the engine read.
+- **Nothing leaves the computer from here:** no request, no history record, no log line, no file. ADR-048 records the decision,
+  including what this app cannot enforce (what the page does with the text) and that the engine's masking is best effort.
+- **Why not `runtime.log`:** in `-n` mode the engine prints a startup panel, vulnerability panels and tracebacks; what the agents
+  do is in the transcript the viewer reads.
+- Tests: five in `activity.rs`, one of them against the real output of the engine command (`activity-v1-fixture.json`); the
+  call is in the list of arms that must run off the UI thread. Not covered: a real run on a real computer. Docs:
+  `docs/PENTEST/activity.md`, ADR-048, the call in `shim.rs`. Needs the engine 1.2.49 pin (a separate change, after its Release).
+
 ## 1.36.6 - Fence the claude-runner's file writes like its reads, so no level writes a secret, an instruction file or outside the project unasked
 
 At the `edit` and `auto` levels `decidir()` released every `Write`, `Edit`, `MultiEdit` and `NotebookEdit` before it looked at the
