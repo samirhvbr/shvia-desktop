@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.38.4 - Say what is wrong with the run folder instead of answering an empty activity window
+
+`activity()` took every failure of `saved_run` for "the engine has not made its files yet" and answered an empty window. That is true of one
+case, a runs folder with nothing in it, and false of the others: a folder that is missing or not private, an entry that is not a run
+directory, a run without its record or with another run's, two runs. For those the page said "no activity yet" for as long as the run
+lasted, while the review and the history exports, which read the same folder, refused with a sentence.
+
+- **What changes.** `saved_run_started` is `saved_run` with one difference: an empty runs folder is `Ok(None)`. `saved_run` is built on it
+  and answers what it always answered, for the empty folder too, so the review, the resume, the viewer and the exports are unchanged.
+  The activity window answers an empty window only for `Ok(None)` and rejects with the folder's own sentence otherwise.
+- **A limit.** A run directory that exists without its `run.json` is still a failure ("Execução sem registro durável."). The engine makes
+  the directory and writes the record right after (`_persist_run_record`: `mkdir`, then an atomic write), so only a read that lands between
+  the two sees it, and the page asks again 6 s later. Counting that as "not yet" would also hide an engine that stopped between the two.
+- **Proof.** `an_empty_runs_folder_is_an_empty_window_and_one_that_cannot_be_trusted_is_an_error` (eight folders, with the engine stood in
+  for by a script that must not run for the seven that are empty or cannot be trusted; red with the old "any error is an empty window",
+  and with an empty folder taken as an error) and `an_empty_runs_folder_is_not_yet_for_a_reader_and_still_not_one_run_for_the_rest` (red with the empty folder taken as an
+  error). The existing `recovery_requires_one_matching_durable_run_without_creating_history` passes unchanged.
+
 ## 1.38.4 - Wait 30 s before asking the engine for activity again after a call ran out of time
 
 The page asks for the window 6 s after each answer, and a call that ran out of time was followed 6 s later by another one that
