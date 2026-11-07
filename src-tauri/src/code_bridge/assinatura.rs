@@ -345,7 +345,7 @@ mod tests {
     /// terminal. No placeholder survives the injection.
     #[test]
     fn o_shim_declara_a_assinatura_e_os_tres_metodos() {
-        let js = crate::code_bridge::inject_token(crate::code_bridge::BRIDGE_JS);
+        let js = crate::code_bridge::inject_code_document("a-test-document");
         assert!(!js.contains("__SHVIA_"), "um placeholder sobrou no shim injetado");
         assert!(js.contains("assinatura: true"), "unix: a capacidade está declarada");
         for metodo in ["claudeSubscriptionConnect", "claudeSubscriptionCode", "claudeSubscriptionCancel"] {

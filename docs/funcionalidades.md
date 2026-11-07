@@ -32,6 +32,14 @@ record follows below. Work not yet produced stays in
   takeover are separate lifecycles. The architecture's persistence table says which state stays
   on this computer and which service owns the rest.
 
+## Local Code resume belongs to the verified account (1.38.0)
+
+The native shell verifies a document's Code credential against its WebView
+origin before granting local agent access. A same-account reload can pick
+up running agents and their snapshot. A verified account change or sign-out
+clears them. Renewed credentials are verified before delivery to an agent.
+This capability requires the companion Web support. See [ADR-037](decisoes.md#adr-037--a-reload-does-not-stop-the-agent-the-page-lets-go-of-it-and-the-next-page-takes-it-back).
+
 ## The Pentest page can show what the agents are doing (1.37.0)
 
 `pentestActivity({after?})` answers a window of what the local assessment's agents said, the commands they ran and what came back,

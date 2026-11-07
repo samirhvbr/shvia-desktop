@@ -968,6 +968,7 @@ pub(crate) fn build_shvia_window(
             // lines go to a log and not into the next page, and the next page of this
             // window takes them back (`sessions`/`attach`). The others end as before.
             if let PageLoadEvent::Started = payload.event() {
+                webview.state::<code_bridge::resume_owner::ResumeOwners>().started(webview.label());
                 webview.app_handle().state::<code_bridge::Sidecars>().soltar_janela(webview.label());
                 // A network scan belongs to the page that asked for it: with a new document there is nobody left to read the
                 // result or press Stop, and nothing here takes a running scan back.
@@ -1005,7 +1006,14 @@ pub(crate) fn build_shvia_window(
                     #[cfg(target_os = "linux")]
                     let _ = webview.eval(code_bridge::inject_token(TTS_BRIDGE_JS));
                     // Ponte do Modo Code (window.__shviaCode/__shviaDesktop). Ver code_bridge.rs.
-                    let _ = webview.eval(code_bridge::inject_token(code_bridge::BRIDGE_JS));
+                    if let Some(origin) = code_bridge::resume_owner::origin(payload.url()) {
+                        let owners = webview.state::<code_bridge::resume_owner::ResumeOwners>();
+                        if let Some(nonce) = owners.finished(webview.label(), origin.clone()) {
+                            let shim = code_bridge::inject_code_document(&nonce);
+                            // The eval can run after the WebView has crossed to another origin.
+                            let _ = webview.eval(format!("if(location.origin==={origin:?}){{{shim}}}"));
+                        }
+                    }
                 }
             }
         });
@@ -1471,7 +1479,8 @@ pub fn run() {
         // Notificações nativas dos alertas de preço (ADR-011). Só a API Rust é
         // usada (code_bridge::notify); nenhuma capability exposta à página remota.
         .plugin(tauri_plugin_notification::init())
-        .manage(code_bridge::Sidecars::default());
+        .manage(code_bridge::Sidecars::default())
+        .manage(code_bridge::resume_owner::ResumeOwners::default());
 
     // window-state (geometria), menu nativo e multi-janela são **desktop-only**
     // (mobile é single-window, sem barra de menu). O `let builder` sombreado só
@@ -1770,6 +1779,7 @@ pub fn run() {
             code_bridge::stop_pentest(Some(&label));
             code_bridge::release_traffic(Some(&label));
             app_handle.state::<code_bridge::Sidecars>().kill_one(&label);
+            app_handle.state::<code_bridge::resume_owner::ResumeOwners>().forget(&label);
             // The last real window is gone (closed with "close keeps running" off, or after
             // the Code question): the app would end here, as it did before 1.10.0 — but a
             // hidden quick window still counts as a window and would keep it alive with

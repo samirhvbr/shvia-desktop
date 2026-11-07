@@ -675,12 +675,12 @@ pub(super) fn sessao_do_pedido(v: &serde_json::Value) -> Result<String, ()> {
     }
 }
 
-pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
+pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value, owner_window: &str, owner_scope: String) {
     let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or_default().to_string();
     let Ok(sessao) = sessao_do_pedido(v) else {
         return reply(window, req, false, serde_json::json!({ "error": "nome de sessão inválido", "codigo": "sessao_invalida" }));
     };
-    let chave_sessao = chave(window.label(), &sessao);
+    let chave_sessao = chave(owner_window, &sessao);
     if !window.app_handle().state::<Sidecars>().cabe(window.label(), &chave_sessao) {
         return reply(window, req, false, serde_json::json!({
             "error": format!("já há {MAX_SESSOES_POR_JANELA} agentes trabalhando nesta janela — pare um antes de começar outro"),
@@ -912,7 +912,7 @@ pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
                 continue;
             };
             if anexada {
-                emitir(&win, &line, &sessao_js, seq);
+                emitir(&win, &line, &sessao_js, seq, &owner_scope);
             }
             if let Some(aviso) = aviso {
                 avisar(&app, &aviso);
@@ -935,7 +935,7 @@ pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
             // session that ended while no page was attached is learned by the next one.
             let linha = serde_json::json!({ "type": "exited", "reason": motivo, "code": codigo }).to_string();
             if let Some((seq, true)) = app.state::<Sidecars>().anotar_fim(&exit_chave, gen, &linha) {
-                emitir(&win, &linha, &sessao_js, seq);
+                emitir(&win, &linha, &sessao_js, seq, &owner_scope);
             }
         }
     });
@@ -956,7 +956,7 @@ pub(super) fn spawn(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
     reply(window, req, true, resposta);
 }
 
-pub(super) fn send(window: &WebviewWindow, v: &serde_json::Value) -> bool {
+pub(super) fn send(window: &WebviewWindow, v: &serde_json::Value, owner_window: &str) -> bool {
     let Ok(sessao) = sessao_do_pedido(v) else {
         return false;
     };
@@ -964,7 +964,7 @@ pub(super) fn send(window: &WebviewWindow, v: &serde_json::Value) -> bool {
         Some(p) => serde_json::to_string(p).unwrap_or_default(),
         None => return false,
     };
-    let k = chave(window.label(), &sessao);
+    let k = chave(owner_window, &sessao);
     let sidecars = window.app_handle().state::<Sidecars>();
     let ok = sidecars.send_line(&k, &line);
     if ok {
@@ -1013,17 +1013,14 @@ pub(super) fn info_da_sessao(meta: Option<&serde_json::Value>, pasta: &str, moto
 
 /// Evals one engine line into the window's page, on the main thread, with its session and its
 /// number (1.8.2). The only way a line reaches a page, live or replayed.
-pub(super) fn emitir(win: &WebviewWindow, linha: &str, sessao_js: &str, seq: u64) {
+fn emitir(win: &WebviewWindow, linha: &str, sessao_js: &str, seq: u64, owner_scope: &str) {
     let js = format!(
         "window.__shviaCode&&window.__shviaCode._emit(JSON.parse({}),{},{})",
         js_str(linha),
         sessao_js,
         seq
     );
-    let w = win.clone();
-    let _ = win.app_handle().run_on_main_thread(move || {
-        let _ = w.eval(&js);
-    });
+    resume_owner::deliver(win, owner_scope, js);
 }
 
 /// A native notice about a session no page is watching. Its title carries the project's name
@@ -1056,14 +1053,15 @@ fn iniciar_vigia(app: &tauri::AppHandle) {
 /// `sessions`: the resumable sessions of this window, for the page that just loaded in it
 /// (1.8.2). `janela` lets the page tell its own window's snapshot from one a `window.open`
 /// copied into a new window.
-pub(super) fn listar_sessoes(window: &WebviewWindow, req: &str) {
-    let lista = window.app_handle().state::<Sidecars>().listar(window.label());
-    reply(window, req, true, serde_json::json!({ "janela": window.label(), "sessoes": lista }));
+pub(super) fn listar_sessoes(window: &WebviewWindow, req: &str, owner_window: &str, grant: &resume_owner::Grant) {
+    let lista = window.app_handle().state::<Sidecars>().listar(owner_window);
+    let snapshot = window.state::<resume_owner::ResumeOwners>().snapshot(window.label(), grant);
+    reply(window, req, true, serde_json::json!({ "janela": window.label(), "sessoes": lista, "snapshot": snapshot }));
 }
 
 /// `attach`: the page takes session `sessao` back from the line after `desde` (1.8.2). The
 /// answer comes first; then every line it had not seen, in order, through `_emit`.
-pub(super) fn anexar_sessao(window: &WebviewWindow, req: &str, v: &serde_json::Value) {
+pub(super) fn anexar_sessao(window: &WebviewWindow, req: &str, v: &serde_json::Value, owner_window: &str, owner_scope: &str) {
     let sessao = match sessao_do_pedido(v) {
         Ok(s) if !s.is_empty() => s,
         _ => {
@@ -1073,7 +1071,7 @@ pub(super) fn anexar_sessao(window: &WebviewWindow, req: &str, v: &serde_json::V
     };
     let desde = v.get("desde").and_then(|d| d.as_u64()).unwrap_or(0);
     let Some(Retomada { eventos, ate, lacuna, encerrada }) =
-        window.app_handle().state::<Sidecars>().anexar(window.label(), &sessao, desde)
+        window.app_handle().state::<Sidecars>().anexar(owner_window, &sessao, desde)
     else {
         return reply(window, req, false,
             serde_json::json!({ "error": "sessão inexistente nesta janela", "codigo": "sessao_inexistente" }));
@@ -1083,7 +1081,7 @@ pub(super) fn anexar_sessao(window: &WebviewWindow, req: &str, v: &serde_json::V
     }));
     let sessao_js = js_str(&sessao);
     for (seq, linha) in eventos {
-        emitir(window, &linha, &sessao_js, seq);
+        emitir(window, &linha, &sessao_js, seq, owner_scope);
     }
 }
 
@@ -1484,6 +1482,26 @@ mod tests_retomada {
 
     /// Detached, a line is logged and not delivered; the page that comes back gets exactly the
     /// lines after the last one it handled, in order, and the next ones live again.
+    #[test]
+    fn an_old_owner_cannot_address_a_replacement_with_the_same_name() {
+        let sidecars = Sidecars::default();
+        let old_owner = chave("janela", "old-scope");
+        let new_owner = chave("janela", "new-scope");
+        let old_key = chave(&old_owner, "project");
+        let new_key = chave(&new_owner, "project");
+        let mut record = Registro::novo(1, true, info("new account"));
+        record.anotar_saida(r#"{"type":"text","delta":"private"}"#);
+        sidecars.regs.lock().unwrap().insert(new_key.clone(), record);
+
+        assert!(sidecars.listar(&old_owner).is_empty());
+        assert!(!sidecars.send_line(&old_key, "{}"));
+        assert!(sidecars.anexar(&old_owner, "project", 0).is_none());
+        sidecars.kill_sessao(&old_key);
+        assert!(sidecars.anexar(&new_owner, "project", 0).is_some());
+        sidecars.kill_one("janela");
+        assert!(!sidecars.regs.lock().unwrap().contains_key(&new_key));
+    }
+
     #[test]
     fn a_pagina_que_volta_recebe_o_que_perdeu_e_so_isso() {
         let sc = Sidecars::default();

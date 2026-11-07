@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.38.0 - Keep the Desktop Code grant when a navigation is canceled
+
+Ignore a navigation completion without a new document load. A canceled
+navigation can otherwise invalidate the Code bridge that is still on screen.
+
+## 1.38.0 - Compile the Code account verifier on Windows
+
+The Code owner check uses the same HTTP client, TLS provider, and digest crates
+on Windows and Unix. Their locked versions stay the same.
+
+## 1.38.0 - Clear detached local Code agents when the dashboard signs out
+
+Sign-out revokes the current window before the native owner proof finishes,
+so a reload followed by logout cannot leave the previous account's detached
+agent and snapshot running. A late proof cannot revive that state.
+
+## 1.38.0 - Bind resumed local Code agents to the authenticated account and origin
+
+A different ShvIA account in the same window could inherit an earlier account's
+agent, pending approvals and browser snapshot. Each document now proves the owner
+of its dashboard Code token to its exact server origin. The shell scopes every agent
+operation to that owner, guards queued replies and events by the document nonce and
+keeps the resume snapshot in native memory. Reloading as the same account keeps
+the agent. Signing out or verifying a different owner clears that window's agents
+and snapshot. A renewed PAT is verified before it can reach an existing agent. Deploy the companion Web support before distributing this build.
+
 ## 1.37.0 - The page can ask what the local assessment's agents are doing, read from the engine's own files and never sent anywhere
 
 New bridge call `pentestActivity({after?})` (`code_bridge/pentest/activity.rs`). It runs the engine's new read-only

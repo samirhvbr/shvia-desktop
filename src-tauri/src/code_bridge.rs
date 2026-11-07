@@ -32,7 +32,8 @@ use painel::*;
 mod cerca;
 use cerca::*;
 mod shim;
-pub use shim::{bridge_token, inject_token, BRIDGE_JS};
+pub use shim::{bridge_token, inject_token};
+pub(crate) use shim::inject_code_document;
 mod dialogos;
 use dialogos::*;
 mod motores;
@@ -46,6 +47,7 @@ mod assinatura;
 pub use assinatura::cancelar_assinatura;
 mod sessao;
 use sessao::*;
+pub(crate) mod resume_owner;
 mod atualizacao;
 pub(crate) use atualizacao::na_abertura;
 mod aparelho;
@@ -318,24 +320,8 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             let stopped = ipv4_search::stop(window.label());
             reply(window, &req, true, serde_json::json!({"stopped": stopped}));
         }
-        "spawn" => spawn(window, &req, &v),
-        "send" => {
-            let ok = send(window, &v);
-            reply(window, &req, ok, serde_json::json!({ "ok": ok }));
-        }
-        // Kills ONE session: the one the page names, or the single session of before 1.8.0 when
-        // it names none. The window's other sessions keep working.
-        "kill" => {
-            let Ok(sessao) = sessao_do_pedido(&v) else {
-                return reply(window, &req, false, serde_json::json!({ "error": "nome de sessão inválido", "codigo": "sessao_invalida" }));
-            };
-            window.app_handle().state::<Sidecars>().kill_sessao(&chave(window.label(), &sessao));
-            reply(window, &req, true, serde_json::json!({ "ok": true }));
-        }
-        // A page that loads after a reload takes its window's agents back (1.8.2): it asks which
-        // are there, then attaches each one from the last line it handled. Both read memory only.
-        "sessions" => listar_sessoes(window, &req),
-        "attach" => anexar_sessao(window, &req, &v),
+        "bindAgentOwner" | "clearAgentOwner" | "saveAgentResumeState" | "spawn" | "send" | "kill" | "sessions" | "attach" =>
+            local_agent_action(window, &req, &v, action),
         "pickFolder" => pick_folder(window, req),
         "pickFiles" => pick_files(window, req),
         // The agent's device commands (ADR-039): the tray switch, the closed list and the
@@ -732,6 +718,62 @@ fn badge(window: &WebviewWindow, v: &serde_json::Value) {
     let _ = window.set_badge_count(count);
 }
 
+/// All operations that can read, drive or replace an agent share one native boundary.
+fn local_agent_action(window: &WebviewWindow, req: &str, value: &serde_json::Value, action: &str) {
+    let Some((nonce, _)) = req.split_once("-r") else { return resume_owner::refused(window, req) };
+    let Some(origin) = resume_owner::page_origin(window) else { return resume_owner::refused(window, req) };
+    match action {
+        "bindAgentOwner" => {
+            let token = value.get("token").and_then(|v| v.as_str()).unwrap_or_default();
+            return resume_owner::bind(window, req, nonce, &origin, token);
+        }
+        "clearAgentOwner" => return resume_owner::unbind(window, req, nonce, &origin),
+        _ => {}
+    }
+    let owners = window.state::<resume_owner::ResumeOwners>();
+    let Some(grant) = owners.grant(window.label(), nonce, &origin) else {
+        return resume_owner::refused(window, req);
+    };
+    // Scope is part of the Sidecars key as well as the authorization. Even
+    // a delayed action with an old grant cannot address a replacement agent.
+    let owner_window = chave(window.label(), &grant.scope);
+    match action {
+        "spawn" => {
+            if !matches!(value.get("engine").and_then(|v| v.as_str()), Some("claude" | "codex")) {
+                let token = value.get("apiKey").and_then(|v| v.as_str()).unwrap_or_default();
+                if !owners.allows_token(window.label(), &grant, token) {
+                    return resume_owner::refused(window, req);
+                }
+            }
+            spawn(window, req, value, &owner_window, grant.scope);
+        }
+        "send" => {
+            if let Some(payload) = value.get("payload").filter(|p| p.get("type").and_then(|v| v.as_str()) == Some("credential")) {
+                let token = payload.get("api_key").and_then(|v| v.as_str()).unwrap_or_default();
+                if !owners.allows_token(window.label(), &grant, token) {
+                    return resume_owner::refused(window, req);
+                }
+            }
+            let ok = send(window, value, &owner_window);
+            reply(window, req, ok, serde_json::json!({ "ok": ok }));
+        }
+        "kill" => {
+            let Ok(sessao) = sessao_do_pedido(value) else {
+                return reply(window, req, false, serde_json::json!({ "error": "nome de sessão inválido", "codigo": "sessao_invalida" }));
+            };
+            window.state::<Sidecars>().kill_sessao(&chave(&owner_window, &sessao));
+            reply(window, req, true, serde_json::json!({ "ok": true }));
+        }
+        "sessions" => listar_sessoes(window, req, &owner_window, &grant),
+        "saveAgentResumeState" => {
+            let ok = window.state::<resume_owner::ResumeOwners>().save_snapshot(window.label(), &grant, value.get("snapshot"));
+            reply(window, req, ok, serde_json::json!({ "saved": ok }));
+        }
+        "attach" => anexar_sessao(window, req, value, &owner_window, &grant.scope),
+        _ => unreachable!("the bridge dispatches only local agent actions here"),
+    }
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 /// Responde uma requisição da página (`_reply`), no main thread.
 pub(crate) fn reply(window: &WebviewWindow, req: &str, ok: bool, data: serde_json::Value) {
@@ -744,6 +786,11 @@ pub(crate) fn reply(window: &WebviewWindow, req: &str, ok: bool, data: serde_jso
         ok,
         js_str(&data.to_string())
     );
+    let js = if let Some((nonce, _)) = req.split_once("-r") {
+        resume_owner::in_document(nonce, &js)
+    } else {
+        js
+    };
     let w = window.clone();
     let app = window.app_handle().clone();
     let _ = app.run_on_main_thread(move || {
