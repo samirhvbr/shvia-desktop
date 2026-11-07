@@ -66,30 +66,62 @@ pub const BRIDGE_JS: &str = r#"(function () {
       sendNative(JSON.stringify(msg));
     });
   }
+  // Mint only for the account that rendered this document. Keep the proof in this
+  // closure and let native code verify it before it touches any local assessment.
+  var pentestProof, pentestProofUntil = 0, pentestProofPending;
+  function pentestPost(action, args) {
+    function unavailable() {
+      return { codigo: 'pentest_owner_required', error: 'Não foi possível verificar a conta do Pentest. Recarregue a página e tente novamente.' };
+    }
+    var account = document.querySelector('meta[name="pentest-account-id"]');
+    var csrf = document.querySelector('meta[name="csrf-token"]');
+    if (!account || !csrf) return Promise.reject(unavailable());
+    if (!pentestProof || Date.now() >= pentestProofUntil) {
+      if (!pentestProofPending) {
+        pentestProofPending = fetch('/pentest/desktop-token', {
+          method: 'POST', credentials: 'same-origin', redirect: 'error', cache: 'no-store',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf.content },
+          body: JSON.stringify({ account_id: account.content })
+        }).then(function (response) {
+          if (!response.ok) throw unavailable();
+          return response.json();
+        }).then(function (data) {
+          if (!data || typeof data.token !== 'string' || !data.token) throw unavailable();
+          pentestProof = data.token;
+          pentestProofUntil = Date.now() + 180000;
+          return pentestProof;
+        }).catch(function () { throw unavailable(); }).finally(function () { pentestProofPending = null; });
+      }
+    }
+    return (pentestProofPending || Promise.resolve(pentestProof)).then(function (proof) {
+      return post(action, Object.assign({}, args, { ownerProof: proof }));
+    });
+  }
+
   window.__shviaCode = {
     // sessão do agente
-    startPentest: function (o) { return post('startPentest', o || {}); },
-    pentestStatus: function () { return post('pentestStatus'); },
+    startPentest: function (o) { return pentestPost('startPentest', o || {}); },
+    pentestStatus: function () { return pentestPost('pentestStatus'); },
     // Before an assessment (1.35.0): {docker:{state:'ready'|'not_running'|'missing'|'unknown'|'unsupported'},
     // credentials:{state:'at_confirmation'}, autoResume:{enabled}}. Detection only: nothing is started or installed.
     pentestPreflight: function () { return post('pentestPreflight'); },
     // Resuming by itself when the provider's usage window closes (1.35.0). `o` = {enabled?: bool, cancel?: bool}; saving the switch
     // off also cancels a wait. Resolves with the same object as pentestStatus().autoResume: {enabled, covered, state:'none'|'waiting'|
     // 'resuming'|'cancelled'|'gave_up'|'failed', attempt, nextAttemptAt (ms since the epoch, or null), waitedMinutes, ceilingMinutes}.
-    pentestAutoResume: function (o) { return post('pentestAutoResume', o || {}); },
-    openPentestViewer: function () { return post('openPentestViewer'); },
+    pentestAutoResume: function (o) { return pentestPost('pentestAutoResume', o || {}); },
+    openPentestViewer: function () { return pentestPost('openPentestViewer'); },
     pentestCompatibility: function () { return post('pentestCompatibility'); },
     pentestInstallEngine: function () { return post('pentestInstallEngine'); },
-    pentestLive: function () { return post('pentestLive'); },
+    pentestLive: function () { return pentestPost('pentestLive'); },
     // What the agents of the local assessment are doing (1.37.0), from the engine's own files on this computer: nothing
     // here goes to the server. `o` = {after?: row id}; without it, the newest window. Resolves with {localId, activity:
     // {events:[{id, at, agent, kind:'say'|'user'|'call'|'result', text, tool?, truncated?}], agents:[{id, name, status}],
     // lastId, more}}; send `lastId` back as `after` to follow a running assessment. Credentials are masked by the engine
     // (best effort) and text is clipped. Rejects with a short text when the engine is too old or the run has no files yet.
-    pentestActivity: function (o) { return post('pentestActivity', o || {}); },
-    pausePentest: function (localId) { return post('pausePentest', { localId: localId }); },
-    continuePentest: function (o) { return post('continuePentest', o || {}); },
-    stopPentest: function () { return post('stopPentest'); },
+    pentestActivity: function (o) { return pentestPost('pentestActivity', o || {}); },
+    pausePentest: function (localId) { return pentestPost('pausePentest', { localId: localId }); },
+    continuePentest: function (o) { return pentestPost('continuePentest', o || {}); },
+    stopPentest: function () { return pentestPost('stopPentest'); },
     // IPv4 Search (recursos.varreduraIPv4, 1.31.0). `o` = {target:'10.100.100.0/22', ports?:'2000,8000-8080', timeoutMs?, probeAll?}.
     // Resolves with {scanId, cidr, addresses, ports, discoveryPorts} AFTER the person confirms in a native dialog; rejects with an
     // 'E_SCAN_*: text' string (E_SCAN_DECLINED when they say no). Progress, hosts as they answer and the final report arrive through
@@ -113,9 +145,9 @@ pub const BRIDGE_JS: &str = r#"(function () {
     trafficStart: function (o) { return post('trafficStart', o || {}); },
     trafficStop: function () { return post('trafficStop'); },
     trafficExport: function () { return post('trafficExport'); },
-    resumePentest: function () { return post('resumePentest'); },
-    reviewPentest: function () { return post('reviewPentest'); },
-    retestPentest: function (localId, baselineRef) { return post('retestPentest', { localId: localId, baselineRef: baselineRef }); },
+    resumePentest: function () { return pentestPost('resumePentest'); },
+    reviewPentest: function () { return pentestPost('reviewPentest'); },
+    retestPentest: function (localId, baselineRef) { return pentestPost('retestPentest', { localId: localId, baselineRef: baselineRef }); },
     spawn: function (o) { return post('spawn', o || {}); },   // erro de motor ausente vem {error, codigo} — ver claudeModels;  {projectDir, apiKey, model?, effort?, url?, engine?, modelDoClaude?, accountId?, autonomy?}  autonomy:{stopByHost, maxIterations, maxCostUsd} = a Run (RUN-20260910), só no motor claude;  engine:'claude' = assinatura; modelDoClaude:true = model/effort vieram de claudeModels(), nao do gateway; accountId = perfil de conta (ver claudeAccounts); sessao + retomavel:true + meta:{projectId, rotulo} = a sessão sobrevive a um reload e a página seguinte a retoma (recursos.retomada)
     send:  function (o, sessao) { return post('send', sessao ? { payload: o, sessao: sessao } : { payload: o }); }, // {type:'user',text} | {id,decision}; sessao = which session (recursos.sessoes)
     kill:  function (sessao) { return post('kill', sessao ? { sessao: sessao } : null); }, // sem sessao = a sessão única de antes da 1.8.0

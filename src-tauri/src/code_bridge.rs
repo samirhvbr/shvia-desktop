@@ -56,7 +56,7 @@ mod ipv4_search;
 pub use ipv4_search::cancelar_varredura;
 mod navegador;
 mod pentest;
-pub(crate) use pentest::stop as stop_pentest;
+pub(crate) use pentest::{close_viewer as close_pentest_viewer, stop as stop_pentest};
 // The About dialog's two Pentest rows: what this Desktop requires, and what is beside the executable.
 pub(crate) use pentest::{about_expected as pentest_about_expected, about_found_now as pentest_about_found_now, about_found_probe as pentest_about_found_probe};
 #[cfg(unix)]
@@ -239,20 +239,14 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
     let action = v.get("action").and_then(|a| a.as_str()).unwrap_or_default();
     let req = v.get("reqId").and_then(|r| r.as_str()).unwrap_or_default().to_string();
     match action {
-        "startPentest" => fora_da_ui(window, &req, move |w| match pentest::start(w, &v) {
-            Ok(value) => (true, value),
-            Err(error) => (false, serde_json::json!({"error":error})),
-        }),
-        "pentestStatus" => fora_da_ui(window, &req, |w| (true, pentest::status(w))),
+        "startPentest" | "pentestStatus" | "pentestAutoResume" | "openPentestViewer"
+        | "pentestLive" | "pentestActivity" | "pausePentest" | "continuePentest"
+        | "reviewPentest" | "retestPentest" | "resumePentest" | "stopPentest" => {
+            let action = action.to_owned();
+            let request = req.clone();
+            fora_da_ui(window, &req, move |w| pentest_action(w, &request, &action, &v));
+        }
         "pentestPreflight" => fora_da_ui(window, &req, |w| match pentest::preflight(w) {
-            Ok(value) => (true, value),
-            Err(error) => (false, serde_json::json!(error)),
-        }),
-        "pentestAutoResume" => fora_da_ui(window, &req, move |w| match pentest::auto_resume(w, &v) {
-            Ok(value) => (true, value),
-            Err(error) => (false, serde_json::json!(error)),
-        }),
-        "openPentestViewer" => fora_da_ui(window, &req, |w| match pentest::open_viewer(w) {
             Ok(value) => (true, value),
             Err(error) => (false, serde_json::json!(error)),
         }),
@@ -263,35 +257,6 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
         "pentestInstallEngine" => fora_da_ui(window, &req, |w| match pentest::install_engine(w) {
             Ok(value) => (true, value),
             Err(error) => (false, serde_json::json!(error)),
-        }),
-        "pentestLive" => fora_da_ui(window, &req, move |w| match pentest::live(w, &v, "status") {
-            Ok(data) => (true, data), Err(e) => (false, serde_json::json!(e)),
-        }),
-        "pentestActivity" => fora_da_ui(window, &req, move |w| match pentest::activity(w, &v) {
-            Ok(data) => (true, data),
-            Err(e) => (false, serde_json::json!(e)),
-        }),
-        "pausePentest" => fora_da_ui(window, &req, move |w| match pentest::live(w, &v, "pause") {
-            Ok(data) => (true, data), Err(e) => (false, serde_json::json!(e)),
-        }),
-        "continuePentest" => fora_da_ui(window, &req, move |w| match pentest::live(w, &v, "resume") {
-            Ok(data) => (true, data), Err(e) => (false, serde_json::json!(e)),
-        }),
-        "reviewPentest" => fora_da_ui(window, &req, |w| match pentest::review(w) {
-            Ok(data) => (true, data),
-            Err(e) => (false, serde_json::json!(e)),
-        }),
-        "retestPentest" => fora_da_ui(window, &req, move |w| match pentest::retest(w, &v) {
-            Ok(data) => (true, data),
-            Err(e) => (false, serde_json::json!(e)),
-        }),
-        "resumePentest" => fora_da_ui(window, &req, |w| match pentest::resume(w) {
-            Ok(value) => (true, value),
-            Err(error) => (false, serde_json::json!({"error":error})),
-        }),
-        "stopPentest" => fora_da_ui(window, &req, |w| {
-            pentest::stop(Some(w.label()));
-            (true, serde_json::json!({"stopped":true}))
         }),
         "trafficInterfaces" => fora_da_ui(window, &req, |_w| match traffic::interfaces() {
             Ok(list) => (true, list),
@@ -718,6 +683,41 @@ fn badge(window: &WebviewWindow, v: &serde_json::Value) {
     let _ = window.set_badge_count(count);
 }
 
+/// Bind every run-facing operation to a proof from the current document.
+fn pentest_action(window: &WebviewWindow, req: &str, action: &str, value: &serde_json::Value) -> (bool, serde_json::Value) {
+    let proof = value["ownerProof"].as_str().unwrap_or_default();
+    let grant = (action == "startPentest").then(|| value["token"].as_str().unwrap_or_default());
+    let denied = || (false, serde_json::json!({
+        "codigo": "pentest_owner_required", "error": resume_owner::PENTEST_OWNER_REQUIRED
+    }));
+    let Some(account) = resume_owner::pentest_account(window, req, proof, grant) else {
+        return denied();
+    };
+    let result = match action {
+        "startPentest" => pentest::start(window, value, &account),
+        "pentestStatus" => Ok(pentest::status(window, &account)),
+        "pentestAutoResume" => pentest::auto_resume(window, value, &account),
+        "openPentestViewer" => pentest::open_viewer(window, &account),
+        "pentestLive" => pentest::live(window, value, "status", &account),
+        "pentestActivity" => pentest::activity(window, value, &account),
+        "pausePentest" => pentest::live(window, value, "pause", &account),
+        "continuePentest" => pentest::live(window, value, "resume", &account),
+        "reviewPentest" => pentest::review(window, &account),
+        "retestPentest" => pentest::retest(window, value, &account),
+        "resumePentest" => pentest::resume(window, &account),
+        "stopPentest" => pentest::stop_owned(window, &account),
+        _ => unreachable!("only protected Pentest actions reach this dispatcher"),
+    };
+    if !resume_owner::pentest_current(window, &account) {
+        return denied();
+    }
+    match result {
+        Ok(data) => (true, data),
+        Err(error) if matches!(action, "startPentest" | "resumePentest") => (false, serde_json::json!({"error": error})),
+        Err(error) => (false, serde_json::json!(error)),
+    }
+}
+
 /// All operations that can read, drive or replace an agent share one native boundary.
 fn local_agent_action(window: &WebviewWindow, req: &str, value: &serde_json::Value, action: &str) {
     let Some((nonce, _)) = req.split_once("-r") else { return resume_owner::refused(window, req) };
@@ -1014,11 +1014,13 @@ mod tests_fora_da_ui {
             "claudeAuthLoginStart", "claudeSubscriptionConnect", "claudeSubscriptionCode", "claudeModels", "claudeRunnerInstall", "claudeAccountsDetect",
             "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "pentestPreflight", "pentestAutoResume", "openPentestViewer", "pentestCompatibility", "pentestInstallEngine", "stopPentest", "resumePentest", "reviewPentest", "retestPentest", "pentestLive", "pentestActivity", "pausePentest", "continuePentest", "ipv4SearchStart",
         ] {
-            let chave = format!("\"{acao}\" =>");
-            let a = corpo.find(&chave).unwrap_or_else(|| panic!("{acao}: arm not found"));
-            let resto = &corpo[a + chave.len()..];
-            let fim = resto.find("\n        \"").unwrap_or(resto.len());
-            assert!(resto[..fim].contains(&despacho), "{acao} runs on the UI thread");
+            let key = format!("\"{acao}\"");
+            let arm = corpo.split("\n        \"").find(|arm| {
+                arm.split_once("=>").is_some_and(|(patterns, _)| {
+                    format!("\"{patterns}").split('|').any(|pattern| pattern.trim() == key)
+                })
+            }).unwrap_or_else(|| panic!("{acao}: arm not found"));
+            assert!(arm.contains(&despacho), "{acao} runs on the UI thread");
         }
     }
 }

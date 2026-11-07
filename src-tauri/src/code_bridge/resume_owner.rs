@@ -3,7 +3,7 @@
 use super::{js_str, reply, Sidecars, WebviewWindow};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use std::{collections::HashMap, io::Read, sync::Mutex, time::Duration};
+use std::{collections::HashMap, io::Read, sync::Mutex, time::{Duration, Instant}};
 use tauri::Manager;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,6 +25,24 @@ struct Owner {
     id: u64,
 }
 
+/// A Pentest proof is independent of Code permissions and belongs to one page generation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct PentestAccount {
+    page: Page,
+    pub(super) id: u64,
+}
+
+impl PentestAccount {
+    pub(super) fn origin(&self) -> &str {
+        &self.page.origin
+    }
+}
+
+struct PentestProof {
+    token: [u8; 32],
+    until: Instant,
+}
+
 #[derive(Default)]
 struct WindowOwner {
     page: Option<Page>,
@@ -34,6 +52,8 @@ struct WindowOwner {
     bound: bool,
     binding: bool,
     snapshot: Option<serde_json::Value>,
+    pentest_account: Option<u64>,
+    pentest_proof: Option<PentestProof>,
     token_hashes: Vec<[u8; 32]>,
     epoch: u64,
 }
@@ -57,6 +77,7 @@ impl ResumeOwners {
         w.bound = false;
         w.binding = false;
         w.token_hashes.clear();
+        w.pentest_proof = None;
     }
 
     pub(crate) fn finished(&self, label: &str, origin: String) -> Option<String> {
@@ -77,6 +98,8 @@ impl ResumeOwners {
             epoch: w.epoch,
         });
         w.document_owner = None;
+        w.pentest_account = None;
+        w.pentest_proof = None;
         w.bound = false;
         w.binding = false;
         w.token_hashes.clear();
@@ -157,6 +180,39 @@ impl ResumeOwners {
         }
         w.bound = true;
         Some(scope.clone())
+    }
+
+    fn pentest_document(&self, label: &str, nonce: &str, origin: &str, token: &[u8; 32]) -> Option<(Page, Option<u64>)> {
+        let windows = self.0.lock().ok()?;
+        let w = windows.get(label)?;
+        let page = w.page.as_ref().filter(|p| p.nonce == nonce && p.origin == origin)?;
+        let cached = w.pentest_proof.as_ref()
+            .filter(|proof| proof.until > Instant::now() && &proof.token == token)
+            .and(w.pentest_account);
+        Some((page.clone(), cached))
+    }
+
+    fn confirm_pentest(&self, label: &str, page: &Page, id: u64, token: [u8; 32], duration: Duration) -> Option<()> {
+        let mut windows = self.0.lock().ok()?;
+        let w = windows.get_mut(label)?;
+        if w.page.as_ref() != Some(page) {
+            return None;
+        }
+        if w.pentest_account.is_some_and(|owner| owner != id) {
+            w.pentest_proof = None;
+            return None;
+        }
+        w.pentest_account = Some(id);
+        w.pentest_proof = Some(PentestProof { token, until: Instant::now() + duration });
+        Some(())
+    }
+
+    fn pentest_current(&self, label: &str, account: &PentestAccount) -> bool {
+        self.0.lock().ok().is_some_and(|windows| windows.get(label).is_some_and(|w| {
+            w.page.as_ref() == Some(&account.page)
+                && w.pentest_account == Some(account.id)
+                && w.pentest_proof.as_ref().is_some_and(|p| p.until > Instant::now())
+        }))
     }
 
     pub(super) fn grant(&self, label: &str, nonce: &str, origin: &str) -> Option<Grant> {
@@ -283,29 +339,74 @@ pub(super) fn page_origin(window: &WebviewWindow) -> Option<String> {
     origin(&window.url().ok()?)
 }
 
-fn verify(origin: &str, token: &str) -> Option<u64> {
+fn account_client() -> Option<reqwest::blocking::Client> {
     let _ = rustls::crypto::ring::default_provider().install_default();
-    let client = reqwest::blocking::Client::builder()
+    reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(8))
         .redirect(reqwest::redirect::Policy::none())
         .build()
-        .ok()?;
-    let response = client
-        .get(format!("{origin}/api/v1/code/desktop-owner"))
-        .header("Accept", "application/json")
-        .bearer_auth(token)
-        .send()
-        .ok()?;
+        .ok()
+}
+
+fn account_response(request: reqwest::blocking::RequestBuilder) -> Option<serde_json::Value> {
+    let response = request.send().ok()?;
     if response.status() != reqwest::StatusCode::OK {
         return None;
     }
     let mut body = Vec::new();
     response.take(1024).read_to_end(&mut body).ok()?;
-    let id = serde_json::from_slice::<serde_json::Value>(&body)
-        .ok()?
-        .get("id")?
-        .as_u64()?;
-    (id > 0).then_some(id)
+    serde_json::from_slice(&body).ok()
+}
+
+fn verify(origin: &str, token: &str) -> Option<u64> {
+    let request = account_client()?.get(format!("{origin}/api/v1/code/desktop-owner"))
+        .header("Accept", "application/json")
+        .bearer_auth(token);
+    account_response(request)?.get("id")?.as_u64().filter(|id| *id > 0)
+}
+
+pub(super) const PENTEST_OWNER_REQUIRED: &str = "Não foi possível verificar a conta do Pentest. Recarregue a página e tente novamente.";
+
+pub(super) fn pentest_account(window: &WebviewWindow, req: &str, token: &str, grant: Option<&str>) -> Option<PentestAccount> {
+    if token.is_empty() || token.len() > 512 {
+        return None;
+    }
+    let (nonce, _) = req.split_once("-r")?;
+    let origin = page_origin(window)?;
+    let owners = window.state::<ResumeOwners>();
+    let hash = ResumeOwners::fingerprint(token);
+    let (page, cached) = owners.pentest_document(window.label(), nonce, &origin, &hash)?;
+    let id = if let Some(id) = cached.filter(|_| grant.is_none()) {
+        id
+    } else {
+        let mut request = account_client()?
+            .post(format!("{origin}/api/v1/pentest/desktop-owner"))
+            .header("Accept", "application/json")
+            .bearer_auth(token);
+        if let Some(grant) = grant {
+            request = request.header("Content-Type", "application/json")
+                .body(json!({"grant": grant}).to_string());
+        }
+        let response = account_response(request)?;
+        let id = response.get("id").and_then(serde_json::Value::as_u64).filter(|id| *id > 0)?;
+        let seconds = response.get("expires_in").and_then(serde_json::Value::as_u64)?.min(120);
+        if seconds == 0 {
+            return None;
+        }
+        owners.confirm_pentest(window.label(), &page, id, hash, Duration::from_secs(seconds))?;
+        id
+    };
+    let account = PentestAccount { page, id };
+    pentest_current(window, &account).then_some(account)
+}
+
+pub(super) fn pentest_current(window: &WebviewWindow, account: &PentestAccount) -> bool {
+    page_origin(window).as_deref() == Some(account.origin()) && pentest_document_current(window, account)
+}
+
+// Safe inside a native state lock: unlike page_origin, this never asks the WebView's UI thread.
+pub(super) fn pentest_document_current(window: &WebviewWindow, account: &PentestAccount) -> bool {
+    window.state::<ResumeOwners>().pentest_current(window.label(), account)
 }
 
 pub(super) fn bind(window: &WebviewWindow, req: &str, nonce: &str, origin: &str, token: &str) {
@@ -395,6 +496,28 @@ pub(super) fn deliver(window: &WebviewWindow, scope: &str, script: String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pentest_proof_cannot_cross_a_document_or_switch_accounts_in_place() {
+        let owners = ResumeOwners::default();
+        let origin = "https://ai.shvia.org";
+        let nonce = owners.finished("main", origin.into()).unwrap();
+        let hash = ResumeOwners::fingerprint("fixture");
+        let (old, cached) = owners.pentest_document("main", &nonce, origin, &hash).unwrap();
+        assert_eq!(cached, None);
+        owners.confirm_pentest("main", &old, 7, hash, Duration::from_secs(1)).unwrap();
+        let proof = PentestAccount { page: old.clone(), id: 7 };
+        assert!(owners.pentest_current("main", &proof));
+        assert!(owners.grant("main", &nonce, origin).is_none());
+        assert!(owners.confirm_pentest("main", &old, 9, hash, Duration::from_secs(1)).is_none());
+        assert!(!owners.pentest_current("main", &proof));
+        owners.started("main");
+        let new_nonce = owners.finished("main", origin.into()).unwrap();
+        assert!(owners.confirm_pentest("main", &old, 7, hash, Duration::from_secs(1)).is_none());
+        let (new, cached) = owners.pentest_document("main", &new_nonce, origin, &hash).unwrap();
+        assert_eq!(cached, None);
+        assert!(owners.confirm_pentest("main", &new, 9, hash, Duration::from_secs(1)).is_some());
+    }
 
     #[test]
     fn resume_requires_a_new_proof_and_keeps_only_the_same_account_and_origin() {

@@ -3054,3 +3054,13 @@ viewer reads, unmasked. Until now the page received only the engine's sanitized 
 
 **Consequences.** Needs Desktop 1.37.0 and engine 1.2.49; an older pair shows "Update the Desktop" or the Desktop's sentence and
 nothing else changes. Masking is best effort and its limit is said on the page. Not measured: a real run's rows on the owner's Mac.
+
+
+### Pentest desktop account proof
+
+The Web mints a narrow, short-lived proof for the account that rendered the Pentest
+page. The native bridge verifies it on the configured server and keeps it in memory
+for the current document. A start grant must belong to the same account. Native
+recovery stores the account and origin, and older descriptors without an account
+remain on disk without being adopted. An already authorized background retry is
+tied to the exact saved run and controller. Navigation closes the local viewer.

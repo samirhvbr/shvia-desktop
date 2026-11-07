@@ -969,6 +969,7 @@ pub(crate) fn build_shvia_window(
             // window takes them back (`sessions`/`attach`). The others end as before.
             if let PageLoadEvent::Started = payload.event() {
                 webview.state::<code_bridge::resume_owner::ResumeOwners>().started(webview.label());
+                code_bridge::close_pentest_viewer(webview.label());
                 webview.app_handle().state::<code_bridge::Sidecars>().soltar_janela(webview.label());
                 // A network scan belongs to the page that asked for it: with a new document there is nobody left to read the
                 // result or press Stop, and nothing here takes a running scan back.
@@ -2487,7 +2488,7 @@ mod tests {
         let fonte = include_str!("lib.rs");
         let gancho = ["on_page_load", "(|webview, payload| {"].concat();
         let i = fonte.find(&gancho).expect("the page-load hook moved: update this ruler");
-        let corpo = &fonte[i..i + 1600.min(fonte.len() - i)];
+        let corpo = &fonte[i..];
         let inicio = ["PageLoadEvent", "::Started"].concat();
         let solta = ["soltar_janela(", "webview.label())"].concat();
         let a = corpo.find(&inicio).expect("the hook no longer handles the start of a document");
