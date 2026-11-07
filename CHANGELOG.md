@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.38.0 - Compile the Code account verifier on Windows
+
+The Code owner check uses the same HTTP client, TLS provider, and digest crates
+on Windows and Unix. Their locked versions stay the same.
+
 ## 1.38.0 - Clear detached local Code agents when the dashboard signs out
 
 Sign-out revokes the current window before the native owner proof finishes,
