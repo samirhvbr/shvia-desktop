@@ -28,6 +28,7 @@ struct Owner {
 #[derive(Default)]
 struct WindowOwner {
     page: Option<Page>,
+    awaiting_finish: bool,
     document_owner: Option<Owner>,
     owner: Option<(Owner, String)>,
     bound: bool,
@@ -45,9 +46,8 @@ impl ResumeOwners {
         let Ok(mut windows) = self.0.lock() else {
             return;
         };
-        let Some(w) = windows.get_mut(label) else {
-            return;
-        };
+        let w = windows.entry(label.to_owned()).or_default();
+        w.awaiting_finish = true;
         w.epoch += 1;
         if let Some(p) = w.page.as_mut() {
             // A canceled download can leave the original document visible. It can
@@ -62,6 +62,13 @@ impl ResumeOwners {
     pub(crate) fn finished(&self, label: &str, origin: String) -> Option<String> {
         let mut windows = self.0.lock().ok()?;
         let w = windows.entry(label.to_owned()).or_default();
+        // WebView2 can report NavigationCompleted for a canceled navigation
+        // without first reporting ContentLoading. The existing shim still
+        // belongs to this document; do not rotate its nonce or inject it again.
+        if !w.awaiting_finish && w.page.is_some() {
+            return None;
+        }
+        w.awaiting_finish = false;
         w.epoch += 1;
         let nonce = uuid::Uuid::new_v4().simple().to_string();
         w.page = Some(Page {
@@ -424,6 +431,7 @@ mod tests {
             Some(&json!({ "text": "stale document" }))
         ));
         assert!(!clear);
+        owners.started("window");
         let third = finish(a);
         assert_ne!(bind(&third, a, 8, &mut clear), scope);
         assert!(!owners.save_snapshot(
@@ -439,10 +447,36 @@ mod tests {
         assert!(owners.snapshot("window", &old_grant).is_none());
 
         clear = false;
+        owners.started("window");
         let fourth = finish(b);
         assert!(owners.begin("window", &fourth, a).is_none());
         bind(&fourth, b, 8, &mut clear);
         assert!(clear);
+    }
+
+    #[test]
+    fn a_completion_without_a_load_start_does_not_replace_the_live_document() {
+        let owners = ResumeOwners::default();
+        let origin = "https://ai.shvia.org";
+        let nonce = owners.finished("window", origin.into()).unwrap();
+        let page = owners.begin("window", &nonce, origin).unwrap();
+        let scope = owners
+            .complete("window", &page, Some(7), "code-test", || panic!())
+            .unwrap();
+
+        assert!(owners.finished("window", origin.into()).is_none());
+        assert!(owners
+            .finished("window", "https://ia.shvia.org".into())
+            .is_none());
+        assert_eq!(owners.delivery("window", &scope), Some(page));
+        assert!(owners.grant("window", &nonce, origin).is_some());
+
+        owners.started("window");
+        let new_nonce = owners.finished("window", origin.into()).unwrap();
+        assert_ne!(new_nonce, nonce);
+        assert!(owners.grant("window", &nonce, origin).is_none());
+        assert!(owners.grant("window", &new_nonce, origin).is_none());
+        assert!(owners.finished("window", origin.into()).is_none());
     }
 
     #[test]

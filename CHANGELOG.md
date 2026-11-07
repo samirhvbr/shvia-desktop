@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.38.0 - Keep the Desktop Code grant when a navigation is canceled
+
+Ignore a navigation completion without a new document load. A canceled
+navigation can otherwise invalidate the Code bridge that is still on screen.
+
 ## 1.38.0 - Compile the Code account verifier on Windows
 
 The Code owner check uses the same HTTP client, TLS provider, and digest crates
