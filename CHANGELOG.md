@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.38.7 - Remove the deny.toml exceptions that no longer match anything: three zip advisories and BSD-2-Clause
+
+`cargo deny check advisories licenses` warned four times about exceptions that match nothing in the tree:
+
+- **RUSTSEC-2026-0367, -0368, -0369 (zip 4.6.1).** Since 1.33.2 `tauri-plugin-updater` 2.14.1 takes zip 9.1.3,
+  which has the fixes, so the block that explained why zip 4 was held is gone with them. An ignore that matches
+  nothing is a hole waiting for the next advisory with the same id to fall through unread.
+- **BSD-2-Clause.** No dependency uses it (`license-not-encountered`), as with BSL-1.0, OpenSSL and
+  Unicode-DFS-2016 in 1.6.5. A new dependency under it now fails and gets looked at.
+
+After this, the only warning left is the yanked `async-executor` 1.14.0 (under zbus), a lockfile update for
+another delivery. The check exits 0.
+
 ## 1.38.7 - Keep a Claude account registry that does not parse beside the seed instead of writing the seed over it
 
 `registro()` answered the seed for a `contas-claude.json` that did not parse, and wrote the seed over it. One

@@ -60,19 +60,6 @@ ignore = [
     # patched quick-xml 0.42, so `cargo update -p plist` closed it — the "cannot be fixed
     # here" measured earlier had gone stale.
 
-    # ── zip 4.6.1, three extraction advisories (published 09–10/10/2026, fixed in zip >= 9.0.0) ──
-    # The only path to `zip` is `tauri-plugin-updater` 2.14.0 (the latest 2.x; 3.0.0 is still an
-    # alpha), which pins zip 4 and calls `ZipArchive::extract` in exactly one place:
-    # `extract_zip`, the Windows install path, on bytes it has already checked with
-    # `verify_signature` against the minisign public key in `tauri.conf.json`. The three flaws
-    # need a MALICIOUS archive (SUID/SGID bits, a symlink pointing outside the destination);
-    # an archive that passes our signature check is one we built and signed ourselves, and the
-    # updater only ever asks the configured ShvIA server. We do not use `zip` anywhere else.
-    # Re-check when `tauri-plugin-updater` takes zip >= 9: this block goes with it.
-    { id = "RUSTSEC-2026-0367", reason = "zip SUID/SGID preserved on extract — only via tauri-plugin-updater's Windows install path, after the minisign signature check; fix is zip>=9, held at 4 by the plugin" },
-    { id = "RUSTSEC-2026-0368", reason = "zip extract writes symlinks outside the destination — same single caller, same signed-archive precondition" },
-    { id = "RUSTSEC-2026-0369", reason = "zip extract applies permissions through symlinks — same single caller, same signed-archive precondition" },
-
     # ── zbus_names / zvariant / zvariant_derive: unmaintained, merged into zbus 6 (16/10/2026) ──
     # No flaw is reported; the advisory is that the standalone crates stopped. They are the D-Bus
     # layer of the Linux notification, single-instance and opener plugins (zbus 5.16 under
@@ -88,11 +75,12 @@ ignore = [
 version = 2
 # Copyleft in a shipped desktop binary is a licensing trap, not a style preference.
 allow = [
-    "MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause",
+    "MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-3-Clause",
     "ISC", "Zlib", "Unicode-3.0", "CC0-1.0", "MPL-2.0", "Unlicense", "CDLA-Permissive-2.0",
 ]
-# BSL-1.0, OpenSSL and Unicode-DFS-2016 left in 1.6.5: no dependency uses them (cargo-deny's
-# license-not-encountered). A new dependency under one of them now fails and gets looked at.
+# BSL-1.0, OpenSSL and Unicode-DFS-2016 left in 1.6.5, and BSD-2-Clause in 1.38.7: no dependency
+# uses them (cargo-deny's license-not-encountered). A new dependency under one of them now fails
+# and gets looked at.
 confidence-threshold = 0.9
 
 # The app crate itself declares no license: the repository is private and ships no LICENSE.
