@@ -1632,7 +1632,12 @@ pub fn run() {
                 updater::verificar_agora(app);
             }
             "diagnostics" => {
-                diagnostico::abrir(app);
+                // Off the event loop: the checks probe the server and run `anna --version`,
+                // which took 4–10 s with the server down, and every window froze meanwhile.
+                // `abrir` only touches windows through calls Tauri already forwards to the
+                // main thread.
+                let app = app.clone();
+                std::thread::spawn(move || diagnostico::abrir(&app));
             }
             "reload" => {
                 // Recarrega a janela em foco; se não achar foco, recarrega todas.

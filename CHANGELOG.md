@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.38.7 - Run Help → Diagnostics off the event loop, so a server that is down no longer freezes every window
+
+The menu handler ran the checks where it was called, on the event loop that paints every window: the server
+probe and `anna --version`. With the server down that took 4–10 s, and every window of the app stopped
+responding for that long, which is exactly when a person opens the diagnostics. The checks now run on a thread
+of their own and the panel opens when they are done; `diagnostico::abrir` reaches windows only through calls
+Tauri already forwards to the main thread.
+
 ## 1.38.7 - Bring a window hidden by "close keeps running" back from the macOS Dock
 
 On macOS, closing the last window with "close keeps running" on hides it; it is not destroyed. The Dock click
