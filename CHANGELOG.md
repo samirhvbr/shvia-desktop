@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.38.13 - End the Pentest viewer's whole process group, so its Python server no longer outlives the window
+## 1.38.15 - End the Pentest viewer's whole process group, so its Python server no longer outlives the window
 
 The engine is a PyInstaller program: the process the Desktop spawns for "Abrir viewer local" is a launcher, and the
 viewer's web server is the Python process it starts. `viewer::close` killed the launcher alone, so that server kept
@@ -21,7 +21,7 @@ serving the run on 127.0.0.1 after the window closed or the page changed, until 
   viewer window). The inference rests on the engine's `strix/interface/viewer/cli.py`, which ends in
   `while True: time.sleep(1.0)` with no signal handler and no check of its parent (tags `shvia-v1.2.49` and `shvia-v1.2.50`).
 
-## 1.38.13 - Read the engine's result.json only when this attempt wrote it, so a refused key is not taken for a provider window
+## 1.38.15 - Read the engine's result.json only when this attempt wrote it, so a refused key is not taken for a provider window
 
 The engine writes `strix_runs/<name>/result.json` at the end of `main` and leaves it there, and an attempt that dies on
 an exception (a refused key, a lapsed grant) writes none. `ending.rs` read whatever was there first. A resume that died on
