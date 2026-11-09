@@ -2961,6 +2961,32 @@ and ends a timed-out engine's whole process group (SIGTERM, then SIGKILL after 3
 That a start inside the app stays within these deadlines, and why it took longer than 15.3 s there, are not yet measured.
 
 
+### Update (09/11/2026, 1.40.0): one standing agreement to keep the engine up to date
+
+Every engine pin raise cost the person one consent, because only the exact pinned file counts as installed (seen 02/11: a Desktop
+that pinned 1.2.46 read "não instalado" on a Mac that had 1.2.45). The owner approved in principle on 02/11 one standing consent
+instead. What was built, and what was refused:
+
+- **Only the install dialog gives it.** The dialog has three buttons: "Instalar e manter atualizado", "Instalar só esta versão" and
+  "Cancelar". The first writes `auto-update.json` (`{"enabled": true}`, mode 0600) in the engine's own folder, before the download:
+  it is the person's answer, and a failed download does not take it back. Any press that is not one of the two install buttons is
+  a refusal.
+- **The page can switch it OFF and never ON.** `pentestEngineAutoUpdate({enabled: false})` removes the agreement; `{enabled: true}`
+  is refused (`E_PENTEST_AUTOUPDATE_DIALOG_ONLY`), and with no argument it reads. The page already controls the Docker and
+  auto-resume rows; a consent the page could give itself would not be a consent.
+- **Default is NO**, unlike auto-resume. Nothing is installed unattended until the person pressed the first button once. Only a
+  plain file under 1 KiB that says `true` is a yes (not a link, a folder, garbage or a string).
+- **What the agreement covers is exactly what the dialog covers.** Once per launch, 20 s after the app is up, with the agreement,
+  something pinned for this system and NO engine that runs (a Mac whose pin moved: the old version's folder no longer counts),
+  the app downloads the pinned file, checks its length and SHA-256, starts it once and moves it into place: the same function
+  the dialog uses, the same pin, the same hosts. A verified pin, or a bundled engine that works, is never replaced.
+  A notification says it was updated; a failure other than no connection is notified once and retried at the next launch. An
+  offline start is not news and says nothing.
+- **Trust is unchanged.** The pin comes from this app, which the person already trusts to update itself; the agreement adds no
+  new source, no new host and no new file. It does not widen what an engine may do.
+- Not built: a way to switch it on again from the page (it is the dialog, on the next install, or nothing), and a progress bar for
+  the 95 MB download. Not measured: the whole path on a Mac across a real Desktop update.
+
 ## ADR-047 — The model key of an account grant is asked of the server after consent and handed to one child, never kept
 
 - **Date:** 03/11/2026 · **Status:** **Accepted** (the server half is deployed with its switch off; the page that turns it on is not built, and no real run has used it yet)

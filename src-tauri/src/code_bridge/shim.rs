@@ -112,6 +112,10 @@ pub const BRIDGE_JS: &str = r#"(function () {
     openPentestViewer: function () { return pentestPost('openPentestViewer'); },
     pentestCompatibility: function () { return post('pentestCompatibility'); },
     pentestInstallEngine: function () { return post('pentestInstallEngine'); },
+    // The standing agreement to keep the engine up to date (1.40.0), given only in the install dialog. `o` = {enabled?: false}: with no
+    // `enabled` it reads, with `false` it switches the agreement off; `true` is refused (E_PENTEST_AUTOUPDATE_DIALOG_ONLY). Resolves
+    // with {enabled}. `pentestCompatibility().engine.autoUpdate` carries the same boolean.
+    pentestEngineAutoUpdate: function (o) { return post('pentestEngineAutoUpdate', o || {}); },
     pentestLive: function () { return pentestPost('pentestLive'); },
     // What the agents of the local assessment are doing (1.37.0), from the engine's own files on this computer: nothing
     // here goes to the server. `o` = {after?: row id}; without it, the newest window. Resolves with {localId, activity:

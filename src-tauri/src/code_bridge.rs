@@ -63,6 +63,8 @@ pub(crate) use pentest::{about_expected as pentest_about_expected, about_found_n
 pub(crate) use pentest::sync_background as pentest_sync_background;
 #[cfg(unix)]
 pub(crate) use pentest::engine_init as pentest_engine_init;
+#[cfg(unix)]
+pub(crate) use pentest::engine_update as pentest_engine_update;
 mod traffic;
 pub(crate) use traffic::release as release_traffic;
 pub use sessao::Sidecars;
@@ -255,6 +257,10 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             Err(error) => (false, serde_json::json!(error)),
         }),
         "pentestInstallEngine" => fora_da_ui(window, &req, |w| match pentest::install_engine(w) {
+            Ok(value) => (true, value),
+            Err(error) => (false, serde_json::json!(error)),
+        }),
+        "pentestEngineAutoUpdate" => fora_da_ui(window, &req, move |w| match pentest::engine_auto_update(w, &v) {
             Ok(value) => (true, value),
             Err(error) => (false, serde_json::json!(error)),
         }),
@@ -1012,7 +1018,7 @@ mod tests_fora_da_ui {
         for acao in [
             "gitStatus", "listTree", "gitDiff", "readFile", "codexModels", "claudeAuthStatus", "claudeUsage", "codexUsage",
             "claudeAuthLoginStart", "claudeSubscriptionConnect", "claudeSubscriptionCode", "claudeModels", "claudeRunnerInstall", "claudeAccountsDetect",
-            "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "pentestPreflight", "pentestAutoResume", "openPentestViewer", "pentestCompatibility", "pentestInstallEngine", "stopPentest", "resumePentest", "reviewPentest", "retestPentest", "pentestLive", "pentestActivity", "pausePentest", "continuePentest", "ipv4SearchStart",
+            "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "pentestPreflight", "pentestAutoResume", "openPentestViewer", "pentestCompatibility", "pentestInstallEngine", "pentestEngineAutoUpdate", "stopPentest", "resumePentest", "reviewPentest", "retestPentest", "pentestLive", "pentestActivity", "pausePentest", "continuePentest", "ipv4SearchStart",
         ] {
             let key = format!("\"{acao}\"");
             let arm = corpo.split("\n        \"").find(|arm| {

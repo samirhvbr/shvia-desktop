@@ -1721,6 +1721,8 @@ pub fn run() {
             #[cfg(unix)]
             code_bridge::pentest_engine_init(app.handle());
             #[cfg(unix)]
+            code_bridge::pentest_engine_update(app.handle().clone());
+            #[cfg(unix)]
             code_bridge::pentest_sync_background(app.handle());
             build_shvia_window(app.handle(), "main", WebviewUrl::App("index.html".into()))?;
             // Depois da janela: o updater espera 20 s antes da primeira checagem,

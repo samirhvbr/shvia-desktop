@@ -138,6 +138,9 @@ The first long runs on the owner's Mac (30/10 and 02/11/2026) found what a Linux
   four levels); token, controller and scan name must still match.
 - **Engine 1.2.47 (1.35.7)** answers the control channel in full and keeps the newest 256 live events; it is also the floor
   for the account model key of 1.36.0.
+- **Engine kept up to date (1.40.0)**: the install dialog's first button, "Instalar e manter atualizado", leaves a standing agreement; a
+  Desktop update that moves the pin then installs the new engine by itself the next time the app opens (same pin, download and
+  checks as the dialog, a notification at the end). The page can switch it off, never on (`pentestEngineAutoUpdate`).
 - **Engine 1.2.49 (1.38.1)** has the read-only `activity` command that `pentestActivity()` (1.37.0) runs, and runs the sandbox
   image `strix-sandbox:1.3.1` (1.2.48), downloaded again once by a computer that has 1.3.0.
 

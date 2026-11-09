@@ -163,7 +163,9 @@ nothing; no administrator password is involved. What is fetched is pinned in `pe
 (release, file, SHA-256, and now exact `bytes`), the download is https-only to GitHub's own hosts
 with redirects followed by hand, cut at the pinned length, built in a scratch folder, started with
 `--fork-version` and moved into place only if it answers the pinned version. The installed copy is
-preferred over the bundled one and re-checked against the pinned SHA-256 at every use. When raising
+preferred over the bundled one and re-checked against the pinned SHA-256 at every use. Since 1.40.0 the dialog's first button
+("Instalar e manter atualizado") also leaves a standing agreement, and a Desktop update that moves the pin then installs the new
+engine by itself the next time the app opens (`docs/pentest-compatibility.md`, ADR-046). When raising
 the engine (below), the new `bytes` go in with the new hashes, or `npm run prova:pentest` fails.
 
 **Why About says what failed.** Help → About asks the engine the same question the app asks and
