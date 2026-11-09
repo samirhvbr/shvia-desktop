@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.38.7 - Remove the deny.toml exceptions that no longer match anything: three zip advisories and BSD-2-Clause
+## 1.38.10 - Remove the deny.toml exceptions that no longer match anything: three zip advisories and BSD-2-Clause
 
 `cargo deny check advisories licenses` warned four times about exceptions that match nothing in the tree:
 
@@ -13,7 +13,7 @@
 After this, the only warning left is the yanked `async-executor` 1.14.0 (under zbus), a lockfile update for
 another delivery. The check exits 0.
 
-## 1.38.7 - Keep a Claude account registry that does not parse beside the seed instead of writing the seed over it
+## 1.38.10 - Keep a Claude account registry that does not parse beside the seed instead of writing the seed over it
 
 `registro()` answered the seed for a `contas-claude.json` that did not parse, and wrote the seed over it. One
 stray comma in a hand edit, which the file invites, cost every profile in it on the next read, without a word.
@@ -27,7 +27,7 @@ stray comma in a hand edit, which the file invites, cost every profile in it on 
 - **Proof.** `an_unreadable_registry_is_kept_beside_the_seed_not_overwritten`: the broken file comes back byte for
   byte beside a new, valid one. Red when the seed is written without moving the file aside.
 
-## 1.38.7 - Drop a Claude account profile whose variable is unknown instead of reading it as CLAUDE_CONFIG_DIR
+## 1.38.10 - Drop a Claude account profile whose variable is unknown instead of reading it as CLAUDE_CONFIG_DIR
 
 `contas-claude.json` is edited by hand by design (a second machine registers its own paths there), and each
 profile says which variable it sets: `CLAUDE_CONFIG_DIR` (the whole configuration home) or
@@ -40,7 +40,7 @@ ran turns under a whole other configuration home, which is another account, with
   before 1.4.28.
 - **Proof.** `an_unknown_variable_drops_the_profile_instead_of_guessing_one`; red with the old fallback.
 
-## 1.38.7 - Run Help → Diagnostics off the event loop, so a server that is down no longer freezes every window
+## 1.38.10 - Run Help → Diagnostics off the event loop, so a server that is down no longer freezes every window
 
 The menu handler ran the checks where it was called, on the event loop that paints every window: the server
 probe and `anna --version`. With the server down that took 4–10 s, and every window of the app stopped
@@ -48,7 +48,7 @@ responding for that long, which is exactly when a person opens the diagnostics. 
 of their own and the panel opens when they are done; `diagnostico::abrir` reaches windows only through calls
 Tauri already forwards to the main thread.
 
-## 1.38.7 - Bring a window hidden by "close keeps running" back from the macOS Dock
+## 1.38.10 - Bring a window hidden by "close keeps running" back from the macOS Dock
 
 On macOS, closing the last window with "close keeps running" on hides it; it is not destroyed. The Dock click
 (`RunEvent::Reopen`) only rebuilt a window when none existed, so with the hidden one still there it did nothing and
@@ -57,6 +57,18 @@ the Dock icon looked dead until the person found the menu-bar icon. It now does 
 
 - **Not measured on a Mac.** The arm compiles only on macOS; the CI's macOS job compiles and lints it. The behaviour
   is the tray's, which is in use on every platform.
+
+## 1.38.7 - Generate Arch integrity metadata with root ownership
+
+The Debian/Ubuntu packaging path now runs `fpm` under `fakeroot`, so `.MTREE` and
+its tar payload both describe `root:root`. Previously, a non-root builder produced
+an installable package whose integrity checks reported UID/GID mismatches for
+every installed file. The build requires `fakeroot` and skips the Arch package
+with installation guidance when it is absent.
+
+A Linux regression packages a small DEB through the real build script as an
+ordinary user and checks the archive metadata, integrity records and origin marker.
+The native `makepkg` path is unchanged.
 
 ## 1.38.6 - Record the zeroize lockfile update
 

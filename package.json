@@ -1,7 +1,7 @@
 {
   "name": "shvia-desktop",
   "private": true,
-  "version": "1.38.7",
+  "version": "1.38.10",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "version:sync": "node scripts/sync-version.mjs",
+    "prova:pacman": "node scripts/prova-pacman-mtree.mjs",
     "prova:bump": "node scripts/sync-version.mjs --verificar",
     "prova:bootstrap": "node --test scripts/prova-bootstrap.test.mjs",
     "prova:runner": "node scripts/prova-montar-prompt.mjs",
