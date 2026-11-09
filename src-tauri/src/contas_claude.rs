@@ -586,25 +586,50 @@ fn para_json(contas: &[Conta], selecionada: &str) -> serde_json::Value {
 /// [`PADRAO`] — the one place falling back to the default is right, because no turn has
 /// been launched yet and the user is about to see which account is selected.
 pub fn registro(app: &AppHandle) -> (Vec<Conta>, String) {
-    let casa = home();
-    let caminho = arquivo(app);
+    carregar(arquivo(app).as_deref(), &home(), &|p| p.is_dir())
+}
 
-    if let Some(bruto) = caminho
-        .as_ref()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-    {
-        let (contas, selecionada) = do_json(&bruto);
-        let contas = normalizar(&casa, contas);
-        let selecionada = if contas.iter().any(|c| c.id == selecionada) {
-            selecionada
-        } else {
-            PADRAO.to_string()
-        };
-        return (contas, selecionada);
+/// [`registro`] without the app, so the file rules have a proof.
+///
+/// **The seed is never written over a file the person has.** Until 1.38.7 a file that did not
+/// parse (one stray comma in a hand edit, which this file invites: a second machine registers
+/// its paths there) was replaced by the seed on the next read, and every profile in it was
+/// gone without a word. Now a file that does not parse is moved aside, next to the original
+/// as `contas-claude.json.unreadable-<seconds>`, before the seed takes its place; and a file
+/// that exists but cannot be read, or cannot be moved aside, is left alone: the seed is
+/// answered for this read and not written.
+fn carregar(caminho: Option<&Path>, casa: &Path, existe: &dyn Fn(&Path) -> bool) -> (Vec<Conta>, String) {
+    if let Some(p) = caminho {
+        match std::fs::read_to_string(p) {
+            Ok(texto) => match serde_json::from_str::<serde_json::Value>(&texto) {
+                Ok(bruto) => {
+                    let (contas, selecionada) = do_json(&bruto);
+                    let contas = normalizar(casa, contas);
+                    let selecionada = if contas.iter().any(|c| c.id == selecionada) {
+                        selecionada
+                    } else {
+                        PADRAO.to_string()
+                    };
+                    return (contas, selecionada);
+                }
+                Err(_) => {
+                    let segundos = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or_default();
+                    let mut ao_lado = p.as_os_str().to_owned();
+                    ao_lado.push(format!(".unreadable-{segundos}"));
+                    if std::fs::rename(p, &ao_lado).is_err() {
+                        return (semente(casa, existe), PADRAO.to_string());
+                    }
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return (semente(casa, existe), PADRAO.to_string()),
+        }
     }
 
-    let contas = semente(&casa, &|p| p.is_dir());
+    let contas = semente(casa, existe);
     if let (Some(p), Ok(s)) = (
         caminho,
         serde_json::to_string_pretty(&para_json(&contas, PADRAO)),
@@ -945,6 +970,32 @@ mod tests {
         let (lidas, _) = do_json(&v);
         let ids: Vec<(&str, Var)> = lidas.iter().map(|c| (c.id.as_str(), c.var)).collect();
         assert_eq!(ids, vec![("old", Var::ConfigDir), ("cred", Var::SecureStorage)]);
+    }
+
+    /// A registry that does not parse is moved aside, never written over; one that parses is read.
+    #[test]
+    fn an_unreadable_registry_is_kept_beside_the_seed_not_overwritten() {
+        let pasta = std::env::temp_dir().join(format!("shvia-registro-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&pasta);
+        std::fs::create_dir_all(&pasta).unwrap();
+        let arquivo = pasta.join(ARQUIVO);
+        let estragado = r#"{ "contas": [ { "id": "blue3", "rotulo": "Blue3", "dir": "/home/dev/.claude-blue3", }, ] }"#;
+        std::fs::write(&arquivo, estragado).unwrap();
+
+        let (contas, sel) = carregar(Some(&arquivo), &casa(), &|_| false);
+        assert_eq!(sel, PADRAO);
+        assert_eq!(contas, semente(&casa(), &|_| false), "this read answers the seed");
+
+        let guardados: Vec<_> = std::fs::read_dir(&pasta)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with("contas-claude.json.unreadable-"))
+            .collect();
+        assert_eq!(guardados.len(), 1, "the unreadable file is kept beside the new one");
+        assert_eq!(std::fs::read_to_string(guardados[0].path()).unwrap(), estragado, "byte for byte");
+        assert!(serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(&arquivo).unwrap()).is_ok());
+
+        let _ = std::fs::remove_dir_all(&pasta);
     }
 
     // ── aliases (1.13.1, ADR-041) ───────────────────────────────────────────────────────────────────────

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.38.7 - Keep a Claude account registry that does not parse beside the seed instead of writing the seed over it
+
+`registro()` answered the seed for a `contas-claude.json` that did not parse, and wrote the seed over it. One
+stray comma in a hand edit, which the file invites, cost every profile in it on the next read, without a word.
+
+- **What changes.** A file that does not parse is moved aside, next to the original, as
+  `contas-claude.json.unreadable-<seconds>`, and only then does the seed take its place. A file that exists but
+  cannot be read, or cannot be moved aside, is left alone: the seed answers that read and is not written. A
+  missing file is seeded and written as before.
+- **Shape.** The rules moved into `carregar(path, home, exists)`, which `registro()` calls, so they have a proof
+  without the app.
+- **Proof.** `an_unreadable_registry_is_kept_beside_the_seed_not_overwritten`: the broken file comes back byte for
+  byte beside a new, valid one. Red when the seed is written without moving the file aside.
+
 ## 1.38.7 - Drop a Claude account profile whose variable is unknown instead of reading it as CLAUDE_CONFIG_DIR
 
 `contas-claude.json` is edited by hand by design (a second machine registers its own paths there), and each
