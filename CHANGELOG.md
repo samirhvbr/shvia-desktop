@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.38.7 - Write env.sh values as single-quoted shell words so a page cannot put a command into the person's shell
+
+"Connect my CLI" (`writeCliConfig`, ADR-026) writes `~/.shvia/env.sh` from three values the page sends: the base, the key
+and the model. The person runs that file with `source`. Until now the base and the key went between double quotes, where
+`$(…)` and backticks run, and the model went into a comment line that a line break would end. A script running on the
+server's origin, the actor ADR-031 names, could put a command into the person's next shell, and the confirmation dialog
+showed only the file's path.
+
+- Every value in `env.sh` is a single-quoted shell word, with `'` written as `'\''`.
+- A value with a line break or any other control character is refused for all three clients, and nothing is written.
+- The dialog names the server and the model as well as the path. The key stays out of it, as before.
+- Proof: `o_env_sh_devolve_os_valores_sem_executar_nada` sources the generated file in a real `sh`, with `$(…)`,
+  backticks and both kinds of quote in the key and the base. With the old double quotes it fails because the marker
+  command ran. `valor_com_quebra_de_linha_nao_e_gravado` fails without the control-character check.
+
 ## 1.38.6 - Record the zeroize lockfile update
 
 Record the `zeroize` update from 1.9.0 to 1.9.1 in [PR #208](https://github.com/samirhvbr/shvia-desktop/pull/208).

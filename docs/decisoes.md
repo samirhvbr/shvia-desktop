@@ -1377,6 +1377,17 @@ versão da extensão. Escrever ali no escuro corromperia o editor de alguém.
 adivinhar qual linha era nossa. Daí o `~/.shvia/env.sh` com o `source` explicado no
 cabeçalho.
 
+**Values as shell words (1.38.7, 2026-11-09).** `env.sh` is run by the person's shell, so a
+value the page sends is code there unless it is quoted for that shell. Until 1.38.7 the base
+and the key went between double quotes, where `$(…)` and backticks run, and the model went
+into a comment line that a line break would end. A script running on the server's origin (the
+actor F-12 names, ADR-031) could therefore put a command into the person's next `source`, and
+the dialog showed only the path. Now every value is a single-quoted shell word (a `'` is
+written as `'\''`), every client refuses a value with a line break or another control
+character, and the native dialog names the server and the model as well as the path. The key
+stays out of the dialog. Test: `o_env_sh_devolve_os_valores_sem_executar_nada`, which sources
+the file in a real `sh`.
+
 #### Arquivo novo com credencial nasce `0600`
 
 Em arquivo que **já existia** não mexemos na permissão: mudar o modo de um arquivo de
