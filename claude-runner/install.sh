@@ -19,9 +19,9 @@ BIN="$HOME/.local/bin"
 
 command -v node >/dev/null 2>&1 || { echo "erro: Node 18+ não encontrado no PATH."; exit 1; }
 
-# ── The new install is assembled BESIDE the old one, and replaces it only once it loads (1.38.9) ──
+# ── The new install is assembled BESIDE the old one, and replaces it only once it loads (1.38.13) ──
 #
-# Until 1.38.9 the files were copied over the installed runner and `npm ci` ran there. `npm ci`
+# Until 1.38.13 the files were copied over the installed runner and `npm ci` ran there. `npm ci`
 # starts by deleting `node_modules`, so an update that lost the network halfway left the NEW runner
 # files with no Agent SDK. The app decides whether to reinstall by comparing exactly those files and
 # the version in `package.json` (`src-tauri/src/code_bridge/atualizacao.rs`): from the next start on

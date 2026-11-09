@@ -6,7 +6,7 @@
     - assembles the runner in %LOCALAPPDATA%\shvia-claude-runner.incoming;
     - runs `npm ci --omit=dev` there, from the versioned lock (finding F-18);
     - proves that copy LOADS (1.4.22), and only then puts it in place of
-      %LOCALAPPDATA%\shvia-claude-runner (1.38.9);
+      %LOCALAPPDATA%\shvia-claude-runner (1.38.13);
     - leaves %LOCALAPPDATA%\shvia\bin\claude-runner.cmd, for a terminal only.
 
   The desktop does not go through the .cmd. It finds claude-runner.mjs in the install folder
@@ -33,7 +33,7 @@ $Files = @('claude-runner.mjs', 'politica.mjs', 'parada.mjs', 'orientacao.mjs', 
 $Dir = $PSScriptRoot
 if (-not $env:LOCALAPPDATA) { Write-Output 'erro: LOCALAPPDATA não está definido (isto roda no Windows).'; exit 1 }
 $Dest = Join-Path $env:LOCALAPPDATA 'shvia-claude-runner'
-# The new install is assembled BESIDE the old one and replaces it only once it loads (1.38.9). Until
+# The new install is assembled BESIDE the old one and replaces it only once it loads (1.38.13). Until
 # then the files were copied over the installed runner and `npm ci` ran there; `npm ci` deletes
 # node_modules first, so an update that lost the network left the new files with no Agent SDK, and the
 # app, which compares those files and the version, counted the runner as up to date from the next start

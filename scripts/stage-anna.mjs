@@ -140,8 +140,8 @@ if (args.includes("--reuse-check")) {
   process.exit(0);
 }
 
-// 🔴 (1.38.9) An anna NAMED with `--from` (`./build-local.sh --anna`) or `$SHVIA_ANNA_BIN` that is not there IS an
-// error. Naming one is a choice, like the floor below, and until 1.38.9 a typo in `./build-local.sh --publish
+// 🔴 (1.38.13) An anna NAMED with `--from` (`./build-local.sh --anna`) or `$SHVIA_ANNA_BIN` that is not there IS an
+// error. Naming one is a choice, like the floor below, and until 1.38.13 a typo in `./build-local.sh --publish
 // --anna <path>` fell into the absence branch under this one: it removed the staged engine and published a
 // release with no Code engine, behind one warning in a long log.
 if (achado?.pedido && !existsSync(origem)) {

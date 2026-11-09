@@ -62,7 +62,7 @@ a compatibility check. It is `anna` 0.16.2, and the script says why for every
 raise. A build machine whose PATH `anna` is older stops the build: install the current one
 from SHVIA-CODE (`./install.sh` builds it from source) or pass `--anna <path>`. Absence removes a stale staged binary, and the wrappers override
 `externalBin` with an empty list. A path named with `--anna` or `SHVIA_ANNA_BIN` that does not exist is not an
-absence: it stops the build (1.38.9), because a typo used to publish a release with no Code engine. `--no-anna`/`-NoAnna` therefore means **no bundled SHVIA
+absence: it stops the build (1.38.13), because a typo used to publish a release with no Code engine. `--no-anna`/`-NoAnna` therefore means **no bundled SHVIA
 engine**, not that every other local/remote Code engine disappears. An independently
 installed engine can still be discovered at runtime.
 
@@ -98,7 +98,7 @@ checked against that hash on every build. What fails the build is a file that is
 wrong: a hash that differs from the pinned one, an engine that does not run or does not print
 a plain `X.Y.Z` for `--fork-version`, one below the floor, or one that prints a different
 version than the manifest pins. A path named with `--from`/`--pentest` or `SHVIA_PENTEST_BIN`
-that is not a file fails it too (1.38.9). What does not fail it is an absence (no network and no
+that is not a file fails it too (1.38.13). What does not fail it is an absence (no network and no
 cache, no asset for the platform): the build goes on without the engine and removes any engine an
 earlier build staged. `npm run prova:pentest` runs each of those cases against a local HTTP
 server and keeps the floor in the script equal to the one in `compatibility.rs`.
@@ -709,7 +709,7 @@ inteiro só para subir arquivo que já existe — na prática, 2s em vez de minu
 qualquer fonte for mais nova que o artefato** — senão editar código sem bumpar a
 versão publicaria binário velho, assinado, como se fosse a versão nova.
 
-**The source list covers what the bundle is made from, not only the code (1.38.9).** Until 1.38.8 it
+**The source list covers what the bundle is made from, not only the code (1.38.13).** Until 1.38.12 it
 missed four inputs: `pentest-engine.json`, which is compiled into the app and picks the Linux engine;
 `tauri.linux.conf.json` and `tauri.macos.conf.json`, which declare the sidecars and the `.deb`/`.rpm`
 dependencies; and `src-tauri/traffic-capture/`, the capture sidecar's source. A commit that only bumped
@@ -727,12 +727,12 @@ would package, with the same lookup it stages with, and compares its version wit
 bundle carries one. An older `anna` on PATH does not displace the bundle's. The reuse line says
 which engine it keeps ("anna in the bundle: …").
 
-**And so are the other choices of the run (1.38.9).** `--bundles`, `--pentest`, `--no-pentest` and
-`--no-traffic` also act only on the rebuild path, and until 1.38.8 a reused bundle ignored them:
+**And so are the other choices of the run (1.38.13).** `--bundles`, `--pentest`, `--no-pentest` and
+`--no-traffic` also act only on the rebuild path, and until 1.38.12 a reused bundle ignored them:
 `--bundles deb` published every installer of the build before it, and a default run after a
 `--no-pentest` build published without the engine. A finished build now records its `--bundles` in
 `src-tauri/target/release/bundle/.bundles` (`all` without the flag), and the reuse needs the same
-value; a bundle from before 1.38.9 has no record and is rebuilt once. `stage-pentest.mjs
+value; a bundle from before 1.38.13 has no record and is rebuilt once. `stage-pentest.mjs
 --reuse-check` compares, by SHA-256, the staged engine with the one this run would bundle (the
 named file, the pinned asset, or none on a Mac by default), and `--no-pentest` needs no staged
 engine. The capture sidecar must be staged unless `--no-traffic`, and absent with it.

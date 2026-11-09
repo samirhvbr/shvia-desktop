@@ -12,7 +12,7 @@
  *  1. consistency — every resource, icon and external binary that `tauri.conf.json` and the
  *     per-platform `tauri.<os>.conf.json` bundle has its root in the list, and so has each of those
  *     config files (read from the configs, not copied here, so a new resource fails this). Since
- *     1.38.9 also every file the Rust source compiles in (`include_str!`, `include_bytes!`): the
+ *     1.38.13 also every file the Rust source compiles in (`include_str!`, `include_bytes!`): the
  *     Pentest pin, `pentest-engine.json`, is one, and a commit that only bumped it reused the old
  *     bundle. And every root in the list is inside ENTRADAS_DO_BUILD, the inputs `--publish` refuses
  *     to ship dirty, which also missed the pin;
@@ -22,11 +22,11 @@
  *     with stand-in `anna` binaries, refuses the reuse when `--anna` names another version than the
  *     bundle's, or PATH has a newer one, and keeps it otherwise. Before 1.35.4 the owner's Mac
  *     reused 1.35.3 with `--anna` 0.15.3 and the bundle kept its older engine;
- *  4. the rest of the run's choices (1.38.9) — the same `can_reuse_build`: `--bundles` must be what
+ *  4. the rest of the run's choices (1.38.13) — the same `can_reuse_build`: `--bundles` must be what
  *     the bundle on disk recorded, `--no-pentest`/`--no-traffic` need no staged sidecar of theirs, a
  *     default run needs the capture sidecar, and the Pentest engine staged must have the SHA-256 of
  *     the one this run would bundle (`--pentest`, or the pin where the platform bundles it). Until
- *     1.38.9 a reused bundle ignored all four.
+ *     1.38.13 a reused bundle ignored all four.
  */
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync, utimesSync } from "node:fs";
@@ -119,7 +119,7 @@ try {
   writeFileSync(join(dir, "claude-runner/claude-runner.mjs"), "x");
   if (!roda().includes("claude-runner/claude-runner.mjs")) { falhas++; console.error("🔴 a newer runner file did not stop the reuse"); }
   rmSync(join(dir, "claude-runner/claude-runner.mjs"));
-  // 1.38.9: the capture crate's own build output is not a source; its source and the Pentest pin are.
+  // 1.38.13: the capture crate's own build output is not a source; its source and the Pentest pin are.
   mkdirSync(join(dir, "src-tauri/traffic-capture/target/release"), { recursive: true });
   writeFileSync(join(dir, "src-tauri/traffic-capture/target/release/traffic-capture"), "x");
   if (roda() !== "") { falhas++; console.error("🔴 a newer file under the capture crate's target/ made the build look stale"); }
@@ -224,7 +224,7 @@ if can_reuse_build; then printf 'REUSA|%s|%s' "$REUSE_ANNA" "$REUSE_PENTEST"; el
     julga(c.porque, c.reusa, out);
   }
 
-  // 4. The rest of the run's choices (1.38.9).
+  // 4. The rest of the run's choices (1.38.13).
   const estagia = (dir, nome, conteudo) => writeFileSync(join(dir, `src-tauri/binaries/${nome}-${triple}`), conteudo, { mode: 0o755 });
   const fixaPin = (dir, conteudo) => {
     const m = JSON.parse(readFileSync(join(dir, "pentest-engine.json"), "utf8"));
@@ -238,7 +238,7 @@ if can_reuse_build; then printf 'REUSA|%s|%s' "$REUSE_ANNA" "$REUSE_PENTEST"; el
     { porque: "--bundles deb against a bundle built with --bundles deb", vars: () => ({ BUNDLES: "deb" }),
       prepara: (d) => writeFileSync(join(d, "src-tauri/target/release/bundle/.bundles"), "deb\n"), reusa: true },
     { porque: "a default run against a bundle built with --bundles deb", prepara: (d) => writeFileSync(join(d, "src-tauri/target/release/bundle/.bundles"), "deb\n"), reusa: false },
-    { porque: "a bundle that does not record its --bundles (built before 1.38.9)", prepara: (d) => rmSync(join(d, "src-tauri/target/release/bundle/.bundles")), reusa: false },
+    { porque: "a bundle that does not record its --bundles (built before 1.38.13)", prepara: (d) => rmSync(join(d, "src-tauri/target/release/bundle/.bundles")), reusa: false },
     { porque: "--no-traffic, and the bundle carries the capture sidecar", prepara: (d) => estagia(d, "traffic-capture", "captura"), reusa: false },
     { porque: "a run without --no-traffic, and the bundle has no capture sidecar", vars: () => ({ NO_TRAFFIC: 0 }), reusa: false },
     { porque: "a run without --no-traffic, and the bundle carries the capture sidecar", vars: () => ({ NO_TRAFFIC: 0 }),

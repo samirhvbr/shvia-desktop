@@ -11,7 +11,7 @@
  * Three checks:
  *  1. stage-anna, run from a COPY in a temp tree (never the repo's own binaries/): no anna →
  *     the stale file is removed; a (fake) anna → it is staged; an anna NAMED with --from or
- *     $SHVIA_ANNA_BIN that does not exist → the build stops (1.38.9), because that is a choice
+ *     $SHVIA_ANNA_BIN that does not exist → the build stops (1.38.13), because that is a choice
  *     that cannot be met, not an absence.
  *  2. the real bundle-override block of build-local.sh composes one valid --config: no anna →
  *     `externalBin: []`; no updater key → `createUpdaterArtifacts: false`; both merged.
@@ -54,7 +54,7 @@ if (process.platform !== "win32") {
   } catch (e) { falha(`stage-anna without anna must not fail the build (exit ${e.status})`); }
   rmSync(dir, { recursive: true, force: true });
 }
-// 1a'. 🔴 an anna NAMED that does not exist (1.38.9): the build stops instead of shipping without the engine.
+// 1a'. 🔴 an anna NAMED that does not exist (1.38.13): the build stops instead of shipping without the engine.
 for (const como of ["--from", "SHVIA_ANNA_BIN"]) {
   const dir = arvore();
   const ausente = join(dir, "nao-existe");

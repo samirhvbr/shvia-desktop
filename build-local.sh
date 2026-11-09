@@ -1040,7 +1040,7 @@ can_reuse_build() {
   # tauri.conf.json and fails when something it bundles is missing here. `node_modules` is
   # pruned: it is not a source, and scanning it made the check slow.
   # 1.7.1: `codex-runner/` too, since the app ships it to keep the installed one current.
-  # 🔴 1.38.9: four more inputs the bundle is made from. `pentest-engine.json` is compiled into the app
+  # 🔴 1.38.13: four more inputs the bundle is made from. `pentest-engine.json` is compiled into the app
   # (`compatibility.rs`, `include_str!`) and picks the engine the Linux bundle carries; the per-platform
   # `tauri.linux.conf.json` / `tauri.macos.conf.json` declare the three sidecars and the .deb/.rpm
   # dependencies; `src-tauri/traffic-capture/` is the source of the capture sidecar. A second commit under
@@ -1084,16 +1084,16 @@ can_reuse_build() {
     fi
   fi
 
-  # Step 6 (1.38.9): the rest of what this run asks the bundle to be. Like the engine in step 5, `--bundles`,
+  # Step 6 (1.38.13): the rest of what this run asks the bundle to be. Like the engine in step 5, `--bundles`,
   # `--pentest`, `--no-pentest` and `--no-traffic` act only on the rebuild path, so a reused bundle ignored them
   # in silence: `--bundles deb` published the full set of the build before it, and a default run after a
   # `--no-pentest` build published without the engine. The bundles are what the last build recorded in
-  # `bundle/.bundles` (a bundle from before 1.38.9 has no record and is rebuilt once); the Pentest engine is
+  # `bundle/.bundles` (a bundle from before 1.38.13 has no record and is rebuilt once); the Pentest engine is
   # `stage-pentest.mjs --reuse-check`, by SHA-256; the capture sidecar is whether one is staged.
   local feito pedido="${BUNDLES:-all}"
   feito="$(cat src-tauri/target/release/bundle/.bundles 2>/dev/null || true)"
   if [ "$feito" != "$pedido" ]; then
-    REUSE_MOTIVO="this run asks for --bundles $pedido; the bundle on disk was built with ${feito:-no record of it (a build from before 1.38.9)}"
+    REUSE_MOTIVO="this run asks for --bundles $pedido; the bundle on disk was built with ${feito:-no record of it (a build from before 1.38.13)}"
     return 1
   fi
   if [ "$NO_PENTEST" = "1" ]; then
@@ -1455,7 +1455,7 @@ done
 # dirty or untracked; only warn for the rest, and for a HEAD that is not origin/master.
 # ENTRADAS_DO_BUILD is what the bundle is made from (see the reuse list and tauri.conf.json),
 # plus version.md — the number the publish announces — and the Arch PKGBUILD. `pentest-engine.json` came
-# in 1.38.9: it is compiled into the app and picks the bundled engine, and an uncommitted pin published.
+# in 1.38.13: it is compiled into the app and picks the bundled engine, and an uncommitted pin published.
 ENTRADAS_DO_BUILD="version.md src src-tauri claude-runner codex-runner public index.html package.json package-lock.json vite.config.ts tsconfig.json scripts build-local.sh packaging pentest-engine.json"
 confere_arvore_para_publicar() {
   if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -1778,7 +1778,7 @@ fi
 if [ "$_BUILD_OS" = Linux ]; then
   _versao_pkg="$(tr -d ' \t\n\r' < version.md)"
   _bundle_pkg=src-tauri/target/release/bundle
-  # `|| true` in this one and in `_pkg_arch_file` below (1.38.9): a `--bundles appimage` or `rpm` build has no
+  # `|| true` in this one and in `_pkg_arch_file` below (1.38.13): a `--bundles appimage` or `rpm` build has no
   # `deb/` and so no `pacman/` folder, `find` exits 1 on the missing folder, `pipefail` hands that to the
   # assignment, and `set -e` ended the whole build there, after the compile, with no message and no manifest.
   _deb_pkg="$(find "$_bundle_pkg/deb" -maxdepth 1 -name "*_${_versao_pkg}_*.deb" 2>/dev/null | head -1 || true)"

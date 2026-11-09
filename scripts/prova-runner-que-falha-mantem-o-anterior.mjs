@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * A runner install that fails keeps the runner that was there (1.38.9).
+ * A runner install that fails keeps the runner that was there (1.38.13).
  *
  * `claude-runner/install.sh` used to copy the new files over the installed runner and run `npm ci`
  * there. `npm ci` deletes `node_modules` first, so an update that lost the network left the new

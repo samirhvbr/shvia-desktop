@@ -2220,9 +2220,9 @@ being rewritten, and says so.
   The Claude runner's version follows the app's (it is one of the version carriers), so that is
   **once per app release**, on the first start after it. It never blocks the window, and a failure
   is one notification pointing at the button.
-- **A failed reinstall keeps the runner that was there (1.38.9).** The table above compares the installed
+- **A failed reinstall keeps the runner that was there (1.38.13).** The table above compares the installed
   `package.json` and runner files, so it is only right if an install either completes or changes nothing.
-  Until 1.38.9 it did neither: the installers copied the new files over the old install and then ran
+  Until 1.38.13 it did neither: the installers copied the new files over the old install and then ran
   `npm ci`, which deletes `node_modules` first. An update that lost the network there left the new
   version with no Agent SDK; `--version` still answered, the next start found "same version, same
   files", and every Code turn died on the SDK import until the next app release. On Windows a first

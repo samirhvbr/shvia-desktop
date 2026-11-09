@@ -19,8 +19,8 @@
  *   6. a broken link named `node`/`npm` AHEAD in PATH (measured on 24/09/2026: a dangling
  *      ~/.local/bin/npm made pwsh try to "open" it) does not break the install;
  *   7. 🔴 an update whose `npm ci` fails (offline, empty cache: a lost network) leaves the installed
- *      claude-runner as it was, version and node_modules, with nothing staged beside it (1.38.9).
- *      Until 1.38.9 the new files were copied over the old install first, `npm ci` deleted its
+ *      claude-runner as it was, version and node_modules, with nothing staged beside it (1.38.13).
+ *      Until 1.38.13 the new files were copied over the old install first, `npm ci` deleted its
  *      node_modules, and the app counted the broken runner as up to date;
  *   8. an update that passes replaces the old install whole and leaves nothing beside it.
  *

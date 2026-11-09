@@ -36,7 +36,7 @@
 //! would stop being the one the user gets.
 //!
 //! The rule is only as true as what the installers leave behind: it reads the installed
-//! `package.json` and runner files, never `node_modules`. Until 1.38.9 the Claude runner's installers
+//! `package.json` and runner files, never `node_modules`. Until 1.38.13 the Claude runner's installers
 //! copied the new files over the old install and then ran `npm ci`, which deletes `node_modules`
 //! first; an update that lost the network there left the new version over no Agent SDK, and from the
 //! next start on this rule said "up to date" (on Windows a first install that failed did the same).
