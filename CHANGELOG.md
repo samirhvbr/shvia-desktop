@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.38.8 - Pin the Pentest engine at 1.2.50, whose activity window masks the credential formats 1.2.49 let through
+
+`pentest-engine.json` pinned 1.2.49. It now pins **1.2.50**, the engine build whose `strix activity` (the command behind 1.37.0's
+`pentestActivity()`) masks the credential formats 1.2.49 let through, answers hostile lines in milliseconds and keeps every field
+inside what this app accepts. The mask is the only barrier between a target's text and the page that shows it, so a Mac or Linux
+computer that runs the activity window should not keep 1.2.49.
+
+- **What 1.2.50 changes for this Desktop** (the fork's Release `shvia-v1.2.50`, Strix 1.7.0 + 64 commits, fork PR #56):
+  - *The mask.* The review of 06/11/2026 measured 1.2.49 letting through 11 of 11 formats it tried (`"password":"..."` in JSON,
+    `?token=`, `user:password@host`, `API_TOKEN=`, `curl -u`/`-b`, Slack, GitLab, Stripe and Google keys, a header after the literal
+    `\n` of JSON-encoded tool arguments). 1.2.50 closes them and keeps `max_tokens`, `tokenizer` and nmap's `-p` readable.
+  - *The cost.* A 4,000-character hostile line took 4.5 s in 1.2.49, so four of them overran the 15 s deadline in `activity.rs` and
+    the window vanished while a hostile target was in it. Now every hostile input in the engine's tests answers in under 20 ms.
+  - *The fields.* This app refuses the WHOLE answer when one field is out of its bounds, and its cursor then never advances: an agent
+    id over 128 characters, an empty name or status, a newline in a tool name, a missing time. The engine now normalises each one.
+  - *Known limit, in the engine's own notes:* a compaction of an agent's context re-inserts its recent rows under new ids, so the page
+    lists them twice once per compaction.
+- **The pin.** Release `shvia-v1.2.50`, built on 09/11/2026 with `scripts/build-pentest-local.sh --upload`, one machine each:
+  `aarch64-apple-darwin` 95,376,336 bytes, SHA-256 `4fbd08bb…10c7`, and `x86_64-unknown-linux-gnu` 107,547,448 bytes, SHA-256
+  `9d2f1e26…29d7`. The digests are the ones GitHub's REST API reports for the files on the Release and the ones in its `SHA256SUMS`.
+  Both files were downloaded from the Release and their size and SHA-256 compared with the pin; the Linux binary answers
+  `--fork-version` with `1.2.50`, the Mac one is a Mach-O arm64 executable, and `npm run pentest:stage` downloaded the Linux one
+  from the public URL and accepted it against the pin.
+- **No Desktop code changed.** A Mac that has 1.2.49 installed is offered the install of 1.2.50 and decides by its own consent (the
+  consent each pin change costs is what the owner approved in principle on 02/11/2026 to replace by one standing consent, not built).
+  Not measured: the mask on real output from a target, and this engine as a binary on the owner's Mac.
+
 ## 1.38.7 - Generate Arch integrity metadata with root ownership
 
 The Debian/Ubuntu packaging path now runs `fpm` under `fakeroot`, so `.MTREE` and

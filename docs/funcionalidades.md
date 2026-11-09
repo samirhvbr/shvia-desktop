@@ -140,6 +140,9 @@ The first long runs on the owner's Mac (30/10 and 02/11/2026) found what a Linux
   for the account model key of 1.36.0.
 - **Engine 1.2.49 (1.38.1)** has the read-only `activity` command that `pentestActivity()` (1.37.0) runs, and runs the sandbox
   image `strix-sandbox:1.3.1` (1.2.48), downloaded again once by a computer that has 1.3.0.
+- **Engine 1.2.50 (1.38.8)** masks the credential formats the activity window of 1.2.49 let through (JSON `"password"`, `?token=`,
+  URL credentials, `curl -u`, Slack, GitLab, Stripe and Google keys), answers hostile lines in milliseconds and normalises every
+  field this app would otherwise refuse the whole answer for.
 
 Details and what was not measured: [PENTEST/authorization.md](PENTEST/authorization.md) and the CHANGELOG entries of each
 version.
