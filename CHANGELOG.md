@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.38.7 - Read the engine's result.json only when this attempt wrote it, so a refused key is not taken for a provider window
+
+The engine writes `strix_runs/<name>/result.json` at the end of `main` and leaves it there, and an attempt that dies on
+an exception (a refused key, a lapsed grant) writes none. `ending.rs` read whatever was there first. A resume that died on
+a refused key therefore read the previous attempt's `{"exit_reason":"rate_limited"}`, was classified as a provider
+window, and the automatic resume kept scheduling waits for it up to its 12 h ceiling, each ending the same way.
+
+- **What changes.** Every start and every resume opens a new log (`runtime.log`, `resume-<id>.log`, `create_new`), so the
+  newest log's creation time is when this attempt started. A `result.json` older than that is the previous attempt's,
+  and the log's sentences decide. A file system that keeps no creation time reads the file as before.
+- **Not touched.** `pentest.rs` and the call sites: the rule lives in `classify`, which already finds the newest log.
+- **Proof.** `a_result_left_by_an_earlier_attempt_does_not_decide_the_next_one`: the first attempt's own result decides,
+  the resume that died on a refused key is `key_refused`, and a resume that writes its own `rate_limited` is a provider
+  window again. Red without the age check (`provider_window` for the refused key). Documented in
+  `docs/PENTEST/authorization.md`.
+
 ## 1.38.6 - Record the zeroize lockfile update
 
 Record the `zeroize` update from 1.9.0 to 1.9.1 in [PR #208](https://github.com/samirhvbr/shvia-desktop/pull/208).
