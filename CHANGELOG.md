@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.38.6 - Record the zeroize lockfile update
+
+Record the `zeroize` update from 1.9.0 to 1.9.1 in [PR #208](https://github.com/samirhvbr/shvia-desktop/pull/208).
+The update is already in the base branch's `src-tauri/Cargo.lock`. This entry and the synchronized
+Desktop version fields give that dependency update a release record.
+
 ## 1.38.5 - Record the Claude Agent SDK and Vite updates
 
 The Claude runner uses Claude Agent SDK 0.3.319, up from 0.3.314 (#207). The
