@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.38.8 - Open the diffs of a project that is a subfolder of a repository, and list only that folder's changes
+
+`git status --porcelain` names files from the top of the repository, not from the folder it runs in, and the Changes tab sends
+that name back to `gitDiff`. The diff ran in the folder, so with `sub/` authorized the status said `sub/a.txt`, git looked for
+`sub/sub/a.txt`, and every diff came back empty: the panel said "no changes" for a file it had just listed as changed. The
+status also listed the changed files of the whole repository, outside the authorized folder.
+
+- `gitStatus` passes `-- .`, so only the authorized folder's changes are listed. The paths stay as porcelain writes them.
+- `gitDiff` asks git for the repository's top and the folder's prefix (`rev-parse --show-toplevel --show-prefix`), runs the
+  diff at the top, and refuses a `file` that does not start with the prefix. A folder at the top has an empty prefix, so
+  nothing changes there.
+- Proof: `projeto_em_subpasta_lista_so_a_pasta_e_abre_o_diff`, on a real repository, and `a.txt` added to the fence test.
+  Each of the three changes, reverted alone, turns a test red.
+
+## 1.38.8 - Keep the diff the Changes tab opens inside the authorized folder
+
+`gitDiff` checked the folder (`path`) against the fence and handed the page's `file` to git as a pathspec. Inside one
+repository a pathspec can leave the folder: with a subfolder authorized, `../a.txt`, an absolute path, `:(top)a.txt` and
+`:/a.txt` all returned the diff of a file outside it, content included. `file` must now be a relative path without `..`,
+and git runs with `--literal-pathspecs`, so it reads the name as a name. A folder that is a repository's root, the usual
+case, sees no difference, because `git status` names its files relative to that root.
+
+- Proof: `diff_nao_sai_da_pasta_autorizada_dentro_do_mesmo_repo`, on a real repository. Without the path check `../a.txt`
+  leaks; without `--literal-pathspecs`, `:(top)a.txt` does.
+- A known limit, recorded in ADR-031: with a subfolder authorized, `gitStatus` still lists the changed file names of the
+  whole repository (names, no content).
+
+## 1.38.8 - Write env.sh values as single-quoted shell words so a page cannot put a command into the person's shell
+
+"Connect my CLI" (`writeCliConfig`, ADR-026) writes `~/.shvia/env.sh` from three values the page sends: the base, the key
+and the model. The person runs that file with `source`. Until now the base and the key went between double quotes, where
+`$(…)` and backticks run, and the model went into a comment line that a line break would end. A script running on the
+server's origin, the actor ADR-031 names, could put a command into the person's next shell, and the confirmation dialog
+showed only the file's path.
+
+- Every value in `env.sh` is a single-quoted shell word, with `'` written as `'\''`.
+- A value with a line break or any other control character is refused for all three clients, and nothing is written.
+- The dialog names the server and the model as well as the path. The key stays out of it, as before.
+- Proof: `o_env_sh_devolve_os_valores_sem_executar_nada` sources the generated file in a real `sh`, with `$(…)`,
+  backticks and both kinds of quote in the key and the base. With the old double quotes it fails because the marker
+  command ran. `valor_com_quebra_de_linha_nao_e_gravado` fails without the control-character check.
+
 ## 1.38.7 - Generate Arch integrity metadata with root ownership
 
 The Debian/Ubuntu packaging path now runs `fpm` under `fakeroot`, so `.MTREE` and
