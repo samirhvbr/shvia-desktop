@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.38.7 - Bring a window hidden by "close keeps running" back from the macOS Dock
+
+On macOS, closing the last window with "close keeps running" on hides it; it is not destroyed. The Dock click
+(`RunEvent::Reopen`) only rebuilt a window when none existed, so with the hidden one still there it did nothing and
+the Dock icon looked dead until the person found the menu-bar icon. It now does what the tray's "Abrir o ShvIA" does
+(`tray::mostrar`): show, unminimize and focus the window that exists, or rebuild it when there is none.
+
+- **Not measured on a Mac.** The arm compiles only on macOS; the CI's macOS job compiles and lints it. The behaviour
+  is the tray's, which is in use on every platform.
+
 ## 1.38.6 - Record the zeroize lockfile update
 
 Record the `zeroize` update from 1.9.0 to 1.9.1 in [PR #208](https://github.com/samirhvbr/shvia-desktop/pull/208).

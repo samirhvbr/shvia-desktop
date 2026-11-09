@@ -1792,13 +1792,14 @@ pub fn run() {
                 }
             }
         }
-        // macOS: clicar no ícone do Dock com todas as janelas fechadas não
-        // recria nada por padrão. Recria a principal para o usuário.
+        // macOS: a Dock click does nothing by default when no window is showing. Bring the
+        // app back the way the tray's "Abrir o ShvIA" does: show, unminimize and focus the
+        // window that exists, or rebuild it when there is none. Until 1.38.7 this only
+        // rebuilt a window that was gone, so a window hidden by "close keeps running" (it is
+        // hidden, not destroyed) stayed hidden and the Dock icon looked dead.
         #[cfg(target_os = "macos")]
         tauri::RunEvent::Reopen { .. } => {
-            if rapida::normais(app_handle).is_empty() {
-                let _ = build_shvia_window(app_handle, "main", WebviewUrl::App("index.html".into()));
-            }
+            tray::mostrar(app_handle);
         }
         tauri::RunEvent::Exit => {
             code_bridge::stop_pentest(None);
