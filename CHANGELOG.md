@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.38.9 - A reused bundle honours --bundles, --pentest, --no-pentest and --no-traffic
+
+`build-local.sh` reuses the bundle on disk when its version and sources match, and skips staging and
+`tauri build`. Those four flags act only there, so a reused bundle ignored them in silence:
+`--bundles deb` published every installer of the build before it, `--pentest <other>` kept the old
+engine, and a default run after a `--no-pentest` or `--no-traffic` build published without the Pentest
+engine or the capture sidecar. 1.35.4 closed the same gap for `--anna` (step 5 of `can_reuse_build`).
+
+- **What changes.** A finished build records its `--bundles` in `src-tauri/target/release/bundle/.bundles`
+  (`all` without the flag), and the reuse needs the same value. A bundle from before 1.38.9 has no record
+  and is rebuilt once. `stage-pentest.mjs --reuse-check` compares, by SHA-256 and without touching the disk,
+  the staged engine with the one this run would bundle: the file `--pentest` names, the pinned asset where
+  the platform bundles it by default, or none on a Mac. `--no-pentest` and `--no-traffic` need no staged
+  sidecar of theirs, and a run without `--no-traffic` needs the capture sidecar. The reuse line names the
+  Pentest engine it keeps, as it does for `anna`.
+- **Measured.** `prova:reuso` runs the real `can_reuse_build` in a temporary tree for 15 cases of these
+  choices, besides the 8 of `anna`. Against the script without this step, the 10 that must rebuild reuse.
+
 ## 1.38.9 - A reused bundle is rebuilt when the Pentest pin or a platform config changed
 
 `build-local.sh` reuses the last bundle of the same version when no source is newer than it. Two commits

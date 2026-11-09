@@ -1084,6 +1084,46 @@ can_reuse_build() {
     fi
   fi
 
+  # Step 6 (1.38.9): the rest of what this run asks the bundle to be. Like the engine in step 5, `--bundles`,
+  # `--pentest`, `--no-pentest` and `--no-traffic` act only on the rebuild path, so a reused bundle ignored them
+  # in silence: `--bundles deb` published the full set of the build before it, and a default run after a
+  # `--no-pentest` build published without the engine. The bundles are what the last build recorded in
+  # `bundle/.bundles` (a bundle from before 1.38.9 has no record and is rebuilt once); the Pentest engine is
+  # `stage-pentest.mjs --reuse-check`, by SHA-256; the capture sidecar is whether one is staged.
+  local feito pedido="${BUNDLES:-all}"
+  feito="$(cat src-tauri/target/release/bundle/.bundles 2>/dev/null || true)"
+  if [ "$feito" != "$pedido" ]; then
+    REUSE_MOTIVO="this run asks for --bundles $pedido; the bundle on disk was built with ${feito:-no record of it (a build from before 1.38.9)}"
+    return 1
+  fi
+  if [ "$NO_PENTEST" = "1" ]; then
+    if ls src-tauri/binaries/pentest-* >/dev/null 2>&1; then
+      REUSE_MOTIVO="--no-pentest, and the bundle on disk carries the Pentest engine"
+      return 1
+    fi
+  else
+    local pentest_rc=0
+    if [ -n "$PENTEST_FROM" ]; then
+      REUSE_PENTEST="$(node scripts/stage-pentest.mjs --reuse-check --from "$PENTEST_FROM" 2>&1)" || pentest_rc=$?
+    else
+      REUSE_PENTEST="$(node scripts/stage-pentest.mjs --reuse-check 2>&1)" || pentest_rc=$?
+    fi
+    if [ "$pentest_rc" -ne 0 ]; then
+      REUSE_MOTIVO="$REUSE_PENTEST"
+      REUSE_PENTEST=""
+      return 1
+    fi
+  fi
+  if [ "$NO_TRAFFIC" = "1" ]; then
+    if ls src-tauri/binaries/traffic-capture-* >/dev/null 2>&1; then
+      REUSE_MOTIVO="--no-traffic, and the bundle on disk carries the capture sidecar"
+      return 1
+    fi
+  elif ! ls src-tauri/binaries/traffic-capture-* >/dev/null 2>&1; then
+    REUSE_MOTIVO="the bundle on disk has no capture sidecar, and this run would build one"
+    return 1
+  fi
+
   REUSE_REF="$ref"; REUSE_N="$n"
   return 0
 }
@@ -1386,6 +1426,7 @@ REUSE_REF=""
 REUSE_N=0
 REUSE_MOTIVO=""
 REUSE_ANNA=""
+REUSE_PENTEST=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --skip-npm-ci)  SKIP_NPM_CI=1 ;;
@@ -1559,6 +1600,9 @@ if can_reuse_build; then
   if [ -n "$REUSE_ANNA" ]; then
     echo "       $REUSE_ANNA"
   fi
+  if [ -n "$REUSE_PENTEST" ]; then
+    echo "       $REUSE_PENTEST"
+  fi
   echo "       Pulando npm ci / version:sync / tauri build."
   echo "       Para reconstruir: --force (ou apague src-tauri/target/release/bundle)."
 else
@@ -1702,6 +1746,9 @@ if [ "$REUSE" -eq 0 ]; then
     verify_macos_signature
     verify_macos_engine
   fi
+  # Which bundles this build made, for the reuse check of a later run (step 6 of can_reuse_build).
+  mkdir -p src-tauri/target/release/bundle
+  printf '%s\n' "${BUNDLES:-all}" > src-tauri/target/release/bundle/.bundles
 fi
 
 # ── Pacote Arch Linux (.pkg.tar.zst) ─────────────────────────────────────────

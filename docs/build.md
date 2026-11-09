@@ -727,6 +727,16 @@ would package, with the same lookup it stages with, and compares its version wit
 bundle carries one. An older `anna` on PATH does not displace the bundle's. The reuse line says
 which engine it keeps ("anna in the bundle: …").
 
+**And so are the other choices of the run (1.38.9).** `--bundles`, `--pentest`, `--no-pentest` and
+`--no-traffic` also act only on the rebuild path, and until 1.38.8 a reused bundle ignored them:
+`--bundles deb` published every installer of the build before it, and a default run after a
+`--no-pentest` build published without the engine. A finished build now records its `--bundles` in
+`src-tauri/target/release/bundle/.bundles` (`all` without the flag), and the reuse needs the same
+value; a bundle from before 1.38.9 has no record and is rebuilt once. `stage-pentest.mjs
+--reuse-check` compares, by SHA-256, the staged engine with the one this run would bundle (the
+named file, the pinned asset, or none on a Mac by default), and `--no-pentest` needs no staged
+engine. The capture sidecar must be staged unless `--no-traffic`, and absent with it.
+
 Para forçar: `--force`, ou apague `src-tauri/target/release/bundle`.
 
 > **Windows:** o `build-local.ps1` ainda **não** tem o `--publish` — publique à mão
