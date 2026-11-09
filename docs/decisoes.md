@@ -1803,6 +1803,13 @@ autoriza nada.
   página reabriria a cerca por fora — gravava o vínculo e pedia a leitura em seguida.
 - A comparação é de caminho **canônico** e por **componente** (`Path::starts_with`), então
   `..`, symlink e vizinho de nome parecido (`/x/projeto2` contra `/x/projeto`) não entram.
+- **`gitDiff` fences its `file` too (1.38.7, 2026-11-09).** Checking `path` alone let a
+  pathspec leave the authorized folder inside the same repository: from an authorized
+  subfolder, `../x`, an absolute path and pathspec magic (`:(top)x`, `:/x`) all reached files
+  outside it, and the diff came back with their content. `file` must now be a relative path
+  without `..`, and git runs with `--literal-pathspecs`. A known limit: with a subfolder
+  authorized, `gitStatus` still lists the changed file NAMES of the whole repository (no
+  content).
 
 ### Alternativas rejeitadas
 

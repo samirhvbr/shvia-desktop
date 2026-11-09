@@ -239,6 +239,33 @@ mod tests_git_diff {
         assert!(r["diff"].as_str().unwrap().contains("+depois"));
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// The fence holds inside one repository. The authorized folder is a SUBFOLDER, and `a.txt` at the
+    /// repository's root, outside it, has a change. Every way of naming that file from the subfolder is refused or
+    /// shows nothing, while a file inside the subfolder still shows its diff.
+    #[test]
+    fn diff_nao_sai_da_pasta_autorizada_dentro_do_mesmo_repo() {
+        let Some(dir) = repo_temporario("cerca") else { return };
+        let sub = dir.join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("s.txt"), "antes\n").unwrap();
+        let p = dir.to_string_lossy().into_owned();
+        crate::processo::comando("git").args(["-C", &p, "add", "-A"]).output().unwrap();
+        crate::processo::comando("git").args(["-C", &p, "commit", "-qm", "sub"]).output().unwrap();
+        std::fs::write(dir.join("a.txt"), "linha 1\nSEGREDO\n").unwrap();
+        std::fs::write(sub.join("s.txt"), "depois\n").unwrap();
+        let autorizada = sub.to_string_lossy().into_owned();
+
+        let absoluto = dir.join("a.txt").to_string_lossy().into_owned();
+        for fora in ["../a.txt", ":(top)a.txt", ":/a.txt", "./../a.txt", absoluto.as_str()] {
+            let r = git_diff(&autorizada, fora);
+            let texto = r["diff"].as_str().unwrap_or_default();
+            assert!(!texto.contains("SEGREDO"), "{fora:?} printed a file outside the authorized folder: {r}");
+        }
+        let dentro = git_diff(&autorizada, "s.txt");
+        assert!(dentro["diff"].as_str().unwrap_or_default().contains("+depois"), "{dentro}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 #[cfg(test)]
@@ -399,12 +426,15 @@ pub(super) const READ_FILE_MAX: usize = 512 * 1024;
 /// viraria uma chamada de modelo. Painel é leitura de estado; o precedente certo é
 /// o `git_status` logo acima, não o agente.
 ///
-/// ## O `--` não é enfeite
+/// ## The `--`, and the fence after it
 ///
-/// Sem ele, um arquivo chamado `-p` ou que colida com um nome de branch faria o git
-/// interpretá-lo como opção ou revisão. O separador diz "daqui em diante é caminho",
-/// e é a única guarda necessária: o nome vem do `git status` do MESMO repositório,
-/// não de digitação livre.
+/// Without `--`, a file called `-p`, or one named like a branch, would be read by git as an option or a
+/// revision. That was the only guard until 1.38.7, on the reasoning that the name comes from the same
+/// repository's `git status`. It does not: the page sends `file`, and a pathspec can leave the folder the person
+/// authorized while staying in the same repository. Measured on 09/11/2026 from an authorized subfolder:
+/// `../top.txt` and `:(top)top.txt` both printed the diff of a file outside it. So `file` must be a relative path
+/// with no `..`, and `--literal-pathspecs` makes git read it as a name, never as pathspec magic (`:(top)`, `:/`,
+/// globs).
 ///
 /// ## Vazio ≠ sem mudança
 ///
@@ -417,9 +447,15 @@ pub(super) fn git_diff(path: &str, file: &str) -> serde_json::Value {
     if path.is_empty() || file.is_empty() {
         return serde_json::json!({ "ok": false, "erro": "caminho ou arquivo vazio" });
     }
+    let dentro = std::path::Path::new(file)
+        .components()
+        .all(|parte| matches!(parte, std::path::Component::Normal(_) | std::path::Component::CurDir));
+    if !dentro {
+        return serde_json::json!({ "ok": false, "erro": "arquivo fora da pasta autorizada" });
+    }
 
     let rodar = |staged: bool| -> Option<String> {
-        let mut args: Vec<&str> = vec!["-C", path, "diff"];
+        let mut args: Vec<&str> = vec!["--literal-pathspecs", "-C", path, "diff"];
         if staged {
             args.push("--staged");
         }

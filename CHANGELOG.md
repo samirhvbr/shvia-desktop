@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.38.7 - Keep the diff the Changes tab opens inside the authorized folder
+
+`gitDiff` checked the folder (`path`) against the fence and handed the page's `file` to git as a pathspec. Inside one
+repository a pathspec can leave the folder: with a subfolder authorized, `../a.txt`, an absolute path, `:(top)a.txt` and
+`:/a.txt` all returned the diff of a file outside it, content included. `file` must now be a relative path without `..`,
+and git runs with `--literal-pathspecs`, so it reads the name as a name. A folder that is a repository's root, the usual
+case, sees no difference, because `git status` names its files relative to that root.
+
+- Proof: `diff_nao_sai_da_pasta_autorizada_dentro_do_mesmo_repo`, on a real repository. Without the path check `../a.txt`
+  leaks; without `--literal-pathspecs`, `:(top)a.txt` does.
+- A known limit, recorded in ADR-031: with a subfolder authorized, `gitStatus` still lists the changed file names of the
+  whole repository (names, no content).
+
 ## 1.38.7 - Write env.sh values as single-quoted shell words so a page cannot put a command into the person's shell
 
 "Connect my CLI" (`writeCliConfig`, ADR-026) writes `~/.shvia/env.sh` from three values the page sends: the base, the key
