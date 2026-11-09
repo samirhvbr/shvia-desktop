@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.38.7 - End the Pentest viewer's whole process group, so its Python server no longer outlives the window
+## 1.38.11 - End the Pentest viewer's whole process group, so its Python server no longer outlives the window
 
 The engine is a PyInstaller program: the process the Desktop spawns for "Abrir viewer local" is a launcher, and the
 viewer's web server is the Python process it starts. `viewer::close` killed the launcher alone, so that server kept
@@ -17,7 +17,7 @@ serving the run on 127.0.0.1 after the window closed or the page changed, until 
   `closing_another_window_never_terminates_the_viewer_and_the_owner_reaps_it` now spawns its stand-in the way `open` does,
   and the two tests take turns on the one viewer slot.
 
-## 1.38.7 - Read the engine's result.json only when this attempt wrote it, so a refused key is not taken for a provider window
+## 1.38.11 - Read the engine's result.json only when this attempt wrote it, so a refused key is not taken for a provider window
 
 The engine writes `strix_runs/<name>/result.json` at the end of `main` and leaves it there, and an attempt that dies on
 an exception (a refused key, a lapsed grant) writes none. `ending.rs` read whatever was there first. A resume that died on
@@ -32,6 +32,18 @@ window, and the automatic resume kept scheduling waits for it up to its 12 h cei
   the resume that died on a refused key is `key_refused`, and a resume that writes its own `rate_limited` is a provider
   window again. Red without the age check (`provider_window` for the refused key). Documented in
   `docs/PENTEST/authorization.md`.
+
+## 1.38.7 - Generate Arch integrity metadata with root ownership
+
+The Debian/Ubuntu packaging path now runs `fpm` under `fakeroot`, so `.MTREE` and
+its tar payload both describe `root:root`. Previously, a non-root builder produced
+an installable package whose integrity checks reported UID/GID mismatches for
+every installed file. The build requires `fakeroot` and skips the Arch package
+with installation guidance when it is absent.
+
+A Linux regression packages a small DEB through the real build script as an
+ordinary user and checks the archive metadata, integrity records and origin marker.
+The native `makepkg` path is unchanged.
 
 ## 1.38.6 - Record the zeroize lockfile update
 
