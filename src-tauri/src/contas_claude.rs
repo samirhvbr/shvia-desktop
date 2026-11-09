@@ -534,21 +534,24 @@ fn do_json(v: &serde_json::Value) -> (Vec<Conta>, String) {
         .and_then(|c| c.as_array())
         .map(|a| {
             a.iter()
-                .map(|c| Conta {
-                    id: c.get("id").and_then(|x| x.as_str()).unwrap_or_default().into(),
-                    rotulo: c.get("rotulo").and_then(|x| x.as_str()).unwrap_or_default().into(),
-                    dir: c.get("dir").and_then(|x| x.as_str()).unwrap_or_default().into(),
+                .filter_map(|c| {
                     // Absent means the original mechanism: a file written before this field
                     // existed describes a `CLAUDE_CONFIG_DIR` profile, and reading it as
                     // anything else would change what every fleet entry means on upgrade.
-                    // Present but unrecognised is NOT a default — `normalizar` drops it.
-                    var: match c.get("var").and_then(|x| x.as_str()) {
-                        None => Var::ConfigDir,
-                        Some(t) => match Var::de_str(t) {
-                            Some(v) => v,
-                            None => Var::ConfigDir, // marcada abaixo; ver `normalizar`
-                        },
-                    },
+                    // Present but unrecognised drops the entry. Until 1.38.7 it became
+                    // `CLAUDE_CONFIG_DIR` (the comment said `normalizar` dropped it, and nothing
+                    // did), so a misspelt credential-only profile ran turns under a whole other
+                    // configuration home: another account, with nothing on screen saying so.
+                    let var = match c.get("var") {
+                        None | Some(serde_json::Value::Null) => Var::ConfigDir,
+                        Some(t) => Var::de_str(t.as_str()?)?,
+                    };
+                    Some(Conta {
+                        id: c.get("id").and_then(|x| x.as_str()).unwrap_or_default().into(),
+                        rotulo: c.get("rotulo").and_then(|x| x.as_str()).unwrap_or_default().into(),
+                        dir: c.get("dir").and_then(|x| x.as_str()).unwrap_or_default().into(),
+                        var,
+                    })
                 })
                 .collect()
         })
@@ -927,6 +930,21 @@ mod tests {
         let (lidas, sel) = do_json(&v);
         assert_eq!(sel, "pessoal");
         assert_eq!(normalizar(&casa(), lidas), contas);
+    }
+
+    /// A `var` nobody knows is not a `CLAUDE_CONFIG_DIR`: that guess would run the turn under a
+    /// whole other configuration home. Absent still means the original mechanism.
+    #[test]
+    fn an_unknown_variable_drops_the_profile_instead_of_guessing_one() {
+        let v = serde_json::json!({ "contas": [
+            { "id": "typo", "rotulo": "Typo", "dir": "/home/dev/.claude-cred-a", "var": "CLAUDE_SECURESTORAGE_DIR" },
+            { "id": "number", "rotulo": "Number", "dir": "/home/dev/.claude-cred-b", "var": 7 },
+            { "id": "old", "rotulo": "Old file", "dir": "/home/dev/.claude-old" },
+            { "id": "cred", "rotulo": "Cred", "dir": "/home/dev/.claude-cred-c", "var": "CLAUDE_SECURESTORAGE_CONFIG_DIR" },
+        ]});
+        let (lidas, _) = do_json(&v);
+        let ids: Vec<(&str, Var)> = lidas.iter().map(|c| (c.id.as_str(), c.var)).collect();
+        assert_eq!(ids, vec![("old", Var::ConfigDir), ("cred", Var::SecureStorage)]);
     }
 
     // ── aliases (1.13.1, ADR-041) ───────────────────────────────────────────────────────────────────────

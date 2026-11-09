@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.38.7 - Drop a Claude account profile whose variable is unknown instead of reading it as CLAUDE_CONFIG_DIR
+
+`contas-claude.json` is edited by hand by design (a second machine registers its own paths there), and each
+profile says which variable it sets: `CLAUDE_CONFIG_DIR` (the whole configuration home) or
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` (the credential only). A `var` the app did not know became `CLAUDE_CONFIG_DIR`;
+the comment said `normalizar` dropped such an entry, and nothing did. A misspelt credential-only profile therefore
+ran turns under a whole other configuration home, which is another account, with nothing on screen saying so.
+
+- **What changes.** A `var` that is present and not one of the two names (or not a string) drops the profile on
+  read, like an invalid `id` or `dir`. An absent `var` is still `CLAUDE_CONFIG_DIR`, as in every file written
+  before 1.4.28.
+- **Proof.** `an_unknown_variable_drops_the_profile_instead_of_guessing_one`; red with the old fallback.
+
 ## 1.38.7 - Run Help → Diagnostics off the event loop, so a server that is down no longer freezes every window
 
 The menu handler ran the checks where it was called, on the event loop that paints every window: the server

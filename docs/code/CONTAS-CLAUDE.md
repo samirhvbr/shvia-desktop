@@ -138,6 +138,7 @@ edit the registry with the app closed and reopen it. Every read validates the fo
 | `id` | minúsculas, dígitos e traço; começa com alfanumérico; até 32 caracteres |
 | `dir` | caminho **absoluto**, dentro do seu `$HOME` |
 | `rotulo` | não vazio |
+| `var` | absent means `CLAUDE_CONFIG_DIR` (a file from before 1.4.28); otherwise exactly `CLAUDE_CONFIG_DIR` or `CLAUDE_SECURESTORAGE_CONFIG_DIR`. Any other value drops the entry (1.38.7; before, it silently became `CLAUDE_CONFIG_DIR`) |
 
 Entrada que não passa é **descartada**, não corrigida — um palpite nosso sobre o que a
 pessoa quis dizer rodaria um turno num diretório que ninguém escreveu.
