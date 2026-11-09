@@ -31,6 +31,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  pacman:
+    name: Arch package integrity metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Install Arch packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ruby ruby-dev build-essential dpkg-dev fakeroot libarchive-tools zstd
+          sudo gem install fpm --version 1.17.0 --no-document
+      # Run as the runner user: root would hide the builder UID/GID regression.
+      - run: npm run prova:pacman
+
   provas:
     name: Provas (Rust + política do runner)
     runs-on: ubuntu-latest

@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.38.7 - Open the diffs of a project that is a subfolder of a repository, and list only that folder's changes
+## 1.38.8 - Open the diffs of a project that is a subfolder of a repository, and list only that folder's changes
 
 `git status --porcelain` names files from the top of the repository, not from the folder it runs in, and the Changes tab sends
 that name back to `gitDiff`. The diff ran in the folder, so with `sub/` authorized the status said `sub/a.txt`, git looked for
@@ -14,7 +14,7 @@ status also listed the changed files of the whole repository, outside the author
 - Proof: `projeto_em_subpasta_lista_so_a_pasta_e_abre_o_diff`, on a real repository, and `a.txt` added to the fence test.
   Each of the three changes, reverted alone, turns a test red.
 
-## 1.38.7 - Keep the diff the Changes tab opens inside the authorized folder
+## 1.38.8 - Keep the diff the Changes tab opens inside the authorized folder
 
 `gitDiff` checked the folder (`path`) against the fence and handed the page's `file` to git as a pathspec. Inside one
 repository a pathspec can leave the folder: with a subfolder authorized, `../a.txt`, an absolute path, `:(top)a.txt` and
@@ -27,7 +27,7 @@ case, sees no difference, because `git status` names its files relative to that 
 - A known limit, recorded in ADR-031: with a subfolder authorized, `gitStatus` still lists the changed file names of the
   whole repository (names, no content).
 
-## 1.38.7 - Write env.sh values as single-quoted shell words so a page cannot put a command into the person's shell
+## 1.38.8 - Write env.sh values as single-quoted shell words so a page cannot put a command into the person's shell
 
 "Connect my CLI" (`writeCliConfig`, ADR-026) writes `~/.shvia/env.sh` from three values the page sends: the base, the key
 and the model. The person runs that file with `source`. Until now the base and the key went between double quotes, where
@@ -41,6 +41,18 @@ showed only the file's path.
 - Proof: `o_env_sh_devolve_os_valores_sem_executar_nada` sources the generated file in a real `sh`, with `$(…)`,
   backticks and both kinds of quote in the key and the base. With the old double quotes it fails because the marker
   command ran. `valor_com_quebra_de_linha_nao_e_gravado` fails without the control-character check.
+
+## 1.38.7 - Generate Arch integrity metadata with root ownership
+
+The Debian/Ubuntu packaging path now runs `fpm` under `fakeroot`, so `.MTREE` and
+its tar payload both describe `root:root`. Previously, a non-root builder produced
+an installable package whose integrity checks reported UID/GID mismatches for
+every installed file. The build requires `fakeroot` and skips the Arch package
+with installation guidance when it is absent.
+
+A Linux regression packages a small DEB through the real build script as an
+ordinary user and checks the archive metadata, integrity records and origin marker.
+The native `makepkg` path is unchanged.
 
 ## 1.38.6 - Record the zeroize lockfile update
 

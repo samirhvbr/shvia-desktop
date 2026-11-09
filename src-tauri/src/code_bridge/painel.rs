@@ -268,7 +268,7 @@ mod tests_git_diff {
     }
 
     /// A project that is a subfolder of a repository: the status lists only that folder, with the paths git gives
-    /// (from the repository's top), and each of them opens its diff. Until 1.38.7 the status listed the whole
+    /// (from the repository's top), and each of them opens its diff. Until 1.38.8 the status listed the whole
     /// repository and the diff of `sub/s.txt` ran in `sub/`, looked for `sub/sub/s.txt` and came back empty.
     #[test]
     fn projeto_em_subpasta_lista_so_a_pasta_e_abre_o_diff() {
@@ -393,7 +393,7 @@ pub(super) fn git_status(path: &str) -> serde_json::Value {
     // `gitDiff`, and git answered 0 bytes — every accented or spaced file showed "no
     // changes" until 1.6.10. With `-z` paths come verbatim, NUL-terminated.
     //
-    // `-- .` (1.38.7): only the folder the person authorized. Without it, a folder that is a subfolder of a
+    // `-- .` (1.38.8): only the folder the person authorized. Without it, a folder that is a subfolder of a
     // repository listed every changed file of the whole repository. The paths stay relative to the repository's
     // top, as porcelain always gives them, and that is what `git_diff` takes.
     let mut st = crate::processo::comando("git");
@@ -471,7 +471,7 @@ fn raiz_e_prefixo(path: &str) -> Option<(String, String)> {
 /// ## The `--`, and the fence after it
 ///
 /// Without `--`, a file called `-p`, or one named like a branch, would be read by git as an option or a
-/// revision. That was the only guard until 1.38.7, on the reasoning that the name comes from the same
+/// revision. That was the only guard until 1.38.8, on the reasoning that the name comes from the same
 /// repository's `git status`. It does not: the page sends `file`, and a pathspec can leave the folder the person
 /// authorized while staying in the same repository. Measured on 09/11/2026 from an authorized subfolder:
 /// `../top.txt` and `:(top)top.txt` both printed the diff of a file outside it. So `file` must be a relative path
@@ -481,7 +481,7 @@ fn raiz_e_prefixo(path: &str) -> Option<(String, String)> {
 /// ## `file` is relative to the repository's top
 ///
 /// It comes from `git_status`, and porcelain names files from the top of the repository, not from the folder git
-/// ran in. Until 1.38.7 the diff ran in the folder, so in a project that is a subfolder of a repository
+/// ran in. Until 1.38.8 the diff ran in the folder, so in a project that is a subfolder of a repository
 /// (`sub/` authorized, status says `sub/a.txt`) git looked for `sub/sub/a.txt` and the panel said "no changes".
 /// The diff now runs at the top, and `file` must start with the folder's own prefix there (`sub/`), which is
 /// also what keeps it inside the fence.

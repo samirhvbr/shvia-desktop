@@ -319,7 +319,7 @@ fn montar_puro(
         Cliente::Env => {
             // Our own file, rewritten whole, which is why it is not the `.zshrc`. The person runs it with `source`, so
             // every value is a single-quoted shell word: the shell expands nothing inside single quotes, so `$(…)`,
-            // backticks and `"` in a value stay text. Until 1.38.7 the values went between double quotes, where
+            // backticks and `"` in a value stay text. Until 1.38.8 the values went between double quotes, where
             // `$(…)` runs.
             format!(
                 "# Gerado pelo ShvIA Desktop. Use com: source ~/.shvia/env.sh\n\
@@ -421,7 +421,7 @@ fn confirmar_e_gravar(
     let caminho_txt = destino.display().to_string();
 
     // The server and the model are what the person is agreeing to send their CLI to, so the dialog names them;
-    // until 1.38.7 it showed only the path. The key stays out (comment on the buttons below).
+    // until 1.38.8 it showed only the path. The key stays out (comment on the buttons below).
     let corpo = format!(
         "Vou gravar a configuração do {} em:\n\n{}\n\nServidor: {}\nModelo: {}\n\n{}",
         cliente.rotulo(),
