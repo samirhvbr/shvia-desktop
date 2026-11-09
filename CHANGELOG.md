@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.38.9 - A Linux build with --bundles appimage or rpm no longer aborts after compiling
+
+`build-local.sh` looks for the `.deb` (to repackage it for pacman) and then for the pacman package with
+`$(find … | head -1)` under `set -euo pipefail`. A `--bundles appimage` or `--bundles rpm` build has no
+`deb/` folder, so it never makes a `pacman/` one either. `find` exits 1 on the missing folder, `pipefail`
+gives the assignment that status, and `set -e` ended the build right after the compile with only
+"build abortou … exit 1": no manifest, nothing published. Both lookups now end in `|| true`, like the
+script's other lookups of the same shape.
+
+Measured by running the script's real Linux packaging block in a temporary tree that holds only an
+AppImage, then only an rpm, with no packaging tools on PATH. Both aborted with exit 1 before and finish
+now; a tree with only a `.deb` finished before and after. With only the first `|| true`, the AppImage and
+rpm cases still abort, at the second lookup.
+
 ## 1.38.9 - A failed Claude runner update keeps the runner that was installed
 
 The app reinstalls the Claude runner at the first start after each app update (ADR-036), with the

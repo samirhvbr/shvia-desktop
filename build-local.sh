@@ -1721,7 +1721,10 @@ fi
 if [ "$_BUILD_OS" = Linux ]; then
   _versao_pkg="$(tr -d ' \t\n\r' < version.md)"
   _bundle_pkg=src-tauri/target/release/bundle
-  _deb_pkg="$(find "$_bundle_pkg/deb" -maxdepth 1 -name "*_${_versao_pkg}_*.deb" 2>/dev/null | head -1)"
+  # `|| true` in this one and in `_pkg_arch_file` below (1.38.9): a `--bundles appimage` or `rpm` build has no
+  # `deb/` and so no `pacman/` folder, `find` exits 1 on the missing folder, `pipefail` hands that to the
+  # assignment, and `set -e` ended the whole build there, after the compile, with no message and no manifest.
+  _deb_pkg="$(find "$_bundle_pkg/deb" -maxdepth 1 -name "*_${_versao_pkg}_*.deb" 2>/dev/null | head -1 || true)"
 
   # Nome do pacote pacman — o MESMO nas duas rotas (o makepkg lê do PKGBUILD, o fpm
   # recebe por `-n`). Até a 1.1.17 a rota fpm publicava `shv-ia`, o nome do pacote
@@ -1852,7 +1855,7 @@ if [ "$_BUILD_OS" = Linux ]; then
   # `repo-add` vem do pacote `pacman`: nativo no Arch, e no Debian está em
   # `pacman-package-manager`. Sem ele o .pkg ainda é publicado e instalável por
   # `pacman -U`; só não há `-Syu`.
-  _pkg_arch_file="$(find "$_bundle_pkg/pacman" -name "${_PKG_ARCH_NOME}-${_versao_pkg}*.pkg.tar.*" ! -name '*.sig' ! -name '*.sha256' 2>/dev/null | head -1)"
+  _pkg_arch_file="$(find "$_bundle_pkg/pacman" -name "${_PKG_ARCH_NOME}-${_versao_pkg}*.pkg.tar.*" ! -name '*.sig' ! -name '*.sha256' 2>/dev/null | head -1 || true)"
   if [ -n "$_pkg_arch_file" ]; then
     if command -v repo-add >/dev/null 2>&1; then
       echo "==> Linux: gerando o banco do repositório pacman (shvia.db)..."
