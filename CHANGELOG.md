@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.38.9 - A reused bundle is rebuilt when the Pentest pin or a platform config changed
+
+`build-local.sh` reuses the last bundle of the same version when no source is newer than it. Two commits
+may share a version, so that source list is what stops a second commit from publishing the first one's
+bundle. It missed four inputs: `pentest-engine.json`, compiled into the app (`compatibility.rs`) and the
+pick of the engine the Linux bundle carries; `src-tauri/tauri.linux.conf.json` and
+`tauri.macos.conf.json`, which declare the three sidecars and the `.deb`/`.rpm` dependencies; and
+`src-tauri/traffic-capture/`, the capture sidecar's source. A commit that only bumped the Pentest pin was
+reused and published with the old pin and engine. `ENTRADAS_DO_BUILD`, the inputs `--publish` refuses
+to ship uncommitted, also missed the pin.
+
+- **What changes.** The four are in the source list, with `target` pruned like `node_modules` (the
+  capture crate builds into its own), and the pin is in `ENTRADAS_DO_BUILD`.
+- **The ruler.** `prova:reuso` read only `tauri.conf.json`. It now reads every `tauri*.conf.json`,
+  requires each of them in the list, takes the roots of every `include_str!`/`include_bytes!` in
+  `src-tauri/src`, and checks that every root of the list is inside `ENTRADAS_DO_BUILD`. Its behaviour
+  part runs the real `find`: a newer pin or capture source stops the reuse, a newer file under the
+  capture crate's `target/` does not. Against the 1.38.8 script it names the four missing inputs; with
+  `target` not pruned, or the pin left out of `ENTRADAS_DO_BUILD`, it fails too.
+
 ## 1.38.9 - An engine named for the build that does not exist stops the build
 
 `./build-local.sh --anna <path>` and `--pentest <path>` (and `$SHVIA_ANNA_BIN`, `$SHVIA_PENTEST_BIN`, and

@@ -709,6 +709,14 @@ inteiro só para subir arquivo que já existe — na prática, 2s em vez de minu
 qualquer fonte for mais nova que o artefato** — senão editar código sem bumpar a
 versão publicaria binário velho, assinado, como se fosse a versão nova.
 
+**The source list covers what the bundle is made from, not only the code (1.38.9).** Until 1.38.8 it
+missed four inputs: `pentest-engine.json`, which is compiled into the app and picks the Linux engine;
+`tauri.linux.conf.json` and `tauri.macos.conf.json`, which declare the sidecars and the `.deb`/`.rpm`
+dependencies; and `src-tauri/traffic-capture/`, the capture sidecar's source. A commit that only bumped
+the Pentest pin was reused and published the old pin. `npm run prova:reuso` now reads every
+`tauri*.conf.json` and every `include_str!`/`include_bytes!` in the Rust source, and checks that each
+source root is also in `ENTRADAS_DO_BUILD`, the inputs `--publish` refuses to ship uncommitted.
+
 **The engine is checked too (1.35.4).** Staging the `anna` runs only on the rebuild path, so until
 1.35.3 a reused bundle ignored `--anna` (the owner's Mac reused 1.35.3 with `--anna` 0.15.3 and kept
 the older engine). Before reusing, `scripts/stage-anna.mjs --reuse-check` finds the `anna` this run

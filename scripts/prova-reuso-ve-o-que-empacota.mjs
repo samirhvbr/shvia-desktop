@@ -9,8 +9,13 @@
  * the OLD bundle.
  *
  * Two checks:
- *  1. consistency — every resource, icon and external binary `tauri.conf.json` bundles has its
- *     root in the list (read from the config, not copied here, so a new resource fails this);
+ *  1. consistency — every resource, icon and external binary that `tauri.conf.json` and the
+ *     per-platform `tauri.<os>.conf.json` bundle has its root in the list, and so has each of those
+ *     config files (read from the configs, not copied here, so a new resource fails this). Since
+ *     1.38.9 also every file the Rust source compiles in (`include_str!`, `include_bytes!`): the
+ *     Pentest pin, `pentest-engine.json`, is one, and a commit that only bumped it reused the old
+ *     bundle. And every root in the list is inside ENTRADAS_DO_BUILD, the inputs `--publish` refuses
+ *     to ship dirty, which also missed the pin;
  *  2. behavior — the real `find`, cut out of the script, sees a newer runner file and ignores a
  *     newer file under node_modules;
  *  3. the engine (1.35.4) — the real `can_reuse_build`, cut out of the script and run in a temp tree
@@ -19,10 +24,10 @@
  *     reused 1.35.3 with `--anna` 0.15.3 and the bundle kept its older engine.
  */
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, utimesSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync, utimesSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { dirname, join, posix } from "node:path";
+import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -32,7 +37,14 @@ if (i < 0) { console.error("🔴 the reuse freshness `find` moved out of build-l
 const FIND = FONTE.slice(i, FONTE.indexOf(')"', i) + 2);
 const lista = new Set(FIND.replace(/\\\n/g, " ").split(/\s+/));
 
-const conf = JSON.parse(readFileSync(join(RAIZ, "src-tauri/tauri.conf.json"), "utf8"));
+const CONFIGS = readdirSync(join(RAIZ, "src-tauri")).filter((n) => /^tauri(\.[a-z]+)?\.conf\.json$/.test(n)).sort();
+const confs = CONFIGS.map((n) => JSON.parse(readFileSync(join(RAIZ, "src-tauri", n), "utf8")));
+/** The root of a path relative to the repository: `src-tauri/<first folder>`, a top-level folder, or the file. */
+const raizDoRepo = (n) => {
+  const partes = posix.normalize(n).split("/");
+  if (partes[0] === "src-tauri") return partes.length > 2 ? partes.slice(0, 2).join("/") : n;
+  return partes.length > 1 ? partes[0] : n;
+};
 const raizDe = (p) => {
   // bundle paths are relative to src-tauri/; take the first real directory, or the file itself.
   const n = posix.normalize(posix.join("src-tauri", p));
@@ -40,16 +52,52 @@ const raizDe = (p) => {
   if (partes[0] === "src-tauri") return partes.length > 2 ? partes.slice(0, 2).join("/") : n;
   return partes.length > 1 ? partes[0] : n;
 };
+// Every file the Rust source compiles in, resolved from the file that includes it. Tests' includes count
+// too: telling them apart would take a Rust parser, and an extra root only costs a rebuild.
+const incluidos = [];
+const varrer = (dir) => {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) varrer(p);
+    else if (e.name.endsWith(".rs")) {
+      for (const m of readFileSync(p, "utf8").matchAll(/include_(?:str|bytes)!\(\s*"([^"]+)"\s*\)/g)) {
+        incluidos.push(relative(RAIZ, resolve(dirname(p), m[1])).split(sep).join("/"));
+      }
+    }
+  }
+};
+varrer(join(RAIZ, "src-tauri/src"));
+
 const exigidos = new Set([
-  ...(conf.bundle?.resources ?? []).map(raizDe),
-  ...(conf.bundle?.icon ?? []).map(raizDe),
-  ...(conf.bundle?.externalBin ?? []).map(raizDe),
+  ...confs.flatMap((conf) => [
+    ...(conf.bundle?.resources ?? []).map(raizDe),
+    ...(conf.bundle?.icon ?? []).map(raizDe),
+    ...(conf.bundle?.externalBin ?? []).map(raizDe),
+  ]),
+  ...CONFIGS.map((n) => `src-tauri/${n}`),
+  ...incluidos.map(raizDoRepo),
+  // The capture sidecar is BUILT from here (scripts/stage-traffic-capture.mjs); no config names it.
+  "src-tauri/traffic-capture",
   "src-tauri/Cargo.lock", "src-tauri/build.rs", "package-lock.json",
 ]);
 
 let falhas = 0;
 for (const r of exigidos) {
   if (!lista.has(r)) { falhas++; console.error(`🔴 ${r} is bundled (or builds the bundle) but the reuse check does not look at it`); }
+}
+
+// What the reuse check looks at must be committed to publish: ENTRADAS_DO_BUILD lists it by coarser roots.
+const k = FONTE.indexOf('ENTRADAS_DO_BUILD="');
+const entradas = k < 0 ? [] : FONTE.slice(k + 19, FONTE.indexOf('"', k + 19)).split(/\s+/).filter(Boolean);
+if (!entradas.length) { falhas++; console.error("🔴 ENTRADAS_DO_BUILD moved out of build-local.sh"); }
+// The find's starting points: everything between `find` and the first `\(`.
+const pontos = FIND.slice(FIND.indexOf("find ") + 5, FIND.indexOf("\\(")).replace(/\\\n/g, " ").split(/\s+/).filter(Boolean);
+if (!pontos.includes("src")) { falhas++; console.error("🔴 the reuse find's starting points could not be read"); }
+for (const r of pontos) {
+  if (!entradas.some((e) => r === e || r.startsWith(`${e}/`))) {
+    falhas++;
+    console.error(`🔴 ${r} makes the bundle stale but is not in ENTRADAS_DO_BUILD: --publish would ship it uncommitted`);
+  }
 }
 
 const dir = mkdtempSync(join(tmpdir(), "shvia-reuso-"));
@@ -64,6 +112,17 @@ try {
   if (roda() !== "") { falhas++; console.error("🔴 a newer file under node_modules made the build look stale"); }
   writeFileSync(join(dir, "claude-runner/claude-runner.mjs"), "x");
   if (!roda().includes("claude-runner/claude-runner.mjs")) { falhas++; console.error("🔴 a newer runner file did not stop the reuse"); }
+  rmSync(join(dir, "claude-runner/claude-runner.mjs"));
+  // 1.38.9: the capture crate's own build output is not a source; its source and the Pentest pin are.
+  mkdirSync(join(dir, "src-tauri/traffic-capture/target/release"), { recursive: true });
+  writeFileSync(join(dir, "src-tauri/traffic-capture/target/release/traffic-capture"), "x");
+  if (roda() !== "") { falhas++; console.error("🔴 a newer file under the capture crate's target/ made the build look stale"); }
+  mkdirSync(join(dir, "src-tauri/traffic-capture/src"), { recursive: true });
+  writeFileSync(join(dir, "src-tauri/traffic-capture/src/main.rs"), "x");
+  if (!roda().includes("src-tauri/traffic-capture/src/main.rs")) { falhas++; console.error("🔴 a newer capture sidecar source did not stop the reuse"); }
+  rmSync(join(dir, "src-tauri/traffic-capture/src/main.rs"));
+  writeFileSync(join(dir, "pentest-engine.json"), "{}");
+  if (!roda().includes("pentest-engine.json")) { falhas++; console.error("🔴 a newer Pentest pin did not stop the reuse"); }
 } finally { rmSync(dir, { recursive: true, force: true }); }
 
 // 3. the engine: the real can_reuse_build against stand-in annas. Shell stand-ins, so not on Windows,
@@ -137,4 +196,4 @@ if (falhas) {
   console.error(`\n${falhas} problem(s): a commit that changed only a bundled input would ship the old bundle.`);
   process.exit(1);
 }
-console.log(`[reuso] ${exigidos.size} entradas do bundle na lista de frescor · runner novo invalida o reuso, node_modules não · ${casosAnna} casos do anna`);
+console.log(`[reuso] ${exigidos.size} entradas do bundle na lista de frescor (${CONFIGS.length} configs, ${incluidos.length} includes do Rust), todas em ENTRADAS_DO_BUILD · runner, pin e fonte da captura invalidam o reuso, node_modules e target não · ${casosAnna} casos do anna`);
