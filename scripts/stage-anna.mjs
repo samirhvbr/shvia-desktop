@@ -140,6 +140,16 @@ if (args.includes("--reuse-check")) {
   process.exit(0);
 }
 
+// 🔴 (1.38.9) An anna NAMED with `--from` (`./build-local.sh --anna`) or `$SHVIA_ANNA_BIN` that is not there IS an
+// error. Naming one is a choice, like the floor below, and until 1.38.9 a typo in `./build-local.sh --publish
+// --anna <path>` fell into the absence branch under this one: it removed the staged engine and published a
+// release with no Code engine, behind one warning in a long log.
+if (achado?.pedido && !existsSync(origem)) {
+  console.error(`[stage-anna] ${achado.pedido} names ${origem}, which does not exist.`);
+  console.error("            NOT building without the engine that was asked for: fix the path, or build with --no-anna.");
+  process.exit(1);
+}
+
 // Ausência NÃO é erro de build. O app continua funcionando sem o `anna`
 // empacotado — o `resolve_bin()` ainda procura no PATH em runtime, que é o
 // comportamento de antes deste item. Derrubar o build aqui transformaria "não

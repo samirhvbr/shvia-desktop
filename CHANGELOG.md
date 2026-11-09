@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.38.9 - An engine named for the build that does not exist stops the build
+
+`./build-local.sh --anna <path>` and `--pentest <path>` (and `$SHVIA_ANNA_BIN`, `$SHVIA_PENTEST_BIN`, and
+`build-local.ps1 -Anna`) name the engine to bundle. When the path did not exist, `stage-anna.mjs` and
+`stage-pentest.mjs` took it for an absence: they removed the engine an earlier build had staged, printed
+a warning and exited 0, so `./build-local.sh --publish --anna ~/typo/anna` published a release with no
+Code engine. Both scripts already treat a named engine as a choice (`pentest-bundling.mjs` bundles it
+even on a Mac). They now stop the build with exit 1 and say which name pointed where. An engine that was
+not named and is not found (none on PATH, no asset in the pinned release, no network) is still an
+absence, and the build goes on without it, as `docs/build.md` describes.
+
+`prova:sem-anna` and `prova:pentest` used a missing `--from` to stand for "no engine found". The absence
+case now uses a PATH with no `anna` (the Pentest one already had the release with no asset), and both
+gain the named-and-missing cases, by `--from` and by the environment variable. With the 1.38.8 scripts
+the four new cases fail: exit 0 and a build without the engine.
+
 ## 1.38.9 - A Linux build with --bundles appimage or rpm no longer aborts after compiling
 
 `build-local.sh` looks for the `.deb` (to repackage it for pacman) and then for the pacman package with

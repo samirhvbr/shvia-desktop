@@ -10,14 +10,16 @@
  *
  * Three checks:
  *  1. stage-anna, run from a COPY in a temp tree (never the repo's own binaries/): no anna →
- *     the stale file is removed; a (fake) anna → it is staged.
+ *     the stale file is removed; a (fake) anna → it is staged; an anna NAMED with --from or
+ *     $SHVIA_ANNA_BIN that does not exist → the build stops (1.38.9), because that is a choice
+ *     that cannot be met, not an absence.
  *  2. the real bundle-override block of build-local.sh composes one valid --config: no anna →
  *     `externalBin: []`; no updater key → `createUpdaterArtifacts: false`; both merged.
  *  3. (CI step, not here) `cargo check` with no binaries and `TAURI_CONFIG` externalBin=[]
  *     proves Tauri accepts the override.
  */
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,15 +39,33 @@ function arvore() {
   return dir;
 }
 
-// 1a. no anna: the stale one goes
-{
+// 1a. no anna anywhere (none named, none on PATH): the stale one goes. PATH holds only `rustc` (the script asks
+// it for the target triple) and `which`, so no anna on this machine can be found.
+if (process.platform !== "win32") {
   const dir = arvore();
   const velho = join(dir, `src-tauri/binaries/anna-${triple}${sufixo}`);
   writeFileSync(velho, "anna de um build anterior");
+  const bin = join(dir, "bin");
+  mkdirSync(bin);
+  for (const t of ["rustc", "which"]) symlinkSync(execFileSync("bash", ["-c", `command -v ${t}`], { encoding: "utf8" }).trim(), join(bin, t));
   try {
-    execFileSync(process.execPath, [join(dir, "scripts/stage-anna.mjs"), "--from", join(dir, "nao-existe")], { stdio: "ignore" });
+    execFileSync(process.execPath, [join(dir, "scripts/stage-anna.mjs")], { stdio: "ignore", env: { ...process.env, PATH: bin, SHVIA_ANNA_BIN: "" } });
     if (existsSync(velho)) falha("no anna found, and the stale anna from an earlier build is still there to be bundled");
   } catch (e) { falha(`stage-anna without anna must not fail the build (exit ${e.status})`); }
+  rmSync(dir, { recursive: true, force: true });
+}
+// 1a'. 🔴 an anna NAMED that does not exist (1.38.9): the build stops instead of shipping without the engine.
+for (const como of ["--from", "SHVIA_ANNA_BIN"]) {
+  const dir = arvore();
+  const ausente = join(dir, "nao-existe");
+  const args = como === "--from" ? ["--from", ausente] : [];
+  const env = { ...process.env, SHVIA_ANNA_BIN: como === "--from" ? "" : ausente };
+  try {
+    execFileSync(process.execPath, [join(dir, "scripts/stage-anna.mjs"), ...args], { stdio: "ignore", env });
+    falha(`an anna named with ${como} that does not exist was taken for an absence, and the build would ship without the engine`);
+  } catch (e) {
+    if (e.status !== 1) falha(`an anna named with ${como} that does not exist must stop the build with exit 1 (exit ${e.status})`);
+  }
   rmSync(dir, { recursive: true, force: true });
 }
 // 1b. a (fake) anna at or above the floor: it is staged

@@ -61,7 +61,8 @@ The minimum is defined in the script; a version merely printed in an old build l
 a compatibility check. It is `anna` 0.16.2, and the script says why for every
 raise. A build machine whose PATH `anna` is older stops the build: install the current one
 from SHVIA-CODE (`./install.sh` builds it from source) or pass `--anna <path>`. Absence removes a stale staged binary, and the wrappers override
-`externalBin` with an empty list. `--no-anna`/`-NoAnna` therefore means **no bundled SHVIA
+`externalBin` with an empty list. A path named with `--anna` or `SHVIA_ANNA_BIN` that does not exist is not an
+absence: it stops the build (1.38.9), because a typo used to publish a release with no Code engine. `--no-anna`/`-NoAnna` therefore means **no bundled SHVIA
 engine**, not that every other local/remote Code engine disappears. An independently
 installed engine can still be discovered at runtime.
 
@@ -96,8 +97,9 @@ target triple. A downloaded file is cached under `~/.cache/shvia/pentest-engine/
 checked against that hash on every build. What fails the build is a file that is there and
 wrong: a hash that differs from the pinned one, an engine that does not run or does not print
 a plain `X.Y.Z` for `--fork-version`, one below the floor, or one that prints a different
-version than the manifest pins. What does not fail it is an absence (no network and no cache,
-no asset for the platform): the build goes on without the engine and removes any engine an
+version than the manifest pins. A path named with `--from`/`--pentest` or `SHVIA_PENTEST_BIN`
+that is not a file fails it too (1.38.9). What does not fail it is an absence (no network and no
+cache, no asset for the platform): the build goes on without the engine and removes any engine an
 earlier build staged. `npm run prova:pentest` runs each of those cases against a local HTTP
 server and keeps the floor in the script equal to the one in `compatibility.rs`.
 
