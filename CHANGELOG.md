@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.38.11 - End the Pentest viewer's whole process group, so its Python server no longer outlives the window
+## 1.38.13 - End the Pentest viewer's whole process group, so its Python server no longer outlives the window
 
 The engine is a PyInstaller program: the process the Desktop spawns for "Abrir viewer local" is a launcher, and the
 viewer's web server is the Python process it starts. `viewer::close` killed the launcher alone, so that server kept
@@ -16,8 +16,12 @@ serving the run on 127.0.0.1 after the window closed or the page changed, until 
   viewer is not in its own group (`close` waits for the child to end by itself). The older
   `closing_another_window_never_terminates_the_viewer_and_the_owner_reaps_it` now spawns its stand-in the way `open` does,
   and the two tests take turns on the one viewer slot.
+- **Not measured.** This against the real PyInstaller engine on a Mac: that the viewer's Python server stays in the
+  launcher's group, and that `close` leaves nothing listening (`lsof -iTCP -sTCP:LISTEN | grep 127.0.0.1` after closing the
+  viewer window). The inference rests on the engine's `strix/interface/viewer/cli.py`, which ends in
+  `while True: time.sleep(1.0)` with no signal handler and no check of its parent (tags `shvia-v1.2.49` and `shvia-v1.2.50`).
 
-## 1.38.11 - Read the engine's result.json only when this attempt wrote it, so a refused key is not taken for a provider window
+## 1.38.13 - Read the engine's result.json only when this attempt wrote it, so a refused key is not taken for a provider window
 
 The engine writes `strix_runs/<name>/result.json` at the end of `main` and leaves it there, and an attempt that dies on
 an exception (a refused key, a lapsed grant) writes none. `ending.rs` read whatever was there first. A resume that died on
@@ -32,6 +36,75 @@ window, and the automatic resume kept scheduling waits for it up to its 12 h cei
   the resume that died on a refused key is `key_refused`, and a resume that writes its own `rate_limited` is a provider
   window again. Red without the age check (`provider_window` for the refused key). Documented in
   `docs/PENTEST/authorization.md`.
+
+## 1.38.12 - Pin the Pentest engine at 1.2.50, whose activity-window mask holds the credential formats 1.2.49 let through
+
+`pentest-engine.json` pinned 1.2.49. It now pins **1.2.50**. The activity window (`pentestActivity()`, 1.37.0) shows the page what the
+agents said, ran and got back, and the engine's mask is the only barrier between a target's text and that page. The review of
+06/11/2026 measured the 1.2.49 mask letting through 11 of the 11 formats it tried (and 43 of 71 in a wider set): `"password":"…"` in
+JSON, `?token=`, `postgres://user:password@host`, `API_TOKEN=`, `curl -b` and `-u`, Slack, GitLab, Stripe and Google keys, and an
+`Authorization` or `Cookie` header after the literal `\n` of JSON-encoded tool arguments. Engine 1.2.50 closes them.
+
+- **What 1.2.50 changes for this Desktop** (the fork's Release `shvia-v1.2.50`, samirhvbr/strix#56, Strix 1.7.0 + 64 commits):
+  - *The mask.* 42 formats are covered, with a test for each and 17 texts that must stay readable. Every quantifier around a name is
+    capped at 32 characters, because one hostile line took 4.5 s to mask before.
+  - *The fields.* Every field of an answer is normalised to what `activity.rs` accepts (an agent id over 128 characters, an empty name
+    or status, a tool name with a line break, a missing time, a lone surrogate), because this app refuses the WHOLE answer for one bad
+    field and its cursor then never advances.
+  - *Known limit.* A compaction of an agent's context re-inserts its recent rows under new ids, so the page lists them twice once per
+    compaction; lifting that needs a stable key in the engine, this app and the page.
+- **The pin.** Release `shvia-v1.2.50`, built on 09/11/2026 with the fork's `scripts/build-pentest-local.sh` from a clean checkout of the
+  tag, one machine each: `aarch64-apple-darwin` 95,376,336 bytes, SHA-256 `4fbd08bb…10c7`, built on a Mac; and `x86_64-unknown-linux-gnu`
+  107,547,448 bytes, SHA-256 `9d2f1e26…29d7`, built in an `ubuntu:22.04` `linux/amd64` container (glibc 2.35). The digests are the ones
+  GitHub's REST API reports for the files on the Release and the ones in its `SHA256SUMS`. Both binaries answer `--fork-version` with
+  `1.2.50`.
+- **Measured.** Over a synthetic run with 14 fake secrets in the formats above, the 1.2.49 binary printed 12 of them and the 1.2.50
+  binary none, on the Mac; the Linux 1.2.50 binary printed none either, in an amd64 container (`strix activity RUN_DIR --limit 80`).
+- **No Desktop code changed.** A Mac that has 1.2.49 installed is offered the install of 1.2.50 and decides by its own consent; a Linux
+  package stages the pinned engine when it is built, so it carries 1.2.50 from the first build of this version. Not measured: the mask
+  over a target's real output, and a real run with 1.2.50 on a Mac under this Desktop.
+
+## 1.38.8 - Open the diffs of a project that is a subfolder of a repository, and list only that folder's changes
+
+`git status --porcelain` names files from the top of the repository, not from the folder it runs in, and the Changes tab sends
+that name back to `gitDiff`. The diff ran in the folder, so with `sub/` authorized the status said `sub/a.txt`, git looked for
+`sub/sub/a.txt`, and every diff came back empty: the panel said "no changes" for a file it had just listed as changed. The
+status also listed the changed files of the whole repository, outside the authorized folder.
+
+- `gitStatus` passes `-- .`, so only the authorized folder's changes are listed. The paths stay as porcelain writes them.
+- `gitDiff` asks git for the repository's top and the folder's prefix (`rev-parse --show-toplevel --show-prefix`), runs the
+  diff at the top, and refuses a `file` that does not start with the prefix. A folder at the top has an empty prefix, so
+  nothing changes there.
+- Proof: `projeto_em_subpasta_lista_so_a_pasta_e_abre_o_diff`, on a real repository, and `a.txt` added to the fence test.
+  Each of the three changes, reverted alone, turns a test red.
+
+## 1.38.8 - Keep the diff the Changes tab opens inside the authorized folder
+
+`gitDiff` checked the folder (`path`) against the fence and handed the page's `file` to git as a pathspec. Inside one
+repository a pathspec can leave the folder: with a subfolder authorized, `../a.txt`, an absolute path, `:(top)a.txt` and
+`:/a.txt` all returned the diff of a file outside it, content included. `file` must now be a relative path without `..`,
+and git runs with `--literal-pathspecs`, so it reads the name as a name. A folder that is a repository's root, the usual
+case, sees no difference, because `git status` names its files relative to that root.
+
+- Proof: `diff_nao_sai_da_pasta_autorizada_dentro_do_mesmo_repo`, on a real repository. Without the path check `../a.txt`
+  leaks; without `--literal-pathspecs`, `:(top)a.txt` does.
+- A known limit, recorded in ADR-031: with a subfolder authorized, `gitStatus` still lists the changed file names of the
+  whole repository (names, no content).
+
+## 1.38.8 - Write env.sh values as single-quoted shell words so a page cannot put a command into the person's shell
+
+"Connect my CLI" (`writeCliConfig`, ADR-026) writes `~/.shvia/env.sh` from three values the page sends: the base, the key
+and the model. The person runs that file with `source`. Until now the base and the key went between double quotes, where
+`$(…)` and backticks run, and the model went into a comment line that a line break would end. A script running on the
+server's origin, the actor ADR-031 names, could put a command into the person's next shell, and the confirmation dialog
+showed only the file's path.
+
+- Every value in `env.sh` is a single-quoted shell word, with `'` written as `'\''`.
+- A value with a line break or any other control character is refused for all three clients, and nothing is written.
+- The dialog names the server and the model as well as the path. The key stays out of it, as before.
+- Proof: `o_env_sh_devolve_os_valores_sem_executar_nada` sources the generated file in a real `sh`, with `$(…)`,
+  backticks and both kinds of quote in the key and the base. With the old double quotes it fails because the marker
+  command ran. `valor_com_quebra_de_linha_nao_e_gravado` fails without the control-character check.
 
 ## 1.38.7 - Generate Arch integrity metadata with root ownership
 

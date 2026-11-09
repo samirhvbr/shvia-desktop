@@ -140,6 +140,10 @@ The first long runs on the owner's Mac (30/10 and 02/11/2026) found what a Linux
   for the account model key of 1.36.0.
 - **Engine 1.2.49 (1.38.1)** has the read-only `activity` command that `pentestActivity()` (1.37.0) runs, and runs the sandbox
   image `strix-sandbox:1.3.1` (1.2.48), downloaded again once by a computer that has 1.3.0.
+- **Engine 1.2.50 (1.38.12)** masks the credential formats that the 1.2.49 activity window let through (JSON `"password"`,
+  `?token=`, `curl -u` and `-b`, a header after the `\n` of encoded arguments, `scheme://user:password@host`, `API_TOKEN=`, and
+  Slack, GitLab, Stripe, Google, SendGrid, npm and AWS key ids), bounds the cost of that mask on a hostile line, and normalises
+  every field to what `pentestActivity()` accepts, so one odd row no longer holds the whole window back.
 
 Details and what was not measured: [PENTEST/authorization.md](PENTEST/authorization.md) and the CHANGELOG entries of each
 version.
@@ -433,6 +437,10 @@ for the Linux/macOS profile, Windows refusal and pending integrated pilot.
 - 🔒 **Authorised-folder fence** (`1.4.0`, finding F-12): `gitStatus`, `listTree`, `gitDiff`,
   `readFile` and `spawn` only reach paths the user picked through the **native dialog**. Before
   this, the bridge reached any path the process could.
+  Since `1.38.8` the file `gitDiff` opens is fenced too: a relative path without `..`, read
+  literally, so `../x` or `:(top)x` from an authorized subfolder no longer reach the rest of the
+  repository. A project that is a subfolder of a repository lists only its own changes, and their
+  diffs open (they came back empty before).
 - 🔒 **The runner stops being the back door** (`1.4.0`, F-13, **ADR-032**): the
   `claude-runner` policy became a testable module (`politica.mjs`), `WebFetch`/`WebSearch` left
   the read-only set, and `preToolUse` delegates to one decision function.
