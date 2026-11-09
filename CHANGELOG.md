@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.38.7 - Open the diffs of a project that is a subfolder of a repository, and list only that folder's changes
+
+`git status --porcelain` names files from the top of the repository, not from the folder it runs in, and the Changes tab sends
+that name back to `gitDiff`. The diff ran in the folder, so with `sub/` authorized the status said `sub/a.txt`, git looked for
+`sub/sub/a.txt`, and every diff came back empty: the panel said "no changes" for a file it had just listed as changed. The
+status also listed the changed files of the whole repository, outside the authorized folder.
+
+- `gitStatus` passes `-- .`, so only the authorized folder's changes are listed. The paths stay as porcelain writes them.
+- `gitDiff` asks git for the repository's top and the folder's prefix (`rev-parse --show-toplevel --show-prefix`), runs the
+  diff at the top, and refuses a `file` that does not start with the prefix. A folder at the top has an empty prefix, so
+  nothing changes there.
+- Proof: `projeto_em_subpasta_lista_so_a_pasta_e_abre_o_diff`, on a real repository, and `a.txt` added to the fence test.
+  Each of the three changes, reverted alone, turns a test red.
+
 ## 1.38.7 - Keep the diff the Changes tab opens inside the authorized folder
 
 `gitDiff` checked the folder (`path`) against the fence and handed the page's `file` to git as a pathspec. Inside one

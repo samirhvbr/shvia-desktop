@@ -435,7 +435,8 @@ for the Linux/macOS profile, Windows refusal and pending integrated pilot.
   this, the bridge reached any path the process could.
   Since `1.38.7` the file `gitDiff` opens is fenced too: a relative path without `..`, read
   literally, so `../x` or `:(top)x` from an authorized subfolder no longer reach the rest of the
-  repository.
+  repository. A project that is a subfolder of a repository lists only its own changes, and their
+  diffs open (they came back empty before).
 - 🔒 **The runner stops being the back door** (`1.4.0`, F-13, **ADR-032**): the
   `claude-runner` policy became a testable module (`politica.mjs`), `WebFetch`/`WebSearch` left
   the read-only set, and `preToolUse` delegates to one decision function.

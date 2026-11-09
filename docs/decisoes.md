@@ -1807,9 +1807,12 @@ autoriza nada.
   pathspec leave the authorized folder inside the same repository: from an authorized
   subfolder, `../x`, an absolute path and pathspec magic (`:(top)x`, `:/x`) all reached files
   outside it, and the diff came back with their content. `file` must now be a relative path
-  without `..`, and git runs with `--literal-pathspecs`. A known limit: with a subfolder
-  authorized, `gitStatus` still lists the changed file NAMES of the whole repository (no
-  content).
+  without `..`, and git runs with `--literal-pathspecs`.
+- **A project that is a subfolder of a repository (1.38.7).** `gitStatus` lists only the
+  authorized folder (`-- .`), with the paths porcelain gives, from the repository's top.
+  `gitDiff` runs at that top and requires `file` to start with the folder's prefix there.
+  Before, the status listed the whole repository's changed names, and the diff of every file
+  came back empty because it ran in the subfolder with a path written from the top.
 
 ### Alternativas rejeitadas
 
