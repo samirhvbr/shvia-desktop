@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.38.12 - Pin the Pentest engine at 1.2.50, whose activity-window mask holds the credential formats 1.2.49 let through
+
+`pentest-engine.json` pinned 1.2.49. It now pins **1.2.50**. The activity window (`pentestActivity()`, 1.37.0) shows the page what the
+agents said, ran and got back, and the engine's mask is the only barrier between a target's text and that page. The review of
+06/11/2026 measured the 1.2.49 mask letting through 11 of the 11 formats it tried (and 43 of 71 in a wider set): `"password":"…"` in
+JSON, `?token=`, `postgres://user:password@host`, `API_TOKEN=`, `curl -b` and `-u`, Slack, GitLab, Stripe and Google keys, and an
+`Authorization` or `Cookie` header after the literal `\n` of JSON-encoded tool arguments. Engine 1.2.50 closes them.
+
+- **What 1.2.50 changes for this Desktop** (the fork's Release `shvia-v1.2.50`, samirhvbr/strix#56, Strix 1.7.0 + 64 commits):
+  - *The mask.* 42 formats are covered, with a test for each and 17 texts that must stay readable. Every quantifier around a name is
+    capped at 32 characters, because one hostile line took 4.5 s to mask before.
+  - *The fields.* Every field of an answer is normalised to what `activity.rs` accepts (an agent id over 128 characters, an empty name
+    or status, a tool name with a line break, a missing time, a lone surrogate), because this app refuses the WHOLE answer for one bad
+    field and its cursor then never advances.
+  - *Known limit.* A compaction of an agent's context re-inserts its recent rows under new ids, so the page lists them twice once per
+    compaction; lifting that needs a stable key in the engine, this app and the page.
+- **The pin.** Release `shvia-v1.2.50`, built on 09/11/2026 with the fork's `scripts/build-pentest-local.sh` from a clean checkout of the
+  tag, one machine each: `aarch64-apple-darwin` 95,376,336 bytes, SHA-256 `4fbd08bb…10c7`, built on a Mac; and `x86_64-unknown-linux-gnu`
+  107,547,448 bytes, SHA-256 `9d2f1e26…29d7`, built in an `ubuntu:22.04` `linux/amd64` container (glibc 2.35). The digests are the ones
+  GitHub's REST API reports for the files on the Release and the ones in its `SHA256SUMS`. Both binaries answer `--fork-version` with
+  `1.2.50`.
+- **Measured.** Over a synthetic run with 14 fake secrets in the formats above, the 1.2.49 binary printed 12 of them and the 1.2.50
+  binary none, on the Mac; the Linux 1.2.50 binary printed none either, in an amd64 container (`strix activity RUN_DIR --limit 80`).
+- **No Desktop code changed.** A Mac that has 1.2.49 installed is offered the install of 1.2.50 and decides by its own consent; a Linux
+  package stages the pinned engine when it is built, so it carries 1.2.50 from the first build of this version. Not measured: the mask
+  over a target's real output, and a real run with 1.2.50 on a Mac under this Desktop.
+
 ## 1.38.8 - Open the diffs of a project that is a subfolder of a repository, and list only that folder's changes
 
 `git status --porcelain` names files from the top of the repository, not from the folder it runs in, and the Changes tab sends
