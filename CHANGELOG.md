@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.38.10 - Remove the deny.toml exceptions that no longer match anything: three zip advisories and BSD-2-Clause
+## 1.38.14 - Remove the deny.toml exceptions that no longer match anything: three zip advisories and BSD-2-Clause
 
 `cargo deny check advisories licenses` warned four times about exceptions that match nothing in the tree:
 
@@ -13,7 +13,7 @@
 After this, the only warning left is the yanked `async-executor` 1.14.0 (under zbus), a lockfile update for
 another delivery. The check exits 0.
 
-## 1.38.10 - Keep a Claude account registry that does not parse beside the seed instead of writing the seed over it
+## 1.38.14 - Keep a Claude account registry that does not parse beside the seed instead of writing the seed over it
 
 `registro()` answered the seed for a `contas-claude.json` that did not parse, and wrote the seed over it. One
 stray comma in a hand edit, which the file invites, cost every profile in it on the next read, without a word.
@@ -27,7 +27,7 @@ stray comma in a hand edit, which the file invites, cost every profile in it on 
 - **Proof.** `an_unreadable_registry_is_kept_beside_the_seed_not_overwritten`: the broken file comes back byte for
   byte beside a new, valid one. Red when the seed is written without moving the file aside.
 
-## 1.38.10 - Drop a Claude account profile whose variable is unknown instead of reading it as CLAUDE_CONFIG_DIR
+## 1.38.14 - Drop a Claude account profile whose variable is unknown instead of reading it as CLAUDE_CONFIG_DIR
 
 `contas-claude.json` is edited by hand by design (a second machine registers its own paths there), and each
 profile says which variable it sets: `CLAUDE_CONFIG_DIR` (the whole configuration home) or
@@ -40,7 +40,7 @@ ran turns under a whole other configuration home, which is another account, with
   before 1.4.28.
 - **Proof.** `an_unknown_variable_drops_the_profile_instead_of_guessing_one`; red with the old fallback.
 
-## 1.38.10 - Run Help → Diagnostics off the event loop, so a server that is down no longer freezes every window
+## 1.38.14 - Run Help → Diagnostics off the event loop, so a server that is down no longer freezes every window
 
 The menu handler ran the checks where it was called, on the event loop that paints every window: the server
 probe and `anna --version`. With the server down that took 4–10 s, and every window of the app stopped
@@ -48,7 +48,7 @@ responding for that long, which is exactly when a person opens the diagnostics. 
 of their own and the panel opens when they are done; `diagnostico::abrir` reaches windows only through calls
 Tauri already forwards to the main thread.
 
-## 1.38.10 - Bring a window hidden by "close keeps running" back from the macOS Dock
+## 1.38.14 - Bring a window hidden by "close keeps running" back from the macOS Dock
 
 On macOS, closing the last window with "close keeps running" on hides it; it is not destroyed. The Dock click
 (`RunEvent::Reopen`) only rebuilt a window when none existed, so with the hidden one still there it did nothing and
@@ -57,6 +57,75 @@ the Dock icon looked dead until the person found the menu-bar icon. It now does 
 
 - **Not measured on a Mac.** The arm compiles only on macOS; the CI's macOS job compiles and lints it. The behaviour
   is the tray's, which is in use on every platform.
+
+## 1.38.12 - Pin the Pentest engine at 1.2.50, whose activity-window mask holds the credential formats 1.2.49 let through
+
+`pentest-engine.json` pinned 1.2.49. It now pins **1.2.50**. The activity window (`pentestActivity()`, 1.37.0) shows the page what the
+agents said, ran and got back, and the engine's mask is the only barrier between a target's text and that page. The review of
+06/11/2026 measured the 1.2.49 mask letting through 11 of the 11 formats it tried (and 43 of 71 in a wider set): `"password":"…"` in
+JSON, `?token=`, `postgres://user:password@host`, `API_TOKEN=`, `curl -b` and `-u`, Slack, GitLab, Stripe and Google keys, and an
+`Authorization` or `Cookie` header after the literal `\n` of JSON-encoded tool arguments. Engine 1.2.50 closes them.
+
+- **What 1.2.50 changes for this Desktop** (the fork's Release `shvia-v1.2.50`, samirhvbr/strix#56, Strix 1.7.0 + 64 commits):
+  - *The mask.* 42 formats are covered, with a test for each and 17 texts that must stay readable. Every quantifier around a name is
+    capped at 32 characters, because one hostile line took 4.5 s to mask before.
+  - *The fields.* Every field of an answer is normalised to what `activity.rs` accepts (an agent id over 128 characters, an empty name
+    or status, a tool name with a line break, a missing time, a lone surrogate), because this app refuses the WHOLE answer for one bad
+    field and its cursor then never advances.
+  - *Known limit.* A compaction of an agent's context re-inserts its recent rows under new ids, so the page lists them twice once per
+    compaction; lifting that needs a stable key in the engine, this app and the page.
+- **The pin.** Release `shvia-v1.2.50`, built on 09/11/2026 with the fork's `scripts/build-pentest-local.sh` from a clean checkout of the
+  tag, one machine each: `aarch64-apple-darwin` 95,376,336 bytes, SHA-256 `4fbd08bb…10c7`, built on a Mac; and `x86_64-unknown-linux-gnu`
+  107,547,448 bytes, SHA-256 `9d2f1e26…29d7`, built in an `ubuntu:22.04` `linux/amd64` container (glibc 2.35). The digests are the ones
+  GitHub's REST API reports for the files on the Release and the ones in its `SHA256SUMS`. Both binaries answer `--fork-version` with
+  `1.2.50`.
+- **Measured.** Over a synthetic run with 14 fake secrets in the formats above, the 1.2.49 binary printed 12 of them and the 1.2.50
+  binary none, on the Mac; the Linux 1.2.50 binary printed none either, in an amd64 container (`strix activity RUN_DIR --limit 80`).
+- **No Desktop code changed.** A Mac that has 1.2.49 installed is offered the install of 1.2.50 and decides by its own consent; a Linux
+  package stages the pinned engine when it is built, so it carries 1.2.50 from the first build of this version. Not measured: the mask
+  over a target's real output, and a real run with 1.2.50 on a Mac under this Desktop.
+
+## 1.38.8 - Open the diffs of a project that is a subfolder of a repository, and list only that folder's changes
+
+`git status --porcelain` names files from the top of the repository, not from the folder it runs in, and the Changes tab sends
+that name back to `gitDiff`. The diff ran in the folder, so with `sub/` authorized the status said `sub/a.txt`, git looked for
+`sub/sub/a.txt`, and every diff came back empty: the panel said "no changes" for a file it had just listed as changed. The
+status also listed the changed files of the whole repository, outside the authorized folder.
+
+- `gitStatus` passes `-- .`, so only the authorized folder's changes are listed. The paths stay as porcelain writes them.
+- `gitDiff` asks git for the repository's top and the folder's prefix (`rev-parse --show-toplevel --show-prefix`), runs the
+  diff at the top, and refuses a `file` that does not start with the prefix. A folder at the top has an empty prefix, so
+  nothing changes there.
+- Proof: `projeto_em_subpasta_lista_so_a_pasta_e_abre_o_diff`, on a real repository, and `a.txt` added to the fence test.
+  Each of the three changes, reverted alone, turns a test red.
+
+## 1.38.8 - Keep the diff the Changes tab opens inside the authorized folder
+
+`gitDiff` checked the folder (`path`) against the fence and handed the page's `file` to git as a pathspec. Inside one
+repository a pathspec can leave the folder: with a subfolder authorized, `../a.txt`, an absolute path, `:(top)a.txt` and
+`:/a.txt` all returned the diff of a file outside it, content included. `file` must now be a relative path without `..`,
+and git runs with `--literal-pathspecs`, so it reads the name as a name. A folder that is a repository's root, the usual
+case, sees no difference, because `git status` names its files relative to that root.
+
+- Proof: `diff_nao_sai_da_pasta_autorizada_dentro_do_mesmo_repo`, on a real repository. Without the path check `../a.txt`
+  leaks; without `--literal-pathspecs`, `:(top)a.txt` does.
+- A known limit, recorded in ADR-031: with a subfolder authorized, `gitStatus` still lists the changed file names of the
+  whole repository (names, no content).
+
+## 1.38.8 - Write env.sh values as single-quoted shell words so a page cannot put a command into the person's shell
+
+"Connect my CLI" (`writeCliConfig`, ADR-026) writes `~/.shvia/env.sh` from three values the page sends: the base, the key
+and the model. The person runs that file with `source`. Until now the base and the key went between double quotes, where
+`$(…)` and backticks run, and the model went into a comment line that a line break would end. A script running on the
+server's origin, the actor ADR-031 names, could put a command into the person's next shell, and the confirmation dialog
+showed only the file's path.
+
+- Every value in `env.sh` is a single-quoted shell word, with `'` written as `'\''`.
+- A value with a line break or any other control character is refused for all three clients, and nothing is written.
+- The dialog names the server and the model as well as the path. The key stays out of it, as before.
+- Proof: `o_env_sh_devolve_os_valores_sem_executar_nada` sources the generated file in a real `sh`, with `$(…)`,
+  backticks and both kinds of quote in the key and the base. With the old double quotes it fails because the marker
+  command ran. `valor_com_quebra_de_linha_nao_e_gravado` fails without the control-character check.
 
 ## 1.38.7 - Generate Arch integrity metadata with root ownership
 

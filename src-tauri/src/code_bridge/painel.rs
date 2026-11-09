@@ -239,6 +239,59 @@ mod tests_git_diff {
         assert!(r["diff"].as_str().unwrap().contains("+depois"));
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// The fence holds inside one repository. The authorized folder is a SUBFOLDER, and `a.txt` at the
+    /// repository's root, outside it, has a change. Every way of naming that file from the subfolder is refused or
+    /// shows nothing, while a file inside the subfolder still shows its diff.
+    #[test]
+    fn diff_nao_sai_da_pasta_autorizada_dentro_do_mesmo_repo() {
+        let Some(dir) = repo_temporario("cerca") else { return };
+        let sub = dir.join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("s.txt"), "antes\n").unwrap();
+        let p = dir.to_string_lossy().into_owned();
+        crate::processo::comando("git").args(["-C", &p, "add", "-A"]).output().unwrap();
+        crate::processo::comando("git").args(["-C", &p, "commit", "-qm", "sub"]).output().unwrap();
+        std::fs::write(dir.join("a.txt"), "linha 1\nSEGREDO\n").unwrap();
+        std::fs::write(sub.join("s.txt"), "depois\n").unwrap();
+        let autorizada = sub.to_string_lossy().into_owned();
+
+        let absoluto = dir.join("a.txt").to_string_lossy().into_owned();
+        for fora in ["a.txt", "../a.txt", ":(top)a.txt", ":/a.txt", "./../a.txt", absoluto.as_str()] {
+            let r = git_diff(&autorizada, fora);
+            let texto = r["diff"].as_str().unwrap_or_default();
+            assert!(!texto.contains("SEGREDO"), "{fora:?} printed a file outside the authorized folder: {r}");
+        }
+        let dentro = git_diff(&autorizada, "sub/s.txt");
+        assert!(dentro["diff"].as_str().unwrap_or_default().contains("+depois"), "{dentro}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A project that is a subfolder of a repository: the status lists only that folder, with the paths git gives
+    /// (from the repository's top), and each of them opens its diff. Until 1.38.8 the status listed the whole
+    /// repository and the diff of `sub/s.txt` ran in `sub/`, looked for `sub/sub/s.txt` and came back empty.
+    #[test]
+    fn projeto_em_subpasta_lista_so_a_pasta_e_abre_o_diff() {
+        let Some(dir) = repo_temporario("subpasta") else { return };
+        let sub = dir.join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("s.txt"), "antes\n").unwrap();
+        let p = dir.to_string_lossy().into_owned();
+        crate::processo::comando("git").args(["-C", &p, "add", "-A"]).output().unwrap();
+        crate::processo::comando("git").args(["-C", &p, "commit", "-qm", "sub"]).output().unwrap();
+        std::fs::write(dir.join("a.txt"), "linha 1\nfora\n").unwrap();
+        std::fs::write(sub.join("s.txt"), "depois\n").unwrap();
+        let autorizada = sub.to_string_lossy().into_owned();
+
+        let status = git_status(&autorizada);
+        let nomes: Vec<&str> = status["files"].as_array().unwrap().iter().map(|f| f["path"].as_str().unwrap()).collect();
+        assert_eq!(nomes, vec!["sub/s.txt"], "{status}");
+        for nome in nomes {
+            let r = git_diff(&autorizada, nome);
+            assert!(r["diff"].as_str().unwrap_or_default().contains("+depois"), "{nome}: {r}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 #[cfg(test)]
@@ -339,8 +392,12 @@ pub(super) fn git_status(path: &str) -> serde_json::Value {
     // (` M "a\303\247\303\243o.txt"`), the page passed that quoted string back to
     // `gitDiff`, and git answered 0 bytes — every accented or spaced file showed "no
     // changes" until 1.6.10. With `-z` paths come verbatim, NUL-terminated.
+    //
+    // `-- .` (1.38.8): only the folder the person authorized. Without it, a folder that is a subfolder of a
+    // repository listed every changed file of the whole repository. The paths stay relative to the repository's
+    // top, as porcelain always gives them, and that is what `git_diff` takes.
     let mut st = crate::processo::comando("git");
-    st.args(["-C", path, "status", "--porcelain=v1", "-z", "-b"]);
+    st.args(["-C", path, "status", "--porcelain=v1", "-z", "-b", "--", "."]);
     match saida_com_prazo(st, PRAZO_GIT) {
         Ok(o) if o.status.success() => parse_git_status(&String::from_utf8_lossy(&o.stdout)),
         _ => serde_json::json!({ "repo": false }), // não é repo git
@@ -389,6 +446,18 @@ pub(super) const GIT_DIFF_MAX: usize = 262_144;
 /// contexto que um diff.
 pub(super) const READ_FILE_MAX: usize = 512 * 1024;
 
+/// The top folder of the repository that holds `path`, and `path`'s prefix below it: `""` at the top, `"sub/"` in a
+/// subfolder. `None` when `path` is not in a repository or git does not answer in time.
+fn raiz_e_prefixo(path: &str) -> Option<(String, String)> {
+    let mut rp = crate::processo::comando("git");
+    rp.args(["-C", path, "rev-parse", "--show-toplevel", "--show-prefix"]);
+    let saida = saida_com_prazo(rp, PRAZO_GIT).ok().filter(|o| o.status.success())?;
+    let texto = String::from_utf8(saida.stdout).ok()?;
+    let mut linhas = texto.lines();
+    let raiz = linhas.next().filter(|r| !r.is_empty())?.to_string();
+    Some((raiz, linhas.next().unwrap_or_default().to_string()))
+}
+
 /// Diff de UM arquivo, para a aba "Alterações" abrir ao clique (item F6.B1).
 ///
 /// ## Por que aqui, e não pedindo ao agente
@@ -399,12 +468,23 @@ pub(super) const READ_FILE_MAX: usize = 512 * 1024;
 /// viraria uma chamada de modelo. Painel é leitura de estado; o precedente certo é
 /// o `git_status` logo acima, não o agente.
 ///
-/// ## O `--` não é enfeite
+/// ## The `--`, and the fence after it
 ///
-/// Sem ele, um arquivo chamado `-p` ou que colida com um nome de branch faria o git
-/// interpretá-lo como opção ou revisão. O separador diz "daqui em diante é caminho",
-/// e é a única guarda necessária: o nome vem do `git status` do MESMO repositório,
-/// não de digitação livre.
+/// Without `--`, a file called `-p`, or one named like a branch, would be read by git as an option or a
+/// revision. That was the only guard until 1.38.8, on the reasoning that the name comes from the same
+/// repository's `git status`. It does not: the page sends `file`, and a pathspec can leave the folder the person
+/// authorized while staying in the same repository. Measured on 09/11/2026 from an authorized subfolder:
+/// `../top.txt` and `:(top)top.txt` both printed the diff of a file outside it. So `file` must be a relative path
+/// with no `..`, and `--literal-pathspecs` makes git read it as a name, never as pathspec magic (`:(top)`, `:/`,
+/// globs).
+///
+/// ## `file` is relative to the repository's top
+///
+/// It comes from `git_status`, and porcelain names files from the top of the repository, not from the folder git
+/// ran in. Until 1.38.8 the diff ran in the folder, so in a project that is a subfolder of a repository
+/// (`sub/` authorized, status says `sub/a.txt`) git looked for `sub/sub/a.txt` and the panel said "no changes".
+/// The diff now runs at the top, and `file` must start with the folder's own prefix there (`sub/`), which is
+/// also what keeps it inside the fence.
 ///
 /// ## Vazio ≠ sem mudança
 ///
@@ -417,9 +497,21 @@ pub(super) fn git_diff(path: &str, file: &str) -> serde_json::Value {
     if path.is_empty() || file.is_empty() {
         return serde_json::json!({ "ok": false, "erro": "caminho ou arquivo vazio" });
     }
+    let dentro = std::path::Path::new(file)
+        .components()
+        .all(|parte| matches!(parte, std::path::Component::Normal(_) | std::path::Component::CurDir));
+    if !dentro {
+        return serde_json::json!({ "ok": false, "erro": "arquivo fora da pasta autorizada" });
+    }
+    let Some((raiz, prefixo)) = raiz_e_prefixo(path) else {
+        return serde_json::json!({ "ok": false, "erro": "git diff falhou nesta pasta" });
+    };
+    if !std::path::Path::new(file).starts_with(prefixo.trim_end_matches('/')) {
+        return serde_json::json!({ "ok": false, "erro": "arquivo fora da pasta autorizada" });
+    }
 
     let rodar = |staged: bool| -> Option<String> {
-        let mut args: Vec<&str> = vec!["-C", path, "diff"];
+        let mut args: Vec<&str> = vec!["--literal-pathspecs", "-C", &raiz, "diff"];
         if staged {
             args.push("--staged");
         }

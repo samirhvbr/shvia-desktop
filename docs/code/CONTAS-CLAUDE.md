@@ -138,14 +138,14 @@ edit the registry with the app closed and reopen it. Every read validates the fo
 | `id` | minúsculas, dígitos e traço; começa com alfanumérico; até 32 caracteres |
 | `dir` | caminho **absoluto**, dentro do seu `$HOME` |
 | `rotulo` | não vazio |
-| `var` | absent means `CLAUDE_CONFIG_DIR` (a file from before 1.4.28); otherwise exactly `CLAUDE_CONFIG_DIR` or `CLAUDE_SECURESTORAGE_CONFIG_DIR`. Any other value drops the entry (1.38.10; before, it silently became `CLAUDE_CONFIG_DIR`) |
+| `var` | absent means `CLAUDE_CONFIG_DIR` (a file from before 1.4.28); otherwise exactly `CLAUDE_CONFIG_DIR` or `CLAUDE_SECURESTORAGE_CONFIG_DIR`. Any other value drops the entry (1.38.14; before, it silently became `CLAUDE_CONFIG_DIR`) |
 
 Entrada que não passa é **descartada**, não corrigida — um palpite nosso sobre o que a
 pessoa quis dizer rodaria um turno num diretório que ninguém escreveu.
 
 A file that does not parse as JSON is never written over: it is moved aside as
 `contas-claude.json.unreadable-<seconds>` in the same folder, and the seed takes its place
-(1.38.10). Fix the copy and put it back with the app closed.
+(1.38.14). Fix the copy and put it back with the app closed.
 
 ⚠️ **O arquivo não guarda credencial nenhuma**, e este código nunca lê, copia ou cria uma.
 Quem autentica é o `claude login` do cliente oficial, em cada diretório.
