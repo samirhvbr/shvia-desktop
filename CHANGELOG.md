@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.38.9 - A failed Claude runner update keeps the runner that was installed
+
+The app reinstalls the Claude runner at the first start after each app update (ADR-036), with the
+installer the "Instalar runner" button runs. That installer copied the new files over the installed
+runner and then ran `npm ci`, which deletes `node_modules` first. An update that lost the network
+there (offline, a proxy) left the new version with no Agent SDK. The app decides by the installed
+`package.json` and runner files, so from the next start on it found the runner up to date;
+`--version` still answered, and every Code turn died importing the SDK until the next app release.
+On Windows a first install that failed was stuck the same way, because the app finds that runner by
+its `.mjs`.
+
+- **What changes.** `claude-runner/install.sh` and `install.ps1` assemble the install in
+  `shvia-claude-runner.incoming`: the copy, `npm ci` and the load proof all run there. Only an install
+  that passed the three replaces the old one, by two renames in the same folder, and the old one comes
+  back if the second rename fails. Any earlier failure removes the staged copy and leaves the installed
+  runner as it was, so the next start tries the update again. The terminal wrapper is written after the
+  swap. On Windows a file of the old install still in use makes the swap fail, and nothing changes.
+- **Measured.** `npm run prova:instalador` now runs the real `install.sh` against a temporary install
+  of an older version, with npm offline and an empty cache so `npm ci` fails the way a lost network
+  makes it fail: the old version, its `node_modules` and the terminal wrapper stay, and nothing is left
+  beside them. An install that passes replaces the old one whole. With the 1.38.8 installer the first
+  case ends at the new version with the old SDK gone. `prova:instaladores-ps1` has the same two cases
+  for `install.ps1`, under `pwsh` in CI.
+- **Not changed.** The Codex runner's installers still copy in place. They have no `npm` step, so
+  their failure is a missing module, which CI catches before release.
+
 ## 1.38.8 - Open the diffs of a project that is a subfolder of a repository, and list only that folder's changes
 
 `git status --porcelain` names files from the top of the repository, not from the folder it runs in, and the Changes tab sends

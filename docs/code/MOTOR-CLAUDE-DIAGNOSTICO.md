@@ -217,6 +217,19 @@ idempotent, and from 1.5.15 the install is complete. **Since 1.7.1 the app does 
 installed runner older than the one it shipped (or with the same version and different files):
 ADR-036. Measured on 25/09/2026: the owner's `claude-runner` was from 21/08, with the app at 1.6.58.
 
+## 2c. `--version` answers, and every turn dies importing the Agent SDK
+
+`--version` answers before the runner imports the SDK, on purpose, so it says nothing about
+`node_modules`. Up to 1.38.8 an update that failed inside `npm ci` (offline, a proxy) left
+exactly this: the new runner files over an install whose `node_modules` `npm ci` had already
+deleted. The app compares the version and the files, found them current, and never reinstalled
+until the next app release. Look for `node_modules/@anthropic-ai/claude-agent-sdk` in the install
+folder; if it is missing, press **Instalar runner** or run `bash claude-runner/install.sh`.
+
+Since 1.38.9 the installers build the new install in `shvia-claude-runner.incoming` and swap it
+in only after it loads, so a failed update leaves the previous runner working and the next start
+tries again (ADR-036).
+
 ## 3. The account picker shows only `Padrão do sistema`
 
 **Not a regression.** `contas_claude::semente()` offers a named profile only when its

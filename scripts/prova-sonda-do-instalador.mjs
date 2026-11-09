@@ -28,7 +28,7 @@ writeFileSync(join(dest, "claude-runner.mjs"),
   'import * as readline from "node:readline";\n' +
   'readline.createInterface({ input: process.stdin }).on("close", () => process.exit(0));\n');
 
-const filho = spawn("bash", ["-c", `set -euo pipefail\nNODE_ABS=${JSON.stringify(process.execPath)}\nDEST=${JSON.stringify(dest)}\n${SONDA}\necho sonda-ok`], {
+const filho = spawn("bash", ["-c", `set -euo pipefail\nNODE_ABS=${JSON.stringify(process.execPath)}\nSTAGE=${JSON.stringify(dest)}\n${SONDA}\necho sonda-ok`], {
   stdio: ["pipe", "pipe", "pipe"], // stdin stays OPEN, like a terminal
 });
 let saida = "";

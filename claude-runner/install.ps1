@@ -3,10 +3,11 @@
   claude-runner/install.ps1 — the Windows installer of the "Claude Code (assinatura)" engine
   (1.6.56). It does on Windows what install.sh does on Linux and macOS:
 
-    - copies the runner to %LOCALAPPDATA%\shvia-claude-runner;
+    - assembles the runner in %LOCALAPPDATA%\shvia-claude-runner.incoming;
     - runs `npm ci --omit=dev` there, from the versioned lock (finding F-18);
-    - leaves %LOCALAPPDATA%\shvia\bin\claude-runner.cmd, for a terminal only;
-    - proves the installed runner LOADS before it says it is installed (1.4.22).
+    - proves that copy LOADS (1.4.22), and only then puts it in place of
+      %LOCALAPPDATA%\shvia-claude-runner (1.38.9);
+    - leaves %LOCALAPPDATA%\shvia\bin\claude-runner.cmd, for a terminal only.
 
   The desktop does not go through the .cmd. It finds claude-runner.mjs in the install folder
   and runs node on it directly (code_bridge/motores.rs), because stopping a .cmd would stop
@@ -32,6 +33,14 @@ $Files = @('claude-runner.mjs', 'politica.mjs', 'parada.mjs', 'orientacao.mjs', 
 $Dir = $PSScriptRoot
 if (-not $env:LOCALAPPDATA) { Write-Output 'erro: LOCALAPPDATA não está definido (isto roda no Windows).'; exit 1 }
 $Dest = Join-Path $env:LOCALAPPDATA 'shvia-claude-runner'
+# The new install is assembled BESIDE the old one and replaces it only once it loads (1.38.9). Until
+# then the files were copied over the installed runner and `npm ci` ran there; `npm ci` deletes
+# node_modules first, so an update that lost the network left the new files with no Agent SDK, and the
+# app, which compares those files and the version, counted the runner as up to date from the next start
+# on. On Windows a FIRST install that failed was stuck the same way, because the app finds the runner
+# by its .mjs. install.sh has the long version of this.
+$Stage = "$Dest.incoming"
+$Old = "$Dest.previous"
 $Bin = Join-Path (Join-Path $env:LOCALAPPDATA 'shvia') 'bin'
 $OnWindows = $env:OS -eq 'Windows_NT'
 
@@ -56,24 +65,33 @@ function Find-Exe([string]$Name) {
 $NodeAbs = Find-Exe 'node'
 if (-not $NodeAbs) { Write-Output 'erro: Node 18+ não encontrado no PATH.'; exit 1 }
 
-New-Item -ItemType Directory -Force -Path $Dest, $Bin | Out-Null
-foreach ($f in $Files) { Copy-Item -Force -LiteralPath (Join-Path $Dir $f) -Destination $Dest }
-
 # npm.cmd, not npm: on Windows `npm` may resolve to npm.ps1, which a Restricted execution
 # policy refuses even when this script itself was allowed to run.
 $Npm = Find-Exe $(if ($OnWindows) { 'npm.cmd' } else { 'npm' })
 if (-not $Npm) { Write-Output 'erro: npm não encontrado no PATH (ele vem com o Node).'; exit 1 }
-Push-Location -LiteralPath $Dest
+
+function Remove-Folder([string]$Path) {
+  if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Recurse -Force }
+}
+# Every failure before the swap goes through here: the staged copy goes, the installed runner stays.
+function Stop-Install([string[]]$Lines) {
+  try { Remove-Folder $Stage } catch { }
+  foreach ($l in $Lines) { Write-Output $l }
+  exit 1
+}
+
+Remove-Folder $Stage
+New-Item -ItemType Directory -Force -Path $Stage, $Bin | Out-Null
+try {
+  foreach ($f in $Files) { Copy-Item -Force -LiteralPath (Join-Path $Dir $f) -Destination $Stage }
+} catch { Stop-Install @("erro: não consegui copiar o runner: $_") }
+
+Push-Location -LiteralPath $Stage
 try {
   & $Npm ci --omit=dev --no-audit --no-fund
-  if ($LASTEXITCODE -ne 0) { Write-Output "erro: npm ci falhou (código $LASTEXITCODE)."; exit 1 }
+  $NpmCode = $LASTEXITCODE
 } finally { Pop-Location }
-
-# The terminal wrapper. The path goes through %LOCALAPPDATA% instead of being written out:
-# cmd.exe reads the file in the OEM code page, and a user folder with an accent would break.
-$Wrapper = Join-Path $Bin 'claude-runner.cmd'
-$cmd = "@echo off`r`nset `"NODE=$NodeAbs`"`r`nif not exist `"%NODE%`" set `"NODE=node`"`r`n`"%NODE%`" `"%LOCALAPPDATA%\shvia-claude-runner\claude-runner.mjs`" %*`r`n"
-[System.IO.File]::WriteAllText($Wrapper, $cmd, [System.Text.Encoding]::ASCII)
+if ($NpmCode -ne 0) { Stop-Install @("erro: npm ci falhou (código $NpmCode); o runner instalado antes ficou como estava.") }
 
 # Load proof (1.4.22, 1.6.25). Importing the runner RUNS it, and it waits on stdin; the stdin
 # here is closed at once, so it gets EOF and exits, and the probe is bounded anyway.
@@ -99,13 +117,36 @@ function Invoke-Probe([string]$Exe, [string[]]$Arguments, [int]$TimeoutMs = 6000
 # node builds the file URL itself: [System.Uri] on a Unix path gives a RELATIVE uri whose
 # AbsoluteUri is empty (measured under pwsh), and `import('')` then fails for the wrong reason.
 $load = "import(require('node:url').pathToFileURL(process.argv[1]).href).catch((e) => { console.error((e && e.stack) || e); process.exit(1); })"
-$probe = Invoke-Probe $NodeAbs @('-e', $load, (Join-Path $Dest 'claude-runner.mjs'))
+$probe = Invoke-Probe $NodeAbs @('-e', $load, (Join-Path $Stage 'claude-runner.mjs'))
 if ($probe.Code -ne 0) {
-  Write-Output '🔴 a instalação ficou incompleta — o runner não carrega:'
-  ($probe.Text -split "`n" | Select-Object -First 5) | ForEach-Object { Write-Output "   $_" }
-  Write-Output '   (falta copiar algum arquivo do runner? veja a lista $Files no install.ps1)'
-  exit 1
+  Stop-Install (@('🔴 a instalação ficou incompleta — o runner não carrega:') +
+    @($probe.Text -split "`n" | Select-Object -First 5 | ForEach-Object { "   $_" }) +
+    @('   (falta copiar algum arquivo do runner? veja a lista $Files no install.ps1)'))
 }
+
+# The swap: two renames in one folder. If the second one fails, the old install goes back. A file
+# of the old install still in use (a session running its engine) makes the first one fail, and then
+# nothing changed. What a stopped run leaves behind is cleared by the next one.
+try { Remove-Folder $Old } catch { }
+$HadOld = Test-Path -LiteralPath $Dest
+$SwapError = $null
+try {
+  if ($HadOld) { Rename-Item -LiteralPath $Dest -NewName (Split-Path -Leaf $Old) }
+  Rename-Item -LiteralPath $Stage -NewName (Split-Path -Leaf $Dest)
+} catch {
+  $SwapError = $_
+  if ($HadOld -and -not (Test-Path -LiteralPath $Dest) -and (Test-Path -LiteralPath $Old)) {
+    try { Rename-Item -LiteralPath $Old -NewName (Split-Path -Leaf $Dest) } catch { }
+  }
+}
+if ($SwapError) { Stop-Install @("🔴 não consegui pôr a instalação nova no lugar de ${Dest}: $SwapError. A anterior ficou como estava.") }
+try { Remove-Folder $Old } catch { }
+
+# The terminal wrapper. The path goes through %LOCALAPPDATA% instead of being written out:
+# cmd.exe reads the file in the OEM code page, and a user folder with an accent would break.
+$Wrapper = Join-Path $Bin 'claude-runner.cmd'
+$cmd = "@echo off`r`nset `"NODE=$NodeAbs`"`r`nif not exist `"%NODE%`" set `"NODE=node`"`r`n`"%NODE%`" `"%LOCALAPPDATA%\shvia-claude-runner\claude-runner.mjs`" %*`r`n"
+[System.IO.File]::WriteAllText($Wrapper, $cmd, [System.Text.Encoding]::ASCII)
 
 $sdk = '?'
 $sdkJson = Join-Path (Join-Path (Join-Path (Join-Path $Dest 'node_modules') '@anthropic-ai') 'claude-agent-sdk') 'package.json'
