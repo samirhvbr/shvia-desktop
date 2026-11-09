@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.39.0 - Let the page ask the Desktop to open Docker on a Mac
+
+The Pentest page shows a red "Docker" row with an **Open Docker** button when Docker is installed and not answering (WEB
+queue item PT-39, step a; the owner approved the action on 02/11/2026). Until now a Docker that was not running was only a
+warning, and a new user on a Mac found out when the engine failed to open its test environment.
+
+- **`pentestPreflight().docker.canOpen`** is `true` only on a Mac whose `docker` command is there, whose daemon does not
+  answer, and where a Docker Desktop is installed (`/Applications` or `~/Applications`).
+- **`pentestOpenDocker()`** (new bridge method, no argument) resolves with `{state: 'opening'|'starting'|'ready'}` and rejects
+  with `E_PENTEST_DOCKER_UNSUPPORTED`, `_NOT_INSTALLED` or `_UNKNOWN`. It asks Docker itself first and launches only when the
+  daemon verifiably does not answer; the program is `/usr/bin/open` and the argument is the app's own path, never anything the
+  page sent. A second request within 45 s is answered `starting` and launches nothing. Linux refuses: Docker Desktop there
+  starts through the service manager, which this app never asks rights for.
+- It installs nothing, starts no daemon any other way and changes no setting. There is no native dialog (the engine install
+  has one because it downloads and runs a file; this opens an application the person already has, in answer to a button).
+
+The decision is separate from the effect (`decide` in `pentest/docker.rs`) and one test reads its rules; reverting the Mac check
+or the grace period turned it red. The macOS launch itself is not exercised here (no Mac on the build machine): it compiles on
+every target and needs one real press on a Mac. Docs: `docs/PENTEST/auto-resume.md`.
+
 ## 1.38.6 - Record the zeroize lockfile update
 
 Record the `zeroize` update from 1.9.0 to 1.9.1 in [PR #208](https://github.com/samirhvbr/shvia-desktop/pull/208).

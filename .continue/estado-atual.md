@@ -12,9 +12,12 @@ Desktop 1.25.x within 1.x, Pentest 1.2.30+ within 1.x (1.26.2: the probe reads `
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Last updated: **07/11/2026** (version 1.38.1). The Pentest engine is pinned at
-> 1.2.49, the first build with the `activity` command 1.37.0 runs; a real run with
-> it on a Mac is still open. Previously, 1.38.0 = local Code reload resume now
+> Last updated: **09/11/2026** (version 1.39.0). 1.39.0 = the page can ask the Desktop
+> to open Docker Desktop on a Mac when Docker does not answer (`pentestOpenDocker`,
+> `docker.canOpen` in `pentestPreflight`; PT-39 step a); open: one real press of the
+> button on a Mac, the launch compiles everywhere but was not run on one. The Pentest
+> engine is pinned at 1.2.49, the first build with the `activity` command 1.37.0 runs;
+> a real run with it on a Mac is still open. Previously, 1.38.0 = local Code reload resume now
 > verifies the dashboard account and origin in the native bridge (ADR-037).
 > The companion Web support must be deployed before this shell. An installed
 > account switch and same-account reload remain platform acceptance checks.

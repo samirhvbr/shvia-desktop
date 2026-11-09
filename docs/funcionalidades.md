@@ -140,6 +140,11 @@ The first long runs on the owner's Mac (30/10 and 02/11/2026) found what a Linux
   for the account model key of 1.36.0.
 - **Engine 1.2.49 (1.38.1)** has the read-only `activity` command that `pentestActivity()` (1.37.0) runs, and runs the sandbox
   image `strix-sandbox:1.3.1` (1.2.48), downloaded again once by a computer that has 1.3.0.
+- **Open Docker (1.39.0)**: on a Mac whose Docker is installed and not answering, `pentestPreflight().docker.canOpen` is `true`
+  and `pentestOpenDocker()` hands Docker Desktop to the system (`/usr/bin/open` with the app's own path). It asks Docker first,
+  launches only for a daemon that verifiably does not answer, and answers `starting` for 45 s afterwards instead of launching
+  again; Linux refuses. No native dialog. The launch itself has not been pressed on a real Mac yet. Contract:
+  [PENTEST/auto-resume.md](PENTEST/auto-resume.md).
 
 Details and what was not measured: [PENTEST/authorization.md](PENTEST/authorization.md) and the CHANGELOG entries of each
 version.

@@ -258,6 +258,10 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
             Ok(value) => (true, value),
             Err(error) => (false, serde_json::json!(error)),
         }),
+        "pentestOpenDocker" => fora_da_ui(window, &req, |w| match pentest::open_docker(w) {
+            Ok(value) => (true, value),
+            Err(error) => (false, serde_json::json!(error)),
+        }),
         "trafficInterfaces" => fora_da_ui(window, &req, |_w| match traffic::interfaces() {
             Ok(list) => (true, list),
             Err(error) => (false, serde_json::json!(error)),
@@ -1012,7 +1016,7 @@ mod tests_fora_da_ui {
         for acao in [
             "gitStatus", "listTree", "gitDiff", "readFile", "codexModels", "claudeAuthStatus", "claudeUsage", "codexUsage",
             "claudeAuthLoginStart", "claudeSubscriptionConnect", "claudeSubscriptionCode", "claudeModels", "claudeRunnerInstall", "claudeAccountsDetect",
-            "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "pentestPreflight", "pentestAutoResume", "openPentestViewer", "pentestCompatibility", "pentestInstallEngine", "stopPentest", "resumePentest", "reviewPentest", "retestPentest", "pentestLive", "pentestActivity", "pausePentest", "continuePentest", "ipv4SearchStart",
+            "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "pentestPreflight", "pentestAutoResume", "openPentestViewer", "pentestCompatibility", "pentestInstallEngine", "pentestOpenDocker", "stopPentest", "resumePentest", "reviewPentest", "retestPentest", "pentestLive", "pentestActivity", "pausePentest", "continuePentest", "ipv4SearchStart",
         ] {
             let key = format!("\"{acao}\"");
             let arm = corpo.split("\n        \"").find(|arm| {
