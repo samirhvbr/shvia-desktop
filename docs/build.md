@@ -263,7 +263,19 @@ o build (o `build-local.sh` detecta por `/etc/os-release`, `ID` + `ID_LIKE`):
 | Build roda em | Ferramenta | Resultado |
 |---|---|---|
 | Arch (ou derivada) | `makepkg` com o PKGBUILD | pacote nativo, com hook de pós-instalação |
-| Debian/Ubuntu | `fpm -s dir` sobre o payload extraído do `.deb` | mesmo `pkgname`, mesmas deps, mesmo marcador |
+| Debian/Ubuntu | `fakeroot fpm -s dir` over the extracted `.deb` payload | Same package name, dependencies, origin marker and root ownership in the tar and `.MTREE` |
+
+The Debian/Ubuntu path requires `fakeroot` as well as `fpm`, `zstd` and
+`libarchive-tools`. `fpm` normalizes the tar's ownership to `root:root`, but its
+`.MTREE` generation reads filesystem metadata. Running it under `fakeroot` keeps
+both consistent when building as an ordinary user; otherwise `pacman -Qkk` reports
+UID/GID mismatches for correctly installed files. If `fakeroot` is missing, the
+build skips the Arch package and prints the installation command.
+
+`npm run prova:pacman` exercises the real packaging block with a small DEB fixture
+on Linux as a non-root user (requires `dpkg-deb`, `fpm`, `fakeroot`, `bsdtar` and
+`zstd`). Before publication, install the generated package in an isolated Arch
+environment and run `pacman -Qkk shvia-desktop`; it must report no altered files.
 
 As duas rotas têm de entregar pacote **equivalente** — mesmo nome (`shvia-desktop`),
 mesmas dependências e o marcador de origem dentro. Não é preciosismo: até a 1.1.17 a
