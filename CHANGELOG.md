@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.38.7 - End the Pentest viewer's whole process group, so its Python server no longer outlives the window
+
+The engine is a PyInstaller program: the process the Desktop spawns for "Abrir viewer local" is a launcher, and the
+viewer's web server is the Python process it starts. `viewer::close` killed the launcher alone, so that server kept
+serving the run on 127.0.0.1 after the window closed or the page changed, until the computer restarted.
+
+- **What changes.** The viewer is spawned in a process group of its own (`in_its_own_group`), and `close` ends the
+  group with the same `encerrar` the engine calls with a deadline use: SIGTERM, up to `GRACA_DO_GRUPO` (3 s) for the
+  group to leave, then SIGKILL for whatever is left. SIGTERM first because the launcher removes its `_MEI` extraction
+  folder only when it exits on its own (1.38.4). The group is ended outside the viewer lock.
+- **The inspection** the review named together with the viewer already ends its group since 1.38.4 (`review.rs`).
+- **Proof.** `closing_the_viewer_ends_the_process_its_launcher_started`: a stand-in launcher starts a child and writes its
+  pid; `close` must end both within 15 s. Red when `close` kills only the launcher (the child outlives it) and when the
+  viewer is not in its own group (`close` waits for the child to end by itself). The older
+  `closing_another_window_never_terminates_the_viewer_and_the_owner_reaps_it` now spawns its stand-in the way `open` does,
+  and the two tests take turns on the one viewer slot.
+
 ## 1.38.7 - Read the engine's result.json only when this attempt wrote it, so a refused key is not taken for a provider window
 
 The engine writes `strix_runs/<name>/result.json` at the end of `main` and leaves it there, and an attempt that dies on
