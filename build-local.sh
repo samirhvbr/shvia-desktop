@@ -1764,7 +1764,7 @@ if [ "$_BUILD_OS" = Linux ]; then
       fi
       rm -rf "$_mk_tmp"
 
-    elif command -v fpm >/dev/null 2>&1; then
+    elif command -v fpm >/dev/null 2>&1 && command -v fakeroot >/dev/null 2>&1; then
       echo "==> Linux ($_LINUX_FAMILIA): empacotando o .pkg.tar.zst com fpm..."
       # Até a 1.1.17 esta rota era `fpm -s deb -t pacman <deb>`, conversão direta — e
       # ela produzia um pacote que INSTALA mas não ATUALIZA: o payload do .deb não tem
@@ -1803,7 +1803,10 @@ if [ "$_BUILD_OS" = Linux ]; then
         # --conflicts/--replaces: é o que migra quem instalou o `shv-ia` de antes —
         # sem eles, `pacman -Syu` não vê relação entre os dois nomes e a máquina fica
         # parada na 1.1.17 para sempre.
-        if (cd "$_stage" && fpm -s dir -t pacman \
+        # fpm normalizes the tar ownership, but generates .MTREE from filesystem
+        # metadata. fakeroot makes both describe root:root even for a non-root
+        # builder, without changing real ownership or disabling pacman's checks.
+        if (cd "$_stage" && fakeroot fpm -s dir -t pacman \
               -n "$_PKG_ARCH_NOME" -v "$_versao_pkg" --iteration 1 \
               -a "$(uname -m)" --no-auto-depends \
               -d webkit2gtk-4.1 -d gtk3 -d libayatana-appindicator -d hicolor-icon-theme \
@@ -1821,11 +1824,11 @@ if [ "$_BUILD_OS" = Linux ]; then
       fi
 
     else
-      echo "AVISO: sem makepkg (Arch) nem fpm (Debian) — pulando o .pkg.tar.zst." >&2
+      echo "AVISO: sem makepkg (Arch) nem fpm + fakeroot (Debian) — pulando o .pkg.tar.zst." >&2
       if [ "$_LINUX_FAMILIA" = arch ]; then
         echo "       instale: sudo pacman -S --needed base-devel" >&2
       else
-        echo "       instale: sudo apt install ruby ruby-dev build-essential zstd libarchive-tools && sudo gem install fpm" >&2
+        echo "       instale: sudo apt install ruby ruby-dev build-essential zstd libarchive-tools fakeroot && sudo gem install fpm" >&2
       fi
     fi
   fi

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.38.7 - Generate Arch integrity metadata with root ownership
+
+The Debian/Ubuntu packaging path now runs `fpm` under `fakeroot`, so `.MTREE` and
+its tar payload both describe `root:root`. Previously, a non-root builder produced
+an installable package whose integrity checks reported UID/GID mismatches for
+every installed file. The build requires `fakeroot` and skips the Arch package
+with installation guidance when it is absent.
+
+A Linux regression packages a small DEB through the real build script as an
+ordinary user and checks the archive metadata, integrity records and origin marker.
+The native `makepkg` path is unchanged.
+
 ## 1.38.6 - Record the zeroize lockfile update
 
 Record the `zeroize` update from 1.9.0 to 1.9.1 in [PR #208](https://github.com/samirhvbr/shvia-desktop/pull/208).
