@@ -2220,6 +2220,16 @@ being rewritten, and says so.
   The Claude runner's version follows the app's (it is one of the version carriers), so that is
   **once per app release**, on the first start after it. It never blocks the window, and a failure
   is one notification pointing at the button.
+- **A failed reinstall keeps the runner that was there (1.38.13).** The table above compares the installed
+  `package.json` and runner files, so it is only right if an install either completes or changes nothing.
+  Until 1.38.13 it did neither: the installers copied the new files over the old install and then ran
+  `npm ci`, which deletes `node_modules` first. An update that lost the network there left the new
+  version with no Agent SDK; `--version` still answered, the next start found "same version, same
+  files", and every Code turn died on the SDK import until the next app release. On Windows a first
+  install that failed was stuck the same way, because the app finds that runner by its `.mjs`. Now
+  `install.sh` and `install.ps1` assemble the install in `shvia-claude-runner.incoming`, run `npm ci`
+  and the load proof there, and only then swap it in with two renames; any earlier failure leaves the
+  old runner working at its old version, and the next start tries again.
 - A developer who installs a runner from a branch keeps it while its version is higher than the
   app's. At the same version the app's copy wins, because equal numbers do not prove equal runners.
 

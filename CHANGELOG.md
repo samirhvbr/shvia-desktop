@@ -1,5 +1,98 @@
 # Changelog
 
+## 1.38.13 - A reused bundle honours --bundles, --pentest, --no-pentest and --no-traffic
+
+`build-local.sh` reuses the bundle on disk when its version and sources match, and skips staging and
+`tauri build`. Those four flags act only there, so a reused bundle ignored them in silence:
+`--bundles deb` published every installer of the build before it, `--pentest <other>` kept the old
+engine, and a default run after a `--no-pentest` or `--no-traffic` build published without the Pentest
+engine or the capture sidecar. 1.35.4 closed the same gap for `--anna` (step 5 of `can_reuse_build`).
+
+- **What changes.** A finished build records its `--bundles` in `src-tauri/target/release/bundle/.bundles`
+  (`all` without the flag), and the reuse needs the same value. A bundle from before 1.38.13 has no record
+  and is rebuilt once. `stage-pentest.mjs --reuse-check` compares, by SHA-256 and without touching the disk,
+  the staged engine with the one this run would bundle: the file `--pentest` names, the pinned asset where
+  the platform bundles it by default, or none on a Mac. `--no-pentest` and `--no-traffic` need no staged
+  sidecar of theirs, and a run without `--no-traffic` needs the capture sidecar. The reuse line names the
+  Pentest engine it keeps, as it does for `anna`.
+- **Measured.** `prova:reuso` runs the real `can_reuse_build` in a temporary tree for 15 cases of these
+  choices, besides the 8 of `anna`. Against the script without this step, the 10 that must rebuild reuse.
+
+## 1.38.13 - A reused bundle is rebuilt when the Pentest pin or a platform config changed
+
+`build-local.sh` reuses the last bundle of the same version when no source is newer than it. Two commits
+may share a version, so that source list is what stops a second commit from publishing the first one's
+bundle. It missed four inputs: `pentest-engine.json`, compiled into the app (`compatibility.rs`) and the
+pick of the engine the Linux bundle carries; `src-tauri/tauri.linux.conf.json` and
+`tauri.macos.conf.json`, which declare the three sidecars and the `.deb`/`.rpm` dependencies; and
+`src-tauri/traffic-capture/`, the capture sidecar's source. A commit that only bumped the Pentest pin was
+reused and published with the old pin and engine. `ENTRADAS_DO_BUILD`, the inputs `--publish` refuses
+to ship uncommitted, also missed the pin.
+
+- **What changes.** The four are in the source list, with `target` pruned like `node_modules` (the
+  capture crate builds into its own), and the pin is in `ENTRADAS_DO_BUILD`.
+- **The ruler.** `prova:reuso` read only `tauri.conf.json`. It now reads every `tauri*.conf.json`,
+  requires each of them in the list, takes the roots of every `include_str!`/`include_bytes!` in
+  `src-tauri/src`, and checks that every root of the list is inside `ENTRADAS_DO_BUILD`. Its behaviour
+  part runs the real `find`: a newer pin or capture source stops the reuse, a newer file under the
+  capture crate's `target/` does not. Against the 1.38.12 script it names the four missing inputs; with
+  `target` not pruned, or the pin left out of `ENTRADAS_DO_BUILD`, it fails too.
+
+## 1.38.13 - An engine named for the build that does not exist stops the build
+
+`./build-local.sh --anna <path>` and `--pentest <path>` (and `$SHVIA_ANNA_BIN`, `$SHVIA_PENTEST_BIN`, and
+`build-local.ps1 -Anna`) name the engine to bundle. When the path did not exist, `stage-anna.mjs` and
+`stage-pentest.mjs` took it for an absence: they removed the engine an earlier build had staged, printed
+a warning and exited 0, so `./build-local.sh --publish --anna ~/typo/anna` published a release with no
+Code engine. Both scripts already treat a named engine as a choice (`pentest-bundling.mjs` bundles it
+even on a Mac). They now stop the build with exit 1 and say which name pointed where. An engine that was
+not named and is not found (none on PATH, no asset in the pinned release, no network) is still an
+absence, and the build goes on without it, as `docs/build.md` describes.
+
+`prova:sem-anna` and `prova:pentest` used a missing `--from` to stand for "no engine found". The absence
+case now uses a PATH with no `anna` (the Pentest one already had the release with no asset), and both
+gain the named-and-missing cases, by `--from` and by the environment variable. With the 1.38.12 scripts
+the four new cases fail: exit 0 and a build without the engine.
+
+## 1.38.13 - A Linux build with --bundles appimage or rpm no longer aborts after compiling
+
+`build-local.sh` looks for the `.deb` (to repackage it for pacman) and then for the pacman package with
+`$(find … | head -1)` under `set -euo pipefail`. A `--bundles appimage` or `--bundles rpm` build has no
+`deb/` folder, so it never makes a `pacman/` one either. `find` exits 1 on the missing folder, `pipefail`
+gives the assignment that status, and `set -e` ended the build right after the compile with only
+"build abortou … exit 1": no manifest, nothing published. Both lookups now end in `|| true`, like the
+script's other lookups of the same shape.
+
+Measured by running the script's real Linux packaging block in a temporary tree that holds only an
+AppImage, then only an rpm, with no packaging tools on PATH. Both aborted with exit 1 before and finish
+now; a tree with only a `.deb` finished before and after. With only the first `|| true`, the AppImage and
+rpm cases still abort, at the second lookup.
+
+## 1.38.13 - A failed Claude runner update keeps the runner that was installed
+
+The app reinstalls the Claude runner at the first start after each app update (ADR-036), with the
+installer the "Instalar runner" button runs. That installer copied the new files over the installed
+runner and then ran `npm ci`, which deletes `node_modules` first. An update that lost the network
+there (offline, a proxy) left the new version with no Agent SDK. The app decides by the installed
+`package.json` and runner files, so from the next start on it found the runner up to date;
+`--version` still answered, and every Code turn died importing the SDK until the next app release.
+On Windows a first install that failed was stuck the same way, because the app finds that runner by
+its `.mjs`.
+
+- **What changes.** `claude-runner/install.sh` and `install.ps1` assemble the install in
+  `shvia-claude-runner.incoming`: the copy, `npm ci` and the load proof all run there. Only an install
+  that passed the three replaces the old one, by two renames in the same folder, and the old one comes
+  back if the second rename fails. Any earlier failure removes the staged copy and leaves the installed
+  runner as it was, so the next start tries the update again. The terminal wrapper is written after the
+  swap. On Windows a file of the old install still in use makes the swap fail, and nothing changes.
+- **Measured.** `npm run prova:instalador` now runs the real `install.sh` against a temporary install
+  of an older version, with npm offline and an empty cache so `npm ci` fails the way a lost network
+  makes it fail: the old version, its `node_modules` and the terminal wrapper stay, and nothing is left
+  beside them. An install that passes replaces the old one whole. With the 1.38.12 installer the first
+  case ends at the new version with the old SDK gone. `prova:instaladores-ps1` has the same two cases
+  for `install.ps1`, under `pwsh` in CI.
+- **Not changed.** The Codex runner's installers still copy in place. They have no `npm` step, so
+  their failure is a missing module, which CI catches before release.
 ## 1.38.12 - Pin the Pentest engine at 1.2.50, whose activity-window mask holds the credential formats 1.2.49 let through
 
 `pentest-engine.json` pinned 1.2.49. It now pins **1.2.50**. The activity window (`pentestActivity()`, 1.37.0) shows the page what the
