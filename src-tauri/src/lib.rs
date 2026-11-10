@@ -1799,7 +1799,7 @@ pub fn run() {
         }
         // macOS: a Dock click does nothing by default when no window is showing. Bring the
         // app back the way the tray's "Abrir o ShvIA" does: show, unminimize and focus the
-        // window that exists, or rebuild it when there is none. Until 1.38.14 this only
+        // window that exists, or rebuild it when there is none. Until 1.39.2 this only
         // rebuilt a window that was gone, so a window hidden by "close keeps running" (it is
         // hidden, not destroyed) stayed hidden and the Dock icon looked dead.
         #[cfg(target_os = "macos")]

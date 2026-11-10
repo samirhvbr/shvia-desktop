@@ -540,7 +540,7 @@ fn do_json(v: &serde_json::Value) -> (Vec<Conta>, String) {
                     // Absent means the original mechanism: a file written before this field
                     // existed describes a `CLAUDE_CONFIG_DIR` profile, and reading it as
                     // anything else would change what every fleet entry means on upgrade.
-                    // Present but unrecognised drops the entry. Until 1.38.14 it became
+                    // Present but unrecognised drops the entry. Until 1.39.2 it became
                     // `CLAUDE_CONFIG_DIR` (the comment said `normalizar` dropped it, and nothing
                     // did), so a misspelt credential-only profile ran turns under a whole other
                     // configuration home: another account, with nothing on screen saying so.
@@ -616,7 +616,7 @@ fn registro_travado(app: &AppHandle) -> (Vec<Conta>, String) {
 
 /// [`registro`] without the app, so the file rules have a proof.
 ///
-/// **The seed is never written over a file the person has.** Until 1.38.14 a file that did not
+/// **The seed is never written over a file the person has.** Until 1.39.2 a file that did not
 /// parse (one stray comma in a hand edit, which this file invites: a second machine registers
 /// its paths there) was replaced by the seed on the next read, and every profile in it was
 /// gone without a word. Now a file that does not parse is moved aside, next to the original
