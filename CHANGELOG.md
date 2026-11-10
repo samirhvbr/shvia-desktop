@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.40.0 - Tell the person when an unattended engine update fails for any reason other than no connection
+
+The update by itself returned in silence on every download failure, not only on an offline start: a release without the
+file (404), a redirect off GitHub's hosts, too many redirects and a connection dropped mid-file all said nothing, so a
+person who agreed to updates would never learn that none arrives. ADR-046's 09/11 amendment and the entry below promise
+the opposite. Now only the two failures before any server answered ("sem conexão com o servidor de download" and "o
+tempo acabou", named once in `engine.rs`) stay quiet; the rest is notified like any other failure and retried at the
+next launch. Proof: `an_unattended_update_is_quiet_only_when_no_server_answered`.
+
 ## 1.40.0 - Keep the Pentest engine up to date under one standing agreement given in the install dialog
 
 PT-39, step (b) (the owner approved one standing consent for engine updates on 02/11/2026). On a Mac every raise of the pinned
