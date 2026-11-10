@@ -26,6 +26,16 @@ stray comma in a hand edit, which the file invites, cost every profile in it on 
   without the app.
 - **Proof.** `an_unreadable_registry_is_kept_beside_the_seed_not_overwritten`: the broken file comes back byte for
   byte beside a new, valid one. Red when the seed is written without moving the file aside.
+- **Review follow-up.** The first version left a small window, closed here. (1) Commands run on several threads, and
+  two reads of a file that does not parse in the same second made the second move the seed over the copy the first
+  had kept: one lock now covers the read and every write, and the kept copy takes a free name (`.unreadable-<seconds>`,
+  then `-1`, `-2`). (2) `selecionar` and the registration of a profile wrote over a file that exists but cannot be read
+  (saved as UTF-16, no permission): every write now goes through one writer, `escrever`, which replaces the file only
+  when it is absent or parses. A selection or a profile that a refused write was meant to carry is not kept, and the
+  person's file stays as it is. Proofs: `the_registry_writer_leaves_a_file_it_cannot_read_or_parse_alone`,
+  `a_second_unreadable_registry_in_the_same_second_gets_a_name_of_its_own` and
+  `concurrent_reads_of_an_unreadable_registry_keep_the_original_bytes` (eight readers at once; it can only fail
+  before the lock by timing, so it is a guard, not a proof of the race).
 
 ## 1.38.14 - Drop a Claude account profile whose variable is unknown instead of reading it as CLAUDE_CONFIG_DIR
 

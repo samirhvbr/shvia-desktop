@@ -144,8 +144,10 @@ Entrada que não passa é **descartada**, não corrigida — um palpite nosso so
 pessoa quis dizer rodaria um turno num diretório que ninguém escreveu.
 
 A file that does not parse as JSON is never written over: it is moved aside as
-`contas-claude.json.unreadable-<seconds>` in the same folder, and the seed takes its place
-(1.38.14). Fix the copy and put it back with the app closed.
+`contas-claude.json.unreadable-<seconds>` in the same folder (`-1`, `-2` when that name is taken), and the
+seed takes its place (1.38.14). Fix the copy and put it back with the app closed. A file that exists but cannot be
+read (saved as UTF-16, no permission) is not written over by anything: a selection or a new profile made while it is
+like that is answered and not kept.
 
 ⚠️ **O arquivo não guarda credencial nenhuma**, e este código nunca lê, copia ou cria uma.
 Quem autentica é o `claude login` do cliente oficial, em cada diretório.
