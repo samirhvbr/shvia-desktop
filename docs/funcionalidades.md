@@ -144,6 +144,11 @@ The first long runs on the owner's Mac (30/10 and 02/11/2026) found what a Linux
   `?token=`, `curl -u` and `-b`, a header after the `\n` of encoded arguments, `scheme://user:password@host`, `API_TOKEN=`, and
   Slack, GitLab, Stripe, Google, SendGrid, npm and AWS key ids), bounds the cost of that mask on a hostile line, and normalises
   every field to what `pentestActivity()` accepts, so one odd row no longer holds the whole window back.
+- **Open Docker (1.39.0)**: on a Mac whose Docker is installed and not answering, `pentestPreflight().docker.canOpen` is `true`
+  and `pentestOpenDocker()` hands Docker Desktop to the system (`/usr/bin/open` with the app's own path). It asks Docker first,
+  launches only for a daemon that verifiably does not answer, and answers `starting` for 45 s afterwards instead of launching
+  again; Linux refuses. No native dialog. The launch itself has not been pressed on a real Mac yet. Contract:
+  [PENTEST/auto-resume.md](PENTEST/auto-resume.md).
 
 Details and what was not measured: [PENTEST/authorization.md](PENTEST/authorization.md) and the CHANGELOG entries of each
 version.

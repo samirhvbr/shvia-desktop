@@ -245,7 +245,7 @@ path used from outside (`code_bridge::handle_message`, `::reply`, `::Sidecars`, 
 | `contas_claude.rs` | local account registry, alias/function discovery, child environment and isolated usage cache |
 | `code_bridge/aparelho.rs` | tray-enabled device info, notifications, native file picking and consented screen capture |
 | `code_bridge/navegador.rs`, `code_bridge/navegador.js` | the agent's separate browser/profile, site and interaction confirmations |
-| `code_bridge/pentest.rs`, `code_bridge/pentest/` | controlled assessments: `compatibility.rs` (version probe, About rows), `engine.rs` (first-use install of the pinned engine), `control.rs` (live control channel), `recovery.rs`, `review.rs`, `sync.rs` (history/report outbox), `viewer.rs`, `ending.rs` (end reason), `docker.rs` (preflight), `resume.rs` (automatic resume), `awake.rs` (keep-awake), `credential.rs` (account model key) |
+| `code_bridge/pentest.rs`, `code_bridge/pentest/` | controlled assessments: `compatibility.rs` (version probe, About rows), `engine.rs` (first-use install of the pinned engine), `control.rs` (live control channel), `recovery.rs`, `review.rs`, `sync.rs` (history/report outbox), `viewer.rs`, `ending.rs` (end reason), `docker.rs` (preflight; opens Docker Desktop on a Mac when it does not answer), `resume.rs` (automatic resume), `awake.rs` (keep-awake), `credential.rs` (account model key) |
 | `code_bridge/ipv4_search.rs` | IPv4 Search: target/port parsing, the private-range policy, the native confirmation and the two-pass TCP probe (ADR-044) |
 | `code_bridge/traffic.rs` | packet capture: finds and spawns the `traffic-capture` sidecar, its native confirmation, permission request and export; never opens a device itself (ADR-045) |
 
