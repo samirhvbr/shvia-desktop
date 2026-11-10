@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.40.2 - Send a Pentest run's input, output and cached input tokens with its history
+
+**Release this only after the SHVIA server that accepts the keys is deployed (shvia-web #742).** The server's model row is a
+closed key list: an older server refuses the whole snapshot when a key it does not know arrives, and that run never reaches
+«Meus testes». Each model row of the history this app delivers now carries `input_tokens`, `output_tokens`,
+`cached_input_tokens` and `unknown_cache_attempts`, so the server can show the mean input, output and cache tokens per pentest
+(the owner's Overview, 10/11/2026). Input and output already came from the engine; the cache per model row comes from engine
+1.2.53 on (samirhvbr/strix #60), and an older engine's row projects it as null, which the server stores as unknown, never zero.
+The live projection (`control.rs`) keeps the two cache fields on model rows too. Proof:
+`a_model_row_carries_input_output_and_cache_and_an_older_engine_sends_them_as_unknown`, red without the keys in either the
+projection or the payload.
+
 ## 1.40.1 - Tell the page which server run a local Pentest run belongs to
 
 `pentestStatus()` now carries `assessmentId`: the assessment the run's grant was issued for, which is the `id` of the run on the
