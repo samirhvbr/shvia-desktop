@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.39.1 - Say why the result of a finished run has not reached the server
+
+The Desktop sends a run's results to the server from a worker that wakes every 15 seconds, and it threw away the
+reason when an attempt failed, so a row of "My tests" could stay on `running` with nothing saying why. The worker now
+keeps the last reason of each run in memory, as one fixed word, and `pentestStatus().historySync.problem` carries it
+while something is still waiting to be sent: `engine_missing` (the engine that exports a finished run's history and
+report is not installed on this computer, as on a Mac that has not installed it yet), `read_failed`,
+`server_unreachable`, `server_refused` or `failed`. The next attempt that succeeds clears it. Nothing from a file, the
+engine, the network or the server is put in the word. A finished run cannot be read without the engine, and that
+case is now checked before the engine is asked, instead of failing as an anonymous error.
+
 ## 1.39.0 - Let the page ask the Desktop to open Docker on a Mac
 
 The Pentest page shows a red "Docker" row with an **Open Docker** button when Docker is installed and not answering (WEB
