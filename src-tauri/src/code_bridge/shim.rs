@@ -112,6 +112,10 @@ pub const BRIDGE_JS: &str = r#"(function () {
     openPentestViewer: function () { return pentestPost('openPentestViewer'); },
     pentestCompatibility: function () { return post('pentestCompatibility'); },
     pentestInstallEngine: function () { return post('pentestInstallEngine'); },
+    // The standing agreement to keep the engine up to date (1.40.0), given only in the install dialog. `o` = {enabled?: false}: with no
+    // `enabled` it reads, with `false` it switches the agreement off; `true` is refused (E_PENTEST_AUTOUPDATE_DIALOG_ONLY). Resolves
+    // with {enabled}. `pentestCompatibility().engine.autoUpdate` carries the same boolean.
+    pentestEngineAutoUpdate: function (o) { return post('pentestEngineAutoUpdate', o || {}); },
     // Open Docker Desktop (1.39.0), on a Mac, when `pentestPreflight().docker.canOpen` is true. Takes no argument. Resolves with
     // {state:'opening'|'starting'|'ready'} (it returns as soon as the app is handed to the system, it does not wait for Docker
     // to answer: keep calling pentestPreflight). Rejects with E_PENTEST_DOCKER_UNSUPPORTED | _NOT_INSTALLED | _UNKNOWN.

@@ -12,7 +12,10 @@ Desktop 1.25.x within 1.x, Pentest 1.2.30+ within 1.x (1.26.2: the probe reads `
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Last updated: **10/11/2026** (version 1.39.0). 1.39.0 = the page can ask the Desktop
+> Last updated: **10/11/2026** (version 1.40.0). 1.40.0 = the install dialog's first button keeps the
+> engine up to date: a Desktop update that moves the pin installs the new engine by itself (a standing
+> agreement the page can switch off, never on; PT-39 step b); open: the whole path on a Mac across a real
+> Desktop update. Previously, 1.39.0 = the page can ask the Desktop
 > to open Docker Desktop on a Mac when Docker does not answer (`pentestOpenDocker`,
 > `docker.canOpen` in `pentestPreflight`; PT-39 step a); open: one real press of the
 > button on a Mac, the launch compiles everywhere but was not run on one. The Pentest

@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.40.0 - Tell the person when an unattended engine update fails for any reason other than no connection
+
+The update by itself returned in silence on every download failure, not only on an offline start: a release without the
+file (404), a redirect off GitHub's hosts, too many redirects and a connection dropped mid-file all said nothing, so a
+person who agreed to updates would never learn that none arrives. ADR-046's 09/11 amendment and the entry below promise
+the opposite. Now only the two failures before any server answered ("sem conexão com o servidor de download" and "o
+tempo acabou", named once in `engine.rs`) stay quiet; the rest is notified like any other failure and retried at the
+next launch. Proof: `an_unattended_update_is_quiet_only_when_no_server_answered`.
+
+## 1.40.0 - Keep the Pentest engine up to date under one standing agreement given in the install dialog
+
+PT-39, step (b) (the owner approved one standing consent for engine updates on 02/11/2026). On a Mac every raise of the pinned
+engine cost the person one consent, because only the exact pinned file counts as installed: a Desktop that moved from 1.2.49 to
+1.2.50 read "não instalado" until they pressed through the dialog again.
+
+- **The dialog has three buttons**: "Instalar e manter atualizado", "Instalar só esta versão" and "Cancelar". The first one also
+  writes a standing agreement (`auto-update.json` in the engine's own folder, mode 0600). Any press that is not one of the two
+  install buttons is a refusal.
+- **With the agreement**, once per launch and 20 s after the app is up, when something is pinned for this system and no engine runs
+  for the pin, the app downloads the pinned file, checks its length and SHA-256, starts it once and moves it into place: the same
+  function, pin and hosts as the dialog's install. It then says so in a notification. A verified pin, or a bundled engine that
+  works, is never replaced; a failure that is not "no connection" is notified once and retried at the next launch; an offline
+  start says nothing.
+- **The page can switch it off, never on.** New bridge method `pentestEngineAutoUpdate({enabled?})`: no argument reads,
+  `{enabled: false}` removes the agreement, `{enabled: true}` rejects with `E_PENTEST_AUTOUPDATE_DIALOG_ONLY`.
+  `pentestCompatibility().engine.autoUpdate` carries the boolean. The default is NO.
+- **Trust is unchanged**: the pin comes from this app, and the agreement adds no source, host or file (ADR-046, 09/11 amendment).
+
+Three tests read the rules (the agreement is only a plain small file that says `true`, and an engine update never removes it; the
+engine is installed by itself only with the agreement, an offer and nothing to run; only the two install buttons install); each
+rule reverted turned its test red. Not run: the whole path on a Mac across a real Desktop update, and the 95 MB download has no
+progress bar. Docs: `docs/pentest-compatibility.md`, `docs/build.md`.
+
 ## 1.39.2 - Remove the deny.toml exceptions that no longer match anything: three zip advisories and BSD-2-Clause
 
 `cargo deny check advisories licenses` warned four times about exceptions that match nothing in the tree:
