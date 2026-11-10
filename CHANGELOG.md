@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.38.15 - End the Pentest viewer's whole process group, so its Python server no longer outlives the window
+
+The engine is a PyInstaller program: the process the Desktop spawns for "Abrir viewer local" is a launcher, and the
+viewer's web server is the Python process it starts. `viewer::close` killed the launcher alone, so that server kept
+serving the run on 127.0.0.1 after the window closed or the page changed, until the computer restarted.
+
+- **What changes.** The viewer is spawned in a process group of its own (`in_its_own_group`), and `close` ends the
+  group with the same `encerrar` the engine calls with a deadline use: SIGTERM, up to `GRACA_DO_GRUPO` (3 s) for the
+  group to leave, then SIGKILL for whatever is left. SIGTERM first because the launcher removes its `_MEI` extraction
+  folder only when it exits on its own (1.38.4). The group is ended outside the viewer lock.
+- **The inspection** the review named together with the viewer already ends its group since 1.38.4 (`review.rs`).
+- **Proof.** `closing_the_viewer_ends_the_process_its_launcher_started`: a stand-in launcher starts a child and writes its
+  pid; `close` must end both within 15 s. Red when `close` kills only the launcher (the child outlives it) and when the
+  viewer is not in its own group (`close` waits for the child to end by itself). The older
+  `closing_another_window_never_terminates_the_viewer_and_the_owner_reaps_it` now spawns its stand-in the way `open` does,
+  and the two tests take turns on the one viewer slot.
+- **Not measured.** This against the real PyInstaller engine on a Mac: that the viewer's Python server stays in the
+  launcher's group, and that `close` leaves nothing listening (`lsof -iTCP -sTCP:LISTEN | grep 127.0.0.1` after closing the
+  viewer window). The inference rests on the engine's `strix/interface/viewer/cli.py`, which ends in
+  `while True: time.sleep(1.0)` with no signal handler and no check of its parent (tags `shvia-v1.2.49` and `shvia-v1.2.50`).
+
+## 1.38.15 - Read the engine's result.json only when this attempt wrote it, so a refused key is not taken for a provider window
+
+The engine writes `strix_runs/<name>/result.json` at the end of `main` and leaves it there, and an attempt that dies on
+an exception (a refused key, a lapsed grant) writes none. `ending.rs` read whatever was there first. A resume that died on
+a refused key therefore read the previous attempt's `{"exit_reason":"rate_limited"}`, was classified as a provider
+window, and the automatic resume kept scheduling waits for it up to its 12 h ceiling, each ending the same way.
+
+- **What changes.** Every start and every resume opens a new log (`runtime.log`, `resume-<id>.log`, `create_new`), so the
+  newest log's creation time is when this attempt started. A `result.json` older than that is the previous attempt's,
+  and the log's sentences decide. A file system that keeps no creation time reads the file as before.
+- **Not touched.** `pentest.rs` and the call sites: the rule lives in `classify`, which already finds the newest log.
+- **Proof.** `a_result_left_by_an_earlier_attempt_does_not_decide_the_next_one`: the first attempt's own result decides,
+  the resume that died on a refused key is `key_refused`, and a resume that writes its own `rate_limited` is a provider
+  window again. Red without the age check (`provider_window` for the refused key). Documented in
+  `docs/PENTEST/authorization.md`.
+
+
 ## 1.38.13 - A reused bundle honours --bundles, --pentest, --no-pentest and --no-traffic
 
 `build-local.sh` reuses the bundle on disk when its version and sources match, and skips staging and
