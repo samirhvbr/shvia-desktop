@@ -34,6 +34,15 @@
 //! The reinstall runs the SAME installer the button runs (`instalar_runner`), never a copy of its
 //! steps: two definitions of an install would drift, and the one a developer tests in a terminal
 //! would stop being the one the user gets.
+//!
+//! The rule is only as true as what the installers leave behind: it reads the installed
+//! `package.json` and runner files, never `node_modules`. Until 1.38.13 the Claude runner's installers
+//! copied the new files over the old install and then ran `npm ci`, which deletes `node_modules`
+//! first; an update that lost the network there left the new version over no Agent SDK, and from the
+//! next start on this rule said "up to date" (on Windows a first install that failed did the same).
+//! The installers now assemble the new install beside the old one and swap it in only after it loads
+//! (`npm run prova:instalador`, `prova:instaladores-ps1`), so a failed reinstall leaves the old version
+//! in place and the next start tries again.
 
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
