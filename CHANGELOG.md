@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.40.1 - Tell the page which server run a local Pentest run belongs to
+
+`pentestStatus()` now carries `assessmentId`: the assessment the run's grant was issued for, which is the `id` of the run on the
+server. Until now the page could name a run on this computer only by its `localId`, a random id with no relation to a row of
+«My tests», so it could not open the screen of that exact run; matching "the only run that is going" would have broken with the
+first second run. The id is read from the run's own outgoing record (already validated as a UUID and for the run's own origin), so
+it survives a restart, and is `null` for a run with no record. Nothing new is sent anywhere: the page already knows this id from the
+server's own list. Proof: `a_run_names_the_server_run_it_belongs_to_only_through_its_own_record` (no record, the right record,
+another origin, another run's id).
+
 ## 1.40.0 - Tell the person when an unattended engine update fails for any reason other than no connection
 
 The update by itself returned in silence on every download failure, not only on an offline start: a release without the
