@@ -1,5 +1,74 @@
 # Changelog
 
+## 1.39.2 - Remove the deny.toml exceptions that no longer match anything: three zip advisories and BSD-2-Clause
+
+`cargo deny check advisories licenses` warned four times about exceptions that match nothing in the tree:
+
+- **RUSTSEC-2026-0367, -0368, -0369 (zip 4.6.1).** Since 1.33.2 `tauri-plugin-updater` 2.14.1 takes zip 9.1.3,
+  which has the fixes, so the block that explained why zip 4 was held is gone with them. An ignore that matches
+  nothing is a hole waiting for the next advisory with the same id to fall through unread.
+- **BSD-2-Clause.** No dependency uses it (`license-not-encountered`), as with BSL-1.0, OpenSSL and
+  Unicode-DFS-2016 in 1.6.5. A new dependency under it now fails and gets looked at.
+
+After this, the only warning left is the yanked `async-executor` 1.14.0 (under zbus), a lockfile update for
+another delivery. The check exits 0.
+
+## 1.39.2 - Keep a Claude account registry that does not parse beside the seed instead of writing the seed over it
+
+`registro()` answered the seed for a `contas-claude.json` that did not parse, and wrote the seed over it. One
+stray comma in a hand edit, which the file invites, cost every profile in it on the next read, without a word.
+
+- **What changes.** A file that does not parse is moved aside, next to the original, as
+  `contas-claude.json.unreadable-<seconds>`, and only then does the seed take its place. A file that exists but
+  cannot be read, or cannot be moved aside, is left alone: the seed answers that read and is not written. A
+  missing file is seeded and written as before.
+- **Shape.** The rules moved into `carregar(path, home, exists)`, which `registro()` calls, so they have a proof
+  without the app.
+- **Proof.** `an_unreadable_registry_is_kept_beside_the_seed_not_overwritten`: the broken file comes back byte for
+  byte beside a new, valid one. Red when the seed is written without moving the file aside.
+- **Review follow-up.** The first version left a small window, closed here. (1) Commands run on several threads, and
+  two reads of a file that does not parse in the same second made the second move the seed over the copy the first
+  had kept: one lock now covers the read and every write, and the kept copy takes a free name (`.unreadable-<seconds>`,
+  then `-1`, `-2`). (2) `selecionar` and the registration of a profile wrote over a file that exists but cannot be read
+  (saved as UTF-16, no permission): every write now goes through one writer, `escrever`, which replaces the file only
+  when it is absent or parses. A selection or a profile that a refused write was meant to carry is not kept, and the
+  person's file stays as it is. Proofs: `the_registry_writer_leaves_a_file_it_cannot_read_or_parse_alone`,
+  `a_second_unreadable_registry_in_the_same_second_gets_a_name_of_its_own` and
+  `concurrent_reads_of_an_unreadable_registry_keep_the_original_bytes` (eight readers at once; it can only fail
+  before the lock by timing, so it is a guard, not a proof of the race).
+
+## 1.39.2 - Drop a Claude account profile whose variable is unknown instead of reading it as CLAUDE_CONFIG_DIR
+
+`contas-claude.json` is edited by hand by design (a second machine registers its own paths there), and each
+profile says which variable it sets: `CLAUDE_CONFIG_DIR` (the whole configuration home) or
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` (the credential only). A `var` the app did not know became `CLAUDE_CONFIG_DIR`;
+the comment said `normalizar` dropped such an entry, and nothing did. A misspelt credential-only profile therefore
+ran turns under a whole other configuration home, which is another account, with nothing on screen saying so.
+
+- **What changes.** A `var` that is present and not one of the two names (or not a string) drops the profile on
+  read, like an invalid `id` or `dir`. An absent `var` is still `CLAUDE_CONFIG_DIR`, as in every file written
+  before 1.4.28.
+- **Proof.** `an_unknown_variable_drops_the_profile_instead_of_guessing_one`; red with the old fallback.
+
+## 1.39.2 - Run Help → Diagnostics off the event loop, so a server that is down no longer freezes every window
+
+The menu handler ran the checks where it was called, on the event loop that paints every window: the server
+probe and `anna --version`. With the server down that took 4–10 s, and every window of the app stopped
+responding for that long, which is exactly when a person opens the diagnostics. The checks now run on a thread
+of their own and the panel opens when they are done; `diagnostico::abrir` reaches windows only through calls
+Tauri already forwards to the main thread.
+
+## 1.39.2 - Bring a window hidden by "close keeps running" back from the macOS Dock
+
+On macOS, closing the last window with "close keeps running" on hides it; it is not destroyed. The Dock click
+(`RunEvent::Reopen`) only rebuilt a window when none existed, so with the hidden one still there it did nothing and
+the Dock icon looked dead until the person found the menu-bar icon. It now does what the tray's "Abrir o ShvIA" does
+(`tray::mostrar`): show, unminimize and focus the window that exists, or rebuild it when there is none.
+
+- **Not measured on a Mac.** The arm compiles only on macOS; the CI's macOS job compiles and lints it. The behaviour
+  is the tray's, which is in use on every platform.
+
+
 ## 1.39.1 - Say why the result of a finished run has not reached the server
 
 The Desktop sends a run's results to the server from a worker that wakes every 15 seconds, and it threw away the
