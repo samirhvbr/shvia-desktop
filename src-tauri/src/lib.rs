@@ -1632,7 +1632,12 @@ pub fn run() {
                 updater::verificar_agora(app);
             }
             "diagnostics" => {
-                diagnostico::abrir(app);
+                // Off the event loop: the checks probe the server and run `anna --version`,
+                // which took 4–10 s with the server down, and every window froze meanwhile.
+                // `abrir` only touches windows through calls Tauri already forwards to the
+                // main thread.
+                let app = app.clone();
+                std::thread::spawn(move || diagnostico::abrir(&app));
             }
             "reload" => {
                 // Recarrega a janela em foco; se não achar foco, recarrega todas.
@@ -1794,13 +1799,14 @@ pub fn run() {
                 }
             }
         }
-        // macOS: clicar no ícone do Dock com todas as janelas fechadas não
-        // recria nada por padrão. Recria a principal para o usuário.
+        // macOS: a Dock click does nothing by default when no window is showing. Bring the
+        // app back the way the tray's "Abrir o ShvIA" does: show, unminimize and focus the
+        // window that exists, or rebuild it when there is none. Until 1.39.2 this only
+        // rebuilt a window that was gone, so a window hidden by "close keeps running" (it is
+        // hidden, not destroyed) stayed hidden and the Dock icon looked dead.
         #[cfg(target_os = "macos")]
         tauri::RunEvent::Reopen { .. } => {
-            if rapida::normais(app_handle).is_empty() {
-                let _ = build_shvia_window(app_handle, "main", WebviewUrl::App("index.html".into()));
-            }
+            tray::mostrar(app_handle);
         }
         tauri::RunEvent::Exit => {
             code_bridge::stop_pentest(None);

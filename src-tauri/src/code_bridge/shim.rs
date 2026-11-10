@@ -102,7 +102,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // sessão do agente
     startPentest: function (o) { return pentestPost('startPentest', o || {}); },
     pentestStatus: function () { return pentestPost('pentestStatus'); },
-    // Before an assessment (1.35.0): {docker:{state:'ready'|'not_running'|'missing'|'unknown'|'unsupported'},
+    // Before an assessment (1.35.0): {docker:{state:'ready'|'not_running'|'missing'|'unknown'|'unsupported', canOpen (1.39.0)},
     // credentials:{state:'at_confirmation'}, autoResume:{enabled}}. Detection only: nothing is started or installed.
     pentestPreflight: function () { return post('pentestPreflight'); },
     // Resuming by itself when the provider's usage window closes (1.35.0). `o` = {enabled?: bool, cancel?: bool}; saving the switch
@@ -116,6 +116,10 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // `enabled` it reads, with `false` it switches the agreement off; `true` is refused (E_PENTEST_AUTOUPDATE_DIALOG_ONLY). Resolves
     // with {enabled}. `pentestCompatibility().engine.autoUpdate` carries the same boolean.
     pentestEngineAutoUpdate: function (o) { return post('pentestEngineAutoUpdate', o || {}); },
+    // Open Docker Desktop (1.39.0), on a Mac, when `pentestPreflight().docker.canOpen` is true. Takes no argument. Resolves with
+    // {state:'opening'|'starting'|'ready'} (it returns as soon as the app is handed to the system, it does not wait for Docker
+    // to answer: keep calling pentestPreflight). Rejects with E_PENTEST_DOCKER_UNSUPPORTED | _NOT_INSTALLED | _UNKNOWN.
+    pentestOpenDocker: function () { return post('pentestOpenDocker'); },
     pentestLive: function () { return pentestPost('pentestLive'); },
     // What the agents of the local assessment are doing (1.37.0), from the engine's own files on this computer: nothing
     // here goes to the server. `o` = {after?: row id}; without it, the newest window. Resolves with {localId, activity:

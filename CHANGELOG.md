@@ -24,6 +24,306 @@ engine is installed by itself only with the agreement, an offer and nothing to r
 rule reverted turned its test red. Not run: the whole path on a Mac across a real Desktop update, and the 95 MB download has no
 progress bar. Docs: `docs/pentest-compatibility.md`, `docs/build.md`.
 
+## 1.39.2 - Remove the deny.toml exceptions that no longer match anything: three zip advisories and BSD-2-Clause
+
+`cargo deny check advisories licenses` warned four times about exceptions that match nothing in the tree:
+
+- **RUSTSEC-2026-0367, -0368, -0369 (zip 4.6.1).** Since 1.33.2 `tauri-plugin-updater` 2.14.1 takes zip 9.1.3,
+  which has the fixes, so the block that explained why zip 4 was held is gone with them. An ignore that matches
+  nothing is a hole waiting for the next advisory with the same id to fall through unread.
+- **BSD-2-Clause.** No dependency uses it (`license-not-encountered`), as with BSL-1.0, OpenSSL and
+  Unicode-DFS-2016 in 1.6.5. A new dependency under it now fails and gets looked at.
+
+After this, the only warning left is the yanked `async-executor` 1.14.0 (under zbus), a lockfile update for
+another delivery. The check exits 0.
+
+## 1.39.2 - Keep a Claude account registry that does not parse beside the seed instead of writing the seed over it
+
+`registro()` answered the seed for a `contas-claude.json` that did not parse, and wrote the seed over it. One
+stray comma in a hand edit, which the file invites, cost every profile in it on the next read, without a word.
+
+- **What changes.** A file that does not parse is moved aside, next to the original, as
+  `contas-claude.json.unreadable-<seconds>`, and only then does the seed take its place. A file that exists but
+  cannot be read, or cannot be moved aside, is left alone: the seed answers that read and is not written. A
+  missing file is seeded and written as before.
+- **Shape.** The rules moved into `carregar(path, home, exists)`, which `registro()` calls, so they have a proof
+  without the app.
+- **Proof.** `an_unreadable_registry_is_kept_beside_the_seed_not_overwritten`: the broken file comes back byte for
+  byte beside a new, valid one. Red when the seed is written without moving the file aside.
+- **Review follow-up.** The first version left a small window, closed here. (1) Commands run on several threads, and
+  two reads of a file that does not parse in the same second made the second move the seed over the copy the first
+  had kept: one lock now covers the read and every write, and the kept copy takes a free name (`.unreadable-<seconds>`,
+  then `-1`, `-2`). (2) `selecionar` and the registration of a profile wrote over a file that exists but cannot be read
+  (saved as UTF-16, no permission): every write now goes through one writer, `escrever`, which replaces the file only
+  when it is absent or parses. A selection or a profile that a refused write was meant to carry is not kept, and the
+  person's file stays as it is. Proofs: `the_registry_writer_leaves_a_file_it_cannot_read_or_parse_alone`,
+  `a_second_unreadable_registry_in_the_same_second_gets_a_name_of_its_own` and
+  `concurrent_reads_of_an_unreadable_registry_keep_the_original_bytes` (eight readers at once; it can only fail
+  before the lock by timing, so it is a guard, not a proof of the race).
+
+## 1.39.2 - Drop a Claude account profile whose variable is unknown instead of reading it as CLAUDE_CONFIG_DIR
+
+`contas-claude.json` is edited by hand by design (a second machine registers its own paths there), and each
+profile says which variable it sets: `CLAUDE_CONFIG_DIR` (the whole configuration home) or
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` (the credential only). A `var` the app did not know became `CLAUDE_CONFIG_DIR`;
+the comment said `normalizar` dropped such an entry, and nothing did. A misspelt credential-only profile therefore
+ran turns under a whole other configuration home, which is another account, with nothing on screen saying so.
+
+- **What changes.** A `var` that is present and not one of the two names (or not a string) drops the profile on
+  read, like an invalid `id` or `dir`. An absent `var` is still `CLAUDE_CONFIG_DIR`, as in every file written
+  before 1.4.28.
+- **Proof.** `an_unknown_variable_drops_the_profile_instead_of_guessing_one`; red with the old fallback.
+
+## 1.39.2 - Run Help → Diagnostics off the event loop, so a server that is down no longer freezes every window
+
+The menu handler ran the checks where it was called, on the event loop that paints every window: the server
+probe and `anna --version`. With the server down that took 4–10 s, and every window of the app stopped
+responding for that long, which is exactly when a person opens the diagnostics. The checks now run on a thread
+of their own and the panel opens when they are done; `diagnostico::abrir` reaches windows only through calls
+Tauri already forwards to the main thread.
+
+## 1.39.2 - Bring a window hidden by "close keeps running" back from the macOS Dock
+
+On macOS, closing the last window with "close keeps running" on hides it; it is not destroyed. The Dock click
+(`RunEvent::Reopen`) only rebuilt a window when none existed, so with the hidden one still there it did nothing and
+the Dock icon looked dead until the person found the menu-bar icon. It now does what the tray's "Abrir o ShvIA" does
+(`tray::mostrar`): show, unminimize and focus the window that exists, or rebuild it when there is none.
+
+- **Not measured on a Mac.** The arm compiles only on macOS; the CI's macOS job compiles and lints it. The behaviour
+  is the tray's, which is in use on every platform.
+
+
+## 1.39.1 - Say why the result of a finished run has not reached the server
+
+The Desktop sends a run's results to the server from a worker that wakes every 15 seconds, and it threw away the
+reason when an attempt failed, so a row of "My tests" could stay on `running` with nothing saying why. The worker now
+keeps the last reason of each run in memory, as one fixed word, and `pentestStatus().historySync.problem` carries it
+while something is still waiting to be sent: `engine_missing` (the engine that exports a finished run's history and
+report is not installed on this computer, as on a Mac that has not installed it yet), `read_failed`,
+`server_unreachable`, `server_refused` or `failed`. The next attempt that succeeds clears it. Nothing from a file, the
+engine, the network or the server is put in the word. A finished run cannot be read without the engine, and that
+case is now checked before the engine is asked, instead of failing as an anonymous error.
+
+## 1.39.0 - Let the page ask the Desktop to open Docker on a Mac
+
+The Pentest page shows a red "Docker" row with an **Open Docker** button when Docker is installed and not answering (WEB
+queue item PT-39, step a). Until now a Docker that was not running was only a
+warning, and a new user on a Mac found out when the engine failed to open its test environment.
+
+- **`pentestPreflight().docker.canOpen`** is `true` only on a Mac whose `docker` command is there, whose daemon does not
+  answer, and where a Docker Desktop is installed (`/Applications` or `~/Applications`).
+- **`pentestOpenDocker()`** (new bridge method, no argument) resolves with `{state: 'opening'|'starting'|'ready'}` and rejects
+  with `E_PENTEST_DOCKER_UNSUPPORTED`, `_NOT_INSTALLED` or `_UNKNOWN`. It asks Docker itself first and launches only when the
+  daemon verifiably does not answer; the program is `/usr/bin/open` and the argument is the app's own path, never anything the
+  page sent. A second request within 45 s is answered `starting` and launches nothing. Linux refuses: Docker Desktop there
+  starts through the service manager, which this app never asks rights for.
+- It installs nothing, starts no daemon any other way and changes no setting. There is no native dialog (the engine install
+  has one because it downloads and runs a file; this opens an application the person already has, in answer to a button).
+
+The decision is separate from the effect (`decide` in `pentest/docker.rs`) and one test reads its rules; reverting the Mac check
+or the grace period turned it red. The macOS launch itself is not exercised here (no Mac on the build machine): it compiles on
+every target and needs one real press on a Mac. Docs: `docs/PENTEST/auto-resume.md`.
+
+## 1.38.15 - End the Pentest viewer's whole process group, so its Python server no longer outlives the window
+
+The engine is a PyInstaller program: the process the Desktop spawns for "Abrir viewer local" is a launcher, and the
+viewer's web server is the Python process it starts. `viewer::close` killed the launcher alone, so that server kept
+serving the run on 127.0.0.1 after the window closed or the page changed, until the computer restarted.
+
+- **What changes.** The viewer is spawned in a process group of its own (`in_its_own_group`), and `close` ends the
+  group with the same `encerrar` the engine calls with a deadline use: SIGTERM, up to `GRACA_DO_GRUPO` (3 s) for the
+  group to leave, then SIGKILL for whatever is left. SIGTERM first because the launcher removes its `_MEI` extraction
+  folder only when it exits on its own (1.38.4). The group is ended outside the viewer lock.
+- **The inspection** the review named together with the viewer already ends its group since 1.38.4 (`review.rs`).
+- **Proof.** `closing_the_viewer_ends_the_process_its_launcher_started`: a stand-in launcher starts a child and writes its
+  pid; `close` must end both within 15 s. Red when `close` kills only the launcher (the child outlives it) and when the
+  viewer is not in its own group (`close` waits for the child to end by itself). The older
+  `closing_another_window_never_terminates_the_viewer_and_the_owner_reaps_it` now spawns its stand-in the way `open` does,
+  and the two tests take turns on the one viewer slot.
+- **Not measured.** This against the real PyInstaller engine on a Mac: that the viewer's Python server stays in the
+  launcher's group, and that `close` leaves nothing listening (`lsof -iTCP -sTCP:LISTEN | grep 127.0.0.1` after closing the
+  viewer window). The inference rests on the engine's `strix/interface/viewer/cli.py`, which ends in
+  `while True: time.sleep(1.0)` with no signal handler and no check of its parent (tags `shvia-v1.2.49` and `shvia-v1.2.50`).
+
+## 1.38.15 - Read the engine's result.json only when this attempt wrote it, so a refused key is not taken for a provider window
+
+The engine writes `strix_runs/<name>/result.json` at the end of `main` and leaves it there, and an attempt that dies on
+an exception (a refused key, a lapsed grant) writes none. `ending.rs` read whatever was there first. A resume that died on
+a refused key therefore read the previous attempt's `{"exit_reason":"rate_limited"}`, was classified as a provider
+window, and the automatic resume kept scheduling waits for it up to its 12 h ceiling, each ending the same way.
+
+- **What changes.** Every start and every resume opens a new log (`runtime.log`, `resume-<id>.log`, `create_new`), so the
+  newest log's creation time is when this attempt started. A `result.json` older than that is the previous attempt's,
+  and the log's sentences decide. A file system that keeps no creation time reads the file as before.
+- **Not touched.** `pentest.rs` and the call sites: the rule lives in `classify`, which already finds the newest log.
+- **Proof.** `a_result_left_by_an_earlier_attempt_does_not_decide_the_next_one`: the first attempt's own result decides,
+  the resume that died on a refused key is `key_refused`, and a resume that writes its own `rate_limited` is a provider
+  window again. Red without the age check (`provider_window` for the refused key). Documented in
+  `docs/PENTEST/authorization.md`.
+
+
+## 1.38.13 - A reused bundle honours --bundles, --pentest, --no-pentest and --no-traffic
+
+`build-local.sh` reuses the bundle on disk when its version and sources match, and skips staging and
+`tauri build`. Those four flags act only there, so a reused bundle ignored them in silence:
+`--bundles deb` published every installer of the build before it, `--pentest <other>` kept the old
+engine, and a default run after a `--no-pentest` or `--no-traffic` build published without the Pentest
+engine or the capture sidecar. 1.35.4 closed the same gap for `--anna` (step 5 of `can_reuse_build`).
+
+- **What changes.** A finished build records its `--bundles` in `src-tauri/target/release/bundle/.bundles`
+  (`all` without the flag), and the reuse needs the same value. A bundle from before 1.38.13 has no record
+  and is rebuilt once. `stage-pentest.mjs --reuse-check` compares, by SHA-256 and without touching the disk,
+  the staged engine with the one this run would bundle: the file `--pentest` names, the pinned asset where
+  the platform bundles it by default, or none on a Mac. `--no-pentest` and `--no-traffic` need no staged
+  sidecar of theirs, and a run without `--no-traffic` needs the capture sidecar. The reuse line names the
+  Pentest engine it keeps, as it does for `anna`.
+- **Measured.** `prova:reuso` runs the real `can_reuse_build` in a temporary tree for 15 cases of these
+  choices, besides the 8 of `anna`. Against the script without this step, the 10 that must rebuild reuse.
+
+## 1.38.13 - A reused bundle is rebuilt when the Pentest pin or a platform config changed
+
+`build-local.sh` reuses the last bundle of the same version when no source is newer than it. Two commits
+may share a version, so that source list is what stops a second commit from publishing the first one's
+bundle. It missed four inputs: `pentest-engine.json`, compiled into the app (`compatibility.rs`) and the
+pick of the engine the Linux bundle carries; `src-tauri/tauri.linux.conf.json` and
+`tauri.macos.conf.json`, which declare the three sidecars and the `.deb`/`.rpm` dependencies; and
+`src-tauri/traffic-capture/`, the capture sidecar's source. A commit that only bumped the Pentest pin was
+reused and published with the old pin and engine. `ENTRADAS_DO_BUILD`, the inputs `--publish` refuses
+to ship uncommitted, also missed the pin.
+
+- **What changes.** The four are in the source list, with `target` pruned like `node_modules` (the
+  capture crate builds into its own), and the pin is in `ENTRADAS_DO_BUILD`.
+- **The ruler.** `prova:reuso` read only `tauri.conf.json`. It now reads every `tauri*.conf.json`,
+  requires each of them in the list, takes the roots of every `include_str!`/`include_bytes!` in
+  `src-tauri/src`, and checks that every root of the list is inside `ENTRADAS_DO_BUILD`. Its behaviour
+  part runs the real `find`: a newer pin or capture source stops the reuse, a newer file under the
+  capture crate's `target/` does not. Against the 1.38.12 script it names the four missing inputs; with
+  `target` not pruned, or the pin left out of `ENTRADAS_DO_BUILD`, it fails too.
+
+## 1.38.13 - An engine named for the build that does not exist stops the build
+
+`./build-local.sh --anna <path>` and `--pentest <path>` (and `$SHVIA_ANNA_BIN`, `$SHVIA_PENTEST_BIN`, and
+`build-local.ps1 -Anna`) name the engine to bundle. When the path did not exist, `stage-anna.mjs` and
+`stage-pentest.mjs` took it for an absence: they removed the engine an earlier build had staged, printed
+a warning and exited 0, so `./build-local.sh --publish --anna ~/typo/anna` published a release with no
+Code engine. Both scripts already treat a named engine as a choice (`pentest-bundling.mjs` bundles it
+even on a Mac). They now stop the build with exit 1 and say which name pointed where. An engine that was
+not named and is not found (none on PATH, no asset in the pinned release, no network) is still an
+absence, and the build goes on without it, as `docs/build.md` describes.
+
+`prova:sem-anna` and `prova:pentest` used a missing `--from` to stand for "no engine found". The absence
+case now uses a PATH with no `anna` (the Pentest one already had the release with no asset), and both
+gain the named-and-missing cases, by `--from` and by the environment variable. With the 1.38.12 scripts
+the four new cases fail: exit 0 and a build without the engine.
+
+## 1.38.13 - A Linux build with --bundles appimage or rpm no longer aborts after compiling
+
+`build-local.sh` looks for the `.deb` (to repackage it for pacman) and then for the pacman package with
+`$(find … | head -1)` under `set -euo pipefail`. A `--bundles appimage` or `--bundles rpm` build has no
+`deb/` folder, so it never makes a `pacman/` one either. `find` exits 1 on the missing folder, `pipefail`
+gives the assignment that status, and `set -e` ended the build right after the compile with only
+"build abortou … exit 1": no manifest, nothing published. Both lookups now end in `|| true`, like the
+script's other lookups of the same shape.
+
+Measured by running the script's real Linux packaging block in a temporary tree that holds only an
+AppImage, then only an rpm, with no packaging tools on PATH. Both aborted with exit 1 before and finish
+now; a tree with only a `.deb` finished before and after. With only the first `|| true`, the AppImage and
+rpm cases still abort, at the second lookup.
+
+## 1.38.13 - A failed Claude runner update keeps the runner that was installed
+
+The app reinstalls the Claude runner at the first start after each app update (ADR-036), with the
+installer the "Instalar runner" button runs. That installer copied the new files over the installed
+runner and then ran `npm ci`, which deletes `node_modules` first. An update that lost the network
+there (offline, a proxy) left the new version with no Agent SDK. The app decides by the installed
+`package.json` and runner files, so from the next start on it found the runner up to date;
+`--version` still answered, and every Code turn died importing the SDK until the next app release.
+On Windows a first install that failed was stuck the same way, because the app finds that runner by
+its `.mjs`.
+
+- **What changes.** `claude-runner/install.sh` and `install.ps1` assemble the install in
+  `shvia-claude-runner.incoming`: the copy, `npm ci` and the load proof all run there. Only an install
+  that passed the three replaces the old one, by two renames in the same folder, and the old one comes
+  back if the second rename fails. Any earlier failure removes the staged copy and leaves the installed
+  runner as it was, so the next start tries the update again. The terminal wrapper is written after the
+  swap. On Windows a file of the old install still in use makes the swap fail, and nothing changes.
+- **Measured.** `npm run prova:instalador` now runs the real `install.sh` against a temporary install
+  of an older version, with npm offline and an empty cache so `npm ci` fails the way a lost network
+  makes it fail: the old version, its `node_modules` and the terminal wrapper stay, and nothing is left
+  beside them. An install that passes replaces the old one whole. With the 1.38.12 installer the first
+  case ends at the new version with the old SDK gone. `prova:instaladores-ps1` has the same two cases
+  for `install.ps1`, under `pwsh` in CI.
+- **Not changed.** The Codex runner's installers still copy in place. They have no `npm` step, so
+  their failure is a missing module, which CI catches before release.
+## 1.38.12 - Pin the Pentest engine at 1.2.50, whose activity-window mask holds the credential formats 1.2.49 let through
+
+`pentest-engine.json` pinned 1.2.49. It now pins **1.2.50**. The activity window (`pentestActivity()`, 1.37.0) shows the page what the
+agents said, ran and got back, and the engine's mask is the only barrier between a target's text and that page. The review of
+06/11/2026 measured the 1.2.49 mask letting through 11 of the 11 formats it tried (and 43 of 71 in a wider set): `"password":"…"` in
+JSON, `?token=`, `postgres://user:password@host`, `API_TOKEN=`, `curl -b` and `-u`, Slack, GitLab, Stripe and Google keys, and an
+`Authorization` or `Cookie` header after the literal `\n` of JSON-encoded tool arguments. Engine 1.2.50 closes them.
+
+- **What 1.2.50 changes for this Desktop** (the fork's Release `shvia-v1.2.50`, samirhvbr/strix#56, Strix 1.7.0 + 64 commits):
+  - *The mask.* 42 formats are covered, with a test for each and 17 texts that must stay readable. Every quantifier around a name is
+    capped at 32 characters, because one hostile line took 4.5 s to mask before.
+  - *The fields.* Every field of an answer is normalised to what `activity.rs` accepts (an agent id over 128 characters, an empty name
+    or status, a tool name with a line break, a missing time, a lone surrogate), because this app refuses the WHOLE answer for one bad
+    field and its cursor then never advances.
+  - *Known limit.* A compaction of an agent's context re-inserts its recent rows under new ids, so the page lists them twice once per
+    compaction; lifting that needs a stable key in the engine, this app and the page.
+- **The pin.** Release `shvia-v1.2.50`, built on 09/11/2026 with the fork's `scripts/build-pentest-local.sh` from a clean checkout of the
+  tag, one machine each: `aarch64-apple-darwin` 95,376,336 bytes, SHA-256 `4fbd08bb…10c7`, built on a Mac; and `x86_64-unknown-linux-gnu`
+  107,547,448 bytes, SHA-256 `9d2f1e26…29d7`, built in an `ubuntu:22.04` `linux/amd64` container (glibc 2.35). The digests are the ones
+  GitHub's REST API reports for the files on the Release and the ones in its `SHA256SUMS`. Both binaries answer `--fork-version` with
+  `1.2.50`.
+- **Measured.** Over a synthetic run with 14 fake secrets in the formats above, the 1.2.49 binary printed 12 of them and the 1.2.50
+  binary none, on the Mac; the Linux 1.2.50 binary printed none either, in an amd64 container (`strix activity RUN_DIR --limit 80`).
+- **No Desktop code changed.** A Mac that has 1.2.49 installed is offered the install of 1.2.50 and decides by its own consent; a Linux
+  package stages the pinned engine when it is built, so it carries 1.2.50 from the first build of this version. Not measured: the mask
+  over a target's real output, and a real run with 1.2.50 on a Mac under this Desktop.
+
+## 1.38.8 - Open the diffs of a project that is a subfolder of a repository, and list only that folder's changes
+
+`git status --porcelain` names files from the top of the repository, not from the folder it runs in, and the Changes tab sends
+that name back to `gitDiff`. The diff ran in the folder, so with `sub/` authorized the status said `sub/a.txt`, git looked for
+`sub/sub/a.txt`, and every diff came back empty: the panel said "no changes" for a file it had just listed as changed. The
+status also listed the changed files of the whole repository, outside the authorized folder.
+
+- `gitStatus` passes `-- .`, so only the authorized folder's changes are listed. The paths stay as porcelain writes them.
+- `gitDiff` asks git for the repository's top and the folder's prefix (`rev-parse --show-toplevel --show-prefix`), runs the
+  diff at the top, and refuses a `file` that does not start with the prefix. A folder at the top has an empty prefix, so
+  nothing changes there.
+- Proof: `projeto_em_subpasta_lista_so_a_pasta_e_abre_o_diff`, on a real repository, and `a.txt` added to the fence test.
+  Each of the three changes, reverted alone, turns a test red.
+
+## 1.38.8 - Keep the diff the Changes tab opens inside the authorized folder
+
+`gitDiff` checked the folder (`path`) against the fence and handed the page's `file` to git as a pathspec. Inside one
+repository a pathspec can leave the folder: with a subfolder authorized, `../a.txt`, an absolute path, `:(top)a.txt` and
+`:/a.txt` all returned the diff of a file outside it, content included. `file` must now be a relative path without `..`,
+and git runs with `--literal-pathspecs`, so it reads the name as a name. A folder that is a repository's root, the usual
+case, sees no difference, because `git status` names its files relative to that root.
+
+- Proof: `diff_nao_sai_da_pasta_autorizada_dentro_do_mesmo_repo`, on a real repository. Without the path check `../a.txt`
+  leaks; without `--literal-pathspecs`, `:(top)a.txt` does.
+- A known limit, recorded in ADR-031: with a subfolder authorized, `gitStatus` still lists the changed file names of the
+  whole repository (names, no content).
+
+## 1.38.8 - Write env.sh values as single-quoted shell words so a page cannot put a command into the person's shell
+
+"Connect my CLI" (`writeCliConfig`, ADR-026) writes `~/.shvia/env.sh` from three values the page sends: the base, the key
+and the model. The person runs that file with `source`. Until now the base and the key went between double quotes, where
+`$(…)` and backticks run, and the model went into a comment line that a line break would end. A script running on the
+server's origin, the actor ADR-031 names, could put a command into the person's next shell, and the confirmation dialog
+showed only the file's path.
+
+- Every value in `env.sh` is a single-quoted shell word, with `'` written as `'\''`.
+- A value with a line break or any other control character is refused for all three clients, and nothing is written.
+- The dialog names the server and the model as well as the path. The key stays out of it, as before.
+- Proof: `o_env_sh_devolve_os_valores_sem_executar_nada` sources the generated file in a real `sh`, with `$(…)`,
+  backticks and both kinds of quote in the key and the base. With the old double quotes it fails because the marker
+  command ran. `valor_com_quebra_de_linha_nao_e_gravado` fails without the control-character check.
+
 ## 1.38.7 - Generate Arch integrity metadata with root ownership
 
 The Debian/Ubuntu packaging path now runs `fpm` under `fakeroot`, so `.MTREE` and

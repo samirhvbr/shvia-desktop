@@ -1377,6 +1377,17 @@ versão da extensão. Escrever ali no escuro corromperia o editor de alguém.
 adivinhar qual linha era nossa. Daí o `~/.shvia/env.sh` com o `source` explicado no
 cabeçalho.
 
+**Values as shell words (1.38.8, 2026-11-09).** `env.sh` is run by the person's shell, so a
+value the page sends is code there unless it is quoted for that shell. Until 1.38.8 the base
+and the key went between double quotes, where `$(…)` and backticks run, and the model went
+into a comment line that a line break would end. A script running on the server's origin (the
+actor F-12 names, ADR-031) could therefore put a command into the person's next `source`, and
+the dialog showed only the path. Now every value is a single-quoted shell word (a `'` is
+written as `'\''`), every client refuses a value with a line break or another control
+character, and the native dialog names the server and the model as well as the path. The key
+stays out of the dialog. Test: `o_env_sh_devolve_os_valores_sem_executar_nada`, which sources
+the file in a real `sh`.
+
 #### Arquivo novo com credencial nasce `0600`
 
 Em arquivo que **já existia** não mexemos na permissão: mudar o modo de um arquivo de
@@ -1792,6 +1803,16 @@ autoriza nada.
   página reabriria a cerca por fora — gravava o vínculo e pedia a leitura em seguida.
 - A comparação é de caminho **canônico** e por **componente** (`Path::starts_with`), então
   `..`, symlink e vizinho de nome parecido (`/x/projeto2` contra `/x/projeto`) não entram.
+- **`gitDiff` fences its `file` too (1.38.8, 2026-11-09).** Checking `path` alone let a
+  pathspec leave the authorized folder inside the same repository: from an authorized
+  subfolder, `../x`, an absolute path and pathspec magic (`:(top)x`, `:/x`) all reached files
+  outside it, and the diff came back with their content. `file` must now be a relative path
+  without `..`, and git runs with `--literal-pathspecs`.
+- **A project that is a subfolder of a repository (1.38.8).** `gitStatus` lists only the
+  authorized folder (`-- .`), with the paths porcelain gives, from the repository's top.
+  `gitDiff` runs at that top and requires `file` to start with the folder's prefix there.
+  Before, the status listed the whole repository's changed names, and the diff of every file
+  came back empty because it ran in the subfolder with a path written from the top.
 
 ### Alternativas rejeitadas
 
@@ -2199,6 +2220,16 @@ being rewritten, and says so.
   The Claude runner's version follows the app's (it is one of the version carriers), so that is
   **once per app release**, on the first start after it. It never blocks the window, and a failure
   is one notification pointing at the button.
+- **A failed reinstall keeps the runner that was there (1.38.13).** The table above compares the installed
+  `package.json` and runner files, so it is only right if an install either completes or changes nothing.
+  Until 1.38.13 it did neither: the installers copied the new files over the old install and then ran
+  `npm ci`, which deletes `node_modules` first. An update that lost the network there left the new
+  version with no Agent SDK; `--version` still answered, the next start found "same version, same
+  files", and every Code turn died on the SDK import until the next app release. On Windows a first
+  install that failed was stuck the same way, because the app finds that runner by its `.mjs`. Now
+  `install.sh` and `install.ps1` assemble the install in `shvia-claude-runner.incoming`, run `npm ci`
+  and the load proof there, and only then swap it in with two renames; any earlier failure leaves the
+  old runner working at its old version, and the next start tries again.
 - A developer who installs a runner from a branch keeps it while its version is higher than the
   app's. At the same version the app's copy wins, because equal numbers do not prove equal runners.
 

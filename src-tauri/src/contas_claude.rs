@@ -52,6 +52,7 @@
 //! the official client.
 
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 
 use tauri::{AppHandle, Manager};
 
@@ -501,7 +502,8 @@ pub fn registrar_por_alias(app: &AppHandle, alias: &str, rotulo: &str) -> Result
     if !id_valido(&id) {
         return Err(Erro::Desconhecida);
     }
-    let (mut contas, selecionada) = registro(app);
+    let _trava = travar();
+    let (mut contas, selecionada) = registro_travado(app);
     contas.retain(|c| c.id != id);
     contas.push(Conta {
         id,
@@ -534,21 +536,24 @@ fn do_json(v: &serde_json::Value) -> (Vec<Conta>, String) {
         .and_then(|c| c.as_array())
         .map(|a| {
             a.iter()
-                .map(|c| Conta {
-                    id: c.get("id").and_then(|x| x.as_str()).unwrap_or_default().into(),
-                    rotulo: c.get("rotulo").and_then(|x| x.as_str()).unwrap_or_default().into(),
-                    dir: c.get("dir").and_then(|x| x.as_str()).unwrap_or_default().into(),
+                .filter_map(|c| {
                     // Absent means the original mechanism: a file written before this field
                     // existed describes a `CLAUDE_CONFIG_DIR` profile, and reading it as
                     // anything else would change what every fleet entry means on upgrade.
-                    // Present but unrecognised is NOT a default — `normalizar` drops it.
-                    var: match c.get("var").and_then(|x| x.as_str()) {
-                        None => Var::ConfigDir,
-                        Some(t) => match Var::de_str(t) {
-                            Some(v) => v,
-                            None => Var::ConfigDir, // marcada abaixo; ver `normalizar`
-                        },
-                    },
+                    // Present but unrecognised drops the entry. Until 1.39.2 it became
+                    // `CLAUDE_CONFIG_DIR` (the comment said `normalizar` dropped it, and nothing
+                    // did), so a misspelt credential-only profile ran turns under a whole other
+                    // configuration home: another account, with nothing on screen saying so.
+                    let var = match c.get("var") {
+                        None | Some(serde_json::Value::Null) => Var::ConfigDir,
+                        Some(t) => Var::de_str(t.as_str()?)?,
+                    };
+                    Some(Conta {
+                        id: c.get("id").and_then(|x| x.as_str()).unwrap_or_default().into(),
+                        rotulo: c.get("rotulo").and_then(|x| x.as_str()).unwrap_or_default().into(),
+                        dir: c.get("dir").and_then(|x| x.as_str()).unwrap_or_default().into(),
+                        var,
+                    })
                 })
                 .collect()
         })
@@ -583,57 +588,137 @@ fn para_json(contas: &[Conta], selecionada: &str) -> serde_json::Value {
 /// [`PADRAO`] — the one place falling back to the default is right, because no turn has
 /// been launched yet and the user is about to see which account is selected.
 pub fn registro(app: &AppHandle) -> (Vec<Conta>, String) {
-    let casa = home();
-    let caminho = arquivo(app);
+    carregar_travado(arquivo(app).as_deref(), &home(), &|p| p.is_dir())
+}
 
-    if let Some(bruto) = caminho
-        .as_ref()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-    {
-        let (contas, selecionada) = do_json(&bruto);
-        let contas = normalizar(&casa, contas);
-        let selecionada = if contas.iter().any(|c| c.id == selecionada) {
-            selecionada
-        } else {
-            PADRAO.to_string()
-        };
-        return (contas, selecionada);
+/// One lock for the registry file. Tauri runs commands on several threads, and a read can move the
+/// file aside and write the seed while a writer replaces it. Two reads of a file that does not parse
+/// at once, in the same second, made the second move the seed over the copy of the person's file
+/// that the first had just kept. A poisoned lock is taken anyway: a panic elsewhere must not lock
+/// the person out of their accounts.
+static TRAVA: Mutex<()> = Mutex::new(());
+
+fn travar() -> MutexGuard<'static, ()> {
+    TRAVA.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// [`carregar`] under [`TRAVA`]: what [`registro`] runs, without the app, so the lock has a proof.
+fn carregar_travado(caminho: Option<&Path>, casa: &Path, existe: &dyn Fn(&Path) -> bool) -> (Vec<Conta>, String) {
+    let _trava = travar();
+    carregar(caminho, casa, existe)
+}
+
+/// [`registro`] for a caller that already holds [`TRAVA`] (a read-modify-write: taking it twice would
+/// wait on itself).
+fn registro_travado(app: &AppHandle) -> (Vec<Conta>, String) {
+    carregar(arquivo(app).as_deref(), &home(), &|p| p.is_dir())
+}
+
+/// [`registro`] without the app, so the file rules have a proof.
+///
+/// **The seed is never written over a file the person has.** Until 1.39.2 a file that did not
+/// parse (one stray comma in a hand edit, which this file invites: a second machine registers
+/// its paths there) was replaced by the seed on the next read, and every profile in it was
+/// gone without a word. Now a file that does not parse is moved aside, next to the original
+/// as `contas-claude.json.unreadable-<seconds>`, before the seed takes its place; and a file
+/// that exists but cannot be read, or cannot be moved aside, is left alone: the seed is
+/// answered for this read and not written.
+fn carregar(caminho: Option<&Path>, casa: &Path, existe: &dyn Fn(&Path) -> bool) -> (Vec<Conta>, String) {
+    if let Some(p) = caminho {
+        match std::fs::read_to_string(p) {
+            Ok(texto) => match serde_json::from_str::<serde_json::Value>(&texto) {
+                Ok(bruto) => {
+                    let (contas, selecionada) = do_json(&bruto);
+                    let contas = normalizar(casa, contas);
+                    let selecionada = if contas.iter().any(|c| c.id == selecionada) {
+                        selecionada
+                    } else {
+                        PADRAO.to_string()
+                    };
+                    return (contas, selecionada);
+                }
+                Err(_) => {
+                    let segundos = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or_default();
+                    let ao_lado = nome_ao_lado(p, segundos);
+                    if std::fs::rename(p, &ao_lado).is_err() {
+                        return (semente(casa, existe), PADRAO.to_string());
+                    }
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return (semente(casa, existe), PADRAO.to_string()),
+        }
     }
 
-    let contas = semente(&casa, &|p| p.is_dir());
+    let contas = semente(casa, existe);
     if let (Some(p), Ok(s)) = (
         caminho,
         serde_json::to_string_pretty(&para_json(&contas, PADRAO)),
     ) {
-        let _ = std::fs::write(p, s);
+        escrever(p, &s);
     }
     (contas, PADRAO.to_string())
 }
 
+/// Where an unreadable registry is kept: `contas-claude.json.unreadable-<seconds>`, then `-1`, `-2`
+/// and so on when that name is taken. `rename` replaces its destination without a word, so two of
+/// them in the same second must not share a name.
+fn nome_ao_lado(p: &Path, segundos: u64) -> PathBuf {
+    let mut base = p.as_os_str().to_owned();
+    base.push(format!(".unreadable-{segundos}"));
+    let base = PathBuf::from(base);
+    if !base.exists() {
+        return base;
+    }
+    (1u32..)
+        .map(|n| {
+            let mut s = base.as_os_str().to_owned();
+            s.push(format!("-{n}"));
+            PathBuf::from(s)
+        })
+        .find(|c| !c.exists())
+        .unwrap_or(base)
+}
+
+/// The one place that replaces the registry file, so the rule "never write over what the person
+/// has" cannot be skipped by a writer. It writes over what this module can account for: a file that
+/// is not there, or one that reads and parses (a read-modify-write of the person's own file). A
+/// file that exists but cannot be read (saved as UTF-16, no permission) or does not parse is NOT
+/// replaced: [`carregar`] moves the latter aside, and the person's bytes stay where they are in
+/// every other case. Returns whether it wrote.
+fn escrever(p: &Path, texto: &str) -> bool {
+    match std::fs::read_to_string(p) {
+        Ok(atual) if serde_json::from_str::<serde_json::Value>(&atual).is_err() => return false,
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return false,
+        _ => {}
+    }
+    std::fs::write(p, texto).is_ok()
+}
+
 /// Writes the registry. One place, so a caller cannot forget `para_json`'s rule that the
-/// default is implicit.
+/// default is implicit, and the only writer: every write goes through [`escrever`]. The caller
+/// holds [`TRAVA`]. What a refused write was meant to carry (a selection, a new profile) is not
+/// kept: the next read answers what the file says, and the person's file stays as it is.
 fn gravar(app: &AppHandle, contas: &[Conta], selecionada: &str) {
     if let (Some(p), Ok(s)) = (
         arquivo(app),
         serde_json::to_string_pretty(&para_json(contas, selecionada)),
     ) {
-        let _ = std::fs::write(p, s);
+        escrever(&p, &s);
     }
 }
 
 /// Persists the selected ID. Rejects an ID that is not in the registry — the selection is
 /// state the page proposes, and the page does not get to invent a profile by picking one.
 pub fn selecionar(app: &AppHandle, id: &str) -> Result<String, Erro> {
-    let (contas, _) = registro(app);
+    let _trava = travar();
+    let (contas, _) = registro_travado(app);
     let conta = contas.iter().find(|c| c.id == id).ok_or(Erro::Desconhecida)?;
     let escolhida = conta.id.clone();
-    if let (Some(p), Ok(s)) = (
-        arquivo(app),
-        serde_json::to_string_pretty(&para_json(&contas, &escolhida)),
-    ) {
-        let _ = std::fs::write(p, s);
-    }
+    gravar(app, &contas, &escolhida);
     Ok(escolhida)
 }
 
@@ -927,6 +1012,132 @@ mod tests {
         let (lidas, sel) = do_json(&v);
         assert_eq!(sel, "pessoal");
         assert_eq!(normalizar(&casa(), lidas), contas);
+    }
+
+    /// A `var` nobody knows is not a `CLAUDE_CONFIG_DIR`: that guess would run the turn under a
+    /// whole other configuration home. Absent still means the original mechanism.
+    #[test]
+    fn an_unknown_variable_drops_the_profile_instead_of_guessing_one() {
+        let v = serde_json::json!({ "contas": [
+            { "id": "typo", "rotulo": "Typo", "dir": "/home/dev/.claude-cred-a", "var": "CLAUDE_SECURESTORAGE_DIR" },
+            { "id": "number", "rotulo": "Number", "dir": "/home/dev/.claude-cred-b", "var": 7 },
+            { "id": "old", "rotulo": "Old file", "dir": "/home/dev/.claude-old" },
+            { "id": "cred", "rotulo": "Cred", "dir": "/home/dev/.claude-cred-c", "var": "CLAUDE_SECURESTORAGE_CONFIG_DIR" },
+        ]});
+        let (lidas, _) = do_json(&v);
+        let ids: Vec<(&str, Var)> = lidas.iter().map(|c| (c.id.as_str(), c.var)).collect();
+        assert_eq!(ids, vec![("old", Var::ConfigDir), ("cred", Var::SecureStorage)]);
+    }
+
+    /// A registry that does not parse is moved aside, never written over; one that parses is read.
+    #[test]
+    fn an_unreadable_registry_is_kept_beside_the_seed_not_overwritten() {
+        let pasta = std::env::temp_dir().join(format!("shvia-registro-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&pasta);
+        std::fs::create_dir_all(&pasta).unwrap();
+        let arquivo = pasta.join(ARQUIVO);
+        let estragado = r#"{ "contas": [ { "id": "blue3", "rotulo": "Blue3", "dir": "/home/dev/.claude-blue3", }, ] }"#;
+        std::fs::write(&arquivo, estragado).unwrap();
+
+        let (contas, sel) = carregar(Some(&arquivo), &casa(), &|_| false);
+        assert_eq!(sel, PADRAO);
+        assert_eq!(contas, semente(&casa(), &|_| false), "this read answers the seed");
+
+        let guardados: Vec<_> = std::fs::read_dir(&pasta)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with("contas-claude.json.unreadable-"))
+            .collect();
+        assert_eq!(guardados.len(), 1, "the unreadable file is kept beside the new one");
+        assert_eq!(std::fs::read_to_string(guardados[0].path()).unwrap(), estragado, "byte for byte");
+        assert!(serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(&arquivo).unwrap()).is_ok());
+
+        let _ = std::fs::remove_dir_all(&pasta);
+    }
+
+    /// The one writer replaces what it can account for and leaves the rest byte for byte.
+    #[test]
+    fn the_registry_writer_leaves_a_file_it_cannot_read_or_parse_alone() {
+        let pasta = std::env::temp_dir().join(format!("shvia-registro-escrever-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&pasta);
+        std::fs::create_dir_all(&pasta).unwrap();
+        let arquivo = pasta.join(ARQUIVO);
+
+        assert!(escrever(&arquivo, r#"{"contas":[]}"#), "an absent file is written");
+        assert!(escrever(&arquivo, r#"{"contas":[],"selecionada":"padrao"}"#), "a file that parses is replaced");
+
+        let estragado = r#"{ "contas": [ , ] "#;
+        std::fs::write(&arquivo, estragado).unwrap();
+        assert!(!escrever(&arquivo, "{}"), "a file that does not parse is not replaced");
+        assert_eq!(std::fs::read_to_string(&arquivo).unwrap(), estragado);
+
+        // a hand edit saved as UTF-16: it exists, `read_to_string` cannot read it
+        let utf16: Vec<u8> = [0xFFu8, 0xFE]
+            .into_iter()
+            .chain(r#"{"contas":[]}"#.encode_utf16().flat_map(|u| u.to_le_bytes()))
+            .collect();
+        std::fs::write(&arquivo, &utf16).unwrap();
+        assert!(!escrever(&arquivo, "{}"), "a file that cannot be read is not replaced");
+        assert_eq!(std::fs::read(&arquivo).unwrap(), utf16, "byte for byte");
+
+        let _ = std::fs::remove_dir_all(&pasta);
+    }
+
+    /// `rename` replaces its destination silently, so a second kept copy in the same second needs another name.
+    #[test]
+    fn a_second_unreadable_registry_in_the_same_second_gets_a_name_of_its_own() {
+        let pasta = std::env::temp_dir().join(format!("shvia-registro-nome-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&pasta);
+        std::fs::create_dir_all(&pasta).unwrap();
+        let arquivo = pasta.join(ARQUIVO);
+
+        let primeiro = nome_ao_lado(&arquivo, 100);
+        assert!(primeiro.to_string_lossy().ends_with(".unreadable-100"));
+        std::fs::write(&primeiro, "first").unwrap();
+        let segundo = nome_ao_lado(&arquivo, 100);
+        assert!(segundo.to_string_lossy().ends_with(".unreadable-100-1"), "{segundo:?}");
+        std::fs::write(&segundo, "second").unwrap();
+        assert!(nome_ao_lado(&arquivo, 100).to_string_lossy().ends_with(".unreadable-100-2"));
+        assert_eq!(std::fs::read_to_string(&primeiro).unwrap(), "first", "the first copy is untouched");
+
+        let _ = std::fs::remove_dir_all(&pasta);
+    }
+
+    /// Several reads of a registry that does not parse at once keep the person's bytes once, intact:
+    /// the readers after the first find the seed already in place instead of moving it over the kept copy.
+    #[test]
+    fn concurrent_reads_of_an_unreadable_registry_keep_the_original_bytes() {
+        let pasta = std::env::temp_dir().join(format!("shvia-registro-corrida-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&pasta);
+        std::fs::create_dir_all(&pasta).unwrap();
+        let arquivo = pasta.join(ARQUIVO);
+        let estragado = r#"{ "contas": [ { "id": "blue3", "rotulo": "Blue3", "dir": "/home/dev/.claude-blue3", }, ] }"#;
+        std::fs::write(&arquivo, estragado).unwrap();
+
+        let largada = std::sync::Arc::new(std::sync::Barrier::new(8));
+        let fios: Vec<_> = (0..8)
+            .map(|_| {
+                let (largada, arquivo) = (largada.clone(), arquivo.clone());
+                std::thread::spawn(move || {
+                    largada.wait();
+                    carregar_travado(Some(&arquivo), &casa(), &|_| false)
+                })
+            })
+            .collect();
+        for fio in fios {
+            fio.join().unwrap();
+        }
+
+        let guardados: Vec<_> = std::fs::read_dir(&pasta)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains(".unreadable-"))
+            .collect();
+        assert_eq!(guardados.len(), 1, "the person's file is kept once");
+        assert_eq!(std::fs::read_to_string(guardados[0].path()).unwrap(), estragado, "intact, not the seed");
+        assert!(serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(&arquivo).unwrap()).is_ok());
+
+        let _ = std::fs::remove_dir_all(&pasta);
     }
 
     // ── aliases (1.13.1, ADR-041) ───────────────────────────────────────────────────────────────────────
