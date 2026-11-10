@@ -1040,12 +1040,21 @@ can_reuse_build() {
   # tauri.conf.json and fails when something it bundles is missing here. `node_modules` is
   # pruned: it is not a source, and scanning it made the check slow.
   # 1.7.1: `codex-runner/` too, since the app ships it to keep the installed one current.
+  # 🔴 1.38.13: four more inputs the bundle is made from. `pentest-engine.json` is compiled into the app
+  # (`compatibility.rs`, `include_str!`) and picks the engine the Linux bundle carries; the per-platform
+  # `tauri.linux.conf.json` / `tauri.macos.conf.json` declare the three sidecars and the .deb/.rpm
+  # dependencies; `src-tauri/traffic-capture/` is the source of the capture sidecar. A second commit under
+  # the same version that only bumped the Pentest pin was "reused", and published the old pin and engine.
+  # The prova now reads every tauri*.conf.json and every `include_str!`/`include_bytes!` of the Rust
+  # source. `target` is pruned like `node_modules`: the capture crate builds into its own.
   local novas
   novas="$(find src src-tauri/src src-tauri/capabilities src-tauri/binaries \
                 src-tauri/icons claude-runner codex-runner public \
                 index.html package.json package-lock.json vite.config.ts tsconfig.json \
                 src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/build.rs src-tauri/tauri.conf.json \
-             \( -name node_modules -prune \) -o \( -type f -newer "$ref" -print -quit \) 2>/dev/null || true)"
+                src-tauri/tauri.linux.conf.json src-tauri/tauri.macos.conf.json src-tauri/traffic-capture \
+                pentest-engine.json \
+             \( \( -name node_modules -o -name target \) -prune \) -o \( -type f -newer "$ref" -print -quit \) 2>/dev/null || true)"
   if [ -n "$novas" ]; then
     REUSE_MOTIVO="fonte mais nova que o build: $novas"
     return 1
@@ -1073,6 +1082,46 @@ can_reuse_build() {
       REUSE_ANNA=""
       return 1
     fi
+  fi
+
+  # Step 6 (1.38.13): the rest of what this run asks the bundle to be. Like the engine in step 5, `--bundles`,
+  # `--pentest`, `--no-pentest` and `--no-traffic` act only on the rebuild path, so a reused bundle ignored them
+  # in silence: `--bundles deb` published the full set of the build before it, and a default run after a
+  # `--no-pentest` build published without the engine. The bundles are what the last build recorded in
+  # `bundle/.bundles` (a bundle from before 1.38.13 has no record and is rebuilt once); the Pentest engine is
+  # `stage-pentest.mjs --reuse-check`, by SHA-256; the capture sidecar is whether one is staged.
+  local feito pedido="${BUNDLES:-all}"
+  feito="$(cat src-tauri/target/release/bundle/.bundles 2>/dev/null || true)"
+  if [ "$feito" != "$pedido" ]; then
+    REUSE_MOTIVO="this run asks for --bundles $pedido; the bundle on disk was built with ${feito:-no record of it (a build from before 1.38.13)}"
+    return 1
+  fi
+  if [ "$NO_PENTEST" = "1" ]; then
+    if ls src-tauri/binaries/pentest-* >/dev/null 2>&1; then
+      REUSE_MOTIVO="--no-pentest, and the bundle on disk carries the Pentest engine"
+      return 1
+    fi
+  else
+    local pentest_rc=0
+    if [ -n "$PENTEST_FROM" ]; then
+      REUSE_PENTEST="$(node scripts/stage-pentest.mjs --reuse-check --from "$PENTEST_FROM" 2>&1)" || pentest_rc=$?
+    else
+      REUSE_PENTEST="$(node scripts/stage-pentest.mjs --reuse-check 2>&1)" || pentest_rc=$?
+    fi
+    if [ "$pentest_rc" -ne 0 ]; then
+      REUSE_MOTIVO="$REUSE_PENTEST"
+      REUSE_PENTEST=""
+      return 1
+    fi
+  fi
+  if [ "$NO_TRAFFIC" = "1" ]; then
+    if ls src-tauri/binaries/traffic-capture-* >/dev/null 2>&1; then
+      REUSE_MOTIVO="--no-traffic, and the bundle on disk carries the capture sidecar"
+      return 1
+    fi
+  elif ! ls src-tauri/binaries/traffic-capture-* >/dev/null 2>&1; then
+    REUSE_MOTIVO="the bundle on disk has no capture sidecar, and this run would build one"
+    return 1
   fi
 
   REUSE_REF="$ref"; REUSE_N="$n"
@@ -1377,6 +1426,7 @@ REUSE_REF=""
 REUSE_N=0
 REUSE_MOTIVO=""
 REUSE_ANNA=""
+REUSE_PENTEST=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --skip-npm-ci)  SKIP_NPM_CI=1 ;;
@@ -1404,8 +1454,9 @@ done
 # "version X" and matched no commit. The owner chose: refuse when something the BUILD reads is
 # dirty or untracked; only warn for the rest, and for a HEAD that is not origin/master.
 # ENTRADAS_DO_BUILD is what the bundle is made from (see the reuse list and tauri.conf.json),
-# plus version.md — the number the publish announces — and the Arch PKGBUILD.
-ENTRADAS_DO_BUILD="version.md src src-tauri claude-runner codex-runner public index.html package.json package-lock.json vite.config.ts tsconfig.json scripts build-local.sh packaging"
+# plus version.md — the number the publish announces — and the Arch PKGBUILD. `pentest-engine.json` came
+# in 1.38.13: it is compiled into the app and picks the bundled engine, and an uncommitted pin published.
+ENTRADAS_DO_BUILD="version.md src src-tauri claude-runner codex-runner public index.html package.json package-lock.json vite.config.ts tsconfig.json scripts build-local.sh packaging pentest-engine.json"
 confere_arvore_para_publicar() {
   if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     echo "  ⚠️ fora de um repositório git — não dá para conferir que o publicado é o commitado." >&2
@@ -1548,6 +1599,9 @@ if can_reuse_build; then
   fi
   if [ -n "$REUSE_ANNA" ]; then
     echo "       $REUSE_ANNA"
+  fi
+  if [ -n "$REUSE_PENTEST" ]; then
+    echo "       $REUSE_PENTEST"
   fi
   echo "       Pulando npm ci / version:sync / tauri build."
   echo "       Para reconstruir: --force (ou apague src-tauri/target/release/bundle)."
@@ -1692,6 +1746,9 @@ if [ "$REUSE" -eq 0 ]; then
     verify_macos_signature
     verify_macos_engine
   fi
+  # Which bundles this build made, for the reuse check of a later run (step 6 of can_reuse_build).
+  mkdir -p src-tauri/target/release/bundle
+  printf '%s\n' "${BUNDLES:-all}" > src-tauri/target/release/bundle/.bundles
 fi
 
 # ── Pacote Arch Linux (.pkg.tar.zst) ─────────────────────────────────────────
@@ -1721,7 +1778,10 @@ fi
 if [ "$_BUILD_OS" = Linux ]; then
   _versao_pkg="$(tr -d ' \t\n\r' < version.md)"
   _bundle_pkg=src-tauri/target/release/bundle
-  _deb_pkg="$(find "$_bundle_pkg/deb" -maxdepth 1 -name "*_${_versao_pkg}_*.deb" 2>/dev/null | head -1)"
+  # `|| true` in this one and in `_pkg_arch_file` below (1.38.13): a `--bundles appimage` or `rpm` build has no
+  # `deb/` and so no `pacman/` folder, `find` exits 1 on the missing folder, `pipefail` hands that to the
+  # assignment, and `set -e` ended the whole build there, after the compile, with no message and no manifest.
+  _deb_pkg="$(find "$_bundle_pkg/deb" -maxdepth 1 -name "*_${_versao_pkg}_*.deb" 2>/dev/null | head -1 || true)"
 
   # Nome do pacote pacman — o MESMO nas duas rotas (o makepkg lê do PKGBUILD, o fpm
   # recebe por `-n`). Até a 1.1.17 a rota fpm publicava `shv-ia`, o nome do pacote
@@ -1764,7 +1824,7 @@ if [ "$_BUILD_OS" = Linux ]; then
       fi
       rm -rf "$_mk_tmp"
 
-    elif command -v fpm >/dev/null 2>&1; then
+    elif command -v fpm >/dev/null 2>&1 && command -v fakeroot >/dev/null 2>&1; then
       echo "==> Linux ($_LINUX_FAMILIA): empacotando o .pkg.tar.zst com fpm..."
       # Até a 1.1.17 esta rota era `fpm -s deb -t pacman <deb>`, conversão direta — e
       # ela produzia um pacote que INSTALA mas não ATUALIZA: o payload do .deb não tem
@@ -1803,7 +1863,10 @@ if [ "$_BUILD_OS" = Linux ]; then
         # --conflicts/--replaces: é o que migra quem instalou o `shv-ia` de antes —
         # sem eles, `pacman -Syu` não vê relação entre os dois nomes e a máquina fica
         # parada na 1.1.17 para sempre.
-        if (cd "$_stage" && fpm -s dir -t pacman \
+        # fpm normalizes the tar ownership, but generates .MTREE from filesystem
+        # metadata. fakeroot makes both describe root:root even for a non-root
+        # builder, without changing real ownership or disabling pacman's checks.
+        if (cd "$_stage" && fakeroot fpm -s dir -t pacman \
               -n "$_PKG_ARCH_NOME" -v "$_versao_pkg" --iteration 1 \
               -a "$(uname -m)" --no-auto-depends \
               -d webkit2gtk-4.1 -d gtk3 -d libayatana-appindicator -d hicolor-icon-theme \
@@ -1821,11 +1884,11 @@ if [ "$_BUILD_OS" = Linux ]; then
       fi
 
     else
-      echo "AVISO: sem makepkg (Arch) nem fpm (Debian) — pulando o .pkg.tar.zst." >&2
+      echo "AVISO: sem makepkg (Arch) nem fpm + fakeroot (Debian) — pulando o .pkg.tar.zst." >&2
       if [ "$_LINUX_FAMILIA" = arch ]; then
         echo "       instale: sudo pacman -S --needed base-devel" >&2
       else
-        echo "       instale: sudo apt install ruby ruby-dev build-essential zstd libarchive-tools && sudo gem install fpm" >&2
+        echo "       instale: sudo apt install ruby ruby-dev build-essential zstd libarchive-tools fakeroot && sudo gem install fpm" >&2
       fi
     fi
   fi
@@ -1849,7 +1912,7 @@ if [ "$_BUILD_OS" = Linux ]; then
   # `repo-add` vem do pacote `pacman`: nativo no Arch, e no Debian está em
   # `pacman-package-manager`. Sem ele o .pkg ainda é publicado e instalável por
   # `pacman -U`; só não há `-Syu`.
-  _pkg_arch_file="$(find "$_bundle_pkg/pacman" -name "${_PKG_ARCH_NOME}-${_versao_pkg}*.pkg.tar.*" ! -name '*.sig' ! -name '*.sha256' 2>/dev/null | head -1)"
+  _pkg_arch_file="$(find "$_bundle_pkg/pacman" -name "${_PKG_ARCH_NOME}-${_versao_pkg}*.pkg.tar.*" ! -name '*.sig' ! -name '*.sha256' 2>/dev/null | head -1 || true)"
   if [ -n "$_pkg_arch_file" ]; then
     if command -v repo-add >/dev/null 2>&1; then
       echo "==> Linux: gerando o banco do repositório pacman (shvia.db)..."

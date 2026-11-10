@@ -8,7 +8,7 @@
  * the .cmd wrapper, WebView2) is the owner's runbook. Without pwsh: NOT MEASURED locally (exit
  * 0), exit 1 in CI — a check that quietly skips where it matters is not a check.
  *
- * Six cases:
+ * Eight cases:
  *   1. claude-runner installs: the five files, the Agent SDK from the lock, the terminal .cmd
  *      (CRLF, path through %LOCALAPPDATA%), and the load proof passes;
  *   2. 🔴 a local import the installer does not copy fails the install (the 1.4.7 class) —
@@ -17,10 +17,17 @@
  *   4. 🔴 the same missing-import case for codex-runner;
  *   5. without LOCALAPPDATA the installer stops and says so;
  *   6. a broken link named `node`/`npm` AHEAD in PATH (measured on 24/09/2026: a dangling
- *      ~/.local/bin/npm made pwsh try to "open" it) does not break the install.
+ *      ~/.local/bin/npm made pwsh try to "open" it) does not break the install;
+ *   7. 🔴 an update whose `npm ci` fails (offline, empty cache: a lost network) leaves the installed
+ *      claude-runner as it was, version and node_modules, with nothing staged beside it (1.38.13).
+ *      Until 1.38.13 the new files were copied over the old install first, `npm ci` deleted its
+ *      node_modules, and the app counted the broken runner as up to date;
+ *   8. an update that passes replaces the old install whole and leaves nothing beside it.
+ *
+ * install.sh has cases 7 and 8 in prova-runner-que-falha-mantem-o-anterior.mjs.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,9 +57,10 @@ const fonteLimpa = () => {
   }
   return src;
 };
-function instalar(src, runner, { semLocalAppData = false, pathExtra = null } = {}) {
+function instalar(src, runner, { semLocalAppData = false, pathExtra = null, antes = null, envExtra = {} } = {}) {
   const lad = mkdtempSync(join(base, "lad com espaço-"));
-  const env = { ...process.env, LOCALAPPDATA: semLocalAppData ? "" : lad };
+  if (antes) antes(lad);
+  const env = { ...process.env, LOCALAPPDATA: semLocalAppData ? "" : lad, ...envExtra };
   if (pathExtra) env.PATH = pathExtra + delimiter + env.PATH;
   const r = spawnSync(PWSH, ["-NoProfile", "-NonInteractive", "-File", join(src, runner, "install.ps1")], {
     env, encoding: "utf8", timeout: 240_000,
@@ -61,6 +69,46 @@ function instalar(src, runner, { semLocalAppData = false, pathExtra = null } = {
 }
 const tem = (p) => existsSync(p);
 function caso(nome, ok, detalhe) { if (!ok) falhas.push(`${nome}: ${detalhe}`); }
+
+// Cases 7 and 8: an install of claude-runner 1.0.0 already in place, with a stand-in SDK, and a source at
+// 2.0.0 whose lock either needs a package npm must fetch (offline with an empty cache, `npm ci` fails the
+// way a lost network makes it fail) or needs nothing (it passes, with no network).
+const MODULOS = ["claude-runner.mjs", "politica.mjs", "parada.mjs", "orientacao.mjs", "uso.mjs"];
+function manifestos(versao, dependencia) {
+  const deps = dependencia ? { "left-pad": "1.3.0" } : undefined;
+  const raiz = { name: "shvia-claude-runner", version: versao, ...(deps && { dependencies: deps }) };
+  const lock = {
+    name: "shvia-claude-runner", version: versao, lockfileVersion: 3, requires: true,
+    packages: {
+      "": raiz,
+      ...(deps && { "node_modules/left-pad": {
+        version: "1.3.0",
+        resolved: "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz",
+        integrity: "sha512-XI5MPzVNApjAyhQzphX8BkmKsKUxD4LdyK24iZeQCvhHbBhVvB2uagvFg7hrIZRpEBqZW2XrzI9SKH6pIIqC4uw==",
+      } }),
+    },
+  };
+  return { pkg: JSON.stringify({ ...raiz, private: true, type: "module" }), lock: JSON.stringify(lock) };
+}
+function fonteEm(versao, dependencia) {
+  const src = fonteLimpa();
+  const dir = join(src, "claude-runner");
+  for (const m of MODULOS) writeFileSync(join(dir, m), `export const versao = ${JSON.stringify(versao)};\n`);
+  const { pkg, lock } = manifestos(versao, dependencia);
+  writeFileSync(join(dir, "package.json"), pkg);
+  writeFileSync(join(dir, "package-lock.json"), lock);
+  return src;
+}
+function instalacaoAntiga(lad) {
+  const dest = join(lad, "shvia-claude-runner");
+  mkdirSync(join(dest, "node_modules", "sdk-antigo"), { recursive: true });
+  for (const m of MODULOS) writeFileSync(join(dest, m), 'export const versao = "1.0.0";\n');
+  writeFileSync(join(dest, "package.json"), manifestos("1.0.0", false).pkg);
+  writeFileSync(join(dest, "node_modules", "sdk-antigo", "package.json"), "{}\n");
+}
+const versaoEm = (dest) => { try { return JSON.parse(readFileSync(join(dest, "package.json"), "utf8")).version; } catch { return null; } };
+const aoLado = (lad) => readdirSync(lad).filter((n) => n.startsWith("shvia-claude-runner."));
+const ler = (p) => (tem(p) ? readFileSync(p, "utf8") : "");
 
 try {
   // 1. claude-runner installs.
@@ -117,6 +165,28 @@ try {
     caso("a broken node/npm link ahead in PATH does not break the install", c6.code === 0 && /✓ claude-runner instalado/.test(c6.out),
       `exit ${c6.code}\n${c6.out.slice(-600)}`);
   }
+
+  // 7. 🔴 The update's npm ci fails: the installed runner stays as it was.
+  const cache7 = mkdtempSync(join(base, "npm-cache-vazio-"));
+  const c7 = instalar(fonteEm("2.0.0", true), "claude-runner", {
+    antes: instalacaoAntiga, envExtra: { npm_config_offline: "true", npm_config_cache: cache7 },
+  });
+  const d7 = join(c7.lad, "shvia-claude-runner");
+  caso("a failed npm ci keeps the installed claude-runner", c7.code === 1 && /npm ci falhou/.test(c7.out)
+    && versaoEm(d7) === "1.0.0" && tem(join(d7, "node_modules", "sdk-antigo", "package.json"))
+    && ler(join(d7, "claude-runner.mjs")).includes('"1.0.0"') && aoLado(c7.lad).length === 0,
+    `exit ${c7.code}, installed version ${versaoEm(d7)}, left beside it: ${JSON.stringify(aoLado(c7.lad))}\n${c7.out.slice(-600)}`);
+
+  // 8. The update passes: the new runner replaces the old one whole.
+  const cache8 = mkdtempSync(join(base, "npm-cache-vazio-"));
+  const c8 = instalar(fonteEm("2.0.0", false), "claude-runner", {
+    antes: instalacaoAntiga, envExtra: { npm_config_offline: "true", npm_config_cache: cache8 },
+  });
+  const d8 = join(c8.lad, "shvia-claude-runner");
+  caso("an update that passes replaces the installed claude-runner", c8.code === 0 && /✓ claude-runner instalado/.test(c8.out)
+    && versaoEm(d8) === "2.0.0" && !tem(join(d8, "node_modules", "sdk-antigo"))
+    && ler(join(d8, "claude-runner.mjs")).includes('"2.0.0"') && aoLado(c8.lad).length === 0,
+    `exit ${c8.code}, installed version ${versaoEm(d8)}, left beside it: ${JSON.stringify(aoLado(c8.lad))}\n${c8.out.slice(-600)}`);
 } finally {
   rmSync(base, { recursive: true, force: true });
 }
@@ -126,4 +196,4 @@ if (falhas.length) {
   console.error(`\n${falhas.length} problem(s): a Windows install of the runners can end broken, or say ✓ when it is.`);
   process.exit(1);
 }
-console.log(`[instaladores-ps1] claude-runner and codex-runner install under pwsh · an uncopied import is refused in both · a broken PATH link is skipped (pwsh ${PWSH})`);
+console.log(`[instaladores-ps1] claude-runner and codex-runner install under pwsh · an uncopied import is refused in both · a broken PATH link is skipped · a failed update keeps the installed claude-runner, a passing one replaces it whole (pwsh ${PWSH})`);
