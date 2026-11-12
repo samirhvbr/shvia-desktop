@@ -5,6 +5,9 @@ record follows below. Work not yet produced stays in
 [`.continue/estado-atual.md`](../.continue/estado-atual.md), decisions in
 [decisoes.md](decisoes.md), and packaging/publication instructions in [build.md](build.md).
 
+Since **1.40.3**, native server capabilities require the full approved origin, including
+scheme and effective port. Another service on the same hostname does not inherit the bridge.
+
 > **Source review, 2026-10-15, Desktop 1.29.0.** A versioned entry records what changed at
 > that time. It is not a claim that the same limit still holds or that every supported OS has
 > installed-app acceptance. Later entries and the current contracts supersede earlier behavior.

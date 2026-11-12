@@ -649,6 +649,19 @@ how-to; linkar o ADR.
   inalcançável deve cair em offline com auto-retry; "Voltar ao padrão" deve reaparecer
   só quando não é o embutido; e o Modo Code deve continuar funcionando no host padrão.
 
+### 2026-11-12 amendment — trust the complete origin
+
+The native bridge trusts scheme, host and effective port together through `is_server_origin`.
+Built-in aliases are HTTPS origins on port 443. A configured server adds only its saved origin,
+including a non-default port or an HTTP loopback development server; saving a replacement removes
+that previous configured origin. User information in URLs is rejected. The local packaged shell
+and debug Vite shell remain navigation-only origins, with their own exact ports.
+
+Navigation, bridge injection, Windows IPC, account resumption, microphone permission and credential
+endpoint checks share this policy. Credential endpoints and microphone permission continue to require
+HTTPS. Injected scripts also compare `location.origin` with the approved origin when they execute,
+so a navigation between the load event and evaluation does not transfer capabilities.
+
 ## ADR-020 — Checksums e `release.json` saem do build LOCAL; assinatura no Windows
 
 - **Data:** 27/07/2026 · **Status:** Aceito

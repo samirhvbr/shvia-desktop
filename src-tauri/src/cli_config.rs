@@ -26,7 +26,7 @@
 //! repositório, passaria pelo atacante.
 //!
 //! Então a base é conferida contra o mesmo perímetro da navegação
-//! ([`crate::is_server_host`]): a lista embutida mais o servidor configurado pelo dono da
+//! ([`crate::is_server_origin`]): a lista embutida mais o servidor configurado pelo dono da
 //! máquina (item D4). É o mesmo teste que decide se um link abre dentro do app.
 //!
 //! ## Detect, merge and replace
@@ -281,7 +281,7 @@ fn base_confiavel(base: &str) -> bool {
         return false;
     }
 
-    crate::is_server_host(u.host_str().unwrap_or_default())
+    crate::is_server_origin(&u)
 }
 
 /// Lê o arquivo atual e delega a regra para [`montar_puro`].
@@ -586,6 +586,9 @@ mod tests {
     fn a_base_precisa_ser_o_servidor_em_https() {
         assert!(base_confiavel("https://ai.shvia.org/v1"));
         assert!(base_confiavel("https://ia.blue3.com.br/v1"));
+        assert!(base_confiavel("https://ai.shvia.org:443/v1"));
+        assert!(!base_confiavel("https://ai.shvia.org:8443/v1"));
+        assert!(!base_confiavel("https://user:password@ai.shvia.org/v1"));
 
         assert!(!base_confiavel("http://ai.shvia.org/v1"), "http não");
         assert!(!base_confiavel("https://evil.com/v1"));

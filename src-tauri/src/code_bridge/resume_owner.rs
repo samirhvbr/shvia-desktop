@@ -321,15 +321,7 @@ impl ResumeOwners {
 }
 
 pub(crate) fn origin(url: &tauri::Url) -> Option<String> {
-    let host = url.host_str()?;
-    if !url.username().is_empty() || url.password().is_some() {
-        return None;
-    }
-    if crate::eh_loopback(host) {
-        if !crate::e_o_servidor_loopback_configurado(url) {
-            return None;
-        }
-    } else if url.scheme() != "https" || !crate::is_server_host(host) {
+    if !crate::is_server_origin(url) {
         return None;
     }
     Some(url.origin().ascii_serialization())

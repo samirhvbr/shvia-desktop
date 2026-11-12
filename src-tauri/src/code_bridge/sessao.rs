@@ -611,16 +611,11 @@ impl Sidecars {
     }
 }
 
-/// `true` se `url` for um endereço https de um host do servidor do ShvIA
-/// (`crate::SERVER_HOSTS`). Usada para validar o campo `url` que a PÁGINA manda no
-/// `spawn` — a mesma allowlist exata de `is_internal` e de
-/// `windows_ipc::ALLOWED_MESSAGE_ORIGINS`, para o perímetro ter uma resposta só.
-///
-/// Compara HOST parseado, nunca prefixo de string: `starts_with` deixaria passar
-/// `https://ai.shvia.org.atacante.tld`, que é outro domínio.
+/// Validate the page-supplied engine endpoint against the same full origin as the bridge.
+/// Engine credentials still require HTTPS, including on loopback.
 pub(super) fn url_do_servidor(url: &str) -> bool {
     match url.parse::<tauri::Url>() {
-        Ok(u) => u.scheme() == "https" && u.host_str().is_some_and(crate::is_server_host),
+        Ok(u) => u.scheme() == "https" && crate::is_server_origin(&u),
         Err(_) => false,
     }
 }
@@ -1198,6 +1193,9 @@ mod tests_url_servidor {
         assert!(url_do_servidor("https://ai.shvia.org"));
         assert!(url_do_servidor("https://ia.shvia.org"));
         assert!(url_do_servidor("https://ia.blue3.com.br"));
+        assert!(url_do_servidor("https://ai.shvia.org:443/v1"));
+        assert!(!url_do_servidor("https://ai.shvia.org:8443/v1"));
+        assert!(!url_do_servidor("https://user:password@ai.shvia.org/v1"));
     }
 
     /// `url` viaja junto com SHVIA_API_KEY: um host de fora aqui é exfiltração da

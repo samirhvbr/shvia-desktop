@@ -136,11 +136,12 @@ The probe accepts domain names, IPv4 and bracketed IPv6 server URLs such as
 instead of sending their URL brackets to DNS. Explicit ports and the URL scheme's
 default port are preserved.
 
-**O host configurado vira INTERNO** (`is_server_host`), logo recebe as pontes
-nativas: Modo Code, notificação, badge, gate de versão. É decisão de confiança
-deliberada, cercada por: `https` obrigatório fora de loopback, credencial na URL
-recusada, comandos inalcançáveis por página remota, e um aviso em português na
-tela. Ver [ADR-019](decisoes.md#adr-019--servidor-configurável-probe-no-rust-e-o-csp-que-destravou).
+**The configured origin becomes internal** (`is_server_origin`): scheme, host and
+effective port must all match before the native bridges are injected. Built-in aliases
+use HTTPS on port 443; a custom server adds only its saved origin. Another port is
+another service. The local configuration screen requires HTTPS outside loopback,
+rejects embedded credentials and explains the native access before saving. Remote pages
+cannot change that configuration. See [ADR-019](decisoes.md#adr-019--servidor-configurável-probe-no-rust-e-o-csp-que-destravou).
 
 **Onde mexer:** [`src-tauri/src/server.rs`](../src-tauri/src/server.rs) (regra e
 persistência), [`src/main.ts`](../src/main.ts) (estados da casca),

@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.40.3 - Remove the rustix advisory blocking Desktop security checks
+
+The Desktop lockfile now pins rustix 1.1.6, the patched release for RUSTSEC-2026-0486.
+The capture sidecar has its own lockfile and does not depend on rustix. This removes the
+existing master CI blocker without an advisory exception. Only rustix and its own
+Windows dependency edge change; unrelated locked packages and edges stay as they were.
+
+## 1.40.3 - Bind native bridge capabilities to the complete server origin
+
+Native navigation, bridge injection, Windows messages, account resumption, microphone grants and engine endpoint validation now
+compare scheme, host and effective port together. The three built-in server aliases retain HTTPS on port 443; a configured server
+adds only the exact saved origin. Another service on the same host no longer receives native capabilities. Embedded URL credentials
+are rejected consistently. The packaged shell and debug Vite shell retain their own explicit origins.
+
+Every injected server script checks the current document origin again at execution, covering navigation after the load callback.
+Regression coverage checks built-in aliases, explicit/default ports, configured HTTPS and loopback origins, IPv6, credentials,
+configuration changes, Windows IPC and account ownership with the same policy; engine and CLI configuration tests reject other ports.
+
 ## 1.40.2 - Send a Pentest run's input, output and cached input tokens with its history
 
 **Release this only after the SHVIA server that accepts the keys is deployed (shvia-web #742).** The server's model row is a
