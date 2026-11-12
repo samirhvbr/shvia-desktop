@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.40.3 - Remove the rustix advisory blocking Desktop security checks
+
+The Desktop lockfile now pins rustix 1.1.6, the patched release for RUSTSEC-2026-0486.
+The capture sidecar has its own lockfile and does not depend on rustix. This removes the
+existing master CI blocker without an advisory exception. Only rustix and its own
+Windows dependency edge change; unrelated locked packages and edges stay as they were.
+
 ## 1.40.3 - Bind native bridge capabilities to the complete server origin
 
 Native navigation, bridge injection, Windows messages, account resumption, microphone grants and engine endpoint validation now
