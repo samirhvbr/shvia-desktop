@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.42.0 - Let the page ask the Desktop to save the PDF report of the finished local Pentest run, without the viewer or the site
+
+`savePentestReport()` is a new bridge method. For the finished local run this window owns, it has the engine write the PDF
+(`pentest report-pdf`, engine 1.2.55: the document the viewer's "Export report" button gives) into a private scratch file inside
+the run's own directory, checks it, and opens the system's "Save as" dialog. The page names no run, path or file name and never
+receives the bytes: it resolves `{saved: true}`, or `{saved: false}` when the person cancels, and a refusal is a plain sentence
+(the run is still going, the engine cannot write it, the file could not be written). Nothing is uploaded and the viewer is not started.
+
+The check before the dialog: the engine answered one line `{"bytes": N}` with N within 1 byte and 20 MiB, the scratch file opens
+without following a link, is a plain file, holds exactly N bytes and starts with `%PDF-`. The scratch file is removed whatever
+happens, and the call has the version probe's deadline (60 s on macOS, 20 s elsewhere).
+
+`pentestStatus()` gains `canSavePdf`: true when the run is on disk (the same condition as `canReview`) AND the engine this app pins
+is 1.2.55 or later, read from `pentest-engine.json` rather than probed, because the page polls that status every few seconds. A
+Desktop whose pin is older says `false`, so the page never offers a button that can only fail. The button therefore appears only once
+the engine 1.2.55 Release exists and a pin PR moves `pentest-engine.json`; this change alone shows nothing.
+
+Why: the owner asked on 12/11/2026 that the result PDF not require the site to be downloaded and be available from the Desktop. The
+server's PDF needs the report uploaded under a separate consent, a configured renderer and a signed-in page; the viewer's needed a
+browser page of its own. ADR-049 records the decision and what it leaves open (the PDF is the viewer's, in English; the server's is
+built from the report package and translated to pt-BR). Tests: the size line the engine prints (what is accepted and what is
+refused), six shapes of an engine that lies or fails (a size that does not match, a file that is not a PDF, no file, a link, a
+non-zero exit, an empty answer) leaving no scratch file behind, and the version gate for `canSavePdf`; each check was reverted once to
+see a test fail. Not measured: the dialog and the engine's first start on a Mac. Next: the engine 1.2.55 Release and a pin PR, then
+WEB (its button is hidden until `canSavePdf` is true).
+
 ## 1.40.4 - Require Anna 0.16.5 in Desktop release bundles
 
 The Anna packaging floor is now 0.16.5, which keeps gateway credentials, conversations and
