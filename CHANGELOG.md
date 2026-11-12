@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.41.0 - Keep a Pentest wait for the provider's window through failed attempts, app restarts and sleep
+
+A local assessment that hits its model provider's usage window (the five-hour window of a monthly plan, which almost every
+long run reaches) is now resumed by itself in the cases 1.35.0 lost. The first real window on the owner's Mac
+(11/11/2026) closed at 09:28 and nothing was tried again, with no trace of why; reading the 1.40 code against that day
+left three gaps, each enough on its own, and this closes all three:
+
+- **An attempt that cannot be made no longer ends the plan.** It is one more wait of the same sequence (next step, same
+  12-hour ceiling), and its reason is kept: `pentestStatus().autoResume` gains `lastFailure` (`window`, `busy`,
+  `authorization_check`, `authorization`, `model_key`, `engine`, `credentials`, `run`, `other`) and `failedAttempts`;
+  the state `failed` is no longer sent. Only the first failure of a sequence is notified.
+- **The wait survives the app closing or restarting** (an update, a crash). Every change of the plan is written to
+  `runs/<id>/auto-resume-plan.json` (private, no target, path or key), and the first server page a window loads after a
+  start takes it back by itself, without anyone opening the Pentest page. Only for the same engine process, a consent
+  that said so, a run whose own files say it ended on the window, and within 12 hours of the window closing. The consent
+  sentence now says this instead of "Fechar o aplicativo cancela a espera"; a run started under the old sentence is still
+  resumed by hand after a restart. Closing a window lets go of a waiting run so the next window takes it back.
+- **The computer is held awake while it waits.** The 1.35.1 hold watches the engine's PID, and a wait has none: a stand-in
+  `/bin/sleep` for the wait plus ten minutes is held by the same `caffeinate` / `systemd-inhibit` call, ended by its own
+  wait or the app closing, and bounded by its own length if the app dies.
+
+Each new rule has a test that a reversal turns red (seven reversals run): a failure waits for the next step and keeps why;
+the plan comes back only for the same process, consent, private file and ceiling, and an interrupted attempt does not count
+its wait twice; the failure codes follow the resume's own sentences; only a wait's own release ends its stand-in; the
+restart path loads only a run that names its account. Not exercised against a real five-hour window, nor through a real
+update during a wait: the first one on the owner's Mac is the acceptance, and the plan file now answers what happened.
+
 ## 1.40.3 - Remove the rustix advisory blocking Desktop security checks
 
 The Desktop lockfile now pins rustix 1.1.6, the patched release for RUSTSEC-2026-0486.

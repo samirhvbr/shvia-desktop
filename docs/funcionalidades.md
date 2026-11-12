@@ -35,6 +35,17 @@ scheme and effective port. Another service on the same hostname does not inherit
   takeover are separate lifecycles. The architecture's persistence table says which state stays
   on this computer and which service owns the rest.
 
+## A wait for the provider's window survives an attempt that fails, a restart and the night (1.41.0)
+
+The first real usage window on the owner's Mac (11/11/2026) closed and nothing tried again. Three things change. An
+attempt that cannot be made (the window off the server for a moment, a grant check the network did not answer) is now one
+more wait of the same sequence under the same 12-hour ceiling, and its reason is kept: `pentestStatus().autoResume` gains
+`lastFailure` (one code) and `failedAttempts`, and `failed` is no longer sent. The plan is written next to the run
+(`runs/<id>/auto-resume-plan.json`, private) and the next start of the app takes it back by itself, for a run whose consent
+said so (the sentence now says closing or restarting the app does not cancel the wait), the same engine process, and within
+12 hours of the window closing. And the computer is held awake during the wait too, through a stand-in process the existing
+`caffeinate` / `systemd-inhibit` hold watches. Details and limits: [PENTEST/auto-resume.md](PENTEST/auto-resume.md).
+
 ## Local Code resume belongs to the verified account (1.38.0)
 
 The native shell verifies a document's Code credential against its WebView
