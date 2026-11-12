@@ -38,8 +38,10 @@ import { execFileSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// 0.16.2 carries subprocess environment filtering as well as the NDJSON credential frame.
-const ANNA_MINIMO = [0, 16, 2];
+// 0.16.5 stops gateway/memory redirects from forwarding credentials and conversation payloads.
+// It also carries 0.16.3's Auto shell approval fixes. Linux 1.40.3 bundled 0.16.2 because it
+// cleared the previous floor; this floor applies to both staging and bundle reuse.
+const ANNA_MINIMO = [0, 16, 5];
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DESTINO_DIR = join(ROOT, "src-tauri/binaries");

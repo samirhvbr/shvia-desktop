@@ -27,6 +27,19 @@ its wait twice; the failure codes follow the resume's own sentences; only a wait
 restart path loads only a run that names its account. Not exercised against a real five-hour window, nor through a real
 update during a wait: the first one on the owner's Mac is the acceptance, and the plan file now answers what happened.
 
+## 1.40.4 - Require Anna 0.16.5 in Desktop release bundles
+
+The Anna packaging floor is now 0.16.5, which keeps gateway credentials, conversations and
+memory-hook payloads at their configured endpoints instead of following HTTP redirects.
+It also includes 0.16.3's automatic shell approval corrections. The earlier Linux 1.40.3
+package carried Anna 0.16.2: selecting an engine from PATH was allowed and that version
+met the old floor, even though newer security fixes existed.
+
+Staging and bundle reuse now reject every Anna below 0.16.5. Regression coverage rejects
+0.16.2 and 0.16.4, accepts 0.16.5, and preserves a compliant bundle when PATH contains an
+older engine. Release builds still select the verified binary explicitly with `--anna`.
+The new Desktop version lets existing 1.40.3 installations receive the corrected bundle.
+
 ## 1.40.3 - Remove the rustix advisory blocking Desktop security checks
 
 The Desktop lockfile now pins rustix 1.1.6, the patched release for RUSTSEC-2026-0486.

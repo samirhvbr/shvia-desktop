@@ -56,15 +56,21 @@ belong to the target OS. See [the Windows acceptance runbook](roteiro-validacao-
 | Codex runner | Bundled modules/installers/schema under `codex-runner/` | Node, installed runner and Codex CLI/app-server/login; see [runner README](../codex-runner/README.md) |
 
 `stage-anna.mjs` selects `--from`, then `SHVIA_ANNA_BIN`, then `anna` on PATH. It probes
-`--version`, checks the minimum supported version and stages the target-named executable.
+`--version`, checks the packaging floor and stages the target-named executable.
 The minimum is defined in the script; a version merely printed in an old build log is not
-a compatibility check. It is `anna` 0.16.2, and the script says why for every
-raise. A build machine whose PATH `anna` is older stops the build: install the current one
+a compatibility check. It is `anna` 0.16.5: gateway/memory requests must not follow redirects,
+and this also includes 0.16.3's Auto shell approval fixes. Both staging and bundle reuse
+reject an engine below that floor. A build machine whose PATH `anna` is older stops the build: install the current one
 from SHVIA-CODE (`./install.sh` builds it from source) or pass `--anna <path>`. Absence removes a stale staged binary, and the wrappers override
 `externalBin` with an empty list. A path named with `--anna` or `SHVIA_ANNA_BIN` that does not exist is not an
 absence: it stops the build (1.38.13), because a typo used to publish a release with no Code engine. `--no-anna`/`-NoAnna` therefore means **no bundled SHVIA
 engine**, not that every other local/remote Code engine disappears. An independently
 installed engine can still be discovered at runtime.
+
+For a release, pass the intended public Anna binary explicitly with `--anna <path>` after
+checking its published SHA-256, then inspect the packaged copy's version and hash. The floor
+is a minimum, not a download or an exact release pin. Linux 1.40.3 carried Anna 0.16.2 because
+it satisfied the old minimum; 1.40.4 raises that minimum rather than relying on a build-log warning.
 
 ## Pentest engine
 
