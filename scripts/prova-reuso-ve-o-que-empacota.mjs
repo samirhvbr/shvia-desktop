@@ -195,14 +195,16 @@ if can_reuse_build; then printf 'REUSA|%s|%s' "$REUSE_ANNA" "$REUSE_PENTEST"; el
 
   // 3. [no bundle staged = null] [--anna version or null] [PATH version] [--no-anna] → reuse?
   const casos = [
-    { bundle: "0.16.2", flag: "0.16.3", path: "0.16.2", reusa: false, porque: "--anna newer than the bundle's " },
-    { bundle: "0.16.3", flag: "0.16.3", path: "0.16.2", reusa: true, porque: "--anna is the bundle's version" },
-    { bundle: "0.16.3", flag: "0.16.2", path: "0.16.3", reusa: false, porque: "--anna older than the bundle's: asked for by name, it wins either way" },
-    { bundle: "0.16.3", flag: null, path: "0.16.2", reusa: true, porque: "an older anna on PATH does not displace the bundle's" },
-    { bundle: "0.16.2", flag: null, path: "0.16.3", reusa: false, porque: "a newer anna on PATH (install.sh ran after the build)" },
-    { bundle: null, flag: "0.16.3", path: "0.16.3", reusa: false, porque: "the bundle has no anna and this run would package one" },
-    { bundle: "0.16.3", flag: null, path: "0.16.3", noAnna: true, reusa: false, porque: "--no-anna and the bundle carries anna" },
-    { bundle: "0.16.1", flag: null, path: "0.16.1", reusa: false, porque: "a staged Anna below the credential floor cannot ship" },
+    { bundle: "0.16.5", flag: "0.16.6", path: "0.16.5", reusa: false, porque: "--anna newer than the bundle's " },
+    { bundle: "0.16.6", flag: "0.16.6", path: "0.16.5", reusa: true, porque: "--anna is the bundle's version" },
+    { bundle: "0.16.6", flag: "0.16.5", path: "0.16.6", reusa: false, porque: "--anna older than the bundle's: asked for by name, it wins either way" },
+    { bundle: "0.16.6", flag: null, path: "0.16.5", reusa: true, porque: "an older anna on PATH does not displace the bundle's" },
+    { bundle: "0.16.5", flag: null, path: "0.16.6", reusa: false, porque: "a newer anna on PATH (install.sh ran after the build)" },
+    { bundle: null, flag: "0.16.5", path: "0.16.5", reusa: false, porque: "the bundle has no anna and this run would package one" },
+    { bundle: "0.16.5", flag: null, path: "0.16.5", noAnna: true, reusa: false, porque: "--no-anna and the bundle carries anna" },
+    { bundle: "0.16.2", flag: null, path: "0.16.2", reusa: false, porque: "the earlier Linux 1.40.3 engine cannot be reused" },
+    { bundle: "0.16.4", flag: null, path: "0.16.4", reusa: false, porque: "a staged Anna that follows redirects cannot be reused" },
+    { bundle: "0.16.5", flag: null, path: "0.16.2", reusa: true, porque: "an older PATH does not replace a bundle that already meets the floor" },
   ];
   for (const c of casos) {
     const noBundle = (dir) => join(dir, `src-tauri/binaries/anna-${triple}`);
