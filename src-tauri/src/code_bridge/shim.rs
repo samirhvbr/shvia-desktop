@@ -109,6 +109,11 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // 'resuming'|'cancelled'|'gave_up'|'failed', attempt, nextAttemptAt (ms since the epoch, or null), waitedMinutes, ceilingMinutes}.
     pentestAutoResume: function (o) { return pentestPost('pentestAutoResume', o || {}); },
     openPentestViewer: function () { return pentestPost('openPentestViewer'); },
+    // The PDF report of THIS window's finished local run, saved where the person picks in the native dialog (1.42.0). It takes
+    // nothing: the page names no run, path or file name, and never receives the bytes. Resolves {saved:true} or {saved:false}
+    // (the person cancelled); rejects with a sentence when the run is still going, the engine cannot write it or the file cannot
+    // be written. Offer it only when pentestStatus().canSavePdf === true.
+    savePentestReport: function () { return pentestPost('savePentestReport'); },
     pentestCompatibility: function () { return post('pentestCompatibility'); },
     pentestInstallEngine: function () { return post('pentestInstallEngine'); },
     // The standing agreement to keep the engine up to date (1.40.0), given only in the install dialog. `o` = {enabled?: false}: with no

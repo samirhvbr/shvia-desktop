@@ -3126,6 +3126,31 @@ viewer reads, unmasked. Until now the page received only the engine's sanitized 
 nothing else changes. Masking is best effort and its limit is said on the page. Not measured: a real run's rows on the owner's Mac.
 
 
+## ADR-049 — The PDF report is rendered by the engine and saved by the Desktop, and the page only learns whether it was saved
+
+**Context.** On 12/11/2026 the owner asked that the result PDF not require the site to be downloaded and be available from the
+Desktop. Until then a person reached a PDF through the native viewer (a browser page with a session of its own, whose "Export
+report" button the engine serves) or through the server (the report content uploaded under a separate consent, rendered there,
+downloaded from a signed-in page). Both leave the app.
+
+**Decision.**
+
+1. **The engine renders, the Desktop saves.** `savePentestReport` runs the engine's new `report-pdf` command (fork 1.2.55) against the
+   run this window owns, into a scratch file in the run's own private directory, and opens the native "Save as" dialog. The viewer is
+   not started and the server is not called, so the report-sharing consent and the retention rule do not change.
+2. **The page gets a verdict, never the bytes, a path or a name.** It resolves `{saved}` and cannot choose the run or the file, as
+   with `openPentestViewer`. The PDF is not handed to the page to be saved by it, because the page would then hold the whole report
+   and could send it on; here only the person's own save leaves the engine's output.
+3. **The button waits for an engine that has the command.** `pentestStatus().canSavePdf` is true only for a run on disk and a pin of
+   1.2.55 or later, read from `pentest-engine.json` and not from a probe, so an older pin never shows a button that can only fail.
+4. **The PDF is the viewer's, in English.** It is not the server's `report-pdf-v1` document, which is built from the exported report
+   package and translated to pt-BR there. Two PDFs of one product is a gap this decision does not close; closing it means the engine
+   rendering the server's document from the same package, a change to the engine's contract with the server.
+
+**Consequences.** Needs Desktop 1.42.0 and engine 1.2.55; until the pin moves the page does not offer the button. Not measured: the
+dialog and the engine's first start on a Mac.
+
+
 ### Pentest desktop account proof
 
 The Web mints a narrow, short-lived proof for the account that rendered the Pentest

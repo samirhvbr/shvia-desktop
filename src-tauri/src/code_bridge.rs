@@ -241,7 +241,7 @@ pub fn handle_message(window: &WebviewWindow, payload: &str) {
     let action = v.get("action").and_then(|a| a.as_str()).unwrap_or_default();
     let req = v.get("reqId").and_then(|r| r.as_str()).unwrap_or_default().to_string();
     match action {
-        "startPentest" | "pentestStatus" | "pentestAutoResume" | "openPentestViewer"
+        "startPentest" | "pentestStatus" | "pentestAutoResume" | "openPentestViewer" | "savePentestReport"
         | "pentestLive" | "pentestActivity" | "pausePentest" | "continuePentest"
         | "reviewPentest" | "retestPentest" | "resumePentest" | "stopPentest" => {
             let action = action.to_owned();
@@ -708,6 +708,7 @@ fn pentest_action(window: &WebviewWindow, req: &str, action: &str, value: &serde
         "pentestStatus" => Ok(pentest::status(window, &account)),
         "pentestAutoResume" => pentest::auto_resume(window, value, &account),
         "openPentestViewer" => pentest::open_viewer(window, &account),
+        "savePentestReport" => pentest::save_report_pdf(window, &account),
         "pentestLive" => pentest::live(window, value, "status", &account),
         "pentestActivity" => pentest::activity(window, value, &account),
         "pausePentest" => pentest::live(window, value, "pause", &account),
@@ -1022,7 +1023,7 @@ mod tests_fora_da_ui {
         for acao in [
             "gitStatus", "listTree", "gitDiff", "readFile", "codexModels", "claudeAuthStatus", "claudeUsage", "codexUsage",
             "claudeAuthLoginStart", "claudeSubscriptionConnect", "claudeSubscriptionCode", "claudeModels", "claudeRunnerInstall", "claudeAccountsDetect",
-            "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "pentestPreflight", "pentestAutoResume", "openPentestViewer", "pentestCompatibility", "pentestInstallEngine", "pentestEngineAutoUpdate", "pentestOpenDocker", "stopPentest", "resumePentest", "reviewPentest", "retestPentest", "pentestLive", "pentestActivity", "pausePentest", "continuePentest", "ipv4SearchStart",
+            "claudeAccountAdd", "engineStatus", "startPentest", "pentestStatus", "pentestPreflight", "pentestAutoResume", "openPentestViewer", "savePentestReport", "pentestCompatibility", "pentestInstallEngine", "pentestEngineAutoUpdate", "pentestOpenDocker", "stopPentest", "resumePentest", "reviewPentest", "retestPentest", "pentestLive", "pentestActivity", "pausePentest", "continuePentest", "ipv4SearchStart",
         ] {
             let key = format!("\"{acao}\"");
             let arm = corpo.split("\n        \"").find(|arm| {

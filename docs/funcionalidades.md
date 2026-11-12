@@ -270,6 +270,13 @@ as percent used. A credential-only profile reads with a configuration home of it
 own in the app's cache, because the client's usage cache is otherwise shared between
 accounts. See [the usage contract](code/USO-DAS-CONTAS.md).
 
+## Local assessment PDF (1.42.0)
+
+`savePentestReport()` saves the PDF report of this window's finished local run where the person
+picks in the native "Save as" dialog, without the viewer and without the server: the engine renders it
+(`strix report-pdf`, Pentest 1.2.55+), the Desktop checks the file and the page learns only whether it
+was saved. `pentestStatus().canSavePdf` says when to offer it. See [the PDF boundary](pentest-report-pdf.md).
+
 ## Local assessment viewer (1.26.1)
 
 `openPentestViewer()` asks native consent before requesting the selected local

@@ -12,7 +12,10 @@ Desktop 1.25.x within 1.x, Pentest 1.2.30+ within 1.x (1.26.2: the probe reads `
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Last updated: **12/11/2026** (version 1.41.0). 1.41.0 = a wait for the provider's usage window no longer
+> Last updated: **12/11/2026** (version 1.42.0). 1.42.0 = the page can ask the Desktop to save the PDF report of the finished local
+> run where the person picks (`savePentestReport`, `canSavePdf` in `pentestStatus`; the engine's new `report-pdf` command, Pentest
+> 1.2.55; no viewer, no server); open: the engine 1.2.55 Release and the pin that turns `canSavePdf` on, the dialog on a Mac.
+> Previously, 1.41.0 = a wait for the provider's usage window no longer
 > ends on an attempt that fails (it waits for the next step and keeps why: `autoResume.lastFailure`), outlives an
 > app restart (the plan is written next to the run and the next start takes it back) and keeps the computer awake;
 > open: the WEB page still shows `lastFailure` nowhere, and the whole path against a real five-hour window on a Mac,
