@@ -80,11 +80,10 @@ if (process.platform !== "win32") {
   rmSync(dir, { recursive: true, force: true });
 }
 
-// 1c. the floor (1.35.2, raised in 1.36.4): the last anna below it is refused and nothing is
-// staged; the floor itself is staged. Run against the 0.15.10 floor, the first case fails:
-// 0.15.11 was staged.
+// 1c. The 1.40.4 packaging floor: 0.16.2 shipped in the earlier Linux 1.40.3 build;
+// 0.16.4 still follows gateway/memory redirects. Neither may be staged, while 0.16.5 may.
 if (process.platform !== "win32") {
-  for (const [versao, aceita] of [["0.16.0", false], ["0.16.2", true]]) {
+  for (const [versao, aceita] of [["0.16.2", false], ["0.16.4", false], ["0.16.5", true]]) {
     const dir = arvore();
     const falso = join(dir, "anna");
     writeFileSync(falso, `#!/bin/sh\necho 'anna ${versao}'\n`, { mode: 0o755 });
