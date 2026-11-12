@@ -1013,6 +1013,16 @@ pub(crate) fn build_shvia_window(
                         let shim = code_bridge::inject_code_document(&nonce);
                         let _ = eval(shim);
                     }
+                    // A Pentest run waiting for its model provider's usage window when the app closed (an update, a
+                    // crash) waits again from here, with no need for anyone to open the Pentest page (1.41.0). The
+                    // quick window is left out: a run belongs to the window that takes it back. Off the event loop:
+                    // it reads a few small private files.
+                    #[cfg(desktop)]
+                    if webview.label() != rapida::JANELA {
+                        if let Some(window) = webview.app_handle().get_webview_window(webview.label()) {
+                            std::thread::spawn(move || code_bridge::rearm_pentest(&window));
+                        }
+                    }
                 }
             }
         });
