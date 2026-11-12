@@ -22,11 +22,10 @@
 //!    entra com ele. Até lá o feedback vem da própria página: URL errada abre um
 //!    site errado, e isso é visível na hora.
 //!
-//! 3. **O host configurado passa a ser INTERNO** — ou seja, ganha as pontes
-//!    nativas (Modo Code, notificação, badge, gate de versão). Não tem meio: uma
-//!    casca que abre o servidor do cliente sem as pontes entrega um navegador, não
-//!    o ShvIA Desktop. Então isto é decisão de confiança, e a UI diz isso em
-//!    português antes de salvar. Ver `crate::is_server_host` e o ADR-019.
+//! 3. **The configured origin becomes internal** — it receives native Code,
+//!    notification, badge and version-gate capabilities. This is a trust decision:
+//!    the native configuration screen explains the access before saving.
+//!    See `crate::is_server_origin` and ADR-019.
 
 use std::io::ErrorKind;
 use std::net::TcpStream;
@@ -48,15 +47,13 @@ const CONFIG_FILE: &str = "server.json";
 /// absorver o cold-start do WebKit, que este módulo eliminou.
 const PROBE_TIMEOUT_MS: u64 = 4_000;
 
-/// Host configurado pelo usuário, quando existe. Lido pelo `is_server_host` a
-/// cada navegação, então é `RwLock` e não `Mutex`: leitura é o caso comum.
-///
-/// `None` = nada configurado, vale só a lista embutida.
-static CONFIGURED_HOST: RwLock<Option<String>> = RwLock::new(None);
-/// The configured server's full URL — scheme, host AND port (1.6.31). The perimeter compares
-/// host only for ordinary hosts (a decision, tested), but on loopback a different port is a
-/// different local service, so a loopback server is matched on its whole origin.
+/// The configured server's full URL. Trust always includes scheme, host and effective port,
+/// including ordinary HTTPS servers. One lock keeps every consumer on the same origin.
+/// `None` means only the built-in origins apply.
 static CONFIGURED_URL: RwLock<Option<tauri::Url>> = RwLock::new(None);
+
+#[cfg(test)]
+pub(crate) static CONFIG_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// O que a casca precisa saber sobre o servidor atual.
 #[derive(Serialize, Clone, Debug)]
@@ -79,9 +76,9 @@ impl ServerConfig {
     }
 }
 
-/// Host configurado, se houver. Usado pelo perímetro de navegação.
+/// The configured host, if any, for the tray's display label. Trust uses the full URL.
 pub fn configured_host() -> Option<String> {
-    CONFIGURED_HOST.read().ok().and_then(|g| g.clone())
+    configured_url().and_then(|u| u.host_str().map(str::to_string))
 }
 
 /// The configured server's URL, if it is not the default (see `CONFIGURED_URL`).
@@ -90,27 +87,13 @@ pub fn configured_url() -> Option<tauri::Url> {
 }
 
 fn set_configured_host(url: &str) {
-    let host = tauri::Url::parse(url)
-        .ok()
-        .and_then(|u| u.host_str().map(str::to_string));
-
-    // `None` quando a URL é o padrão: o host já está na lista embutida, e deixar
-    // uma cópia aqui só criaria dois lugares para a mesma verdade.
-    let host = match host {
-        Some(h) if url != DEFAULT_URL => Some(h),
-        _ => None,
-    };
-
-    let completa = if host.is_some() { tauri::Url::parse(url).ok() } else { None };
-    if let Ok(mut g) = CONFIGURED_HOST.write() {
-        *g = host;
-    }
+    let completa = if url != DEFAULT_URL { tauri::Url::parse(url).ok() } else { None };
     if let Ok(mut g) = CONFIGURED_URL.write() {
         *g = completa;
     }
 }
 
-/// Costura de teste: o perímetro (`crate::is_server_host`) precisa ser exercitado
+/// Costura de teste: o perímetro (`crate::is_server_origin`) precisa ser exercitado
 /// sem `AppHandle` nem disco. Só existe em `cfg(test)` para não virar uma porta de
 /// trocar o host configurado em runtime sem passar pela validação do `save`.
 #[cfg(test)]
@@ -127,9 +110,8 @@ fn config_path(app: &AppHandle) -> Option<std::path::PathBuf> {
 
 /// Normaliza o que o usuário digitou, ou explica em português por que não serve.
 ///
-/// Devolve **só a origem**: caminho, query e fragmento são descartados. Guardar
-/// `https://host/algum/caminho` faria a casca navegar para lá e o `is_internal`
-/// comparar host — o caminho não acrescenta nada e confunde quem lê o arquivo.
+/// Return only the origin: paths, queries and fragments do not change the origin
+/// trusted by `is_server_origin`.
 pub fn normalize(raw: &str) -> Result<String, String> {
     let raw = raw.trim();
     if raw.is_empty() {
@@ -318,6 +300,7 @@ mod tests {
 
     #[test]
     fn host_configurado_e_none_quando_e_o_padrao() {
+        let _lock = CONFIG_TEST_LOCK.lock().unwrap();
         // Duas verdades para o mesmo host é como uma delas fica velha.
         set_configured_host(DEFAULT_URL);
         assert_eq!(configured_host(), None);

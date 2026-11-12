@@ -716,8 +716,8 @@ const SERVER_HOST: &str = "ai.shvia.org";
 /// em que o DNS subiu, sem ninguém decidir nada.
 const SERVER_HOSTS: &[&str] = &[SERVER_HOST, "ia.shvia.org", "ia.blue3.com.br"];
 
-/// `true` se o host for uma das faces do servidor do ShvIA — a lista embutida
-/// **ou** o servidor que o dono da máquina configurou (item D4).
+/// Trust an entire server origin: built-in aliases use HTTPS on port 443, and the
+/// configured server uses exactly its saved scheme, host and effective port.
 ///
 /// O host configurado entra aqui de propósito, e é a decisão mais pesada do D4:
 /// ele passa a receber as **pontes nativas** (Modo Code com spawn de processo,
@@ -732,11 +732,23 @@ const SERVER_HOSTS: &[&str] = &[SERVER_HOST, "ia.shvia.org", "ia.blue3.com.br"];
 ///   `capabilities/default.json` e ADR-001);
 /// - `https` é obrigatório fora de loopback ([`server::normalize`]);
 /// - a tela diz, em português, que o servidor ganha acesso nativo.
-pub(crate) fn is_server_host(host: &str) -> bool {
-    if SERVER_HOSTS.contains(&host) {
+pub(crate) fn is_server_origin(url: &tauri::Url) -> bool {
+    if !url.username().is_empty() || url.password().is_some() {
+        return false;
+    }
+    let Some(host) = url.host_str() else { return false };
+    if url.scheme() == "https" && url.port_or_known_default() == Some(443) && SERVER_HOSTS.contains(&host) {
         return true;
     }
-    server::configured_host().is_some_and(|h| h == host)
+    server::configured_url().is_some_and(|configured| {
+        (url.scheme() == "https" || (url.scheme() == "http" && eh_loopback(host)))
+            && url.origin() == configured.origin()
+    })
+}
+
+/// Evaluation can be deferred past another navigation; check the document at execution.
+fn script_at_origin(origin: &str, script: &str) -> String {
+    format!("if(location.origin==={origin:?}){{{script}}}")
 }
 
 /// Configuração do servidor para a casca local desenhar a tela.
@@ -803,17 +815,6 @@ fn eh_loopback(host: &str) -> bool {
     matches!(host, "localhost" | "127.0.0.1" | "[::1]" | "::1")
 }
 
-/// Is this URL the configured server, when that server is on loopback? Same scheme, host and
-/// port (default ports resolved): on loopback a different port is a different service.
-fn e_o_servidor_loopback_configurado(url: &tauri::Url) -> bool {
-    server::configured_url().is_some_and(|c| {
-        c.host_str().is_some_and(eh_loopback)
-            && c.scheme() == url.scheme()
-            && c.host_str() == url.host_str()
-            && c.port_or_known_default() == url.port_or_known_default()
-    })
-}
-
 // Called only by windows_ipc.rs; compiled everywhere so its test runs on every platform.
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub(crate) fn origem_da_mensagem_permitida(origem: &str) -> bool {
@@ -821,6 +822,12 @@ pub(crate) fn origem_da_mensagem_permitida(origem: &str) -> bool {
 }
 
 fn is_internal(url: &tauri::Url) -> bool {
+    if is_server_origin(url) {
+        return true;
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return false;
+    }
     let host = match url.host_str() {
         Some(h) => h,
         None => return false,
@@ -835,13 +842,11 @@ fn is_internal(url: &tauri::Url) -> bool {
     // configured loopback server on its own scheme, host AND port.
     // `tauri://localhost` (the packaged shell) is not a network origin and stays as it was.
     match url.scheme() {
-        "tauri" => host == "localhost",
+        "tauri" => host == "localhost" && url.port().is_none(),
         "http" | "https" if eh_loopback(host) => {
-            (url.scheme() == "http" && cfg!(debug_assertions) && url.port() == Some(PORTA_DO_DEV))
-                || e_o_servidor_loopback_configurado(url)
+            url.scheme() == "http" && host == "localhost" && cfg!(debug_assertions) && url.port() == Some(PORTA_DO_DEV)
         }
-        "https" => is_server_host(host),
-        "http" => host == "tauri.localhost",
+        "http" => host == "tauri.localhost" && url.port_or_known_default() == Some(80),
         _ => false,
     }
 }
@@ -979,41 +984,34 @@ pub(crate) fn build_shvia_window(
                 return;
             }
             if let PageLoadEvent::Finished = payload.event() {
-                let host = payload.url().host_str().unwrap_or_default();
-                // As pontes injetam APIs nativas (spawn de processo, leitura de
-                // FS, notificações). Restringimos aos hosts EXATOS do servidor do
-                // ShvIA (SERVER_HOSTS): a casca local não tem sessão/alertas e
-                // qualquer outro host — inclusive o ápex shvia.org, que é a
-                // landing em outro IP — é externo.
-                if is_server_host(host) {
-                    let _ = webview.eval(OFFLINE_BANNER_JS);
-                    // Notificações nativas dos alertas de preço — ADR-011. Injeta o
-                    // token de capacidade da sessão (só páginas de SERVER_HOSTS o
-                    // recebem — são as três faces da MESMA instância; iframe
-                    // cross-origin e casca local continuam de fora).
-                    let _ = webview.eval(code_bridge::inject_token(NATIVE_NOTIFY_JS));
+                // Native capabilities belong to the full trusted origin. The JavaScript
+                // guard also covers a navigation between Finished and the deferred eval.
+                if let Some(origin) = code_bridge::resume_owner::origin(payload.url()) {
+                    let eval = |script: String| webview.eval(script_at_origin(&origin, &script));
+                    let _ = eval(OFFLINE_BANNER_JS.to_string());
+                    // Native price-alert notifications (ADR-011).
+                    // Only the approved server origin receives the capability;
+                    // cross-origin frames and the local shell remain outside.
+                    let _ = eval(code_bridge::inject_token(NATIVE_NOTIFY_JS));
                     // Gate de versão (ADR-018): compara este build com o
                     // `version.clients.desktop.min_version` do servidor.
-                    let _ = webview.eval(VERSION_GATE_JS.replace(
+                    let _ = eval(VERSION_GATE_JS.replace(
                         "__SHVIA_BUILD__",
                         // A versão do PACOTE (version.md → tauri.conf.json), a mesma
                         // que o modal Sobre mostra. `tauri::VERSION` seria a do
                         // framework, que não é o que o servidor compara.
                         &webview.package_info().version.to_string(),
                     ));
-                    let _ = webview.eval(CLIPBOARD_IMAGE_PASTE_JS);
+                    let _ = eval(CLIPBOARD_IMAGE_PASTE_JS.to_string());
                     // Ponte de voz (window.__shviaTts). Linux-only: é lá que o
                     // handler nativo `shviaTts` existe. Ver TTS_BRIDGE_JS / F-16.
                     #[cfg(target_os = "linux")]
-                    let _ = webview.eval(code_bridge::inject_token(TTS_BRIDGE_JS));
+                    let _ = eval(code_bridge::inject_token(TTS_BRIDGE_JS));
                     // Ponte do Modo Code (window.__shviaCode/__shviaDesktop). Ver code_bridge.rs.
-                    if let Some(origin) = code_bridge::resume_owner::origin(payload.url()) {
-                        let owners = webview.state::<code_bridge::resume_owner::ResumeOwners>();
-                        if let Some(nonce) = owners.finished(webview.label(), origin.clone()) {
-                            let shim = code_bridge::inject_code_document(&nonce);
-                            // The eval can run after the WebView has crossed to another origin.
-                            let _ = webview.eval(format!("if(location.origin==={origin:?}){{{shim}}}"));
-                        }
+                    let owners = webview.state::<code_bridge::resume_owner::ResumeOwners>();
+                    if let Some(nonce) = owners.finished(webview.label(), origin.clone()) {
+                        let shim = code_bridge::inject_code_document(&nonce);
+                        let _ = eval(shim);
                     }
                 }
             }
@@ -1290,7 +1288,7 @@ fn permite_midia(uri_do_frame_principal: &str, para_audio: bool, para_video: boo
         return false;
     }
     match tauri::Url::parse(uri_do_frame_principal) {
-        Ok(u) => u.scheme() == "https" && u.host_str().is_some_and(is_server_host),
+        Ok(u) => u.scheme() == "https" && is_server_origin(&u),
         Err(_) => false,
     }
 }
@@ -1310,7 +1308,7 @@ enum PedidoDeVoz {
 /// gate a cross-origin `<iframe>` embedded in a ShvIA page could speak arbitrary text
 /// through the host's `spd-say` and cancel speech — and `spd-say -C` cancels globally
 /// in the speech-dispatcher daemon, so it reached beyond the app. The token is injected
-/// only into pages served by a `SERVER_HOSTS` host (`TTS_BRIDGE_JS` via `on_page_load`),
+/// only into pages of an approved full server origin (`TTS_BRIDGE_JS` via `on_page_load`),
 /// which an iframe cannot read: same gate `code_bridge::handle_message` already applies
 /// to `shviaCode`, now covering the second native handler as well.
 ///
@@ -1719,9 +1717,8 @@ pub fn run() {
             shvia_server_reset,
         ])
         .setup(|app| {
-            // ANTES de abrir a janela: o `is_server_host` é consultado na primeira
-            // navegação, e sem isto o servidor configurado seria tratado como link
-            // externo e abriria no navegador do SO.
+            // Load before the first navigation checks `is_server_origin`, otherwise
+            // the configured destination would open in the OS browser.
             server::load(app.handle());
             #[cfg(unix)]
             code_bridge::pentest_engine_init(app.handle());
@@ -1946,6 +1943,25 @@ mod tests {
         assert!(!internal("http://ai.shvia.org/chat"));
     }
 
+    #[test]
+    fn deferred_bridge_injection_checks_the_actual_document_origin() {
+        let script = super::script_at_origin("https://onprem.example:8443", "injected = true;");
+        let source = format!(r#"
+            const vm = require('node:vm');
+            const script = {script:?};
+            for (const origin of ['https://onprem.example:8443', 'https://onprem.example',
+                'https://onprem.example:9443', 'http://onprem.example:8443', 'https://other.example']) {{
+                const context = {{ location: {{ origin }}, injected: false }};
+                vm.runInNewContext(script, context);
+                if (context.injected !== (origin === 'https://onprem.example:8443')) {{
+                    throw new Error('bridge capabilities reached ' + origin);
+                }}
+            }}
+        "#);
+        let result = crate::processo::comando("node").arg("-e").arg(source).output().unwrap();
+        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+    }
+
     /// Dual-host da migração (26/07): as três faces do servidor entram, e o dia
     /// em que o legado sair é só tirar a linha dele de SERVER_HOSTS.
     #[test]
@@ -1976,17 +1992,39 @@ mod tests {
     /// que faz o on-prem receber Modo Code, notificação e badge. Continua sendo
     /// UM host: configurar `meu.servidor` não abre a vizinhança dele.
     ///
-    /// Estes testes mexem no estado global de `server::CONFIGURED_HOST`, então
+    /// Estes testes mexem no estado global de `server::CONFIGURED_URL`, então
     /// ficam num único `#[test]` — dois testes concorrentes na mesma thread pool
     /// se atropelariam.
     #[test]
     fn servidor_configurado_vira_interno_e_so_ele() {
+        let _lock = super::server::CONFIG_TEST_LOCK.lock().unwrap();
+        fn server_origin(url: &str, expected: bool) {
+            let parsed = url.parse().unwrap();
+            assert_eq!(super::is_server_origin(&parsed), expected, "bridge injection: {url}");
+            assert_eq!(internal(url), expected, "navigation: {url}");
+            assert_eq!(super::origem_da_mensagem_permitida(url), expected, "Windows IPC: {url}");
+            assert_eq!(super::code_bridge::resume_owner::origin(&parsed).is_some(), expected, "resume owner: {url}");
+            #[cfg(target_os = "linux")]
+            if parsed.scheme() == "https" {
+                assert_eq!(super::permite_midia(url, true, false), expected, "microphone: {url}");
+            }
+        }
+
+        super::server::set_configured_host_para_teste(super::server::DEFAULT_URL);
+        for host in super::SERVER_HOSTS {
+            server_origin(&format!("https://{host}/chat"), true);
+            server_origin(&format!("https://{host}:443/chat"), true);
+            server_origin(&format!("https://{host}:8443/chat"), false);
+            server_origin(&format!("http://{host}:443/chat"), false);
+            server_origin(&format!("https://user:password@{host}/chat"), false);
+        }
         super::server::set_configured_host_para_teste("https://onprem.cliente.example:8443");
 
-        assert!(internal("https://onprem.cliente.example:8443/chat"));
-        // Mesmo host em outra porta: `is_server_host` compara HOST, e a porta não
-        // faz parte da identidade de origem para este perímetro.
-        assert!(internal("https://onprem.cliente.example/chat"));
+        server_origin("https://onprem.cliente.example:8443/chat?view=code#session", true);
+        server_origin("https://onprem.cliente.example/chat", false);
+        server_origin("https://onprem.cliente.example:9443/chat", false);
+        server_origin("http://onprem.cliente.example:8443/chat", false);
+        server_origin("https://user@onprem.cliente.example:8443/chat", false);
 
         // Vizinhança do host configurado NÃO entra.
         assert!(!internal("https://outro.cliente.example/"));
@@ -2012,16 +2050,32 @@ mod tests {
         assert!(internal("http://tauri.localhost/"));
         // A loopback server matches on scheme, host AND port — a different port is another service.
         super::server::set_configured_host_para_teste("http://localhost:8000");
-        assert!(internal("http://localhost:8000/chat"));
+        server_origin("http://localhost:8000/chat", true);
+        server_origin("http://localhost:8001/chat", false);
         assert!(!internal("http://localhost:5173/"), "with a loopback server, every localhost page counted as it");
         assert!(!internal("https://localhost:8000/"));
         // 127.0.0.1 passed `normalize` but never opened in-app.
         super::server::set_configured_host_para_teste("http://127.0.0.1:8000");
-        assert!(internal("http://127.0.0.1:8000/"));
+        server_origin("http://127.0.0.1:8000/", true);
+        server_origin("http://localhost:8000/", false);
+
+        super::server::set_configured_host_para_teste("https://[::1]:8443");
+        server_origin("https://[::1]:8443/chat", true);
+        server_origin("https://[::1]:9443/chat", false);
+        server_origin("http://[::1]:8443/chat", false);
+
+        // Saving a new destination revokes the previous configured origin immediately.
+        super::server::set_configured_host_para_teste("https://new.cliente.example");
+        server_origin("https://new.cliente.example:443/chat", true);
+        server_origin("https://onprem.cliente.example:8443/chat", false);
+        server_origin("https://[::1]:8443/chat", false);
 
         // Limpa: outros testes deste módulo assumem só a lista embutida.
         super::server::set_configured_host_para_teste(super::server::DEFAULT_URL);
         assert!(!internal("https://onprem.cliente.example/chat"));
+        assert!(!internal("http://tauri.localhost:9000/"));
+        assert!(!internal("tauri://localhost:9000/"));
+        assert!(!internal("http://127.0.0.1:1420/"));
     }
 
     /// `PORTA_DO_DEV` is `build.devUrl`'s port — if the dev server moves, the dev shell must
@@ -2063,7 +2117,8 @@ mod tests {
             // Casca local: não tem captura, então não precisa de dispositivo.
             ("tauri://localhost/index.html", true, false, false),
             ("http://localhost:1420/", true, false, false),
-            // Terceiros — inclusive o vizinho de sufixo, que o `is_server_host` recusa.
+            // Third-party hosts and other ports do not share the server's origin.
+            ("https://ai.shvia.org:8443/", true, false, false),
             ("https://evil.com/", true, false, false),
             ("https://ai.shvia.org.evil.com/", true, false, false),
             // http no host do servidor não vale: o servidor é https.

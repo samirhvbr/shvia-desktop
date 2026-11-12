@@ -1,13 +1,12 @@
 //! The page side of the bridge: the JS shim that `window.__shviaCode` is, and the per-session
-//! capability token it carries (only pages of a `SERVER_HOSTS` host get it, so an embedded
+//! capability token it carries (only pages of a complete approved server origin get it, so an embedded
 //! cross-origin frame that reaches the native handler is ignored). Split out of
 //! `code_bridge.rs` in 1.6.41.
 
 use super::*;
 
-/// Token de capacidade da sessão do app. É injetado SOMENTE nas páginas do host
-/// canônico (um dos `SERVER_HOSTS`, via `on_page_load`) dentro do shim da ponte, e
-/// TODA mensagem página→Rust precisa carregá-lo em `__t`.
+/// The session capability is injected only into a complete approved server origin
+/// by `on_page_load`. Every page-to-Rust message must carry it in `__t`.
 ///
 /// Fecha o furo do handler nativo ser alcançável por QUALQUER frame: o
 /// `messageHandler`/`window.chrome.webview` existe para todos os frames da
