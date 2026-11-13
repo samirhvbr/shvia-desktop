@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.42.2 - End a Pentest wait for the provider's window as soon as the server refuses its grant
+
+A wait taken back after the app was closed for longer than the grant's lease could never resume anything, and still ran to
+the 12-hour ceiling. Only the app renews the grant (every two minutes, while a run lives or waits), and shvia-web never
+revives a lapsed one: `AuthorizationService::verify` answers 410 once `expires_at` has passed, to the wait's renewal, to
+the engine's inspection before an attempt, and to a Resume pressed by hand, which presents the same grant. So every hourly
+attempt was refused, the computer was held awake through each wait in between, and the first refusal's notification said
+the SHVIA would try again. The lease is 600 minutes by default since shvia-web of 04/11/2026, so the case is an app closed
+overnight during a wait and opened again within the 12 hours.
+
+The wait now reads the answer to its renewals (`sync::Renewal`). 401 (unknown grant), 409 (another scan holds it) and 410
+(revoked or lapsed) end it at once: the plan becomes `gave_up` with `lastFailure: "authorization"`, the plan file says so
+(a restart does not bring the wait back), the hold on the computer is released, and one notification says the grant ended
+and the run will not be resumed ("Avaliação parada"). Anything else is asked again, as before: no network, a timeout, 403
+(an account the server suspended), 429, 5xx, and a request that could not be made. The wait renews in its first second,
+before any attempt can be due (30 s after a restart at the earliest), so a wait taken back after a restart learns it right
+away. An attempt refused with `authorization` asks the server the same question before it notifies, because the engine's
+inspection gives that answer for a network that did not respond too.
+
+Found in the review of 1.41.0 (#225), point 1. Tested: the classification through a real HTTP exchange (200, 401, 409,
+410, 403, 429, 503, a request never made, nobody listening), the first beat, and the plan a refusal leaves. A reversal of
+each (410 read as passing, a wait that starts with a beat, a refusal that keeps the plan, a note that no longer reads back
+as `authorization`) turns its test red. The thread's own reaction is read, not run, like the rest of the wait thread.
+
 ## 1.42.1 - Restore trusted popups without accepting page-controlled geometry
 
 Approved `window.open` and `target="_blank"` requests now open independent app windows
