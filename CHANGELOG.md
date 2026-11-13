@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.42.2 - Pin the Pentest engine at 1.2.55, the first build that writes a run's PDF report to a file, so the Save PDF button can appear
+
+`pentest-engine.json` pinned 1.2.50. It now pins **1.2.55**. Desktop 1.42.0 added `savePentestReport()`, which has the engine write the
+finished run's PDF (`report-pdf`) and opens the system's "Save as" dialog, and `pentestStatus().canSavePdf` stays `false` for a pin older
+than 1.2.55, so until this version no page could offer the button. It can now. The pin also takes four fork deliveries this app had not
+taken (1.2.51 to 1.2.54, the last of them already published as the fork's Release `shvia-v1.2.54`), so it is one pin where there would
+have been two.
+
+- **What 1.2.55 changes for this Desktop** (the fork's Release `shvia-v1.2.55`, samirhvbr/strix#64, Strix 1.7.0 + 64 commits):
+  - *The command.* `report-pdf RUN_DIR --output FILE` renders the viewer's PDF (English, with the ShvIA cover) offline into a new file
+    (`O_CREAT|O_EXCL`, mode 0600, at most 20 MiB), prints one line `{"bytes": N}` and, on any failure, exits 1 with the fixed
+    `{"error":"report_pdf_unavailable"}`: the contract `report_pdf.rs` checks.
+  - *The cache keys (1.2.53).* Each model row of the history and of the control snapshot carries `cached_input_tokens` and
+    `unknown_cache_attempts`, the two keys 1.40.2 already projects and sends. Until this pin they arrived `null` (unknown, never zero);
+    a run started by an older engine and read by this one still gets the figure.
+  - *The PDF (1.2.51, 1.2.52).* The ShvIA name and mark on the cover, no link to the vendor's platform, and the indentation of code
+    kept, so a printed PoC runs as printed.
+  - *The sandbox image (1.2.54).* The engine runs `ghcr.io/samirhvbr/strix-sandbox:1.4.1-shvia-ac827485f0ca`, pinned by digest (upstream
+    1.4.1 with Opengrep 1.31.0 and its offline rules, plus the fork's restart guard), instead of `strix-sandbox:1.3.1`. A computer
+    downloads it once, at the first run after the engine is updated: about 1.49 GB compressed on amd64 and 1.45 GB on arm64 (the
+    registry's layer sizes, 42 layers each).
+- **The pin.** Release `shvia-v1.2.55`, published on 13/11/2026 for the tag's commit (`02d6a1a7`), with four binaries and one
+  `SHA256SUMS`, from two sources. The fork's `Pentest binaries` workflow built `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`
+  and `x86_64-apple-darwin`, each natively on its own platform (run 43464283363). GitHub's hosted macOS arm64 runners could not be
+  allocated in three attempts, so that job was cancelled and the job that attaches the files was skipped (the run's page shows red for
+  that): the three files were taken from the run's artifacts and attached by hand, and `aarch64-apple-darwin` was built on an Apple
+  silicon Mac from the tag with `scripts/build-pentest-local.sh`. The pin lists the two this Desktop uses: `aarch64-apple-darwin`
+  95,381,392 bytes, SHA-256 `d53d8787…2ac6` (the Mac build), and `x86_64-unknown-linux-gnu` 118,905,496 bytes, SHA-256 `faacf30a…92a8`
+  (the workflow's); the Intel Mac and Linux arm64 files stay on the Release, unpinned. The digests are the ones GitHub's REST API
+  reports for the files on the Release and the ones in its `SHA256SUMS` (compared on 13/11/2026). Each build checked that its file
+  answers `--fork-version` with `1.2.55`, and `scripts/stage-pentest.mjs` accepted the Mac file, from a local copy, against this pin
+  (SHA-256 and version).
+- **Measured.** Over a synthetic run of two findings, with a minimal environment (`HOME`, `PATH` and `LITELLM_MODE` only), `report-pdf`
+  on the published Mac file (natively) and on the published Linux file (in a clean `ubuntu:22.04` `linux/amd64` container under
+  emulation, no network, as the Release's notes record) writes a 4-page, 6,390-byte PDF whose text equals the text the same code renders
+  from source, answers one line `{"bytes": 6390}`, writes mode 0600, and refuses (exit 1, the fixed line, nothing written) an existing
+  file, a planted symlink and a folder that is not a run. A start took 6 s for the Mac file (the macOS probe deadline is 60 s) and 6 to
+  10 s for the Linux file inside the container, which says nothing about a native Linux machine (the Linux deadline is 20 s; 2.6 s was
+  measured there for an earlier build). The Intel Mac and Linux arm64 files were not run through `report-pdf`; this pin does not use them.
+- **Who gets it.** A Mac that has the engine installed is offered the update by the dialog, and one that gave the standing agreement of
+  1.40.0 gets it by itself the next time the app opens after installing this version; a Linux package stages the pinned engine when it is
+  built, and the file is 11 MB larger than 1.2.50's (118.9 MB against 107.5 MB: that one was built locally and this one by the workflow,
+  and the difference was not investigated). Not measured: the save dialog on a Mac, the PDF of a real run, and a real run with the 1.4.1
+  sandbox image under this Desktop.
+
 ## 1.42.1 - Restore trusted popups without accepting page-controlled geometry
 
 Approved `window.open` and `target="_blank"` requests now open independent app windows
