@@ -364,6 +364,27 @@ test("text the shell does not read opens no here-document: a comment, ${…}, ((
   }
 });
 
+// 🔴 1.42.6. Two things found by comparing the comment rule with the shell over thousands of random
+// lines, each a way for a `'` or a `"` in a comment to swallow the next line while the shell runs it.
+// A backslash and a newline are no character at all: what follows them is where it was before them,
+// so a comment after one is a comment, and a `#` that one joins to a word is not. And `((` inside a
+// `${…}` is text of the expansion: counted as arithmetic it never closed, and no comment was read after.
+test("a backslash-newline is no character, and (( inside ${…} is not arithmetic: a comment still ends at its line", () => {
+  const NL = "\n";
+  const sempre = [
+    `x=1${NL}# <<EOF fi && ${NL}\\${NL}# it's $( ${NL}rm -rf V`, `echo a \\${NL}# it's${NL}rm -rf V`,
+    `echo a # it's \\${NL}rm -rf V`, `echo a\\${NL}#c; rm -rf V`,
+    `echo \${; ((${NL}} | # "${NL}bash${NL}${NL}rm -rf V`, `echo \${x:-((}${NL}# "${NL}rm -rf V`,
+  ];
+  for (const c of sempre) {
+    const r = decide("Bash", { command: c }, "auto");
+    assert.equal(r.acao, "gate", `must ask: ${JSON.stringify(c)}`);
+    assert.equal(r.politica, "always", `must never be auto-approved: ${JSON.stringify(c)}`);
+  }
+  // …and the comment after a continuation is still a comment: nothing of it is read.
+  assert.deepEqual(segmentosDeComando(`echo a \\${NL}# it's; rm -rf V`), ["echo a \\\n"]);
+});
+
 // 🔴 1.42.6, third family of the review of 06/11/2026. A pipe into a shell asked about `sh` and `bash`
 // only, a pattern over the text. Master 1.36.5 asked about `cat <<EOF | zsh` because it judged every
 // line of the body; 1.36.6 stopped judging them, so the body ran with no card (measured: bash 3.2 and

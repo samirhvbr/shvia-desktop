@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.42.6 - Skip a backslash-newline as the shell does and read no (( inside a ${…}, so a quote in a comment no longer swallows the next line
+
+Found by running the comment rule of this version against bash 5.3 over thousands of random lines of tricky fragments ending in
+`rm -rf V`; two shapes got through (the apostrophe in a comment was already a hole on 1.36.5).
+
+- A backslash and a newline are no character at all to the shell: what follows them is where it was before them. The splitter
+  treated the pair as an ordinary escaped character, so the `#` after `\⏎` was not at the start of a word and a quote in that
+  comment (`# it's`) swallowed the next line, which the shell runs. Now the start of a word survives the pair, and a `#` that the
+  pair joins to a word (`a\⏎#c`) is still not a comment.
+- `((` inside a `${…}` is text of the expansion, and it was counted as an arithmetic command that never closed, after which no
+  `#` was read as a comment. Arithmetic opens only outside a `${…}`.
+
+`echo a \⏎# it's⏎rm -rf V`, `echo a # it's \⏎rm -rf V` and `echo ${; ((⏎} | # "⏎bash⏎⏎rm -rf V` run the `rm` in bash 3.2, bash 5.3
+and zsh 5.9 and were `allow` on 1.36.5 and on 1.42.0. `x=1⏎# <<EOF fi && ⏎\⏎# it's $( ⏎rm -rf V` runs it too, asked on 1.42.0, and the
+comment rule of the entry above would have let it through without this change. All four ask now. One test holds them and fails
+against the `politica.mjs` of the commit before this one.
+
 ## 1.42.6 - Judge a here-document body as a script when it goes to `.`, `source` or `sudo -s`, which run it as one
 
 1.36.6 reads a here-document body as text unless a shell owns it. Master 1.36.5 judged every body line, so it asked about

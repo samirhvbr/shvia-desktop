@@ -336,6 +336,9 @@ function estagiosDeComando(cmd) {
       // An escaped character is never a quote, a separator or the start of a substitution.
       atual += ch + (cmd[i + 1] ?? "");
       i++;
+      // A backslash and a newline are no character at all to the shell: what follows them is where
+      // it was before them, and the start of a word stays the start of a word (`\⏎# c` is a comment).
+      if (cmd[i] === "\n") inicio = comecaPalavra;
       continue;
     }
     if (aspa === "'" || aspa === "$'") {
@@ -379,7 +382,7 @@ function estagiosDeComando(cmd) {
     if (ch === "}" && chaves > 0) { chaves--; atual += ch; continue; }
     if (ch === "(" || ch === ")") {
       // `((` opens an arithmetic command (or a `for ((` header); count its parentheses to the end.
-      if (ch === "(" && (aritmetica > 0 || cmd[i + 1] === "(")) aritmetica++;
+      if (ch === "(" && (aritmetica > 0 || (chaves === 0 && cmd[i + 1] === "("))) aritmetica++;
       else if (ch === ")" && aritmetica > 0) aritmetica--;
       // `| (bash)`: the group is still the stage the pipe feeds.
       fechar(ch === "(" && doPipe && atual.trim() === "");
