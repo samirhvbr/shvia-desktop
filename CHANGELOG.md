@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.42.6 - Read a command substitution as one word, so the command after an assignment or a flag with spaces in it is judged again
+
+The independent review of 06/11/2026 of 1.36.6 (#200, merged on 07/11 with this still in it) measured that command lines which
+master 1.36.5 sent to an `always` card ran with no card at the `auto` level from 1.36.6 on. They fall in three families; this is
+the first. 1.36.6 keeps `$(…)` whole in the segment, but `tokensDoSegmento()` cut it at its first space: in `X=$(echo a b) rm -rf V`
+the assignment ended at `X=$(echo`, `a` was the command and `rm` its argument, so nothing judged `rm`, and a flag such as
+`-r$(echo f)` was cut the same way, so `rm` read no flag. The shell reads one word in both. bash 3.2, bash 5.3 and zsh 5.9 all run
+`rm -rf V` for these lines (measured in a sandbox with `rm` stubbed).
+
+- A substitution (`$(…)`, backticks, and the spaces of a `${…}`) is part of the word it sits in, inside double quotes too.
+- A flag word the line completes when it runs (`-r$(echo f)`, `-$X`, `--rec$(echo ursive)`) counts as carrying any flag, so `rm`,
+  `chmod -R 777` and `git clean -f` ask.
+- The shell also takes `X+=1` and `X[0]=1` before a command; both were read as the command's name.
+
+Measured with `decidir()` at `auto`: `X=$(echo a b) rm -rf V`, the same with backticks, `A=1 B=$(echo a b) C=$(date) rm -rf V`,
+`X=$((1 + 2)) rm -rf V` and `rm -r$(echo f) V` were `gate/always` on 1.36.5 and `allow` on 1.42.0; they are `gate/always` again.
+`rm -$(echo r)f V`, `X=${y:-a b} rm -rf V` and `X+=1 rm -rf V` were `allow` on both and are `always` now. One test holds both sides
+(these lines ask; ordinary substitutions such as `FOO=$(git rev-parse HEAD) npm test` stay automatic) and fails against 1.42.0's
+`politica.mjs`. The other two families, and the corpus that compares the policy with 1.36.5, follow in this version.
+
 ## 1.42.4 - A Pentest attempt the engine refused as authorization, and the server did not, is recorded as authorization_check
 
 1.42.3 asks the server about the grant after an attempt the engine's inspection refused as `authorization`, and ends the wait

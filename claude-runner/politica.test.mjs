@@ -14,6 +14,7 @@ import {
   dentroDoProjeto,
   previa,
   decidirNoPlano,
+  tokensDoSegmento,
   MOTIVO_PLANO,
 } from "./politica.mjs";
 
@@ -285,6 +286,37 @@ test("reading more of the shell keeps the ordinary command automatic", () => {
   ];
   for (const c of comuns) {
     assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${JSON.stringify(c)}`);
+  }
+});
+
+// 🔴 1.42.6, review of 06/11/2026 of the 1.36.6 reading. It kept `$(…)` whole in the segment and the
+// tokenizer cut it at its first space, so in `X=$(echo a b) rm -rf V` the assignment ended at
+// `X=$(echo`, `a` was the command and `rm` its argument: nothing judged `rm`. Master 1.36.5 asked
+// about every line below; the shell reads one word where this read three.
+test("a substitution is one word, so the command after an assignment or a flag with spaces in it is judged", () => {
+  assert.deepEqual(tokensDoSegmento("X=$(echo a b) rm -rf V"), ["X=$(echo a b)", "rm", "-rf", "V"]);
+  assert.deepEqual(tokensDoSegmento("X=`echo a b` rm"), ["X=`echo a b`", "rm"]);
+  assert.deepEqual(tokensDoSegmento('X="$(echo "a b")" rm'), ['X=$(echo "a b")', "rm"], "a quote inside it is its own");
+  assert.deepEqual(tokensDoSegmento("X=${y:-a b} rm"), ["X=${y:-a b}", "rm"]);
+  assert.deepEqual(tokensDoSegmento("echo $(echo a b) c"), ["echo", "$(echo a b)", "c"]);
+  const sempre = [
+    "X=$(echo a b) rm -rf V", "X=`echo a b` rm -rf V", "A=1 B=$(echo a b) C=$(date) rm -rf V",
+    "X=$((1 + 2)) rm -rf V", "X=${y:-a b} rm -rf V", 'X="$(echo "a b")" rm -rf V',
+    "X+=1 rm -rf V", "X[0]=1 rm -rf V",
+    // A flag the line completes when it runs may be any flag.
+    "rm -r$(echo f) V", "rm -$(echo r)f V", "rm -$X V", 'rm -r"$(echo f)" V', "rm --rec$(echo ursive) V",
+    "git clean -$(echo f)d", "chmod -R$(echo ' ') 777 .",
+  ];
+  for (const c of sempre) {
+    const r = decide("Bash", { command: c }, "auto");
+    assert.equal(r.acao, "gate", `must ask: ${JSON.stringify(c)}`);
+    assert.equal(r.politica, "always", `must never be auto-approved: ${JSON.stringify(c)}`);
+  }
+  // The other side: a substitution with spaces in an ordinary command changes nothing.
+  for (const c of ["echo $(date +%s) done", "FOO=$(git rev-parse HEAD) npm test", "X=${y:-a b} npm test",
+                   'rm -f "$(mktemp)"', "git clean -n -- $(pwd)", 'git commit -m "$(git log -1 --format=%s)"',
+                   "ls -la $(dirname $(which node))", "export PATH=$(npm bin):$PATH && npm test"]) {
+    assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${c}`);
   }
 });
 

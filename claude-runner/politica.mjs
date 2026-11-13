@@ -416,6 +416,7 @@ export function tokensDoSegmento(seg) {
   let atual = "";
   let aspa = null; // "'", '"', or "$'"
   let tem = false;
+  let chaves = 0; // `${` still open: its spaces belong to the word, as the shell reads it
   for (let i = 0; i < seg.length; i++) {
     const ch = seg[i];
     if (aspa === "'") {
@@ -438,6 +439,19 @@ export function tokensDoSegmento(seg) {
       tem = true;
       continue;
     }
+    // 🔴 A substitution is part of the WORD it sits in, spaces and quotes included (1.42.6). The
+    // splitter keeps `$(…)` whole in the segment, and this tokenizer used to cut it at its first
+    // space: in `X=$(echo a b) rm -rf V` the assignment ended at `X=$(echo`, `a` became the
+    // command and `rm` its argument, so nothing judged `rm`. The shell reads one word there.
+    if (ch === "`" || (ch === "$" && seg[i + 1] === "(")) {
+      const sub = substituicaoEm(seg, i);
+      atual += seg.slice(i, sub.fim);
+      tem = true;
+      i = sub.fim - 1;
+      continue;
+    }
+    if (ch === "$" && seg[i + 1] === "{") { chaves++; atual += "${"; tem = true; i++; continue; }
+    if (ch === "}" && chaves > 0) { chaves--; atual += ch; continue; }
     if (aspa === '"') {
       if (ch === '"') aspa = null; else atual += ch;
       continue;
@@ -445,6 +459,7 @@ export function tokensDoSegmento(seg) {
     if (ch === "$" && seg[i + 1] === "'") { aspa = "$'"; tem = true; i++; continue; }
     if (ch === "'" || ch === '"') { aspa = ch; tem = true; continue; }
     if (/\s/.test(ch)) {
+      if (chaves > 0) { atual += ch; continue; }
       if (tem || atual !== "") { out.push(atual); atual = ""; tem = false; }
       continue;
     }
@@ -482,10 +497,13 @@ const EXECUTORES = new Set([
   "systemd-run", "fakeroot", "firejail", "parallel", "script",
 ]);
 
-/** `KEY=value` before a command (or among a runner's arguments, as `env` takes them). */
+/**
+ * `KEY=value` before a command (or among a runner's arguments, as `env` takes them). The shell
+ * also takes `KEY+=value` and `KEY[i]=value` there; until 1.42.6 those were read as the command.
+ */
 function atribuicao(tok) {
   const eq = tok.indexOf("=");
-  return eq > 0 && /^[A-Za-z_][A-Za-z0-9_]*$/.test(tok.slice(0, eq));
+  return eq > 0 && /^[A-Za-z_][A-Za-z0-9_]*(\[[^\]]*\])?\+?$/.test(tok.slice(0, eq));
 }
 
 /**
@@ -565,10 +583,17 @@ function aspasSimplesNaoCobrem(seg) {
   return false;
 }
 
-/** Does any grouped short flag (`-rvf`) or long flag (`--recursive`) carry this one? */
+/**
+ * Does any grouped short flag (`-rvf`) or long flag (`--recursive`) carry this one?
+ *
+ * A flag word that an expansion completes (`-r$(echo f)`, `-$X`) is decided when the line runs,
+ * so it may carry any flag: it counts as carrying this one (1.42.6). The tokenizer used to cut
+ * `-r$(echo f)` into pieces and `rm` read no flag at all.
+ */
 function temFlag(args, curta, longas) {
   return args.some((a0) => {
     const a = a0.toLowerCase();
+    if (a.startsWith("-") && /[$`]/.test(a)) return true;
     if (a.startsWith("--")) return longas.includes(a.slice(2).split("=")[0]);
     if (a.startsWith("-")) {
       const curtas = a.slice(1);
