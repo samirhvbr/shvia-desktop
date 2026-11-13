@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.42.1 - Restore trusted popups without accepting page-controlled geometry
+
+Approved `window.open` and `target="_blank"` requests now open independent app windows
+through the canonical constructor, then cancel the native popup request. Returning a
+native child without its opener configuration crashed WebKit; on WebKitGTK, sharing that
+configuration also routed child bridge calls to the parent. Independent windows keep native handlers,
+document ownership and close lifecycle isolated, with no `WindowProxy`/`window.opener`
+relationship or copied `sessionStorage`. Callers must not depend on the return value of
+`window.open`.
+
+The full-origin boundary, native bridge checks, app geometry and close lifecycle remain
+in force. Page-supplied size and position are ignored; the 1280×800 default and 800×600
+minimum remain in force, with persisted user geometry still applied.
+
+The opener plugin no longer injects its JavaScript click hook. That hook cancelled
+`target="_blank"` links before attempting opener IPC which remote pages are deliberately
+not permitted to invoke, leaving the links silent. Both links and `window.open` now reach
+the Rust popup handler: approved origins open inside the app, external origins go to the
+OS browser. Remote capabilities are unchanged.
+
 ## 1.42.0 - Let the page ask the Desktop to save the PDF report of the finished local Pentest run, without the viewer or the site
 
 `savePentestReport()` is a new bridge method. For the finished local run this window owns, it has the engine write the PDF
