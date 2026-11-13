@@ -101,6 +101,19 @@ by the native picker (`code_bridge/cerca.rs`). Native confirmations and tray swi
 specific device, browser, login and assessment actions. Changing the configured server changes
 which origin receives those capabilities; the remote UI is therefore part of the trust boundary.
 
+Popups use the same Rust window constructor and full-origin checks as the main window.
+Since 1.42.1, an approved popup opens an independent app window and the native popup
+request is cancelled. WebKit requires opener context when returning a native child, but
+on WebKitGTK that context also shares message handlers and misroutes child bridge requests. Independent
+windows keep handlers and document ownership separate. The page receives no `WindowProxy`
+or `window.opener` relationship, and `sessionStorage` is not copied from the opener. The
+page must not depend on `window.open`'s return value.
+The app's 1280×800 default and 800×600 minimum apply, including persisted user geometry;
+page-requested size and position are ignored. External popup destinations go to the OS
+browser and receive no native bridge. The opener plugin's JavaScript click hook is disabled:
+its default `target="_blank"` interception cancels the link before remote IPC is refused.
+Rust navigation and popup handlers own that decision, without a remote opener grant.
+
 ---
 
 ## Endereço do servidor (item D4)

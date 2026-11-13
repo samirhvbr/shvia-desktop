@@ -948,10 +948,18 @@ pub(crate) fn build_shvia_window(
                 // (`window.open(..., "width=300")`), e uma janela de 300px sem barra é o
                 // outro formato clássico de phishing. O tamanho da janela do app é decisão
                 // do app.
-                match build_shvia_window(&win_handle, &label, WebviewUrl::External(url.clone())) {
-                    Ok(window) => NewWindowResponse::Create { window },
-                    Err(_) => NewWindowResponse::Deny,
+                // Open an independent app window and cancel native popup creation.
+                // Returning Create requires WebKit's opener configuration. On WebKitGTK
+                // that also shares message handlers and routes child IPC to the parent.
+                // Our bridge and document ownership must stay isolated per window.
+                if let Err(error) =
+                    build_shvia_window(&win_handle, &label, WebviewUrl::External(url.clone()))
+                {
+                    eprintln!("ShvIA: failed to open popup: {error}");
                 }
+                // The page receives no WindowProxy/opener relationship. Navigation
+                // still opens, using app geometry instead of page-controlled features.
+                NewWindowResponse::Deny
             } else {
                 let _ = win_handle.opener().open_url(url.to_string(), None::<&str>);
                 NewWindowResponse::Deny
@@ -1483,7 +1491,14 @@ pub fn run() {
         }
     }));
     let builder = builder
-        .plugin(tauri_plugin_opener::init())
+        // Remote pages have no opener IPC capability. Its default click script
+        // cancels target=_blank before that IPC is refused; our Rust navigation
+        // and popup handlers already enforce the full-origin boundary.
+        .plugin(
+            tauri_plugin_opener::Builder::new()
+                .open_js_links_on_click(false)
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         // Notificações nativas dos alertas de preço (ADR-011). Só a API Rust é
         // usada (code_bridge::notify); nenhuma capability exposta à página remota.
