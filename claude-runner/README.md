@@ -98,7 +98,10 @@ does is decided by `decidir()` in [`politica.mjs`](politica.mjs):
   command `comandoDeRede()` recognizes as network), a command `comandoDestrutivo()` recognizes as
   destructive and a command in which `caminhoProtegidoNoComando()` finds a protected path always
   ask, with an `always` card the page never approves by itself. These are pattern checks over the
-  command text; the functions and their tests are the exact contract.
+  command text; the functions and their tests are the exact contract. A line the policy cannot
+  read to the end (substitutions nested more than 16 deep, scripts in scripts more than 4 deep)
+  asks as `always` too, and so does an error of the policy itself (`decidirSeguro()`, 1.42.6); if
+  the hook fails even so, it denies the call instead of throwing.
 - **Every level, the file-writing tools (1.36.6):** a write by `Write`, `Edit`, `MultiEdit` or
   `NotebookEdit` goes through the same fence as a read before any level releases it. A protected
   path, an agent instruction file (`ANNA.md`, `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, as in

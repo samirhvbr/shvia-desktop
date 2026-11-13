@@ -14,6 +14,7 @@ import {
   dentroDoProjeto,
   previa,
   decidirNoPlano,
+  decidirSeguro,
   segmentosDeComando,
   tokensDoSegmento,
   MOTIVO_PLANO,
@@ -383,6 +384,54 @@ test("a backslash-newline is no character, and (( inside ${…} is not arithmeti
   }
   // …and the comment after a continuation is still a comment: nothing of it is read.
   assert.deepEqual(segmentosDeComando(`echo a \\${NL}# it's; rm -rf V`), ["echo a \\\n"]);
+});
+
+// 🔴 1.42.6, review of 06/11/2026. About 10,000 nested `$(` made `decidir` throw a RangeError (measured on
+// 1.42.0: "Maximum call stack size exceeded"), and `preToolUse` had no try/catch. And a script past the fourth
+// `bash -c` in a row was "judged as it stands", which is to say not read, on 1.36.5 and 1.42.0 alike.
+test("a line this policy cannot read to the end asks as `always`, at once, and never throws", () => {
+  const fundo = (n, dentro) => "$(".repeat(n) + dentro + ")".repeat(n);
+  const inicio = Date.now();
+  for (const c of [`echo ${fundo(11000, "echo hi")}`, `rm -rf V\necho ${fundo(11000, "echo hi")}`]) {
+    const r = decide("Bash", { command: c }, "auto");
+    assert.equal(r.acao, "gate", `must ask: ${c.length} chars`);
+    assert.equal(r.politica, "always");
+    assert.match(r.motivo, /não consegue ler/);
+  }
+  assert.ok(Date.now() - inicio < 2000, "reading a line nested this deep must not cost seconds");
+  // An ordinary depth is read and stays automatic; the limit is above what a command needs.
+  const eco = (n) => "$(echo ".repeat(n) + "date" + ")".repeat(n);
+  assert.equal(decide("Bash", { command: `echo ${eco(3)}` }, "auto").acao, "allow");
+  assert.equal(decide("Bash", { command: `echo ${eco(16)}` }, "auto").acao, "allow");
+  assert.equal(decide("Bash", { command: `echo ${eco(17)}` }, "auto").politica, "always");
+  // Scripts in scripts: `bash -c "bash -c '…'"`. Four are read, the fifth asks.
+  const scripts = (n, dentro) => { let c = dentro; for (let i = 0; i < n; i++) c = "bash -c " + JSON.stringify(c); return c; };
+  for (const n of [1, 2, 3, 4]) {
+    assert.equal(decide("Bash", { command: scripts(n, "echo hi") }, "auto").acao, "allow", `${n} deep, read and harmless`);
+  }
+  for (const n of [5, 6, 8]) {
+    const r = decide("Bash", { command: scripts(n, "echo hi") }, "auto");
+    assert.equal(r.politica, "always", `${n} deep, not read to the end`);
+  }
+  for (const n of [1, 3, 4, 5, 6, 8]) {
+    assert.equal(decide("Bash", { command: scripts(n, "rm -rf V") }, "auto").politica, "always", `${n} deep, rm -rf`);
+  }
+});
+
+test("decidirSeguro never throws: an error of the policy is an `always` card", () => {
+  const quebrada = { has() { throw new Error("boom"); } };
+  const args = { projectDir: RAIZ, toolName: "Bash", toolInput: { command: "ls" }, nivel: "auto", leitura: quebrada, edicao: EDICAO };
+  assert.throws(() => decidir(args), /boom/, "decidir itself still throws, so a test sees a bug");
+  const r = decidirSeguro(args);
+  assert.equal(r.acao, "gate");
+  assert.equal(r.politica, "always");
+  assert.match(r.motivo, /boom/);
+  // Without an error it is `decidir`, verdict for verdict.
+  for (const [t, i, n] of [["Read", { file_path: "src/a.rs" }, "auto"], ["Bash", { command: "rm -rf V" }, "auto"],
+                           ["Write", { file_path: "CLAUDE.md", content: "x" }, "edit"], ["Bash", { command: "npm test" }, "manual"]]) {
+    const a = { projectDir: RAIZ, toolName: t, toolInput: i, nivel: n, leitura: LEITURA, edicao: EDICAO };
+    assert.deepEqual(decidirSeguro(a), decidir(a));
+  }
 });
 
 // 🔴 1.42.6, third family of the review of 06/11/2026. A pipe into a shell asked about `sh` and `bash`

@@ -127,12 +127,39 @@ export function comandoDestrutivo(cmd) {
 }
 
 /**
+ * A command line this policy cannot read to the end. It is not guessed at: `decidir` turns it into
+ * an `always` card (1.42.6).
+ */
+export class LinhaIlegivel extends Error {
+  constructor(motivo) {
+    super(motivo);
+    this.name = "LinhaIlegivel";
+    this.motivo = motivo;
+  }
+}
+
+/**
+ * How deep substitutions may nest in one line (`$(a $(b $(c)))`). Real commands go three or four
+ * deep. The splitter reads each level by recursion and every level scans the rest of the line
+ * again: about 10,000 `$(` ran out of stack with a RangeError, and a 25 KB line took 5 s on the way
+ * (review of 06/11/2026). Past the limit the line asks.
+ */
+const ANINHAMENTO_MAXIMO = 16;
+
+/**
+ * How deep scripts may nest in scripts (`bash -c "bash -c '…'"`). Until 1.42.6 a script found past
+ * this was "judged as it stands", which is to say not read: five `bash -c` in a row hid anything.
+ */
+const SCRIPTS_MAXIMOS = 4;
+
+/**
  * The segments a line really runs, including what hides inside a quoted script: `bash -c
  * "rm -rf /"`, `sh -c "$(curl …)"`, `eval "…"`, `su -c "…"`, `watch 'rm -rf ~'`. The quote-aware
  * splitter keeps a quoted script as ONE argument, so without this step the command inside it was
  * never judged (1.6.15). Every command a segment may start is looked at, not only its first word
  * (`comandosDoSegmento`), so `sudo -i bash -c "…"` and `xargs sh -c '…'` reach the script too.
- * Depth-limited: a script that nests scripts past 4 levels is judged as it stands.
+ * A script that nests scripts past `SCRIPTS_MAXIMOS` levels throws `LinhaIlegivel`: until 1.42.6 it
+ * was judged as it stands, and what it ran was never read.
  */
 export function segmentosEfetivos(cmd, profundidade = 0) {
   return estagiosEfetivos(cmd, profundidade).map((s) => s.texto);
@@ -143,9 +170,11 @@ function estagiosEfetivos(cmd, profundidade = 0) {
   const out = [];
   for (const seg of estagiosDeComando(cmd)) {
     out.push(seg);
-    if (profundidade >= 4) continue;
     for (const ca of comandosDoSegmento(seg.texto)) {
-      for (const script of scriptsDoComando(ca)) out.push(...estagiosEfetivos(script, profundidade + 1));
+      for (const script of scriptsDoComando(ca)) {
+        if (profundidade >= SCRIPTS_MAXIMOS) throw new LinhaIlegivel("scripts dentro de scripts demais para ler");
+        out.push(...estagiosEfetivos(script, profundidade + 1));
+      }
     }
   }
   return out;
@@ -290,7 +319,8 @@ export function segmentosDeComando(cmd) {
  * `segmentosDeComando` with one more fact per segment: whether it is a stage of a pipeline, that is,
  * it came after a `|` or `|&` (not `||`) and so reads the previous stage's output as its stdin.
  */
-function estagiosDeComando(cmd) {
+function estagiosDeComando(cmd, prof = 0) {
+  if (prof > ANINHAMENTO_MAXIMO) throw new LinhaIlegivel("substituições aninhadas demais para ler");
   const segs = [];
   const apos = []; // apos[k]: segs[k] is a stage of a pipeline
   const internos = [];
@@ -394,7 +424,7 @@ function estagiosDeComando(cmd) {
   fechar();
   const out = [];
   segs.forEach((texto, k) => { if (texto.trim() !== "") out.push({ texto, aposPipe: apos[k] }); });
-  for (const script of internos) out.push(...estagiosDeComando(script));
+  for (const script of internos) out.push(...estagiosDeComando(script, prof + 1));
   return out;
 }
 
@@ -856,21 +886,9 @@ export function decidir({ projectDir, toolName, toolInput = {}, nivel = "manual"
   if (toolName === "WebFetch" || toolName === "WebSearch") {
     return { acao: "gate", motivo: "saída para a rede", politica: "always" };
   }
-  if (toolName === "Bash" && comandoDestrutivo(toolInput.command)) {
-    return { acao: "gate", motivo: "comando destrutivo", politica: "always" };
-  }
-  if (toolName === "Bash" && comandoDeRede(toolInput.command)) {
-    return { acao: "gate", motivo: "saída para a rede pelo shell", politica: "always" };
-  }
   if (toolName === "Bash") {
-    const protegido = caminhoProtegidoNoComando(toolInput.command);
-    if (protegido) {
-      return { acao: "gate", motivo: `comando cita caminho protegido (${protegido})`, politica: "always" };
-    }
-    const ilegivel = sintaxeIlegivel(toolInput.command);
-    if (ilegivel) {
-      return { acao: "gate", motivo: `comando que a política não consegue ler: ${ilegivel}`, politica: "always" };
-    }
+    const doShell = vereditoDoShell(toolInput.command);
+    if (doShell) return doShell;
   }
   if (edicao.has(toolName)) {
     // 🔴 Until 1.36.6 the `edit` and `auto` levels released every write here, with no fence:
@@ -899,6 +917,54 @@ export function decidir({ projectDir, toolName, toolInput = {}, nivel = "manual"
     return { acao: "allow", motivo: 'liberado pelo nível "auto"' };
   }
   return { acao: "gate", motivo: "", politica: "confirm" };
+}
+
+/**
+ * What the checks on a shell line say, or null when none of them stops it: destructive, network,
+ * a protected path, a syntax this policy cannot read. A line it cannot read to the end
+ * (`LinhaIlegivel`) asks as `always`; the checks never throw for one (1.42.6).
+ */
+function vereditoDoShell(comando) {
+  try {
+    if (comandoDestrutivo(comando)) {
+      return { acao: "gate", motivo: "comando destrutivo", politica: "always" };
+    }
+    if (comandoDeRede(comando)) {
+      return { acao: "gate", motivo: "saída para a rede pelo shell", politica: "always" };
+    }
+    const protegido = caminhoProtegidoNoComando(comando);
+    if (protegido) {
+      return { acao: "gate", motivo: `comando cita caminho protegido (${protegido})`, politica: "always" };
+    }
+    const ilegivel = sintaxeIlegivel(comando);
+    if (ilegivel) {
+      return { acao: "gate", motivo: `comando que a política não consegue ler: ${ilegivel}`, politica: "always" };
+    }
+    return null;
+  } catch (e) {
+    if (e instanceof LinhaIlegivel) {
+      return { acao: "gate", motivo: `comando que a política não consegue ler: ${e.motivo}`, politica: "always" };
+    }
+    throw e;
+  }
+}
+
+/**
+ * `decidir` for the runner: it never throws. A policy that cannot judge a call has not allowed it,
+ * so an error of any kind becomes an `always` card (1.42.6). Until then the hook had no try/catch,
+ * and how the SDK reads a hook that throws is not something this repository measured: "allow" is
+ * one of the readings, and a line nested deep enough made `decidir` throw.
+ */
+export function decidirSeguro(args) {
+  try {
+    return decidir(args);
+  } catch (e) {
+    return {
+      acao: "gate",
+      motivo: `a política falhou ao julgar ${args?.toolName ?? "a chamada"} (${e?.message ?? e}); pede cartão`,
+      politica: "always",
+    };
+  }
 }
 
 /**

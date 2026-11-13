@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.42.6 - Fail closed: a line nested too deep to read asks as always, a policy error becomes a card, and the hook denies instead of throwing
+
+The review of 06/11/2026 measured that `decidir()` threw a RangeError on about 10,000 nested `$(` and that `preToolUse` had no
+try/catch. What the SDK does with a hook that throws was never measured here; `allow` is one reading of it, and under that
+reading a throw is a way past every check.
+
+- Substitutions may nest 16 deep and scripts in scripts (`bash -c "bash -c '…'"`) 4 deep. Past the limit the splitter throws
+  `LinhaIlegivel`, and `decidir()` turns it into an `always` card ("the policy cannot read this command"). Measured on 1.42.0:
+  11,000 nested `$(` throw "Maximum call stack size exceeded"; the same line asks at once now, in about 2 ms. Five or more `bash -c`
+  in a row were `allow` on 1.36.5 and on 1.42.0 (a script past the fourth level was "judged as it stands", which is not read),
+  bash 5.3 and zsh 5.9 run the `rm -rf V` inside, and they ask now.
+- `decidirSeguro()` is `decidir()` that never throws: an error of any kind is an `always` card. The runner calls it, and
+  `preToolUse` wraps its body in a try/catch that denies the call and says so on stderr, so a card that cannot be built or any
+  other failure does not leave the hook to throw.
+- `plano.test.mjs` is a ruler over the runner's source. It reads the hook's body from `julgarChamada` now, and has one more ruler for
+  the wrapper (the try/catch that denies, and no direct call to `decidir`).
+
+Two tests in `politica.test.mjs` fail against 1.42.0's `politica.mjs`: the line nested 11,000 deep (the RangeError) and
+`decidirSeguro`. The wrapper is held by the source ruler, not by a run.
+
 ## 1.42.6 - Hold the policy against 1.36.5 with a corpus of command lines the shell runs, the open ones named in the README
 
 Why five command lines that master 1.36.5 asked about got through 1.36.6 with every test green: its tests proved the spellings the
