@@ -1898,17 +1898,27 @@ Nada disso **bloqueia**: o que sai do automático vira **cartão**, e quem decid
 > page's check. ⚠️ The page side (SHVIA-WEB) still auto-approves any `confirm` card it misjudges
 > as inside — for the `anna` engine too — and is not changed here.
 
-> **06/11/2026 — writes had no fence until 1.36.6.** At the `edit` and `auto` levels `decidir`
-> released every `Write`/`Edit` before looking at its path, so the "fence before the shortcut" held
-> for reads only. Measured end to end with the real runner and SDK 0.3.314 on master 1.36.5:
-> `.env` and `CLAUDE.md` in the project were written with no card. Outside the project, and in
-> `.git/hooks` and `.claude/settings.json`, the SDK refused the write itself — a boundary this
-> policy does not own, the reason it was extracted in the first place. From 1.36.6 a write passes
-> the read's fence first and asks as `always` for a protected path, an instruction file, Claude
-> Code's settings or any path outside the project. In the same release the `auto` level reads
-> shell commands the way the shell runs them (substitutions inside double quotes, backslashes,
-> runners such as `env -i`, `xargs -r` and `timeout`, the shell's keywords), which the 02/11/2026
-> review found it did not. See `claude-runner/README.md` for what each level does now.
+> **06/11/2026 — writes had no fence until 1.36.6, and the fence is the file-writing tools'.** At the
+> `edit` and `auto` levels `decidir` released every `Write`/`Edit` before looking at its path, so the
+> "fence before the shortcut" held for reads only. Measured end to end with the real runner and SDK
+> (0.3.314 by the review, 0.3.319 again for the correction below) on master 1.36.5, every card
+> rejected: `.env` and `CLAUDE.md` in the project were written with no card, and so was a file
+> outside the project (`Write <a folder outside>/x.txt`). The SDK refused `~/.bashrc`,
+> `.git/hooks/pre-commit` and `.claude/settings.json` on its own, which this policy does not own,
+> the reason it was extracted in the first place; **it did not refuse a write outside the project**,
+> and the first version of this note said it did. From 1.36.6 a write by `Write`, `Edit`,
+> `MultiEdit` or `NotebookEdit` passes the read's fence first and asks as `always` for a protected
+> path, an instruction file, Claude Code's settings or any path outside the project.
+> **A `Bash` command is not fenced that way**: at `auto`, `echo PWNED > CLAUDE.md` and
+> `echo x >> ~/.bashrc` run with no card, on 1.36.5, 1.36.6 and after. The title and the CHANGELOG
+> entry of 1.36.6 ("no level writes … unasked") said more than the code does; 1.42.6 corrects them.
+> In the same release the `auto` level reads shell commands the way the shell runs them
+> (substitutions inside double quotes, backslashes, runners such as `env -i`, `xargs -r` and
+> `timeout`, the shell's keywords), which the 02/11/2026 review found it did not. That reading
+> asked about fewer lines than 1.36.5 had (a substitution with a space in a word, a `<<` after a `#`
+> or inside `${…}`, a pipe into `zsh`), which the independent review of 06/11/2026 measured and
+> 1.42.6 closed, with a test that holds the policy against the 1.36.5 one. See
+> `claude-runner/README.md`, "What `auto` does not cover", for what is still open.
 
 ### Consequência de desenho: a política virou módulo
 

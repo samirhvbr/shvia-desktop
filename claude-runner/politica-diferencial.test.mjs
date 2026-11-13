@@ -23,8 +23,8 @@ import * as ANTES from "./fixtures/politica-1.36.5.mjs";
  * HOME and `rm`, `git`, `curl`, `dd` and `chmod` replaced by stubs that log their arguments, and the stub
  * was called. The exceptions are the lines with `sudo -s`, `sudo -i`, `doas -s` and `sudo --shell`, which
  * cannot run in a sandbox and follow the manual; `env -i`, which clears the PATH the stubs sit on, so the
- * real commands run; and `cat .env > /dev/null`, which reads the file and prints nothing to see. A line that
- * the shell does not run is not a case: `echo "rm -rf V"` asks nothing, rightly.
+ * real commands run; and `cat .env` with its output sent to /dev/null, which reads the file and prints
+ * nothing to see. A line that the shell does not run is not a case: `echo "rm -rf V"` asks nothing, rightly.
  *
  * 1. `BARRADAS` and `ANTES_LIBERADAS`: the lines of the review and their variants. What 1.36.5 said is
  *    held as data and checked against the frozen copy, so a wrong label fails here too.

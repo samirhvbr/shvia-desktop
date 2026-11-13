@@ -80,21 +80,28 @@ sentence once gave have moved):
 
 | | claude-runner Auto | this engine |
 |---|---|---|
-| write inside the project | no card | 🔬 no card — **the same** |
-| write outside the writable set | n/a | 🔬 **card**, and the rejection holds |
+| write inside the project, an ordinary file | no card | 🔬 no card — **the same** |
+| write of `.env`, an instruction file (`CLAUDE.md`, `AGENTS.md`) or Claude Code's settings inside the project | `always` card through the file tools since 1.36.6; none through `Bash` | no card, as for any write inside the project (not measured by file name) |
+| write outside the project, or the writable set | `always` card through the file tools since 1.36.6; none through `Bash` | 🔬 **card**, and the rejection holds |
 | destructive `Bash` (`rm -rf`) | always a card | 🔬 **card** — Codex gates it itself |
 | network egress | always a card | 🔬 **no card — blocked**: it runs sandboxed and fails on DNS |
 | read of `.env` inside the project | always a card | 🔬 **no card** |
 
-Two rows deserve reading twice. "Codex writes without asking" is true and is **also true
-of the Claude engine on Auto** — that is not a Codex weakness. And network is not gated
-here, it is *blocked*: nothing leaves, but nobody is asked either.
+Three rows deserve reading twice. "Codex writes without asking" is true of an ordinary file
+in the project and is **also true of the Claude engine on Auto**; it is not true of `.env`, an
+instruction file or Claude Code's settings, which the Claude engine asks about (through its
+file tools, since 1.36.6) and this engine does not, because inside the project it takes a write
+for a write whatever the file is called. A write through a shell command (`echo x > CLAUDE.md`)
+is fenced by neither: the Claude engine's Auto runs it with no card too (see "What `auto` does
+not cover" in `claude-runner/README.md`). And network is not gated here, it is *blocked*: nothing
+leaves, but nobody is asked either.
 
-🔴 **The one real gap is the last row.** `claude-runner` gates a `.env` read at every
+🔴 **The real gap is the last row.** `claude-runner` gates a `.env` read at every
 level via `caminhoProibido()`; Codex reads it and hands back the secret. This runner
 **cannot** close that: it learns of a command from `item/started`, which arrives once the
 command has begun, and there is no execpolicy surface to force a prompt (measured — see
-the doc). Anyone shipping this engine is accepting that gap knowingly.
+the doc). The second row is a narrower gap of the same kind, and has not been measured by file
+name. Anyone shipping this engine is accepting both knowingly.
 
 ## External sandbox mode (1.28.0)
 

@@ -263,9 +263,10 @@ async function preToolUse(input /* PreToolUseHookInput */) {
   try {
     return await julgarChamada(input);
   } catch (e) {
-    // Fail closed (1.42.6). The hook used to have no try/catch, and what the SDK does with a hook that
-    // throws is not something this repository measured; `decidirSeguro` already turns a policy error
-    // into a card, so this is for the rest (a card that cannot be built, a plan check that throws).
+    // Fail closed (1.42.6). The hook used to have no try/catch. A hook that throws makes the SDK drop
+    // its verdict and use its own permission check (measured, SDK 0.3.319), so the policy's decision
+    // is lost. `decidirSeguro` already turns a policy error into a card; this is for the rest (a card
+    // that cannot be built, a plan check that throws), and it denies.
     const nome = input?.tool_name ?? "";
     process.stderr.write(`[política] ${nome}: falhou (${e?.message ?? e}); negado\n`);
     return denyDecision("A política de aprovação falhou ao julgar esta chamada e nada foi executado. Tente de novo, com um passo mais simples.");

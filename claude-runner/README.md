@@ -122,15 +122,15 @@ does is decided by `decidir()` in [`politica.mjs`](politica.mjs):
   `${…}` or a `((…))` opens no here-document. A here-document body is text unless the command it
   goes to runs it (a shell, `.`, `source`, `sudo -s`). A pipe into any shell asks, named or
   wrapped as it may be (`| zsh`, `| env bash`, `| "bash"`). A flag that the line completes when it
-  runs (`-r$(echo f)`) counts as any flag. A redirection in front of the command (`2>/dev/null rm
-  -rf V`, `2>&1 bash <<EOF`) is skipped as `KEY=value` is. A line whose command name is decided when it runs (a
-  variable, a substitution, a glob) asks as `always` (`sintaxeIlegivel()`). The name is the part
-  after the last `/`, so `$HOME/bin/tool` and `$(pwd)/node_modules/.bin/vitest` are `tool` and
-  `vitest`; but a directory that an unquoted expansion may split into words still asks
-  (`X='rm -rf V #'; $X/tool` runs `rm`), and only a quoted one, `$(pwd)` and a plain `$NAME` that
-  nothing in the line binds are read. `$'…'` is decoded as bash does (`$'\x72m'` is `rm`); an escape
-  that cannot be decoded asks.
-  The checks are held against what they replaced: `politica-diferencial.test.mjs` runs about 800
+  runs (`-r$(echo f)`) counts as any flag. A redirection in front of the command
+  (`2>/dev/null rm -rf V`, `2>&1 bash <<EOF`) is skipped as `KEY=value` is. A line whose command
+  name is decided when it runs (a variable, a substitution, a glob) asks as `always`
+  (`sintaxeIlegivel()`). The name is the part after the last `/`, so `$HOME/bin/tool` and
+  `$(pwd)/node_modules/.bin/vitest` are `tool` and `vitest`; but a directory that an unquoted
+  expansion may split into words still asks (`X='rm -rf V #'; $X/tool` runs `rm`), and only a
+  quoted one, `$(pwd)` and a plain `$NAME` that nothing in the line binds are read. `$'…'` is
+  decoded as bash does (`$'\x72m'` is `rm`); an escape that cannot be decoded asks.
+  The checks are held against what they replaced: `politica-diferencial.test.mjs` runs about 900
   command lines through this policy and through the frozen 1.36.5 one, and a line that 1.36.5
   asked about must still ask unless the test names a reason.
 
@@ -138,9 +138,10 @@ does is decided by `decidir()` in [`politica.mjs`](politica.mjs):
 
 The level trusts the agent with the shell. These checks read the words of a command line: they
 catch spellings, not intent, and they are a tripwire, not a sandbox. Each line below runs with no
-card at `auto`. Every one was run by a real shell in a sandbox with `rm` and the like stubbed, and
-the stub was called; `politica-diferencial.test.mjs` asserts each is still open and fails the day
-one closes, so that this list is edited in the same commit.
+card at `auto`. Every one was run by a real shell (bash 5.3 or zsh 5.9) in a sandbox with `rm` and
+the like stubbed, and its effect was seen: the stub called, the file written or read.
+`politica-diferencial.test.mjs` asserts each is still open and fails the day one closes, so that
+this list is edited in the same commit.
 
 - **`Bash` writes anything.** The fence above belongs to the four file-writing tools.
   `echo PWNED > CLAUDE.md` and `echo x >> ~/.bashrc` run with no card at `auto`, where `Write` of

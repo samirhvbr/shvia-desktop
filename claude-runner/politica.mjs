@@ -1112,8 +1112,10 @@ function vereditoDoShell(comando) {
 /**
  * `decidir` for the runner: it never throws. A policy that cannot judge a call has not allowed it,
  * so an error of any kind becomes an `always` card (1.42.6). Until then the hook had no try/catch,
- * and how the SDK reads a hook that throws is not something this repository measured: "allow" is
- * one of the readings, and a line nested deep enough made `decidir` throw.
+ * and a line nested deep enough made `decidir` throw. Measured with the real runner and SDK 0.3.319
+ * (a hook made to throw on one command): the SDK drops the hook's verdict and falls back to its own
+ * permission check, which refused that `rm`. It is not an allow, but the policy's decision is gone,
+ * and what is left is whatever the dev's own settings say.
  */
 export function decidirSeguro(args) {
   try {

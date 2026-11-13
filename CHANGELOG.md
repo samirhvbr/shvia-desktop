@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.42.6 - Correct what the 1.36.6 text and ADR-032 said about writes, and what the Codex README said of the Claude engine's Auto
+
+The review of 06/11/2026 found three claims that the code did not back, and one comparison that went stale the day 1.36.6 landed.
+Each is measured again here with the real runner and SDK 0.3.319 on master 1.36.5 (every card rejected), because the first measurement
+was SDK 0.3.314.
+
+- **"No level writes a secret, an instruction file or outside the project unasked"** (the title and text of the 1.36.6 entry). It is
+  true of `Write`, `Edit`, `MultiEdit` and `NotebookEdit`. A `Bash` command is not a write to this policy: at `auto`,
+  `echo PWNED > CLAUDE.md` and `echo x >> ~/.bashrc` run with no card, on 1.36.5, 1.36.6 and now. The CHANGELOG entry carries a dated
+  correction under its title (the title is a commit subject and stays), and `claude-runner/README.md` says what is covered and, in
+  "What `auto` does not cover", what is not.
+- **"Outside the project the SDK already refused"** (ADR-032, note of 06/11/2026). It did not. On 1.36.5 `Write <a folder outside the
+  project>/x.txt` was written with no card, and so were `CLAUDE.md` and `.env` in the project; the SDK refused `~/.bashrc`,
+  `.git/hooks/pre-commit` and `.claude/settings.json`, and a write through a symlink whose target does not exist yet. The ADR note says
+  so, and says the shell is not fenced.
+- **The Codex README's table of the Claude engine's Auto** said a write inside the project had no card on either engine and called that
+  not a Codex weakness. After 1.36.6 the Claude engine asks, through its file tools, for `.env`, an instruction file, Claude Code's
+  settings and anything outside the project, and this engine does not. The table has the rows, and says the second one was not
+  measured for the Codex engine by file name.
+- The 1.36.6 entry about reading the shell as the shell does carries a correction too: that reading let through lines 1.36.5 asked
+  about, and the entries of 1.42.6 close them.
+
 ## 1.42.6 - Read the command after a redirection in front of it, so 2>&1 bash <<EOF and 2>/dev/null rm -rf are judged as the commands they are
 
 A redirection in front of a command hid it: the word the policy took for the command was the redirection (`2>/dev/null`), and the
@@ -60,8 +82,10 @@ holds all of it and fails against 1.42.0's `politica.mjs`.
 ## 1.42.6 - Fail closed: a line nested too deep to read asks as always, a policy error becomes a card, and the hook denies instead of throwing
 
 The review of 06/11/2026 measured that `decidir()` threw a RangeError on about 10,000 nested `$(` and that `preToolUse` had no
-try/catch. What the SDK does with a hook that throws was never measured here; `allow` is one reading of it, and under that
-reading a throw is a way past every check.
+try/catch, and left open what the SDK does with a hook that throws. Measured now, with the real runner and SDK 0.3.319 and a hook
+made to throw on one `rm -rf`: the SDK drops the hook's verdict and falls back to its own permission check, which refused that `rm`
+(it was outside its working directories). A throw is not an `allow`, but the policy's decision is gone, and what decides is the
+dev's own settings. With the try/catch the same call is denied with the policy's own message.
 
 - Substitutions may nest 16 deep and scripts in scripts (`bash -c "bash -c '…'"`) 4 deep. Past the limit the splitter throws
   `LinhaIlegivel`, and `decidir()` turns it into an `always` card ("the policy cannot read this command"). Measured on 1.42.0:
@@ -83,22 +107,23 @@ Why five command lines that master 1.36.5 asked about got through 1.36.6 with ev
 02/11 review measured and a few ordinary lines, and nothing compared the new reading of a shell line with the old one.
 `claude-runner/politica-diferencial.test.mjs` does. It holds `claude-runner/fixtures/politica-1.36.5.mjs` (the old `politica.mjs`,
 byte for byte under a banner, in a folder Tauri does not bundle and the installers do not copy) against today's policy at the
-`auto` level, over four sets of lines. Every line is one a shell runs: 789 of the 802 in the first two sets produced their effect
-in bash 5.3 or zsh 5.9, in a sandbox with `rm`, `git`, `curl`, `dd` and `chmod` stubbed (the other 13 are named in the test's header:
-`sudo` cannot run there, `env -i` clears the PATH the stubs sit on, and `cat .env > /dev/null` prints nothing to see).
+`auto` level, over four sets of lines. Every line is one a shell runs: 906 of the 920 in the first two sets produced their effect
+in both bash 5.3 and zsh 5.9, in a sandbox with `rm`, `git`, `curl`, `dd` and `chmod` stubbed (the other 14 are named in the test's
+header: `sudo` cannot run there, `env -i` clears the PATH the stubs sit on, and `cat .env` to /dev/null prints nothing to see).
 
-- 46 lines of the review and their variants, with what 1.36.5 said held as data and checked against the frozen copy.
-- A grid of 84 ways to put a command in a line (prefixes, wrappers, groups, substitutions, here-documents, comments, pipes) times
-  nine commands, 756 lines: none may be `allow`, and nothing 1.36.5 asked about may be.
+- 65 lines of the review and their variants (29 that 1.36.5 asked about, 36 that it never read), with what 1.36.5 said held as
+  data and checked against the frozen copy.
+- A grid of 95 ways to put a command in a line (prefixes, wrappers, groups, substitutions, here-documents, comments, pipes,
+  redirections) times nine commands, 855 lines: none may be `allow`, and nothing 1.36.5 asked about may be.
 - Seven lines that got lighter on purpose, each with its reason: a comment, and a here-document body handed to a program that only
   reads it. 1.36.5 asked about them and no shell runs what they hold.
-- Eighteen lines still open, asserted `allow` and named in `claude-runner/README.md`, which the test reads: closing one fails the
+- Sixteen lines still open, asserted `allow` and named in `claude-runner/README.md`, which the test reads: closing one fails the
   test until the README loses the line.
 
-Run against 1.42.0's `politica.mjs`, the test fails on all 46 lines of the review (23 that 1.36.5 asked about and 23 it never
-read) and on 147 of the 756 grid lines, 95 of which 1.36.5 asked about. `claude-runner/README.md` now says that the fence of
-1.36.6 belongs to the four file-writing tools, and has a section, "What `auto` does not cover", that starts with the line the
-entries of 1.36.6 got wrong: a `Bash` command writes anything at `auto`.
+Run against 1.42.0's `politica.mjs`, the test fails on all 65 lines of the review and on 214 of the 855 grid lines, 122 of which
+1.36.5 asked about. `claude-runner/README.md` now says that the fence of 1.36.6 belongs to the four file-writing tools, and has a
+section, "What `auto` does not cover", that starts with the line the entries of 1.36.6 got wrong: a `Bash` command writes anything
+at `auto`. (The counts are those at the end of 1.42.6; the entries above this one added lines to the corpus as they closed more.)
 
 ## 1.42.6 - Skip a backslash-newline as the shell does and read no (( inside a ${…}, so a quote in a comment no longer swallows the next line
 
@@ -930,6 +955,10 @@ channel; a run whose engine has not created its files yet answers an empty windo
 
 ## 1.36.6 - Fence the claude-runner's file writes like its reads, so no level writes a secret, an instruction file or outside the project unasked
 
+> **Correction, 1.42.6.** The title says too much. The fence below belongs to the four file-writing tools (`Write`, `Edit`,
+> `MultiEdit`, `NotebookEdit`); a `Bash` command is not a write to this policy, so at `auto` `echo PWNED > CLAUDE.md` and
+> `echo x >> ~/.bashrc` run with no card, as they did on 1.36.5. `claude-runner/README.md` says what is covered and what is not.
+
 At the `edit` and `auto` levels `decidir()` released every `Write`, `Edit`, `MultiEdit` and `NotebookEdit` before it looked at the
 path, so ADR-032's "the fence comes before the shortcut" held for reads only (review of 02/11/2026). Measured end to end with the
 real runner and SDK 0.3.314 at `auto`, every card rejected: on master `.env` and `CLAUDE.md` in the project were written with no
@@ -951,6 +980,12 @@ link named otherwise that leads to `CLAUDE.md`); run against master's `politica.
 and `claude-runner/README.md` describes the levels as they are now.
 
 ## 1.36.6 - Read the claude-runner's shell commands the way the shell runs them before the auto level lets one through
+
+> **Correction, 1.42.6.** This reading let through lines that 1.36.5 asked about, and its tests could not see it because they
+> only proved the new spellings: a substitution with a space in a word (`X=$(echo a b) rm -rf V`, `rm -r$(echo f) V`), a `<<` the
+> shell does not read as a here-document (after a `#`, inside `${…}` or `((…))`, or the second `<` of a `<<<`), and a pipe into a
+> shell other than `sh` and `bash` (`cat <<EOF | zsh`). The entries of 1.42.6 close them and add the comparison with 1.36.5 that
+> would have caught them.
 
 The 02/11/2026 review measured, with `decidir()` itself, that the `auto` level released commands its destructive, network and
 secret checks were written to catch, because `claude-runner/politica.mjs` read their words differently from the shell. Measured
