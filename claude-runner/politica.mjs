@@ -121,7 +121,9 @@ export function dentroDoProjeto(projectDir, p) {
 export function comandoDestrutivo(cmd) {
   const baixo = String(cmd ?? "").toLowerCase();
   if (padraoDeLinhaDestrutivo(baixo)) return true;
-  return segmentosEfetivos(String(cmd ?? "")).some(segmentoDestrutivo);
+  return estagiosEfetivos(String(cmd ?? "")).some(
+    (s) => segmentoDestrutivo(s.texto) || (s.aposPipe && alimentaShell(s.texto)),
+  );
 }
 
 /**
@@ -133,12 +135,17 @@ export function comandoDestrutivo(cmd) {
  * Depth-limited: a script that nests scripts past 4 levels is judged as it stands.
  */
 export function segmentosEfetivos(cmd, profundidade = 0) {
+  return estagiosEfetivos(cmd, profundidade).map((s) => s.texto);
+}
+
+/** `segmentosEfetivos`, with the pipeline fact of `estagiosDeComando` on each one. */
+function estagiosEfetivos(cmd, profundidade = 0) {
   const out = [];
-  for (const seg of segmentosDeComando(cmd)) {
+  for (const seg of estagiosDeComando(cmd)) {
     out.push(seg);
     if (profundidade >= 4) continue;
-    for (const ca of comandosDoSegmento(seg)) {
-      for (const script of scriptsDoComando(ca)) out.push(...segmentosEfetivos(script, profundidade + 1));
+    for (const ca of comandosDoSegmento(seg.texto)) {
+      for (const script of scriptsDoComando(ca)) out.push(...estagiosEfetivos(script, profundidade + 1));
     }
   }
   return out;
@@ -201,11 +208,41 @@ export function caminhoProtegidoNoComando(cmd) {
   return null;
 }
 
-/** Patterns of the whole LINE, not of one command: pipe to a shell, fork bomb, SQL. */
+/**
+ * Patterns of the whole LINE, not of one command: pipe to a shell, fork bomb, SQL.
+ *
+ * The pipe to a shell is the floor of `alimentaShell` below, which reads the stage as a command:
+ * this one reads text, so it sees `curl x | /bin/zsh` even in a line the splitter reads as quoted. Until
+ * 1.42.6 it knew `sh` and `bash` only (1.36.5 too), and `cat <<EOF | zsh` was the line 1.36.6 stopped
+ * asking about when it began reading here-documents.
+ */
 function padraoDeLinhaDestrutivo(c) {
-  return /\|\s*(sh|bash)\b/.test(c)
+  return /\|&?\s*(?:[\w.-]*\/)*(?:sh|bash|zsh|dash|ksh|ash|fish)\b/.test(c)
     || c.includes("drop table") || c.includes("truncate table") || c.includes("drop database")
     || c.includes(":(){");
+}
+
+/**
+ * Commands that take their stdin as data for another program and not as its script, so a shell
+ * behind them is not reading the pipe: `ls | xargs sh -c '…'` hands each name to the shell as an
+ * argument.
+ */
+const SEM_STDIN_DO_PIPE = new Set(["xargs", "parallel", "find", "watch", "script"]);
+
+/**
+ * Is this stage of a pipeline a shell that reads its script from the pipe? `… | bash` was the only
+ * form asked about; the shell has many ways to say it (1.42.6): `| zsh`, `| dash`, `| /bin/bash`,
+ * `| env bash`, `| sudo -E bash -s`, `| timeout 5 bash`, `| "bash"`, `| b\ash`, `|& sh`, `| { bash; }`.
+ * The stage is read as a command, so quotes, backslashes and the runners in front of the shell
+ * (`comandosDoSegmento`) are resolved. A shell with a `-c` script runs that script, not the pipe, and
+ * the script is judged on its own.
+ */
+function alimentaShell(seg) {
+  for (const c of comandosDoSegmento(seg)) {
+    if (SEM_STDIN_DO_PIPE.has(c.cmd)) return false;
+    if (SHELLS.has(c.cmd)) return scriptsDoComando(c).length === 0;
+  }
+  return false;
 }
 
 /**
@@ -246,10 +283,23 @@ function padraoDeLinhaDestrutivo(c) {
  * - **`<<<`**, a here-string: its word is data. The loop read its second `<` as the start of `<<`.
  */
 export function segmentosDeComando(cmd) {
+  return estagiosDeComando(cmd).map((s) => s.texto);
+}
+
+/**
+ * `segmentosDeComando` with one more fact per segment: whether it is a stage of a pipeline, that is,
+ * it came after a `|` or `|&` (not `||`) and so reads the previous stage's output as its stdin.
+ */
+function estagiosDeComando(cmd) {
   const segs = [];
+  const apos = []; // apos[k]: segs[k] is a stage of a pipeline
   const internos = [];
   const heredocs = []; // pending `<<WORD`s: { fim, literal, tabs, dono }
   let atual = "";
+  let doPipe = false; // the segment being built is a stage of a pipeline
+  const fechar = (proximoDoPipe = false) => {
+    segs.push(atual); apos.push(doPipe); atual = ""; doPipe = proximoDoPipe;
+  };
   let aspa = null; // "'", '"', or "$'"
   let inicio = true; // the character at `i` starts a word: the only place a `#` is a comment
   let chaves = 0; // `${` still open: a comment or a `<<` there is text of the expansion
@@ -259,7 +309,7 @@ export function segmentosDeComando(cmd) {
     const comecaPalavra = inicio;
     inicio = false;
     if (ch === "\n" && aspa === null && heredocs.length > 0) {
-      segs.push(atual); atual = "";
+      fechar();
       i = lerCorposDeHeredoc(cmd, i + 1, heredocs, segs, internos) - 1;
       heredocs.length = 0;
       inicio = true;
@@ -310,8 +360,11 @@ export function segmentosDeComando(cmd) {
     if (ch === "$" && cmd[i + 1] === "'") { aspa = "$'"; atual += "$'"; i++; continue; }
     if (ch === "'" || ch === '"') { aspa = ch; atual += ch; continue; }
     if (ch === ";" || ch === "\n" || ch === "|" || ch === "&") {
-      if (cmd[i + 1] === ch) i++;
-      segs.push(atual); atual = "";
+      // `|` and `|&` make the next segment a stage of a pipeline; `||`, `&&` and `;;` do not.
+      let pipe = false;
+      if (ch === "|" && cmd[i + 1] !== "|") { pipe = true; if (cmd[i + 1] === "&") i++; }
+      else if (cmd[i + 1] === ch) i++;
+      fechar(pipe);
       inicio = true;
       continue;
     }
@@ -328,15 +381,17 @@ export function segmentosDeComando(cmd) {
       // `((` opens an arithmetic command (or a `for ((` header); count its parentheses to the end.
       if (ch === "(" && (aritmetica > 0 || cmd[i + 1] === "(")) aritmetica++;
       else if (ch === ")" && aritmetica > 0) aritmetica--;
-      segs.push(atual); atual = "";
+      // `| (bash)`: the group is still the stage the pipe feeds.
+      fechar(ch === "(" && doPipe && atual.trim() === "");
       continue;
     }
     if (ch === " " || ch === "\t") inicio = true;
     atual += ch;
   }
-  segs.push(atual);
-  const out = segs.filter((s) => s.trim() !== "");
-  for (const script of internos) out.push(...segmentosDeComando(script));
+  fechar();
+  const out = [];
+  segs.forEach((texto, k) => { if (texto.trim() !== "") out.push({ texto, aposPipe: apos[k] }); });
+  for (const script of internos) out.push(...estagiosDeComando(script));
   return out;
 }
 

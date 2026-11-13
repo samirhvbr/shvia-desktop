@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.42.6 - Ask for a card when a pipe feeds any shell, not only sh and bash, however it is named or wrapped
+
+Third family of the review of 06/11/2026. A pipe into a shell asked about `| sh` and `| bash` only, a pattern over the text of the
+line. Master 1.36.5 asked about `cat <<EOF | zsh` only because it judged every line of the here-document body; 1.36.6 stopped
+judging those lines, so since then the body runs with no card (bash 3.2 and 5.3 run the `rm -rf V` in `cat <<EOF | zsh⏎rm -rf V⏎EOF`).
+
+- The splitter now says which segments are a stage of a pipeline (after `|` or `|&`, not `||`), and a stage that is a shell with
+  no `-c` script asks as `always`. It is read as a command, so a path in front (`/bin/bash`), quotes and backslashes (`"bash"`,
+  `b\ash`), and the runners before the shell (`env bash`, `sudo -E bash -s`, `timeout 5 bash`, `nice -n 5 bash`, `command bash`,
+  `{ bash; }`, `(bash)`) are all seen, for `sh`, `bash`, `zsh`, `dash`, `ksh`, `ash` and `fish`.
+- The pattern over the text stays as the floor and is wider: `|&`, a path in front, and the same seven shells.
+- A shell with a `-c` script runs that script, not the pipe, and the script is judged on its own; `xargs`, `parallel`, `find`,
+  `watch` and `script` hand the pipe to a program as arguments, so `ls | xargs sh -c '…'` stays automatic.
+
+Measured with `decidir()` at `auto`: `cat <<EOF | zsh`, `| dash`, `| /bin/bash` and `| env bash` (each with a body that runs `rm -rf V`)
+were `gate/always` on 1.36.5 and `allow` on 1.42.0; they are `gate/always` again. `| sudo -E bash`, `| nice -n 5 bash`,
+`| timeout 5 bash`, `| env FOO=1 bash`, `| 'sh'`, `| b\ash` and `|& bash` were `allow` on both and ask now. One test holds both sides
+and fails against 1.42.0's `politica.mjs`.
+
 ## 1.42.6 - Open no here-document for a << the shell does not read as one, so a comment, a ${…}, a ((…)) or a here-string no longer hides the next line
 
 Second family of the review of 06/11/2026. 1.36.6 made a here-document body text, so every `<<WORD` that the splitter reads as a

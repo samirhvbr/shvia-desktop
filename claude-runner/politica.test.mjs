@@ -364,6 +364,36 @@ test("text the shell does not read opens no here-document: a comment, ${…}, ((
   }
 });
 
+// 🔴 1.42.6, third family of the review of 06/11/2026. A pipe into a shell asked about `sh` and `bash`
+// only, a pattern over the text. Master 1.36.5 asked about `cat <<EOF | zsh` because it judged every
+// line of the body; 1.36.6 stopped judging them, so the body ran with no card (measured: bash 3.2 and
+// 5.3 run the `rm -rf V` of the first line below).
+test("a pipe into any shell asks, however the shell is named or wrapped", () => {
+  const NL = "\n";
+  const sempre = [
+    `cat <<EOF | zsh${NL}rm -rf V${NL}EOF`, `cat <<EOF | dash${NL}rm -rf V${NL}EOF`,
+    `cat <<EOF | /bin/bash${NL}rm -rf V${NL}EOF`, `cat <<EOF | env bash${NL}rm -rf V${NL}EOF`,
+    `cat <<EOF | ksh${NL}rm -rf V${NL}EOF`, `cat <<'EOF' | sudo -E bash -s${NL}rm -rf V${NL}EOF`,
+    "echo 'rm -rf V' | bash -s", "echo 'rm -rf V' | sudo -E bash", "echo 'rm -rf V' | nice -n 5 bash",
+    "echo 'rm -rf V' | timeout 5 bash", "echo 'rm -rf V' | env FOO=1 bash", "echo 'rm -rf V' | /usr/bin/env bash",
+    "echo 'rm -rf V' | command bash", "echo 'rm -rf V' | exec bash", "echo 'rm -rf V' |& bash",
+    "echo 'rm -rf V' | { bash; }", "echo 'rm -rf V' | (bash)", "printf 'rm -rf V\\n' | zsh",
+    // Quoted or escaped, where no pattern over the text sees a shell.
+    "echo 'rm -rf V' | 'sh'", 'echo \'rm -rf V\' | "bash"', "echo 'rm -rf V' | b\\ash",
+  ];
+  for (const c of sempre) {
+    const r = decide("Bash", { command: c }, "auto");
+    assert.equal(r.acao, "gate", `must ask: ${JSON.stringify(c)}`);
+    assert.equal(r.politica, "always", `must never be auto-approved: ${JSON.stringify(c)}`);
+  }
+  // A pipe is not a shell: these hand the data to a program that is not reading a script from it.
+  for (const c of ["ls | xargs sh -c 'echo $0'", "git log --oneline | head -5", "printf 'a\\n' | sha256sum",
+                   "echo a | shasum -a 256", "cat f | xargs -I{} bash -c 'echo {}'", "echo a | tee out.txt | wc -l",
+                   "find . -name '*.sh' | xargs shellcheck", "cat script.sh | wc -l"]) {
+    assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${c}`);
+  }
+});
+
 // 🔴 1.36.6. At `edit` and `auto` every write was released with no fence, while a READ of the same
 // path asked: `Write ~/.bashrc`, `Edit .git/hooks/pre-commit` and `Write .env` were automatic.
 test("a write is fenced like a read, and outside the project it always asks", () => {
