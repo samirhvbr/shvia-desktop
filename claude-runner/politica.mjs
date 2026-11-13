@@ -227,6 +227,23 @@ function padraoDeLinhaDestrutivo(c) {
  *   swallowed the rest of the line.
  * - **`$'…'`** (ANSI-C quoting), where `\'` does not close the quote. Its content is not decoded
  *   here; `sintaxeIlegivel` sends any line that uses it to a card instead.
+ *
+ * ## Text the shell does not read must not open a here-document here (1.42.6)
+ *
+ * 1.36.6 made a here-document body TEXT, not commands, and so every `<<WORD` this loop mistakes
+ * for a here-document hides the lines after it from every check: the shell runs them, this reads
+ * them as a body. Master 1.36.5 had no here-documents and judged those lines. The `<<` of each of
+ * these opens none in bash 3.2, bash 5.3 and zsh (and dash, where it has the syntax), and
+ * `rm -rf V` on the next line runs:
+ *
+ * - **A comment.** `echo hi # <<EOF`, and a comment with an apostrophe in it (`# it's`), which
+ *   also opened a quote that swallowed the next line. A `#` starts one at the start of a word:
+ *   after a blank, a newline, `;`, `&` or `|`. Not after `$`, `{`, a quote, a substitution or a
+ *   `\`-escaped blank, where it is part of a word (`$#`, `${#x}`, `a\ #b`), and not after a
+ *   parenthesis, where a glob group can be followed by one.
+ * - **`${…}` and `((…))`**: `echo ${x%<<EOF}`, `(( x=1<<2 ))`, `for ((i=0; i<<2; i++))`. Neither
+ *   is a comment or a here-document inside, and a `$(…)` in a `${…}` still runs.
+ * - **`<<<`**, a here-string: its word is data. The loop read its second `<` as the start of `<<`.
  */
 export function segmentosDeComando(cmd) {
   const segs = [];
@@ -234,22 +251,36 @@ export function segmentosDeComando(cmd) {
   const heredocs = []; // pending `<<WORD`s: { fim, literal, tabs, dono }
   let atual = "";
   let aspa = null; // "'", '"', or "$'"
+  let inicio = true; // the character at `i` starts a word: the only place a `#` is a comment
+  let chaves = 0; // `${` still open: a comment or a `<<` there is text of the expansion
+  let aritmetica = 0; // parentheses of a `((…))` still open: the same
   for (let i = 0; i < cmd.length; i++) {
     const ch = cmd[i];
+    const comecaPalavra = inicio;
+    inicio = false;
     if (ch === "\n" && aspa === null && heredocs.length > 0) {
       segs.push(atual); atual = "";
       i = lerCorposDeHeredoc(cmd, i + 1, heredocs, segs, internos) - 1;
       heredocs.length = 0;
+      inicio = true;
       continue;
     }
-    if (ch === "<" && aspa === null && cmd[i + 1] === "<" && cmd[i + 2] !== "<") {
-      const h = marcaDeHeredoc(cmd, i + 2);
-      if (h) {
-        heredocs.push({ ...h, dono: segs.length });
-        atual += cmd.slice(i, h.depois);
-        i = h.depois - 1;
-        continue;
+    if (ch === "<" && aspa === null) {
+      if (cmd.startsWith("<<<", i)) { atual += "<<<"; i += 2; continue; }
+      if (cmd[i + 1] === "<" && chaves === 0 && aritmetica === 0) {
+        const h = marcaDeHeredoc(cmd, i + 2);
+        if (h) {
+          heredocs.push({ ...h, dono: segs.length });
+          atual += cmd.slice(i, h.depois);
+          i = h.depois - 1;
+          continue;
+        }
       }
+    }
+    if (ch === "#" && aspa === null && comecaPalavra && chaves === 0 && aritmetica === 0) {
+      // A comment: the rest of the line is ignored by the shell, its quotes and `<<` included.
+      while (i + 1 < cmd.length && cmd[i + 1] !== "\n") i++;
+      continue;
     }
     if (ch === "\\" && aspa !== "'") {
       // An escaped character is never a quote, a separator or the start of a substitution.
@@ -264,6 +295,8 @@ export function segmentosDeComando(cmd) {
     }
     if (aspa === '"') {
       if (ch === '"') { aspa = null; atual += ch; continue; }
+      if (ch === "$" && cmd[i + 1] === "{") { chaves++; atual += "${"; i++; continue; }
+      if (ch === "}" && chaves > 0) { chaves--; atual += ch; continue; }
       const sub = substituicaoEm(cmd, i);
       if (sub) {
         internos.push(sub.script);
@@ -279,6 +312,7 @@ export function segmentosDeComando(cmd) {
     if (ch === ";" || ch === "\n" || ch === "|" || ch === "&") {
       if (cmd[i + 1] === ch) i++;
       segs.push(atual); atual = "";
+      inicio = true;
       continue;
     }
     if (ch === "`" || (ch === "$" && cmd[i + 1] === "(")) {
@@ -288,7 +322,16 @@ export function segmentosDeComando(cmd) {
       i = sub.fim - 1;
       continue;
     }
-    if (ch === "(" || ch === ")") { segs.push(atual); atual = ""; continue; }
+    if (ch === "$" && cmd[i + 1] === "{") { chaves++; atual += "${"; i++; continue; }
+    if (ch === "}" && chaves > 0) { chaves--; atual += ch; continue; }
+    if (ch === "(" || ch === ")") {
+      // `((` opens an arithmetic command (or a `for ((` header); count its parentheses to the end.
+      if (ch === "(" && (aritmetica > 0 || cmd[i + 1] === "(")) aritmetica++;
+      else if (ch === ")" && aritmetica > 0) aritmetica--;
+      segs.push(atual); atual = "";
+      continue;
+    }
+    if (ch === " " || ch === "\t") inicio = true;
     atual += ch;
   }
   segs.push(atual);
@@ -380,10 +423,16 @@ function substituicaoEm(cmd, i) {
   if (cmd[i] === "$" && cmd[i + 1] === "(") {
     let prof = 1;
     let aspa = null;
+    let inicio = true; // the character at `j` starts a word: where a `#` is a comment
     for (let j = i + 2; j < cmd.length; j++) {
       const c = cmd[j];
+      const comecaPalavra = inicio;
+      inicio = c === " " || c === "\t" || c === "\n" || c === ";" || c === "&" || c === "|";
       if (c === "\\" && aspa !== "'") { j++; continue; }
       if (aspa) { if (c === aspa) aspa = null; continue; }
+      // A comment hides its parentheses and quotes from the shell: `$(echo a # ) …⏎ …)` ends at
+      // the LAST parenthesis in bash 3.2, bash 5.3, zsh and dash, not at the first (measured).
+      if (c === "#" && comecaPalavra) { while (j + 1 < cmd.length && cmd[j + 1] !== "\n") j++; continue; }
       if (c === "'" || c === '"') { aspa = c; continue; }
       if (c === "(") prof++;
       else if (c === ")" && --prof === 0) return { script: cmd.slice(i + 2, j), fim: j + 1 };

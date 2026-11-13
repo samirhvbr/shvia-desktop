@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.42.6 - Open no here-document for a << the shell does not read as one, so a comment, a ${…}, a ((…)) or a here-string no longer hides the next line
+
+Second family of the review of 06/11/2026. 1.36.6 made a here-document body text, so every `<<WORD` that the splitter reads as a
+here-document and the shell does not hides the lines after it from every check, while the shell runs them. Master 1.36.5 had no
+here-documents and judged those lines. The splitter did not know a comment (`echo hi # <<EOF`), nor `${x%<<EOF}`, nor
+`(( x=1<<2 ))`, and it read the second `<` of a here-string `<<<` as the start of `<<`. bash 3.2, bash 5.3 and zsh 5.9 run the
+`rm -rf V` on the next line in all of them (measured in a sandbox with `rm` stubbed). The apostrophe in `echo hi # it's here` opened a
+quote that swallowed the next line too; that one was `allow` on master as well.
+
+- A `#` at the start of a word (after a blank, a newline, `;`, `&` or `|`) outside quotes, `${…}` and `((…))` starts a comment, and
+  its text is neither commands nor a here-document. A `#` that is part of a word stays one: `$#`, `${#x}`, `a#b`, `a\ #b`, `"a"#b`,
+  `$(x)#b`, and one after a parenthesis, where a glob group can be followed by it.
+- `${…}` and `((…))` open no here-document and no comment, and a `$(…)` inside a `${…}` still runs and is still judged.
+- `<<<` is a here-string and opens none.
+- A comment inside `$(…)` keeps its parentheses and quotes to itself, so the substitution ends at its last parenthesis, in all four
+  shells measured (`echo $(echo a # ) <<EOF⏎rm -rf V⏎EOF⏎)` runs the `rm`).
+
+Measured with `decidir()` at `auto`: `echo hi # <<EOF⏎rm -rf V⏎EOF`, `echo ${x%<<EOF}⏎…`, `(( x=1<<2 ))⏎…`, `cat <<< x⏎rm -rf V⏎x` and
+the comment inside `$(…)` were `gate/always` on 1.36.5 and `allow` on 1.42.0; they are `gate/always` again. The two comments with a
+quote in them were `allow` on both and are `always` now. One line gets lighter, on purpose: `ls # list; rm -rf V` asked a card on
+1.36.5 and 1.42.0 because the `;` in a comment split the line, and no shell runs that `rm`. One test holds both sides and fails
+against 1.42.0's `politica.mjs`.
+
 ## 1.42.6 - Read a command substitution as one word, so the command after an assignment or a flag with spaces in it is judged again
 
 The independent review of 06/11/2026 of 1.36.6 (#200, merged on 07/11 with this still in it) measured that command lines which

@@ -14,6 +14,7 @@ import {
   dentroDoProjeto,
   previa,
   decidirNoPlano,
+  segmentosDeComando,
   tokensDoSegmento,
   MOTIVO_PLANO,
 } from "./politica.mjs";
@@ -317,6 +318,49 @@ test("a substitution is one word, so the command after an assignment or a flag w
                    'rm -f "$(mktemp)"', "git clean -n -- $(pwd)", 'git commit -m "$(git log -1 --format=%s)"',
                    "ls -la $(dirname $(which node))", "export PATH=$(npm bin):$PATH && npm test"]) {
     assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${c}`);
+  }
+});
+
+// 🔴 1.42.6, second family of the review of 06/11/2026. 1.36.6 made a here-document body text, so every
+// `<<` it reads as a here-document that the shell does not, hides the lines after it: the shell runs them.
+// The `<<` of each line below opens none in bash 3.2, bash 5.3 and zsh 5.9, and in dash where it has
+// the syntax (measured, with `rm` stubbed: `rm -rf V` runs; `ls *.@(c|h)#` runs it in zsh only).
+// Master 1.36.5 had no here-documents and judged the line after it.
+test("text the shell does not read opens no here-document: a comment, ${…}, ((…)) and a here-string", () => {
+  const NL = "\n";
+  const sempre = [
+    // A comment, and one with a quote in it that used to swallow the next line (also on master).
+    `echo hi # <<EOF${NL}rm -rf V${NL}EOF`, `echo hi # it's here${NL}rm -rf V`, `echo hi # "quote${NL}rm -rf V`,
+    // `${…}` and `((…))`.
+    `echo \${x%<<EOF}${NL}rm -rf V${NL}EOF`, `echo \${x:-<<EOF}${NL}rm -rf V${NL}EOF`,
+    `(( x=1<<2 ))${NL}rm -rf V${NL}2`, `for ((i=0; i<<2; i++)); do :; done${NL}rm -rf V${NL}2`,
+    // A here-string: its second `<` was read as the start of `<<`.
+    `cat <<< x${NL}rm -rf V${NL}x`, `bash <<< 'x'${NL}rm -rf V${NL}x`, `cat <<<'EOF'${NL}rm -rf V${NL}EOF`,
+    // A comment inside `$(…)` keeps its parentheses and quotes to itself, so the substitution
+    // ends at the last one, and the here-document its `<<` seems to open is a comment too.
+    `echo $(echo a # ) <<EOF${NL}rm -rf V${NL}EOF${NL})`,
+    // Where a `#` is part of a word, what follows it still runs.
+    "echo a\\ #b; rm -rf V", "echo $(echo a)#c; rm -rf V", 'echo "a"#c; rm -rf V', "echo $#; rm -rf V",
+    "echo ${#x}; rm -rf V", "echo a#b; rm -rf V", "ls *.@(c|h)# ; rm -rf V", `(# c${NL}rm -rf V)`,
+    "echo ${x:-a #b $(rm -rf V)}", `echo a;#c${NL}rm -rf V`,
+  ];
+  for (const c of sempre) {
+    const r = decide("Bash", { command: c }, "auto");
+    assert.equal(r.acao, "gate", `must ask: ${JSON.stringify(c)}`);
+    assert.equal(r.politica, "always", `must never be auto-approved: ${JSON.stringify(c)}`);
+  }
+  // A comment is not a command: the shell reads nothing in it, so neither does this.
+  assert.deepEqual(segmentosDeComando("ls # list; rm -rf V"), ["ls "]);
+  assert.deepEqual(segmentosDeComando(`echo a #b${NL}echo c`), ["echo a ", "echo c"]);
+  const comuns = [
+    "ls # list; rm -rf V", "npm test # then rm -rf build", `# check the state${NL}git status`,
+    `git status # short${NL}git log -1`, "npm test # run the tests; fast", `echo $(date) # now${NL}ls`,
+    // Arithmetic and expansions that really are what they look like.
+    "echo $((1 << 2))", "(( i++ ))", "for ((i=0; i<3; i++)); do echo $i; done", "let x=1<<2",
+    "echo ${x%.*} ${y:-z} ${#w} $((2 * 3))",
+  ];
+  for (const c of comuns) {
+    assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${JSON.stringify(c)}`);
   }
 });
 
