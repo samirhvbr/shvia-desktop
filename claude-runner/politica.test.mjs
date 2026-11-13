@@ -394,6 +394,29 @@ test("a pipe into any shell asks, however the shell is named or wrapped", () => 
   }
 });
 
+// 🔴 1.42.6. A here-document body is text unless the command it goes to runs it as a script. 1.36.6
+// knew shells only; master 1.36.5 judged every body line, so it asked about these (measured: bash 5.3
+// runs the `rm -rf V` of the first two; `sudo` cannot run in the sandbox, so `sudo -s` follows its manual).
+test("a here-document body is judged as a script when the command it goes to runs it", () => {
+  const NL = "\n";
+  const sempre = [
+    `. /dev/stdin <<EOF${NL}rm -rf V${NL}EOF`, `source /dev/stdin <<'EOF'${NL}rm -rf V${NL}EOF`,
+    `sudo -s <<EOF${NL}rm -rf V${NL}EOF`, `sudo -i <<EOF${NL}rm -rf V${NL}EOF`,
+    `doas -s <<EOF${NL}rm -rf V${NL}EOF`, `sudo --shell <<EOF${NL}rm -rf V${NL}EOF`,
+  ];
+  for (const c of sempre) {
+    const r = decide("Bash", { command: c }, "auto");
+    assert.equal(r.acao, "gate", `must ask: ${JSON.stringify(c)}`);
+    assert.equal(r.politica, "always", `must never be auto-approved: ${JSON.stringify(c)}`);
+  }
+  // A body handed to a command that only reads it stays text, quoted word or not.
+  for (const c of [`sudo tee /etc/x <<EOF${NL}curl is a word; rm -rf V${NL}EOF`, `sudo -u app tee x <<'EOF'${NL}rm -rf V${NL}EOF`,
+                   `sudo -S tee x <<EOF${NL}rm -rf V${NL}EOF`, `cat > f <<EOF${NL}rm -rf V${NL}EOF`, "source .envrc.example",
+                   ". ./scripts/activate"]) {
+    assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${JSON.stringify(c)}`);
+  }
+});
+
 // 🔴 1.36.6. At `edit` and `auto` every write was released with no fence, while a READ of the same
 // path asked: `Write ~/.bashrc`, `Edit .git/hooks/pre-commit` and `Write .env` were automatic.
 test("a write is fenced like a read, and outside the project it always asks", () => {

@@ -428,7 +428,8 @@ function marcaDeHeredoc(cmd, inicio) {
  * returns where the command line goes on. A body is TEXT handed to a command, not commands, with
  * two exceptions that decide what is judged (1.36.6):
  *
- * - when the command that owns it is a shell (`bash <<EOF`), the body is its script, and it is
+ * - when the command that owns it runs it as a script (`executaOCorpo`: a shell, `bash <<EOF`,
+ *   and since 1.42.6 `. /dev/stdin <<EOF` and `sudo -s <<EOF`), the body is its script, and it is
  *   split like any other line;
  * - when its word is unquoted (`<<EOF`), the shell expands `$(…)` and backticks in it, and runs
  *   them, so those are split as scripts of their own.
@@ -452,10 +453,22 @@ function lerCorposDeHeredoc(cmd, inicio, heredocs, segs, internos) {
     }
     const corpo = linhas.join("\n");
     const dono = segs[h.dono] ?? "";
-    if (comandosDoSegmento(dono).some((c) => SHELLS.has(c.cmd))) internos.push(corpo);
+    if (comandosDoSegmento(dono).some(executaOCorpo)) internos.push(corpo);
     else if (!h.literal) internos.push(...substituicoesDoTexto(corpo));
   }
   return i;
+}
+
+/**
+ * Does this command run the here-document handed to it as a script? A shell does; so does `.` or
+ * `source` (`. /dev/stdin <<EOF`), and `sudo -s` and `sudo -i` start a shell that reads it. Master
+ * 1.36.5 judged every body line, so `. /dev/stdin <<EOF` asked; 1.36.6 read the body as text, and
+ * the shell it feeds ran it with no card (measured: bash 5.3 runs the `rm -rf V` in it).
+ */
+function executaOCorpo({ cmd, args }) {
+  if (SHELLS.has(cmd) || cmd === "." || cmd === "source") return true;
+  return (cmd === "sudo" || cmd === "doas")
+    && args.some((a) => /^-[a-z]*[si][a-z]*$/.test(a) || a === "--shell" || a === "--login");
 }
 
 /** The scripts of every `$(…)` and backtick in a text the shell expands but does not run. */

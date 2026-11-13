@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.42.6 - Judge a here-document body as a script when it goes to `.`, `source` or `sudo -s`, which run it as one
+
+1.36.6 reads a here-document body as text unless a shell owns it. Master 1.36.5 judged every body line, so it asked about
+`. /dev/stdin <<EOF` and `source /dev/stdin <<EOF`; since 1.36.6 their bodies run with no card (bash 5.3 runs the `rm -rf V` in
+both). A comparison of the policy with 1.36.5 over about 800 command lines (the corpus this version adds next, and a hundred more
+spellings), each run by real shells, found these two, `sudo -s <<EOF` and `make -f - <<EOF` as the only lines 1.36.5 asked about
+that were still `allow` once the three families above were closed.
+
+- `.` and `source` run a body as a script, and so do `sudo -s`, `sudo -i`, `doas -s` and `sudo --shell`, which start a shell that
+  reads it. `sudo` cannot run in the sandbox, so those follow the manual and are not measured.
+- A body handed to a command that only reads it stays text: `sudo tee /etc/x <<EOF`, `cat > f <<EOF`.
+- `make -f - <<EOF` is not closed: `make` runs the recipes of its body, and so do `python3 - <<EOF` and `perl` for theirs. The README
+  lists it with the other lines this policy still does not read.
+
 ## 1.42.6 - Ask for a card when a pipe feeds any shell, not only sh and bash, however it is named or wrapped
 
 Third family of the review of 06/11/2026. A pipe into a shell asked about `| sh` and `| bash` only, a pattern over the text of the
