@@ -366,6 +366,54 @@ test("text the shell does not read opens no here-document: a comment, ${…}, ((
   }
 });
 
+// 🔴 1.42.6, the friction the review of 06/11/2026 measured: 1.36.6 asked, as `always`, about 13 of 163 ordinary
+// commands, those that start with `$HOME/…` or `$(pwd)/…` or use `$'…'`. Of the 117 ordinary commands measured
+// for this change, 0 asked on 1.36.5, 15 on 1.42.0. A command is judged by its NAME, the part after the last
+// `/`; `$'…'` is decoded. What stays a card is what the line decides in a way that can hide a command: an
+// unquoted expansion splits into words (`X='rm -rf V #'; $X/tool` runs `rm`, measured), so only a quoted one,
+// `$(pwd)` and a plain `$NAME` that nothing in the line binds are let through.
+test("a command is judged by its name, and $'…' by what it spells; an expansion that can split into words still asks", () => {
+  const comuns = [
+    "$HOME/.cargo/bin/cargo build", '"$HOME/bin/tool" --version', "$HOME/go/bin/golangci-lint run",
+    "$(pwd)/node_modules/.bin/vitest run", '"$(git rev-parse --show-toplevel)/scripts/check.sh"', "${HOME}/.local/bin/uv run x",
+    "$PWD/scripts/run.sh", "$CARGO_HOME/bin/cargo test", '"$HOME"/bin/tool run', "cd src && $PWD/../scripts/run.sh",
+    "grep $'\\t' file", "echo $'a\\nb'", "sed $'s/a/\\\\t/' file", "printf $'%s\\\\n' x", "echo $'it\\'s'", "echo $'a b'",
+  ];
+  for (const c of comuns) {
+    assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${JSON.stringify(c)}`);
+  }
+  const NL = "\n";
+  const sempre = [
+    // The directory comes from something the shell may split into words, or the line binds it.
+    "X='rm -rf V #'; $X/tool", "HOME='rm -rf V #'; $HOME/tool", "for HOME in 'rm -rf V #'; do $HOME/tool; done",
+    "read X <<< 'rm -rf V #'; $X/tool", "export X='rm -rf V #' && $X/tool", "$(echo 'rm -rf V #')/tool",
+    `X='rm -rf V #'${NL}$X/tool`, "X='rm -rf V #'; ${X}/tool", "${X:-rm -rf V #}/tool", "declare X='rm -rf V #'; $X/tool",
+    "$(npm bin)/mocha", "$1/tool run", "$@/tool run",
+    // The name itself is decided when the line runs, or the program is one the policy knows by name.
+    "X='rm -rf V #'; $X", "$HOME/bin/$tool run", "${X}rm -rf V", "$(echo /bin/rm) -rf V", "`which node` --version",
+    "$HOME/bin/rm -rf V", "$(pwd)/git push --force",
+    // `$'…'` decoded: what it spells is judged, and what cannot be decoded asks.
+    "$'\\x72m' -rf ~", "$'\\162m' -rf V", "$'\\u0072m' -rf V", "rm $'-\\x72f' V", "git $'pu\\x73h'", "cat $'.\\x65nv'",
+    "echo $'a\\x00b'", "echo $'\\cA'", "echo $'\\x'",
+  ];
+  for (const c of sempre) {
+    const r = decide("Bash", { command: c }, "auto");
+    assert.equal(r.acao, "gate", `must ask: ${JSON.stringify(c)}`);
+    assert.equal(r.politica, "always", `must never be auto-approved: ${JSON.stringify(c)}`);
+  }
+  // The decoding itself, as bash 5.3 does it (checked against it over 400 random strings).
+  const dec = (w) => tokensDoSegmento(`x ${w}`)[1];
+  assert.equal(dec("$'a\\tb'"), "a\tb");
+  assert.equal(dec("$'\\x72m'"), "rm");
+  assert.equal(dec("$'\\162m'"), "rm");
+  assert.equal(dec("$'\\u0072m'"), "rm");
+  assert.equal(dec("$'\\U00000072m'"), "rm");
+  assert.equal(dec("$'it\\'s'"), "it's");
+  assert.equal(dec("$'\\q\\8'"), "\\q\\8", "an escape bash does not know stays as written");
+  assert.equal(dec("$'\\x4g'"), "\u0004g");
+  assert.equal(dec("$'a b'"), "a b", "the quote makes one word of it");
+});
+
 // 🔴 1.42.6. Two things found by comparing the comment rule with the shell over thousands of random
 // lines, each a way for a `'` or a `"` in a comment to swallow the next line while the shell runs it.
 // A backslash and a newline are no character at all: what follows them is where it was before them,

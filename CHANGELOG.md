@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.42.6 - Judge a command by its name and decode $'…', so $HOME/bin/tool and grep $'\t' stop asking while an expansion that can split into words still does
+
+The review of 06/11/2026 measured that 1.36.6 asked, as `always`, about 13 of 163 ordinary commands: those that start with `$HOME/…`
+or `$(pwd)/…`, and those that use `$'…'`. On 117 ordinary commands of the shapes agents write, measured for this change, 0 asked on
+1.36.5, 15 on 1.42.0 and 2 ask now.
+
+- A command is judged by its name, the part of the word after the last `/` that is outside a substitution: `$HOME/.cargo/bin/cargo`
+  is `cargo`, `"$(git rev-parse --show-toplevel)/scripts/check.sh"` is `check.sh`, and `$HOME/bin/rm -rf V` is `rm -rf`. The review's
+  suggestion, with one condition it did not see: an unquoted expansion splits into words, so `X='rm -rf V #'; $X/tool` runs `rm`
+  (bash 5.3, measured). The directory part may hold what is inside double quotes, `$(pwd)`, and a plain `$NAME` or `${NAME}` that nothing
+  in the line binds (`NAME=…`, `for NAME`, `read NAME`, `declare NAME`); any other unquoted expansion asks (`$1/tool` and `$@/tool`
+  too), and so does a name that is itself decided at run time (`$HOME/bin/$tool`). The test holds ten lines of that kind (a variable or a substitution that holds a
+  command line and is run as `$X/tool`); bash 5.3 executes the `rm` in all ten, and every one asks.
+- `$'…'` is decoded by the tokenizer as bash decodes it, so the line is judged as what it spells: `$'\x72m' -rf ~` is `rm -rf ~` and asks
+  because it is destructive, `cat $'.\x65nv'` asks for the protected path, `grep $'\t' f` is automatic. The decoder was checked against
+  bash 5.3 on 400 random strings of escapes. What it cannot spell as text (a NUL, `\c`, a lone `\x`) asks, as every `$'…'` did before.
+- The two that still ask of the 117 are `$(npm bin)/mocha` (an unquoted substitution holds the directory) and `` `which node` --version ``
+  (the name is a substitution).
+
+One test holds both sides (the ordinary commands stay automatic, each line that hides a command asks) and fails against 1.42.0's
+`politica.mjs`.
+
 ## 1.42.6 - Follow a symlink whose target does not exist yet, so a write through it is judged by where it leads
 
 `caminhoReal()` follows symlinks, but `fs.realpathSync` fails on one whose target does not exist, and the walk took it for a new

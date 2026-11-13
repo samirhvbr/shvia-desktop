@@ -123,7 +123,12 @@ does is decided by `decidir()` in [`politica.mjs`](politica.mjs):
   goes to runs it (a shell, `.`, `source`, `sudo -s`). A pipe into any shell asks, named or
   wrapped as it may be (`| zsh`, `| env bash`, `| "bash"`). A flag that the line completes when it
   runs (`-r$(echo f)`) counts as any flag. A line whose command name is decided when it runs (a
-  variable, a substitution, a glob) or that uses `$'…'` asks as `always` (`sintaxeIlegivel()`).
+  variable, a substitution, a glob) asks as `always` (`sintaxeIlegivel()`). The name is the part
+  after the last `/`, so `$HOME/bin/tool` and `$(pwd)/node_modules/.bin/vitest` are `tool` and
+  `vitest`; but a directory that an unquoted expansion may split into words still asks
+  (`X='rm -rf V #'; $X/tool` runs `rm`), and only a quoted one, `$(pwd)` and a plain `$NAME` that
+  nothing in the line binds are read. `$'…'` is decoded as bash does (`$'\x72m'` is `rm`); an escape
+  that cannot be decoded asks.
   The checks are held against what they replaced: `politica-diferencial.test.mjs` runs about 800
   command lines through this policy and through the frozen 1.36.5 one, and a line that 1.36.5
   asked about must still ask unless the test names a reason.

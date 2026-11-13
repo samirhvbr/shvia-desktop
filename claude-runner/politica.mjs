@@ -305,8 +305,8 @@ function alimentaShell(seg) {
  * - **A backslash.** Outside single quotes it makes the next character ordinary: `echo \" ; rm
  *   -rf ~` has no quote in it, and `rm` runs. The splitter treated `\"` as an opening quote and
  *   swallowed the rest of the line.
- * - **`$'…'`** (ANSI-C quoting), where `\'` does not close the quote. Its content is not decoded
- *   here; `sintaxeIlegivel` sends any line that uses it to a card instead.
+ * - **`$'…'`** (ANSI-C quoting), where `\'` does not close the quote. The splitter only has to
+ *   know where it ends; `tokensDoSegmento` decodes it (1.42.6, `escapeAnsiC`).
  *
  * ## Text the shell does not read must not open a here-document here (1.42.6)
  *
@@ -565,6 +565,40 @@ function substituicaoEm(cmd, i) {
 }
 
 /**
+ * The escape that starts at `seg[i]` (a backslash) inside `$'…'`, decoded the way bash does, and
+ * where it ends: `{ texto, fim }`. The ones a command line really uses are decoded: `\n \t \r \a \b
+ * \e \f \v`, `\\ \' \" \?`, octal (`\162`), `\xHH`, `\uHHHH` and `\UHHHHHHHH`. Any other
+ * backslash stays as bash leaves it, with its character. What this cannot spell as text (a NUL,
+ * `\c`, a lone `\x`) throws `LinhaIlegivel`: the line asks, as every `$'…'` did before 1.42.6.
+ * A `\xHH` of 0x80 or more is a byte of a multi-byte character in bash; here it is the character
+ * of that number, which no name the checks look for contains.
+ */
+function escapeAnsiC(seg, i) {
+  const c = seg[i + 1];
+  if (c === undefined) return { texto: "\\", fim: i + 1 };
+  const simples = { a: "\x07", b: "\b", e: "\x1b", E: "\x1b", f: "\f", n: "\n", r: "\r", t: "\t", v: "\v",
+    "\\": "\\", "'": "'", '"': '"', "?": "?" };
+  if (Object.hasOwn(simples, c)) return { texto: simples[c], fim: i + 2 };
+  const nul = () => new LinhaIlegivel("$'…' com um escape que a política não sabe decodificar");
+  let m;
+  if ((m = /^[0-7]{1,3}/.exec(seg.slice(i + 1, i + 4)))) {
+    const n = parseInt(m[0], 8) & 0xff;
+    if (n === 0) throw nul();
+    return { texto: String.fromCharCode(n), fim: i + 1 + m[0].length };
+  }
+  const hex = { x: 2, u: 4, U: 8 }[c];
+  if (hex) {
+    m = new RegExp(`^[0-9a-fA-F]{1,${hex}}`).exec(seg.slice(i + 2, i + 2 + hex));
+    if (!m) throw nul();
+    const n = parseInt(m[0], 16);
+    if (n === 0 || n > 0x10ffff) throw nul();
+    return { texto: String.fromCodePoint(n), fim: i + 2 + m[0].length };
+  }
+  if (c === "c") throw nul();
+  return { texto: "\\" + c, fim: i + 2 };
+}
+
+/**
  * Tokens of a segment with quotes and backslashes resolved the way the shell resolves them:
  * `cat '.env'`, `cat ".env"` and `cat .e\nv` are all `cat .env`, and `r\m` is `rm`.
  *
@@ -575,21 +609,29 @@ function substituicaoEm(cmd, i) {
  * split on `\`) and `cat .e\nv` named a file that is not `.env`, while the shell ran `rm` and
  * opened `.env`.
  */
-export function tokensDoSegmento(seg) {
+export function tokensDoSegmento(seg, cruas = null) {
   const out = [];
   let atual = "";
   let aspa = null; // "'", '"', or "$'"
   let tem = false;
   let chaves = 0; // `${` still open: its spaces belong to the word, as the shell reads it
+  let ini = -1; // where the word in progress starts in `seg`; its raw text goes to `cruas`, if asked for
   for (let i = 0; i < seg.length; i++) {
     const ch = seg[i];
+    if (ini < 0 && !(aspa === null && chaves === 0 && /\s/.test(ch))) ini = i;
     if (aspa === "'") {
       if (ch === "'") aspa = null; else atual += ch;
       continue;
     }
     if (aspa === "$'") {
-      // Not decoded: `sintaxeIlegivel` gates the line. Kept raw so the word is still a word.
-      if (ch === "\\") { atual += ch + (seg[i + 1] ?? ""); i++; continue; }
+      // ANSI-C quoting: the shell decodes the escapes, so the word is what they spell (1.42.6). Until
+      // then it was kept raw and every line that used `$'…'` asked, `grep $'\t' f` included.
+      if (ch === "\\") {
+        const esc = escapeAnsiC(seg, i);
+        atual += esc.texto;
+        i = esc.fim - 1;
+        continue;
+      }
       if (ch === "'") aspa = null; else atual += ch;
       continue;
     }
@@ -624,12 +666,13 @@ export function tokensDoSegmento(seg) {
     if (ch === "'" || ch === '"') { aspa = ch; tem = true; continue; }
     if (/\s/.test(ch)) {
       if (chaves > 0) { atual += ch; continue; }
-      if (tem || atual !== "") { out.push(atual); atual = ""; tem = false; }
+      if (tem || atual !== "") { out.push(atual); cruas?.push(seg.slice(ini, i)); atual = ""; tem = false; }
+      ini = -1;
       continue;
     }
     atual += ch;
   }
-  if (tem || atual !== "") out.push(atual);
+  if (tem || atual !== "") { out.push(atual); cruas?.push(seg.slice(ini)); }
   return out;
 }
 
@@ -691,15 +734,17 @@ function nomeDoComando(tok) {
  * would be the price of guessing them.
  */
 export function comandosDoSegmento(seg) {
-  const toks = tokensDoSegmento(seg);
+  const cruas = [];
+  const toks = tokensDoSegmento(seg, cruas);
   let i = 0;
   while (i < toks.length && (atribuicao(toks[i]) || PALAVRAS_DO_SHELL.has(toks[i]))) i++;
   if (i >= toks.length) return [];
-  const out = [{ cmd: nomeDoComando(toks[i]), args: toks.slice(i + 1), palavra: toks[i] }];
+  // `crua` is the word as written, quotes and all: `sintaxeIlegivel` needs to know what was quoted.
+  const out = [{ cmd: nomeDoComando(toks[i]), args: toks.slice(i + 1), palavra: toks[i], crua: cruas[i] }];
   if (EXECUTORES.has(out[0].cmd)) {
     for (let j = i + 1; j < toks.length; j++) {
       if (toks[j].startsWith("-") || atribuicao(toks[j])) continue;
-      out.push({ cmd: nomeDoComando(toks[j]), args: toks.slice(j + 1), palavra: toks[j] });
+      out.push({ cmd: nomeDoComando(toks[j]), args: toks.slice(j + 1), palavra: toks[j], crua: cruas[j] });
     }
   }
   return out;
@@ -710,9 +755,14 @@ export function comandosDoSegmento(seg) {
  * as `always`, at every level: the page cannot read it either, and its "inside the project?"
  * check would approve a `confirm` card for it by itself (1.36.6).
  *
- * - `$'…'` decodes escapes when the shell runs it: `$'\x72m' -rf ~` is `rm -rf ~`.
  * - A command whose NAME is decided when the line runs: a variable or substitution (`X=rm; $X
  *   -rf ~`) or a glob (`/bin/r? -rf ~`). `[` and `[[` are the test command, not a glob.
+ *   Its NAME is the part after the last `/` that is outside a substitution (1.42.6): `$HOME/bin/tool`
+ *   and `$(pwd)/node_modules/.bin/vitest` are the commands `tool` and `vitest`, run from a directory
+ *   the line decides, as `./tool` is run from one it names; `$HOME/bin/$tool` is not readable. 1.36.6
+ *   asked about every one of them, 11 of the 117 ordinary commands measured here.
+ * - `$'…'` decodes escapes when the shell runs it (`$'\x72m' -rf ~` is `rm -rf ~`). Since 1.42.6 the
+ *   tokenizer decodes it, so the line is judged as what it spells; an escape it cannot decode asks.
  *
  * It reads the first command of each segment. A program that builds its own action at run time
  * (`python3 -c "import shutil; …"`, a variable handed to a runner) is still not seen: this is a
@@ -722,29 +772,96 @@ export function comandosDoSegmento(seg) {
 export function sintaxeIlegivel(cmd) {
   const c = String(cmd ?? "");
   for (const seg of segmentosEfetivos(c)) {
-    if (/(^|[^\\])\$'/.test(seg) && aspasSimplesNaoCobrem(seg)) return "$'…'";
     const [primeiro] = comandosDoSegmento(seg);
     if (!primeiro) continue;
     const w = primeiro.palavra;
     if (w === "[" || w === "[[") continue;
-    if (/[$`]/.test(w)) return `o nome do comando só se sabe ao rodar (${w})`;
-    if (/[*?]/.test(w) || /\[.*\]/.test(w)) return `o nome do comando é um glob (${w})`;
+    const nome = nomeLiteral(w);
+    if (/[$`]/.test(nome)) return `o nome do comando só se sabe ao rodar (${w})`;
+    if (/[*?]/.test(nome) || /\[.*\]/.test(nome)) return `o nome do comando é um glob (${w})`;
+    const divide = expansaoQueDivide(primeiro.crua ?? w, c);
+    if (divide) return `o diretório do comando vem de ${divide}, que o shell pode dividir em palavras`;
   }
   return null;
 }
 
-/** Is a `$'` in this segment outside single quotes, where the shell decodes it? */
-function aspasSimplesNaoCobrem(seg) {
+/**
+ * The first expansion in the DIRECTORY part of a command word that the shell may split into words,
+ * or null. `"$HOME/bin/tool"` and `$HOME/bin/tool` both run `tool`; but an unquoted expansion that
+ * holds a space is several words, and `X='rm -rf V #'; $X/tool` runs `rm`. So the directory part
+ * may hold: anything inside double quotes (no splitting there), `$(pwd)`, and a plain `$NAME` or
+ * `${NAME}` that nothing in the line binds (`NAME=…`, `for NAME`, `read NAME`): `$HOME`, `$PWD`,
+ * `$CARGO_HOME` come from the environment, not from the line. Every other unquoted expansion asks.
+ * `raw` is the word as written.
+ */
+function expansaoQueDivide(raw, linha) {
   let aspa = null;
-  for (let i = 0; i < seg.length; i++) {
-    const ch = seg[i];
-    if (aspa === "'") { if (ch === "'") aspa = null; continue; }
-    if (ch === "\\") { i++; continue; }
-    if (aspa === '"') { if (ch === '"') aspa = null; continue; }
-    if (ch === "$" && seg[i + 1] === "'") return true;
-    if (ch === "'" || ch === '"') aspa = ch;
+  let ultima = -1; // the last `/` outside an expansion: what follows is the program's name
+  const exps = []; // { ini, texto, entreAspas }
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
+    if (aspa === "'") { if (c === "'") aspa = null; else if (c === "/") ultima = i; continue; }
+    if (aspa === "$'") { if (c === "\\") { i++; continue; } if (c === "'") aspa = null; else if (c === "/") ultima = i; continue; }
+    if (c === "\\") { i++; continue; }
+    if (c === "`" || (c === "$" && raw[i + 1] === "(")) {
+      const sub = substituicaoEm(raw, i);
+      exps.push({ ini: i, texto: raw.slice(i, sub.fim), entreAspas: aspa === '"' });
+      i = sub.fim - 1;
+      continue;
+    }
+    if (c === "$" && raw[i + 1] === "{") {
+      const fim = raw.indexOf("}", i + 2);
+      const f = fim < 0 ? raw.length : fim + 1;
+      exps.push({ ini: i, texto: raw.slice(i, f), entreAspas: aspa === '"' });
+      i = f - 1;
+      continue;
+    }
+    if (c === "$" && /[A-Za-z_]/.test(raw[i + 1] ?? "")) {
+      const nome = /^[A-Za-z_][A-Za-z0-9_]*/.exec(raw.slice(i + 1))[0];
+      exps.push({ ini: i, texto: "$" + nome, entreAspas: aspa === '"' });
+      i += nome.length;
+      continue;
+    }
+    if (c === "$" && /[0-9@*#?$!-]/.test(raw[i + 1] ?? "")) { // `$1`, `$@`: no plain name, so it asks
+      exps.push({ ini: i, texto: "$" + raw[i + 1], entreAspas: aspa === '"' });
+      i++;
+      continue;
+    }
+    if (c === "/") ultima = i;
+    if (aspa === '"') { if (c === '"') aspa = null; continue; }
+    if (c === '"') aspa = '"';
+    else if (c === "'") aspa = "'";
+    else if (c === "$" && raw[i + 1] === "'") { aspa = "$'"; i++; }
   }
-  return false;
+  for (const e of exps) {
+    if (e.ini > ultima || e.entreAspas) continue; // in the program's name (judged by `nomeLiteral`), or quoted
+    if (e.texto === "$(pwd)" || e.texto === "`pwd`") continue;
+    const simples = /^\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))$/.exec(e.texto);
+    const nome = simples && (simples[1] ?? simples[2]);
+    if (nome && !new RegExp(`(^|[^$\\w{])${nome}(?!\\w)`).test(linha)) continue;
+    return e.texto;
+  }
+  return null;
+}
+
+/**
+ * The part of a command word after its last `/` (or `\`) that is outside a substitution or an
+ * expansion: the name of the program, whatever directory the line puts it in.
+ */
+function nomeLiteral(w) {
+  let ultima = -1;
+  for (let i = 0; i < w.length; i++) {
+    const c = w[i];
+    if (c === "`" || (c === "$" && w[i + 1] === "(")) { i = substituicaoEm(w, i).fim - 1; continue; }
+    if (c === "$" && w[i + 1] === "{") {
+      const fim = w.indexOf("}", i + 2);
+      if (fim < 0) break;
+      i = fim;
+      continue;
+    }
+    if (c === "/" || c === "\\") ultima = i;
+  }
+  return w.slice(ultima + 1);
 }
 
 /**
