@@ -66,14 +66,28 @@ export function expandirHome(p) {
  *
  * A symlink committed in a repository — `dados -> ~/.ssh` — is exactly what a malicious clone
  * would bring, and the lexical check reads `dados/config` as inside the project.
+ *
+ * A symlink whose target does not exist yet is followed by hand (1.42.6): `realpath` fails on it,
+ * the walk used to take it for a new file named like the link, inside the project, and a write
+ * through `evil -> /somewhere/outside/new.txt` creates the target. The SDK refused it on its own
+ * (0.3.314), which this policy does not own. `saltos` counts the links followed, as the kernel
+ * does: a loop of links cannot be written through, so past 40 the path stays as asked.
  */
-export function caminhoReal(abs) {
+export function caminhoReal(abs, saltos = 0) {
   const resto = [];
   let atual = abs;
   for (;;) {
     try {
       return path.join(fs.realpathSync(atual), ...resto);
     } catch {
+      let alvo = null;
+      try { alvo = fs.readlinkSync(atual); } catch { /* not a link, or not there */ }
+      if (alvo !== null) {
+        if (saltos >= 40) return abs;
+        // A relative target is relative to the directory the link really sits in.
+        const dir = caminhoReal(path.dirname(atual), saltos + 1);
+        return path.join(caminhoReal(path.resolve(dir, alvo), saltos + 1), ...resto);
+      }
       const pai = path.dirname(atual);
       if (pai === atual) return abs;
       resto.unshift(path.basename(atual));

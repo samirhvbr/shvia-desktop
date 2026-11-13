@@ -7,6 +7,7 @@ import {
   EDICAO,
   LEITURA,
   caminhoProibido,
+  caminhoReal,
   comandoDestrutivo,
   caminhoProtegidoNoComando,
   comandoDeRede,
@@ -384,6 +385,51 @@ test("a backslash-newline is no character, and (( inside ${…} is not arithmeti
   }
   // …and the comment after a continuation is still a comment: nothing of it is read.
   assert.deepEqual(segmentosDeComando(`echo a \\${NL}# it's; rm -rf V`), ["echo a \\\n"]);
+});
+
+// 🔴 1.42.6, review of 06/11/2026. `realpath` fails on a symlink whose target does not exist yet, and the
+// walk took it for a new file named like the link, inside the project: `Write evil` with
+// `evil -> <outside>/new.txt` was an `allow`, and the write creates the target. The SDK (0.3.314) refused
+// it on its own, a boundary this policy does not own.
+test("a write through a symlink whose target does not exist yet is judged by where it leads", () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "shvia-pendente-"));
+  try {
+    const projeto = path.join(base, "projeto");
+    const fora = path.join(base, "fora");
+    fs.mkdirSync(path.join(projeto, "src"), { recursive: true });
+    fs.mkdirSync(fora);
+    const ln = (alvo, nome) => fs.symlinkSync(alvo, path.join(projeto, nome));
+    ln(path.join(fora, "novo.txt"), "evil");
+    ln("../fora/novo.txt", "relativo");
+    ln(path.join(projeto, "CLAUDE.md"), "notas");
+    ln(path.join(projeto, ".env"), "cfg");
+    ln(path.join(fora, "cadeia.txt"), "b");
+    ln("b", "a");
+    ln(path.join(projeto, "src", "novo.rs"), "dentro");
+    ln("l2", "l1");
+    ln("l1", "l2");
+    fs.mkdirSync(path.join(projeto, "dir"));
+    ln(path.join(fora, "pasta", "x.txt"), "dir/ponta");
+    const w = (p, nivel) => decidir({ projectDir: projeto, toolName: "Write", toolInput: { file_path: p, content: "x" },
+      nivel, leitura: LEITURA, edicao: EDICAO });
+    for (const nivel of ["auto", "edit", "manual"]) {
+      for (const p of ["evil", "relativo", "a", "dir/ponta"]) {
+        const r = w(p, nivel);
+        assert.equal(r.acao, "gate", `${nivel}: ${p} leads outside the project`);
+        assert.equal(r.politica, "always", `${nivel}: ${p}`);
+      }
+      assert.equal(w("notas", nivel).politica, "always", `${nivel}: a link to a CLAUDE.md that is not there yet`);
+      assert.equal(w("cfg", nivel).politica, "always", `${nivel}: a link to a .env that is not there yet`);
+    }
+    assert.equal(w("dentro", "auto").acao, "allow", "a dangling link that stays inside is an ordinary file");
+    assert.equal(w("evil", "manual").motivo.includes("fora da pasta"), true);
+    // A loop of links cannot be written through; it must neither throw nor hang.
+    assert.doesNotThrow(() => w("l1", "auto"));
+    assert.equal(caminhoReal(path.join(projeto, "evil")), path.join(fs.realpathSync(fora), "novo.txt"));
+    assert.equal(dentroDoProjeto(projeto, "evil"), false);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
 });
 
 // 🔴 1.42.6, review of 06/11/2026. About 10,000 nested `$(` made `decidir` throw a RangeError (measured on

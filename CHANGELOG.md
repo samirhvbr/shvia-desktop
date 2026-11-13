@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.42.6 - Follow a symlink whose target does not exist yet, so a write through it is judged by where it leads
+
+`caminhoReal()` follows symlinks, but `fs.realpathSync` fails on one whose target does not exist, and the walk took it for a new
+file named like the link, inside the project. With `evil -> <outside>/new.txt`, `Write evil` was an `allow` at `edit` and `auto`
+on 1.42.0, and the write creates the target; the same went for a link to a `CLAUDE.md` or a `.env` that is not there yet, which
+the fence reads as an instruction file or a protected path only by where the link leads. The SDK 0.3.314 refused such a write on
+its own, a boundary this policy does not own, so this was depth in defence, and the review ranked it low.
+
+`caminhoReal()` follows such a link by hand: an absolute target, a relative one (relative to the directory the link really sits
+in), a chain of links, and a link inside a directory that is itself a link. A loop of links stops at 40 hops, as the kernel counts,
+and stays as asked: no write goes through a loop. A dangling link that stays inside the project is still an ordinary file. One test
+holds all of it and fails against 1.42.0's `politica.mjs`.
+
 ## 1.42.6 - Fail closed: a line nested too deep to read asks as always, a policy error becomes a card, and the hook denies instead of throwing
 
 The review of 06/11/2026 measured that `decidir()` threw a RangeError on about 10,000 nested `$(` and that `preToolUse` had no
