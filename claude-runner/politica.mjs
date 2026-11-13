@@ -348,10 +348,13 @@ function estagiosDeComando(cmd, prof = 0) {
   let inicio = true; // the character at `i` starts a word: the only place a `#` is a comment
   let chaves = 0; // `${` still open: a comment or a `<<` there is text of the expansion
   let aritmetica = 0; // parentheses of a `((…))` still open: the same
+  let redir = false; // the character before was an unquoted, unescaped `<` or `>`
   for (let i = 0; i < cmd.length; i++) {
     const ch = cmd[i];
     const comecaPalavra = inicio;
+    const aposRedirecao = redir;
     inicio = false;
+    redir = false;
     if (ch === "\n" && aspa === null && heredocs.length > 0) {
       fechar();
       i = lerCorposDeHeredoc(cmd, i + 1, heredocs, segs, internos) - 1;
@@ -406,6 +409,12 @@ function estagiosDeComando(cmd, prof = 0) {
     }
     if (ch === "$" && cmd[i + 1] === "'") { aspa = "$'"; atual += "$'"; i++; continue; }
     if (ch === "'" || ch === '"') { aspa = ch; atual += ch; continue; }
+    // The `&` of `2>&1`, `>&2`, `<&0` and `&>file`, and the `|` of `>|`, belong to a redirection. Taken
+    // for a separator they cut it in two, and `2>&1 rm -rf V` became the command `1` with arguments.
+    if ((ch === "&" && (aposRedirecao || cmd[i + 1] === ">")) || (ch === "|" && aposRedirecao)) {
+      atual += ch;
+      continue;
+    }
     if (ch === ";" || ch === "\n" || ch === "|" || ch === "&") {
       // `|` and `|&` make the next segment a stage of a pipeline; `||`, `&&` and `;;` do not.
       let pipe = false;
@@ -433,6 +442,7 @@ function estagiosDeComando(cmd, prof = 0) {
       continue;
     }
     if (ch === " " || ch === "\t") inicio = true;
+    if (ch === "<" || ch === ">") redir = true;
     atual += ch;
   }
   fechar();
@@ -723,8 +733,22 @@ function nomeDoComando(tok) {
 }
 
 /**
- * Every command a segment may run, as `{ cmd, args, palavra }`: its own (past `KEY=value` and
- * the shell's keywords), and, when that one is a runner (`EXECUTORES`), one for each later word
+ * How many words a redirection takes at `toks[i]`, or 0 if that word is not one: `2>/dev/null`,
+ * `>out`, `2>&1`, `<<EOF` (the target is attached, one word) or `>`, `<<`, `>>` followed by the
+ * target as the next word (two). The shell takes redirections before the command's name as it
+ * takes `KEY=value`, in any order, so `2>&1 bash <<EOF` and `<< EOF bash` run `bash`. (A quoted
+ * word that looks like one reaches here without its quotes: judging the word after it as the
+ * command errs toward a card.)
+ */
+function palavrasDeRedirecionamento(toks, i) {
+  const m = /^(?:\d*|\{[A-Za-z_]\w*\})(&>>|&>|<<<|<<-|<<|>>|>\||>&|<&|<>|>|<)(.*)$/s.exec(toks[i]);
+  if (!m) return 0;
+  return m[2] === "" ? 2 : 1;
+}
+
+/**
+ * Every command a segment may run, as `{ cmd, args, palavra }`: its own (past `KEY=value`, the
+ * redirections in front of it and the shell's keywords), and, when that one is a runner (`EXECUTORES`), one for each later word
  * that is not an option, with the words after it as its arguments.
  *
  * Judging every such word errs toward a card, by design: in `sudo -u root rm -rf /` the word
@@ -737,7 +761,12 @@ export function comandosDoSegmento(seg) {
   const cruas = [];
   const toks = tokensDoSegmento(seg, cruas);
   let i = 0;
-  while (i < toks.length && (atribuicao(toks[i]) || PALAVRAS_DO_SHELL.has(toks[i]))) i++;
+  for (;;) {
+    if (i < toks.length && (atribuicao(toks[i]) || PALAVRAS_DO_SHELL.has(toks[i]))) { i++; continue; }
+    const r = i < toks.length ? palavrasDeRedirecionamento(toks, i) : 0;
+    if (r === 0) break;
+    i += r;
+  }
   if (i >= toks.length) return [];
   // `crua` is the word as written, quotes and all: `sintaxeIlegivel` needs to know what was quoted.
   const out = [{ cmd: nomeDoComando(toks[i]), args: toks.slice(i + 1), palavra: toks[i], crua: cruas[i] }];

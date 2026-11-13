@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.42.6 - Read the command after a redirection in front of it, so 2>&1 bash <<EOF and 2>/dev/null rm -rf are judged as the commands they are
+
+A redirection in front of a command hid it: the word the policy took for the command was the redirection (`2>/dev/null`), and the
+real command, `rm`, was one of its arguments. The shell takes redirections before a command's name as it takes `KEY=value`, in any
+order. `2>/dev/null rm -rf V` was `allow` on 1.36.5 as well, and the review of 06/11/2026 listed it as open. What 1.36.6 added is
+that a shell behind such a redirection lost its here-document: `2>&1 bash <<EOF⏎git push --force⏎EOF` and `<< EOF bash⏎…` ran
+the body with no card where 1.36.5 asked, because it judged every body line. Random lines run through bash 5.3 found those two.
+
+- Redirections at the head of a command are skipped like assignments and keywords: `2>/dev/null`, `>out`, `2>&1`, `<<EOF` with the
+  target attached or as the next word. The word after them is the command, so its flags, its network use and the here-document it owns
+  are judged.
+- The `&` of `2>&1`, `>&2`, `<&0` and `&>file`, and the `|` of `>|`, belong to the redirection. The splitter took them for a
+  separator and cut it in two: `2>&1 rm -rf V` was the command `1` with arguments. An escaped or quoted `>` is not a redirection, so
+  `echo \>& rm -rf V` and `echo ">" & rm -rf V` still end the command at the `&`.
+
+Measured with `decidir()` at `auto`: `2>&1 bash <<EOF`, `<< EOF bash`, `<<-EOF sh` and `>/dev/null bash <<'EOF'` (each with a body
+that runs `rm -rf V` or `git push --force`) were `gate/always` on 1.36.5 and `allow` on 1.42.0; they ask again. `2>/dev/null rm -rf V`,
+`>/dev/null`, `</dev/null`, `2>&1`, `&>/dev/null`, `> out`, `2> /dev/null` and `<<EOF` in front of `rm -rf V`, `git push --force` or
+`curl` were `allow` on both and ask now. This closes the first line of the open list that the review asked about; ordinary redirections
+(`npm test > out.txt 2>&1`, `cmd 2>&1 | tail`) stay automatic. The comparison corpus took these lines in, and the README lost the bullet.
+One test holds all of it and fails against 1.42.0's `politica.mjs`.
+
 ## 1.42.6 - Judge a command by its name and decode $'…', so $HOME/bin/tool and grep $'\t' stop asking while an expansion that can split into words still does
 
 The review of 06/11/2026 measured that 1.36.6 asked, as `always`, about 13 of 163 ordinary commands: those that start with `$HOME/…`

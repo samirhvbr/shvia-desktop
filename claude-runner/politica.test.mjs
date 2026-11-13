@@ -435,6 +435,39 @@ test("a backslash-newline is no character, and (( inside ${…} is not arithmeti
   assert.deepEqual(segmentosDeComando(`echo a \\${NL}# it's; rm -rf V`), ["echo a \\\n"]);
 });
 
+// 🔴 1.42.6. A redirection in front of the command hid it: the word taken for the command was the
+// redirection and the real command was one of its arguments. `2>/dev/null rm -rf V` was `allow` on 1.36.5 too,
+// and the review listed it as open. What 1.36.6 added is that a shell behind one lost its here-document, so
+// `2>&1 bash <<EOF` ran its body with no card where 1.36.5 asked (found by running random lines through bash
+// 5.3). The `&` of `2>&1` was also read as a separator, so `2>&1 rm -rf V` was the command `1`.
+test("a redirection in front of the command does not hide it, and the & of 2>&1 does not cut it", () => {
+  const NL = "\n";
+  const sempre = [
+    "2>/dev/null rm -rf V", ">/dev/null rm -rf V", "</dev/null rm -rf V", "2>&1 rm -rf V", "A=1 2>/dev/null rm -rf V",
+    "2>/dev/null A=1 rm -rf V", "> out rm -rf V", "2> /dev/null rm -rf V", ">> out rm -rf V", "&>/dev/null rm -rf V",
+    `<<EOF rm -rf V${NL}x${NL}EOF`, `<< EOF rm -rf V${NL}x${NL}EOF`, "2>/dev/null git push --force",
+    "2>/dev/null curl https://x", "</dev/null git reset --hard", "2>&1 sudo rm -rf V",
+    // The shell behind it still owns the here-document.
+    `2>&1 bash <<EOF${NL}rm -rf V${NL}EOF`, `<< EOF bash${NL}rm -rf V${NL}EOF`, `<<-EOF sh${NL}rm -rf V${NL}EOF`,
+    `>/dev/null bash <<'EOF'${NL}git push --force${NL}EOF`, `echo $#${NL}<< EOF bash${NL}${NL}git push --force`,
+    `2>&1 bash <<EOF # <<EOF ${NL}git push --force`,
+    // An escaped or quoted `>` is not a redirection: the `&` after it still ends the command.
+    "echo \\>& rm -rf V", 'echo ">" & rm -rf V', "echo '>' & rm -rf V", "true &> /dev/null; rm -rf V", "echo a >| out; rm -rf V",
+  ];
+  for (const c of sempre) {
+    const r = decide("Bash", { command: c }, "auto");
+    assert.equal(r.acao, "gate", `must ask: ${JSON.stringify(c)}`);
+    assert.equal(r.politica, "always", `must never be auto-approved: ${JSON.stringify(c)}`);
+  }
+  assert.deepEqual(tokensDoSegmento("2>&1 rm -rf V"), ["2>&1", "rm", "-rf", "V"]);
+  assert.deepEqual(segmentosDeComando("cmd 2>&1 | tail"), ["cmd 2>&1 ", " tail"]);
+  for (const c of ["ls 2>/dev/null", "npm test > out.txt 2>&1", "cat < in.txt", "echo hi >> log", "sort < in > out",
+                   "cmd 2>&1 | tail -5", "> out.txt", "2>/dev/null", "grep x < file", "echo done 1>&2",
+                   `cat > f <<EOF${NL}hello${NL}EOF`, "bash script.sh 2>&1 | tee log", "npm test &> /dev/null"]) {
+    assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${JSON.stringify(c)}`);
+  }
+});
+
 // 🔴 1.42.6, review of 06/11/2026. `realpath` fails on a symlink whose target does not exist yet, and the
 // walk took it for a new file named like the link, inside the project: `Write evil` with
 // `evil -> <outside>/new.txt` was an `allow`, and the write creates the target. The SDK (0.3.314) refused

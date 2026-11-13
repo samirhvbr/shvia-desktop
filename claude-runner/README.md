@@ -122,7 +122,8 @@ does is decided by `decidir()` in [`politica.mjs`](politica.mjs):
   `${…}` or a `((…))` opens no here-document. A here-document body is text unless the command it
   goes to runs it (a shell, `.`, `source`, `sudo -s`). A pipe into any shell asks, named or
   wrapped as it may be (`| zsh`, `| env bash`, `| "bash"`). A flag that the line completes when it
-  runs (`-r$(echo f)`) counts as any flag. A line whose command name is decided when it runs (a
+  runs (`-r$(echo f)`) counts as any flag. A redirection in front of the command (`2>/dev/null rm
+  -rf V`, `2>&1 bash <<EOF`) is skipped as `KEY=value` is. A line whose command name is decided when it runs (a
   variable, a substitution, a glob) asks as `always` (`sintaxeIlegivel()`). The name is the part
   after the last `/`, so `$HOME/bin/tool` and `$(pwd)/node_modules/.bin/vitest` are `tool` and
   `vitest`; but a directory that an unquoted expansion may split into words still asks
@@ -146,8 +147,6 @@ one closes, so that this list is edited in the same commit.
   the same files asks. 1.36.6 said that no level writes an instruction file or a path outside the
   project unasked; that is true of the tools and was never true of the shell.
 - **A command the policy reads as something else:**
-  - a redirection in front of it: `2>/dev/null rm -rf V`, `>/dev/null rm -rf V`, `<<EOF rm -rf V`:
-    the first word is the redirection, and `rm` is read as its argument;
   - `env -S 'rm -rf V'`, where `env` splits the string into a command;
   - `/usr/bin/time rm -rf V`: `time` by path is not the keyword (`command time rm -rf V` asks);
   - `function f { rm -rf V; }; f` (`f() { rm -rf V; }; f` asks);
