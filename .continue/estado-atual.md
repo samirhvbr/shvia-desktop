@@ -12,9 +12,13 @@ Desktop 1.25.x within 1.x, Pentest 1.2.30+ within 1.x (1.26.2: the probe reads `
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Last updated: **12/11/2026** (version 1.42.0). 1.42.0 = the page can ask the Desktop to save the PDF report of the finished local
+> Last updated: **13/11/2026** (version 1.42.2). 1.42.2 = the pin moves to engine 1.2.55 (the fork's Release `shvia-v1.2.55`), the
+> first build with the `report-pdf` command 1.42.0 runs, so `canSavePdf` turns on; it also carries 1.2.51 to 1.2.54 (the ShvIA PDF,
+> the indentation of code in it, the two cache keys 1.40.2 sends, the Opengrep sandbox image) and its `report-pdf` was run over a
+> synthetic run on the published Mac file and, in an amd64 container, on the published Linux file; open: the save dialog on a Mac, a
+> real run's PDF, and a real run on a Mac with the 1.4.1 sandbox image. Previously, 1.42.0 = the page can ask the Desktop to save the PDF report of the finished local
 > run where the person picks (`savePentestReport`, `canSavePdf` in `pentestStatus`; the engine's new `report-pdf` command, Pentest
-> 1.2.55; no viewer, no server); open: the engine 1.2.55 Release and the pin that turns `canSavePdf` on, the dialog on a Mac.
+> 1.2.55; no viewer, no server); open then: the engine 1.2.55 Release and the pin that turns `canSavePdf` on, the dialog on a Mac.
 > Previously, 1.41.0 = a wait for the provider's usage window no longer
 > ends on an attempt that fails (it waits for the next step and keeps why: `autoResume.lastFailure`), outlives an
 > app restart (the plan is written next to the run and the next start takes it back) and keeps the computer awake;
@@ -27,8 +31,8 @@ Desktop 1.25.x within 1.x, Pentest 1.2.30+ within 1.x (1.26.2: the probe reads `
 > to open Docker Desktop on a Mac when Docker does not answer (`pentestOpenDocker`,
 > `docker.canOpen` in `pentestPreflight`; PT-39 step a); open: one real press of the
 > button on a Mac, the launch compiles everywhere but was not run on one. The Pentest
-> engine is pinned at 1.2.50, whose activity-window mask holds the formats 1.2.49 let
-> through (measured over a synthetic run); a real run with it on a Mac, and the mask over
+> engine is pinned at 1.2.55 since 1.42.2 (at 1.2.50 since 1.38.12, whose activity-window mask holds the formats 1.2.49 let
+> through, measured over a synthetic run); a real run with it on a Mac, and the mask over
 > a target's real output, are still open. Previously, 1.38.1 = the pin at 1.2.49, the first
 > build with the `activity` command 1.37.0 runs, and 1.38.0 = local Code reload resume now
 > verifies the dashboard account and origin in the native bridge (ADR-037).
@@ -310,7 +314,7 @@ staple no `build-local.sh`).
 Built in SHVIA-WEB #713 (merged 10/11/2026; production serves it on 13/11/2026). The folder card's "Novo chat" empties
 the window once the record has taken the conversation, and the conversation stays an item of the history. The sidebar
 and rail buttons, which only reset the Chat face, are hidden on the Code face. The decision is in SHVIA-WEB's
-`docs/FRONTEND/PAINEL-CODE-EM-ABAS.md`. The specification left this queue in 1.42.2; it stays in the history
+`docs/FRONTEND/PAINEL-CODE-EM-ABAS.md`. The specification left this queue in 1.42.3; it stays in the history
 (`git show 9a4b3d7:.continue/NOVO-CHAT-ABA-CODE-20260930.md`).
 
 ## Decisões em aberto (confirmar com o time)

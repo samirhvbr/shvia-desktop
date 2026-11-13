@@ -161,6 +161,13 @@ The first long runs on the owner's Mac (30/10 and 02/11/2026) found what a Linux
   `?token=`, `curl -u` and `-b`, a header after the `\n` of encoded arguments, `scheme://user:password@host`, `API_TOKEN=`, and
   Slack, GitLab, Stripe, Google, SendGrid, npm and AWS key ids), bounds the cost of that mask on a hostile line, and normalises
   every field to what `pentestActivity()` accepts, so one odd row no longer holds the whole window back.
+- **Engine 1.2.55 (1.42.2)** is the first build with `report-pdf`, the command `savePentestReport()` (1.42.0) runs, so
+  `pentestStatus().canSavePdf` is `true` from this pin on (for a run on disk, with a pin of 1.2.55 or later). It also carries what the
+  fork delivered since 1.2.50: the ShvIA name and mark on the PDF and the viewer, with no link to the vendor's platform (1.2.51), the
+  indentation of code in the PDF (1.2.52), the cached input tokens and the calls that did not report them in each model row of the
+  history and of the control snapshot (`cached_input_tokens`, `unknown_cache_attempts`, 1.2.53: the two keys that 1.40.2 sends arrive
+  filled instead of null), and the sandbox image `strix-sandbox:1.4.1-shvia-ac827485f0ca`, pinned by digest, with Opengrep 1.31.0 and its
+  offline rules (1.2.54), downloaded once by a computer that has 1.3.1.
 - **Open Docker (1.39.0)**: on a Mac whose Docker is installed and not answering, `pentestPreflight().docker.canOpen` is `true`
   and `pentestOpenDocker()` hands Docker Desktop to the system (`/usr/bin/open` with the app's own path). It asks Docker first,
   launches only for a daemon that verifiably does not answer, and answers `starting` for 45 s afterwards instead of launching
