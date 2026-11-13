@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.42.6 - Hold the policy against 1.36.5 with a corpus of command lines the shell runs, the open ones named in the README
+
+Why five command lines that master 1.36.5 asked about got through 1.36.6 with every test green: its tests proved the spellings the
+02/11 review measured and a few ordinary lines, and nothing compared the new reading of a shell line with the old one.
+`claude-runner/politica-diferencial.test.mjs` does. It holds `claude-runner/fixtures/politica-1.36.5.mjs` (the old `politica.mjs`,
+byte for byte under a banner, in a folder Tauri does not bundle and the installers do not copy) against today's policy at the
+`auto` level, over four sets of lines. Every line is one a shell runs: 789 of the 802 in the first two sets produced their effect
+in bash 5.3 or zsh 5.9, in a sandbox with `rm`, `git`, `curl`, `dd` and `chmod` stubbed (the other 13 are named in the test's header:
+`sudo` cannot run there, `env -i` clears the PATH the stubs sit on, and `cat .env > /dev/null` prints nothing to see).
+
+- 46 lines of the review and their variants, with what 1.36.5 said held as data and checked against the frozen copy.
+- A grid of 84 ways to put a command in a line (prefixes, wrappers, groups, substitutions, here-documents, comments, pipes) times
+  nine commands, 756 lines: none may be `allow`, and nothing 1.36.5 asked about may be.
+- Seven lines that got lighter on purpose, each with its reason: a comment, and a here-document body handed to a program that only
+  reads it. 1.36.5 asked about them and no shell runs what they hold.
+- Eighteen lines still open, asserted `allow` and named in `claude-runner/README.md`, which the test reads: closing one fails the
+  test until the README loses the line.
+
+Run against 1.42.0's `politica.mjs`, the test fails on all 46 lines of the review (23 that 1.36.5 asked about and 23 it never
+read) and on 147 of the 756 grid lines, 95 of which 1.36.5 asked about. `claude-runner/README.md` now says that the fence of
+1.36.6 belongs to the four file-writing tools, and has a section, "What `auto` does not cover", that starts with the line the
+entries of 1.36.6 got wrong: a `Bash` command writes anything at `auto`.
+
 ## 1.42.6 - Skip a backslash-newline as the shell does and read no (( inside a ${…}, so a quote in a comment no longer swallows the next line
 
 Found by running the comment rule of this version against bash 5.3 over thousands of random lines of tricky fragments ending in
