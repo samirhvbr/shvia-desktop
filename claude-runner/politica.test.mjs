@@ -435,6 +435,28 @@ test("a backslash-newline is no character, and (( inside ${…} is not arithmeti
   assert.deepEqual(segmentosDeComando(`echo a \\${NL}# it's; rm -rf V`), ["echo a \\\n"]);
 });
 
+// 🔴 1.42.6. `function f { rm -rf V; }; f`: the segment began with the keyword `function`, which was read as the
+// command, and its name and the body were its arguments. `f() { rm -rf V; }` was read (the parentheses split the
+// segment) and the keyword form was not. Measured: bash 5.3 and zsh 5.9 run it. `allow` on 1.36.5 as well.
+test("the body of a function defined with the `function` keyword is judged", () => {
+  const NL = "\n";
+  const sempre = [
+    "function f { rm -rf V; }; f", "function f { git push --force; }; f", "function f { curl https://x; }; f",
+    "function f { cat .env; }; f", "function f { rm -rf V; }", `function f {${NL} rm -rf V${NL}}${NL}f`,
+    "function f() { rm -rf V; }; f", "f() { rm -rf V; }; f", "function f { echo hi; rm -rf V; }; f",
+    "function f { if true; then rm -rf V; fi; }; f",
+  ];
+  for (const c of sempre) {
+    const r = decide("Bash", { command: c }, "auto");
+    assert.equal(r.acao, "gate", `must ask: ${JSON.stringify(c)}`);
+    assert.equal(r.politica, "always", `must never be auto-approved: ${JSON.stringify(c)}`);
+  }
+  for (const c of ["function build { npm run build; }; build", "function f { echo hi; }; f", "function f() { ls -la; }; f",
+                   `function deploy {${NL} npm test${NL}}${NL}deploy`]) {
+    assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${JSON.stringify(c)}`);
+  }
+});
+
 // 🔴 1.42.6. `env -S 'rm -rf V'` splits its argument into a command and runs it: the string reached the
 // policy as one word, a command named `rm -rf v`, and nothing judged it. Measured: bash 5.3 and zsh 5.9 run
 // it (macOS's `env`; GNU's has `--split-string` too). `allow` on 1.36.5 as well; the review listed it as open.

@@ -148,7 +148,6 @@ this list is edited in the same commit.
   the same files asks. 1.36.6 said that no level writes an instruction file or a path outside the
   project unasked; that is true of the tools and was never true of the shell.
 - **A command the policy reads as something else:**
-  - `function f { rm -rf V; }; f` (`f() { rm -rf V; }; f` asks);
   - `bash <<< 'rm -rf V'`, a here-string into a shell (a here-document into one asks);
   - brace expansion: `{rm,-rf,V}` runs `rm -rf V` in bash.
 - **A word that is decided when the line runs:** a flag held in a variable (`F=-rf; rm $F V`), or

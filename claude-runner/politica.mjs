@@ -786,6 +786,8 @@ export function comandosDoSegmento(seg) {
   const toks = tokensDoSegmento(seg, cruas);
   let i = 0;
   for (;;) {
+    // `function NAME { … }`: the keyword and the name are not the command; the body is (1.42.6).
+    if (i < toks.length && toks[i] === "function") { i += 2; continue; }
     if (i < toks.length && (atribuicao(toks[i]) || PALAVRAS_DO_SHELL.has(toks[i]))) {
       // `time -p rm -rf V`: bash's `-p` belongs to the keyword, and was read as the command (1.42.6).
       if (toks[i] === "time" && toks[i + 1] === "-p") i++;
