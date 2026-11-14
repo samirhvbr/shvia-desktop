@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as AGORA from "./politica.mjs";
 import * as ANTES from "./fixtures/politica-1.36.5.mjs";
+import * as MASTER from "./fixtures/politica-1.42.4.mjs";
 
 /**
  * The policy against what it replaced: a command line that 1.36.5 asked about must still be asked about.
@@ -26,8 +27,9 @@ import * as ANTES from "./fixtures/politica-1.36.5.mjs";
  * what the manual says (the login shell, the job and each line of stdin go to `sh`), and `runuser` and `batch`,
  * which follow it; `env -i`, which clears the PATH the stubs sit on, so the
  * real commands run; and `cat .env` with its output sent to /dev/null, which reads the file and prints
- * nothing to see. Lines spelled with a brace expansion, or with `time -p` or `time --`, only bash runs; with `${ list; }`, only
- * bash 5.3; with `$${`, bash 3.2, bash 5.3 and dash, not zsh. A line that the shell does not run is not a case:
+ * nothing to see. Lines spelled with a brace expansion, or with `time -p` or `time --`, or with an unquoted `$NAME` that holds
+ * the command (zsh does not split it), only bash runs; with `${ list; }`, only bash 5.3; with `$${`, bash 3.2, bash 5.3
+ * and dash, not zsh. A line that the shell does not run is not a case:
  * `echo "rm -rf V"` asks nothing, rightly.
  *
  * 1. `BARRADAS` and `ANTES_LIBERADAS`: the lines of the review and their variants. What 1.36.5 said is
@@ -40,6 +42,9 @@ import * as ANTES from "./fixtures/politica-1.36.5.mjs";
  *    lands here must be argued, not found.
  * 4. `LACUNAS`: what still runs with no card. They are asserted open on purpose, and `claude-runner/README.md`
  *    must name each one. Closing one is good: delete it here and from the README, in the same commit.
+ * 5. Master 1.42.4 (`fixtures/politica-1.42.4.mjs`, frozen too): every line above goes through it as well, and a
+ *    line it asks about must still ask unless `ALIVIOS_DA_MASTER` says why. Section 5 is why: a line that 1.36.5 let
+ *    through and master asked about is in none of the lists above.
  */
 const RAIZ = "/home/dev/projeto";
 
@@ -170,6 +175,10 @@ const CONTEXTOS = [
   "su <<EOF\n§\nEOF", "sudo su <<EOF\n§\nEOF", "at now <<EOF\n§\nEOF", "parallel <<EOF\n§\nEOF", "at now <<< '§'",
   "cat <<EOF | su\n§\nEOF", "echo '§' | su", "echo '§' | at now", "echo '§' | sudo su",
   "parallel <<EOF\n'\n§\nEOF", "parallel <<EOF\n{\n'\n§",
+  // A `$NAME` directory that the line bound to the command (`X='rm -rf V #'; $X/x` runs `rm` in bash, which splits the value).
+  "X='§ #'; $X/x", "echo '§ #'; $_/x", "read <<< '§ #'; $REPLY/x", "export HO\\ME='§ #'; $HOME/x", 'declare "HO""ME=§ #"; $HOME/x',
+  "printf -v HOME '§ #'; $HOME/x", "for HOME in '§ #'; do $HOME/x; done", "f() { HOME='§ #'; }; f; $HOME/x",
+  "[[ '§ #' =~ (.*) ]]; $BASH_REMATCH/x", "mapfile -t HOME <<< '§ #'; $HOME/x", "read HOME <<< '§ #'; $HOME/x",
 ];
 
 test("the grid: whatever the line is built from, the policy asks, and no verdict of 1.36.5 is lost", () => {
@@ -248,4 +257,55 @@ test("what still runs with no card is asserted open, and the README names each o
     assert.ok(readme.includes(chave), `README.md does not name the open gap "${quando}" (it must contain: ${chave})`);
   }
   assert.deepEqual(sobrando, []);
+});
+
+// ── 5. Against master 1.42.4 ────────────────────────────────────────────────────────────────
+/**
+ * The first draft of this change was held against 1.36.5 only, and the review of 14/11/2026 found four lines it let through that
+ * master asks about: master asked about every command named `$X/…`, the draft read a plain `$NAME` as the environment's when the
+ * line did not write its name, and `$_`, `read`, and a name spelled `HO\ME` or `"HO""ME"` bind one without writing it. 1.36.5 let
+ * those through as well, so no list above held them. These lines are asked about by master and must be asked about here; every
+ * line of the lists above goes through master too, with the same rule.
+ */
+const PEDE_NA_MASTER = [
+  "echo 'rm -rf V #'; $_/x", "read <<< 'rm -rf V #'; $REPLY/x", "export HO\\ME='rm -rf V #'; $HOME/x", 'declare "HO""ME=rm -rf V #"; $HOME/x',
+  "printf -v HOME 'rm -rf V #'; $HOME/x", "mapfile -t HOME <<< 'rm -rf V #'; $HOME/x", "read HOME <<< 'rm -rf V #'; $HOME/x",
+  "for HOME in 'rm -rf V #'; do $HOME/x; done", "f() { HOME='rm -rf V #'; }; f; $HOME/x", "[[ 'rm -rf V #' =~ (.*) ]]; $BASH_REMATCH/x",
+  "n=HOME; read $n <<< 'rm -rf V #'; $HOME/x", "unset HOME; echo ${HOME:='rm -rf V #'} >/dev/null; $HOME/x",
+  "f() { $X/x; }; X='rm -rf V #' f", "declare -n r=HOME; r='rm -rf V #'; $HOME/x", "{ HOME='rm -rf V #'; $HOME/x; }",
+  "echo 'rm -rf V #' | while read X; do $X/x; done", "export PATH=$HOME/bin:$PATH && $HOME/bin/tool",
+];
+
+const POR_NOME = "a command is judged by its name, the part after the last `/`; the directory is the environment's `$NAME`, `$(pwd)` or quoted, as "
+  + "`./tool` names one, and nothing in the line binds a variable";
+const ANSI_C = "`$'…'` is decoded, so what it spells is judged, and `grep $'\\t'` hides no command";
+/**
+ * What master asked about and this lets through, on purpose, each with its reason: the 13 of the 117 ordinary commands measured
+ * for this change that master asked about and this does not (15 cards on master, 2 here), and the two comment lines of `ALIVIOS`
+ * that master asked about too. What lands here must be argued, not found.
+ */
+const ALIVIOS_DA_MASTER = [
+  [POR_NOME, "$HOME/.cargo/bin/cargo build"], [POR_NOME, '"$HOME/bin/tool" --version'], [POR_NOME, "$HOME/go/bin/golangci-lint run"],
+  [POR_NOME, "$(pwd)/node_modules/.bin/vitest run"], [POR_NOME, '"$(git rev-parse --show-toplevel)/scripts/check.sh"'],
+  [POR_NOME, "${HOME}/.local/bin/uv run x"], [POR_NOME, "$PWD/scripts/run.sh"], [POR_NOME, "$CARGO_HOME/bin/cargo test"],
+  [POR_NOME, "$HOME/.local/bin/ruff check ."],
+  [ANSI_C, "grep $'\\t' file"], [ANSI_C, "echo $'a\\nb'"], [ANSI_C, "sed $'s/a/\\\\t/' file"], [ANSI_C, "printf $'%s\\\\n' x"],
+  ["a comment is not a command, and its `;` ends nothing", "ls # list; rm -rf V"],
+  ["a comment inside a substitution hides its `)` from the shell", "echo $(echo a # ) ; rm -rf V\n)"],
+];
+
+test("nothing master 1.42.4 asks about runs with no card here, unless the relief says why", () => {
+  const alivios = new Set(ALIVIOS_DA_MASTER.map(([, l]) => l));
+  for (const [porque, linha] of ALIVIOS_DA_MASTER) {
+    assert.ok(veredito(MASTER, linha).startsWith("gate"), `master did not ask about it, so it is not a relief: ${porque}`);
+    assert.equal(veredito(AGORA, linha), "allow", `it must be automatic (${porque}): ${JSON.stringify(linha)}`);
+  }
+  for (const linha of PEDE_NA_MASTER) {
+    assert.ok(veredito(MASTER, linha).startsWith("gate"), `master does not ask about it, the label is wrong: ${JSON.stringify(linha)}`);
+    assert.equal(veredito(AGORA, linha), SEMPRE, `REGRESSION, master asked and this does not: ${JSON.stringify(linha)}`);
+  }
+  const grade = CONTEXTOS.flatMap((ctx) => COMANDOS.map((c) => ctx.replaceAll("§", c)));
+  const todas = [...BARRADAS, ...ANTES_LIBERADAS, ...grade, ...ALIVIOS.map(([, l]) => l), ...LACUNAS.map((l) => l.linha)];
+  const falhas = todas.filter((l) => !alivios.has(l) && veredito(MASTER, l).startsWith("gate") && veredito(AGORA, l) === "allow");
+  assert.deepEqual(falhas.slice(0, 12), [], `${falhas.length} line(s) that master asks about got no card`);
 });

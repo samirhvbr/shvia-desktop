@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.42.6 - Hold the policy against master 1.42.4 too, so a line master asks about cannot be let through by a closure of another
+
+The comparison corpus held every line 1.36.5 asked about, and it could not see a line that 1.36.5 let through and master asks about. The
+independent review of this change (14/11/2026) found four of those, the plain-`$NAME` entry of this release (`echo 'rm -rf V #'; $_/x` and three more),
+and none of the lists had them: the only test that could have caught them compared with the wrong version. `claude-runner/fixtures/politica-1.42.4.mjs` is master's
+`politica.mjs` as it is at 29a0364b, frozen like the 1.36.5 copy, one folder down so that nothing bundles or imports it.
+
+- Every line of the comparison (the review's lines and their variants, the grid, the reliefs and the open gaps) goes through master's policy
+  too, and a line it asks about must ask here unless `ALIVIOS_DA_MASTER` names it and says why. There are 15: the 13 ordinary commands that the
+  friction entry of this release lets through (`$HOME/.cargo/bin/cargo build`, `grep $'\t' file`, …) and two comments, each with its reason.
+- `PEDE_NA_MASTER` holds 17 lines that master asks about and no other list has: the four of the review and the ways to bind a variable around
+  a `$X/…` command. The grid gains 11 contexts that put the command in the value of a variable the line binds (99 lines; bash 5.3 ran all of them, zsh does not
+  split the value), and the corpus now has 53 + 81 lines and a grid of 1,269.
+
+Measured: against the `politica.mjs` of the first draft the new test fails, on `echo 'rm -rf V #'; $_/x`, the line it was written for;
+against this one it passes. Nothing else in the policy changes.
+
 ## 1.42.6 - Judge each line a parallel reads as a command of its own, so a quote left open on one line hides none of the next
 
 A `parallel` with no command runs each LINE it reads as a command of its own, and the entry below judged the body of its here-document as one script,
