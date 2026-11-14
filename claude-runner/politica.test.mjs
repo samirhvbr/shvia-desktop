@@ -409,6 +409,31 @@ test("text the shell does not read opens no here-document: a comment, ${…}, ((
   }
 });
 
+// 🔴 1.42.6, the review of 14/11/2026. `$[ … ]` is the old spelling of `$(( … ))`, and bash 3.2, bash 5.3 and zsh 5.9 still read it.
+// Its `<<` opened a here-document here, so the next line was a body, text that nothing judged, and the shell ran it; and its
+// spaces cut the word, so in `X=$[1 + 2] rm -rf V` the assignment ended at `X=$[1` and the command was `+`. 1.36.5 asked about
+// the first (it had no here-documents) and let the second through, as master did.
+test("$[ … ] is arithmetic: it opens no here-document, and its spaces do not cut the word", () => {
+  const NL = "\n";
+  const sempre = [
+    `echo $[1<<2]${NL}rm -rf V`, `echo $[ 1 << 2 ]${NL}rm -rf V${NL}2 ]`, `echo $[ a[1]<<2 ]${NL}rm -rf V`,
+    `echo hi $[1<<2] # c${NL}rm -rf V`, `echo $[1<<2]${NL}git push --force`, `echo $[1<<2]${NL}curl https://x`,
+    "X=$[1 << 2] rm -rf V", "X=$[1 + 2] rm -rf V", "X=$[ 1 + 2 ] git push --force", "A=1 B=$[2 * 3] C=$[4] rm -rf V",
+    "echo $[1 + 2]; rm -rf V",
+  ];
+  for (const c of sempre) {
+    const r = decide("Bash", { command: c }, "auto");
+    assert.equal(r.acao, "gate", `must ask: ${JSON.stringify(c)}`);
+    assert.equal(r.politica, "always", `must never be auto-approved: ${JSON.stringify(c)}`);
+  }
+  assert.deepEqual(tokensDoSegmento("X=$[1 + 2] rm"), ["X=$[1 + 2]", "rm"]);
+  assert.deepEqual(tokensDoSegmento("echo $[ a[1] + 2 ] b"), ["echo", "$[ a[1] + 2 ]", "b"], "a bracket inside nests");
+  assert.deepEqual(tokensDoSegmento("X=$[ 1 + 2 rm"), ["X=$[", "1", "+", "2", "rm"], "a `$[` that never closes is plain words");
+  for (const c of ["echo $[1<<2]", "echo $[1 + 2]", "x=$[1 + 2]; echo $x", `echo $[ 1 << 2 ] done${NL}ls`, "let x=1<<2"]) {
+    assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${JSON.stringify(c)}`);
+  }
+});
+
 // 🔴 1.42.6, the friction the review of 06/11/2026 measured: 1.36.6 asked, as `always`, about 13 of 163 ordinary
 // commands, those that start with `$HOME/…` or `$(pwd)/…` or use `$'…'`. Of the 117 ordinary commands measured
 // for this change, 0 asked on 1.36.5, 15 on 1.42.0. A command is judged by its NAME, the part after the last

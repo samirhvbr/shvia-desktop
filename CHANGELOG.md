@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.42.6 - Read $[ … ] as arithmetic, so its << opens no here-document and its spaces do not cut the word
+
+`$[ … ]` is the old spelling of `$(( … ))`, and bash 3.2, bash 5.3 and zsh 5.9 still read it. The `<<` in `echo $[1<<2]` opened a
+here-document here, so the line after it was read as its body, text that nothing judged, and the shell ran it (`rm -rf V` on the next
+line ran with no card at the `auto` level); 1.36.5 had no here-documents and asked. And its spaces cut the word: in
+`X=$[1 + 2] rm -rf V` the assignment ended at `X=$[1`, the command was `+`, and `rm` was its argument. That one was `allow` on 1.36.5
+and on master too, the same family as the substitution with spaces in it that this release closes first, for `$(…)` and `${…}`.
+
+- In the splitter, a `$[` opens a region (nested `[`s counted) where a `<<` is no here-document and a `#` is no comment, as `${…}` and
+  `((…))` do.
+- In the tokenizer, `$[ … ]` is one word with its spaces, as `$(( … ))` is; one that never closes is read as plain words.
+
+Measured with `decidir()` at `auto`: `echo $[1<<2]` followed by a line with `rm -rf V`, `git push --force` or `curl`, `echo $[ a[1]<<2 ]`
+and a `# c` after one (`allow` on master) and `X=$[1 + 2] rm -rf V`, `X=$[1 << 2] rm -rf V`, `X=$[ 1 + 2 ] git push --force` (`allow` on master and
+1.36.5) ask now; `echo $[1<<2]`, `echo $[1 + 2]` and `x=$[1 + 2]; echo $x` stay automatic. One test holds both sides and fails against
+the previous `politica.mjs`; the comparison corpus gains 6 + 3 lines and four contexts of its grid (bash 5.3 and zsh 5.9 ran all 36 of those grid lines).
+
 ## 1.42.6 - Skip the -- that bash's time keyword takes, so time -- rm -rf V and time -p -- rm -rf V are judged
 
 `time -- rm -rf V` and `time -p -- rm -rf V` ran `rm` with no card at the `auto` level: bash's grammar takes a `--` after the `time`

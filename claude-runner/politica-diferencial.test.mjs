@@ -77,6 +77,9 @@ const BARRADAS = [
   "X='$'${ rm -rf V; }", "X=${ git push --force; }",
   // bash's `time` keyword takes `--` (and `-p --`) before the command.
   "time -- rm -rf V", "time -p -- rm -rf V", "time -- git push --force", "time -p -- curl https://x",
+  // The old arithmetic `$[ … ]`: its `<<` opens no here-document.
+  "echo $[1<<2]\nrm -rf V", "echo $[ 1 << 2 ]\nrm -rf V\n2 ]", "echo $[ a[1]<<2 ]\nrm -rf V", "echo hi $[1<<2] # c\nrm -rf V",
+  "echo $[1<<2]\ngit push --force", "echo $[1<<2]\ncurl https://x",
 ];
 
 /** Let through by 1.36.5 as well, and asked about now: the same families, the spellings it never read. */
@@ -107,6 +110,8 @@ const ANTES_LIBERADAS = [
   // bash 5.3's `${ list; }` as an argument, in quotes, in a here-document body and in a `${…}`, and a name or a `$$` run it hides.
   "echo ${ rm -rf V; }", 'echo "${ rm -rf V; }"', "cat <<EOF\n${ rm -rf V; }\nEOF", "echo ${x:-${ rm -rf V; }}",
   "echo ${ rm -rf V; } | cat", "${ echo rm; } -rf V", "X=${ echo hi; } rm -rf V", "X=$$${A:-b c} rm -rf V", "X=$$$${A:-b c} rm -rf V",
+  // The old arithmetic `$[ … ]` in a prefix assignment: its spaces do not end the word.
+  "X=$[1 + 2] rm -rf V", "X=$[1 << 2] rm -rf V", "X=$[ 1 + 2 ] git push --force",
 ];
 
 test("the lines of the review: what 1.36.5 asked about still asks, and the variants it never read ask too", () => {
@@ -151,7 +156,7 @@ const CONTEXTOS = [
   "/usr/bin/time §", "/usr/bin/time -p §", "time -p §", "env -S '§'", "sudo env -S '§'", "function f { §; }; f",
   "function f { echo hi; §; }; f", "bash <<< '§'", 'sh <<< "§"', "sudo bash <<< '§'", "source /dev/stdin <<< '§'",
   "X=${ §; }", "echo ${ §; }", 'echo "${ §; }"', "cat <<EOF\n${ §; }\nEOF", "echo ${x:-${ §; }}", "X=$${ §", "A=1 X=$${ §",
-  "time -- §", "time -p -- §",
+  "time -- §", "time -p -- §", "echo $[1<<2]\n§", "echo $[ a[1]<<2 ]\n§", "X=$[1 + 2] §", "A=1 B=$[2 * 3] §",
 ];
 
 test("the grid: whatever the line is built from, the policy asks, and no verdict of 1.36.5 is lost", () => {

@@ -384,6 +384,7 @@ function estagiosDeComando(cmd, prof = 0) {
   let inicio = true; // the character at `i` starts a word: the only place a `#` is a comment
   let chaves = 0; // `${` still open: a comment or a `<<` there is text of the expansion
   let aritmetica = 0; // parentheses of a `((…))` still open: the same
+  let colchetes = 0; // brackets of an old-style `$[…]` still open: the same
   let redir = false; // the character before was an unquoted, unescaped `<` or `>`
   for (let i = 0; i < cmd.length; i++) {
     const ch = cmd[i];
@@ -400,7 +401,7 @@ function estagiosDeComando(cmd, prof = 0) {
     }
     if (ch === "<" && aspa === null) {
       if (cmd.startsWith("<<<", i)) { atual += "<<<"; i += 2; continue; }
-      if (cmd[i + 1] === "<" && chaves === 0 && aritmetica === 0) {
+      if (cmd[i + 1] === "<" && chaves === 0 && aritmetica === 0 && colchetes === 0) {
         const h = marcaDeHeredoc(cmd, i + 2);
         if (h) {
           heredocs.push({ ...h, dono: segs.length });
@@ -410,7 +411,7 @@ function estagiosDeComando(cmd, prof = 0) {
         }
       }
     }
-    if (ch === "#" && aspa === null && comecaPalavra && chaves === 0 && aritmetica === 0) {
+    if (ch === "#" && aspa === null && comecaPalavra && chaves === 0 && aritmetica === 0 && colchetes === 0) {
       // A comment: the rest of the line is ignored by the shell, its quotes and `<<` included.
       while (i + 1 < cmd.length && cmd[i + 1] !== "\n") i++;
       continue;
@@ -478,6 +479,9 @@ function estagiosDeComando(cmd, prof = 0) {
     }
     if (ch === "$" && cmd[i + 1] === "{") { chaves++; atual += "${"; i++; continue; }
     if (ch === "}" && chaves > 0) { chaves--; atual += ch; continue; }
+    // `$[ 1 << 2 ]` is arithmetic as `$(( 1 << 2 ))` is: no here-document opens in it (`[`s inside it nest).
+    if (ch === "$" && cmd[i + 1] === "[") { colchetes++; atual += "$["; i++; continue; }
+    if (colchetes > 0 && (ch === "[" || ch === "]")) { colchetes += ch === "[" ? 1 : -1; atual += ch; continue; }
     if (ch === "(" || ch === ")") {
       // `((` opens an arithmetic command (or a `for ((` header); count its parentheses to the end.
       if (ch === "(" && (aritmetica > 0 || (chaves === 0 && cmd[i + 1] === "("))) aritmetica++;
@@ -712,16 +716,17 @@ function escapeAnsiC(seg, i) {
  * split on `\`) and `cat .e\nv` named a file that is not `.env`, while the shell ran `rm` and
  * opened `.env`.
  */
-export function tokensDoSegmento(seg, cruas = null, semChaves = false) {
+export function tokensDoSegmento(seg, cruas = null, semRegioes = false) {
   const out = [];
   let atual = "";
   let aspa = null; // "'", '"', or "$'"
   let tem = false;
   let chaves = 0; // `${` still open: its spaces belong to the word, as the shell reads it
+  let colchetes = 0; // `$[` still open: the same
   let ini = -1; // where the word in progress starts in `seg`; its raw text goes to `cruas`, if asked for
   for (let i = 0; i < seg.length; i++) {
     const ch = seg[i];
-    if (ini < 0 && !(aspa === null && chaves === 0 && /\s/.test(ch))) ini = i;
+    if (ini < 0 && !(aspa === null && chaves === 0 && colchetes === 0 && /\s/.test(ch))) ini = i;
     if (aspa === "'") {
       if (ch === "'") aspa = null; else atual += ch;
       continue;
@@ -761,8 +766,11 @@ export function tokensDoSegmento(seg, cruas = null, semChaves = false) {
       i = sub.fim - 1;
       continue;
     }
-    if (!semChaves && ch === "$" && seg[i + 1] === "{") { chaves++; atual += "${"; tem = true; i++; continue; }
+    if (!semRegioes && ch === "$" && seg[i + 1] === "{") { chaves++; atual += "${"; tem = true; i++; continue; }
     if (ch === "}" && chaves > 0) { chaves--; atual += ch; continue; }
+    // `$[ 1 + 2 ]`, the old arithmetic: one word, spaces and all, as `$(( 1 + 2 ))` is (1.42.6).
+    if (!semRegioes && ch === "$" && seg[i + 1] === "[") { colchetes++; atual += "$["; tem = true; i++; continue; }
+    if (colchetes > 0 && (ch === "[" || ch === "]")) { colchetes += ch === "[" ? 1 : -1; atual += ch; continue; }
     if (aspa === '"') {
       if (ch === '"') aspa = null; else atual += ch;
       continue;
@@ -770,16 +778,16 @@ export function tokensDoSegmento(seg, cruas = null, semChaves = false) {
     if (ch === "$" && seg[i + 1] === "'") { aspa = "$'"; tem = true; i++; continue; }
     if (ch === "'" || ch === '"') { aspa = ch; tem = true; continue; }
     if (/\s/.test(ch)) {
-      if (chaves > 0) { atual += ch; continue; }
+      if (chaves > 0 || colchetes > 0) { atual += ch; continue; }
       if (tem || atual !== "") { out.push(atual); cruas?.push(seg.slice(ini, i)); atual = ""; tem = false; }
       ini = -1;
       continue;
     }
     atual += ch;
   }
-  // A `${` that never closes is a syntax error in every shell, and swallowing the rest of the segment
+  // A `${` or `$[` that never closes is a syntax error in every shell, and swallowing the rest of the segment
   // for it hides what follows: read the segment again with its words split where the blanks are (1.42.6).
-  if (chaves > 0 && !semChaves) {
+  if ((chaves > 0 || colchetes > 0) && !semRegioes) {
     if (cruas) cruas.length = 0;
     return tokensDoSegmento(seg, cruas, true);
   }
