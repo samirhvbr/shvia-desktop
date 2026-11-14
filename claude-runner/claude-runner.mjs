@@ -43,7 +43,7 @@
 import * as readline from "node:readline";
 // A política de permissão (cerca de leitura, rede e destrutivo) mora em módulo próprio —
 // é a única forma de ela ter teste, já que este arquivo roda ao ser importado (F-13/F-29).
-import { EDICAO, LEITURA, PATH_ARG, decidir, previa, decidirNoPlano } from "./politica.mjs";
+import { EDICAO, LEITURA, PATH_ARG, decidirSeguro, previa, decidirNoPlano } from "./politica.mjs";
 // The stop handshake of the Run (RUN-20260910, B2) lives in its own pure module for the
 // same reason: it is proved by `parada.test.mjs`, and this file cannot be imported by a test.
 import { encerrarPendentes, esperarDecisao, montarStopRequest, opcoesDaRun, orcamentoDoTurno, saidaDoHook } from "./parada.mjs";
@@ -260,6 +260,20 @@ function denyDecision(reason) {
 // bypassa allow-rules. Leitura = allow; o resto vira gate_request e BLOQUEIA
 // até a decisão do card. Usa o tool_use_id REAL (casa com o tool_result).
 async function preToolUse(input /* PreToolUseHookInput */) {
+  try {
+    return await julgarChamada(input);
+  } catch (e) {
+    // Fail closed (1.42.6). The hook used to have no try/catch. A hook that throws makes the SDK drop
+    // its verdict and use its own permission check (measured, SDK 0.3.319), so the policy's decision
+    // is lost. `decidirSeguro` already turns a policy error into a card; this is for the rest (a card
+    // that cannot be built, a plan check that throws), and it denies.
+    const nome = input?.tool_name ?? "";
+    process.stderr.write(`[política] ${nome}: falhou (${e?.message ?? e}); negado\n`);
+    return denyDecision("A política de aprovação falhou ao julgar esta chamada e nada foi executado. Tente de novo, com um passo mais simples.");
+  }
+}
+
+async function julgarChamada(input) {
   const toolName = input?.tool_name ?? "";
   const toolInput = input?.tool_input ?? {};
   const id = input?.tool_use_id ?? "";
@@ -281,7 +295,7 @@ async function preToolUse(input /* PreToolUseHookInput */) {
   // projeto" — descrevia uma cerca que **não existia**: `Read` de caminho absoluto e
   // `WebFetch` de qualquer URL eram automáticos, e os dois juntos são a cadeia de
   // exfiltração inteira (F-13). Agora a frase é verdade, e tem teste.
-  const { acao, motivo, politica } = decidir({
+  const { acao, motivo, politica } = decidirSeguro({
     projectDir: PROJECT_DIR,
     toolName,
     toolInput,
