@@ -117,7 +117,9 @@ does is decided by `decidir()` in [`politica.mjs`](politica.mjs):
   `$(…)` and backticks judged as scripts of their own even inside double quotes and kept whole in
   the word they are part of (`X=$(echo a b) rm -rf V` is an assignment and then `rm`), the shell's
   keywords (`then`, `do`, `!`) skipped, and every word after a command that starts another command
-  (`sudo`, `env`, `xargs`, `timeout`, `nice`, `find -exec`, …) judged as the command it may start.
+  (`sudo`, `env`, `xargs`, `timeout`, `nice`, `time`, `find -exec`, …) judged as the command it may
+  start; the string `env -S` splits, the body of `function f { … }`, the word a `<<<` hands to a
+  shell and a command named by a brace expansion (`{rm,-rf,V}`) are read too (1.42.6).
   A comment is not read (`ls # list; rm -rf V` asks nothing), and a `<<` inside a comment, a
   `${…}` or a `((…))` opens no here-document. A here-document body is text unless the command it
   goes to runs it (a shell, `.`, `source`, `sudo -s`). A pipe into any shell asks, named or
@@ -130,7 +132,7 @@ does is decided by `decidir()` in [`politica.mjs`](politica.mjs):
   expansion may split into words still asks (`X='rm -rf V #'; $X/tool` runs `rm`), and only a
   quoted one, `$(pwd)` and a plain `$NAME` that nothing in the line binds are read. `$'…'` is
   decoded as bash does (`$'\x72m'` is `rm`); an escape that cannot be decoded asks.
-  The checks are held against what they replaced: `politica-diferencial.test.mjs` runs about 900
+  The checks are held against what they replaced: `politica-diferencial.test.mjs` runs about 1,000
   command lines through this policy and through the frozen 1.36.5 one, and a line that 1.36.5
   asked about must still ask unless the test names a reason.
 
@@ -147,8 +149,6 @@ this list is edited in the same commit.
   `echo PWNED > CLAUDE.md` and `echo x >> ~/.bashrc` run with no card at `auto`, where `Write` of
   the same files asks. 1.36.6 said that no level writes an instruction file or a path outside the
   project unasked; that is true of the tools and was never true of the shell.
-- **A command the policy reads as something else:**
-  - brace expansion: `{rm,-rf,V}` runs `rm -rf V` in bash.
 - **A word that is decided when the line runs:** a flag held in a variable (`F=-rf; rm $F V`), or
   made by a substitution (`rm $(echo -rf) V`); a glob that names a protected file (`cat .e*`,
   `cat .en?`, `cat .*` read `.env`). `rm -$X V` and `rm -r$(echo f) V` ask.

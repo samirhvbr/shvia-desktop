@@ -24,7 +24,8 @@ import * as ANTES from "./fixtures/politica-1.36.5.mjs";
  * was called. The exceptions are the lines with `sudo -s`, `sudo -i`, `doas -s` and `sudo --shell`, which
  * cannot run in a sandbox and follow the manual; `env -i`, which clears the PATH the stubs sit on, so the
  * real commands run; and `cat .env` with its output sent to /dev/null, which reads the file and prints
- * nothing to see. A line that the shell does not run is not a case: `echo "rm -rf V"` asks nothing, rightly.
+ * nothing to see. Lines spelled with a brace expansion, or with `time -p`, only bash runs. A line that the
+ * shell does not run is not a case: `echo "rm -rf V"` asks nothing, rightly.
  *
  * 1. `BARRADAS` and `ANTES_LIBERADAS`: the lines of the review and their variants. What 1.36.5 said is
  *    held as data and checked against the frozen copy, so a wrong label fails here too.
@@ -94,6 +95,8 @@ const ANTES_LIBERADAS = [
   // A here-string handed to a shell.
   "bash <<< 'rm -rf V'", "bash <<<'rm -rf V'", "sh <<< 'rm -rf V'", "sudo bash <<< 'rm -rf V'", "source /dev/stdin <<< 'rm -rf V'",
   "bash <<< 'git push --force'", "bash <<< 'curl https://x'",
+  // A command spelled with a brace expansion (only bash runs these).
+  "{rm,-rf,V}", "{git,push,--force}", "{curl,https://x}",
 ];
 
 test("the lines of the review: what 1.36.5 asked about still asks, and the variants it never read ask too", () => {
@@ -193,7 +196,6 @@ const LACUNAS = [
   { linha: "F=-rf; rm $F V", antes: "allow", readme: "F=-rf; rm $F", quando: "a flag held in a variable" },
   { linha: "rm $(echo -rf) V", antes: "allow", readme: "rm $(echo -rf)", quando: "a flag a substitution produces" },
   { linha: "cat .e*", antes: "allow", readme: "cat .e*", quando: "a glob that names a protected file" },
-  { linha: "{rm,-rf,V}", antes: "allow", readme: "{rm,-rf,", quando: "brace expansion spells the command" },
   { linha: "echo 'rm -rf V' > x.sh; bash x.sh", antes: "allow", readme: "bash x.sh", quando: "a script the agent wrote, then ran" },
   { linha: "bash <(echo 'rm -rf V')", antes: "allow", readme: "bash <(", quando: "a process substitution feeds a shell" },
   { linha: "trap 'rm -rf V' EXIT", antes: "allow", readme: "trap '", quando: "a string the shell runs later" },

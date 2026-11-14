@@ -853,10 +853,40 @@ export function sintaxeIlegivel(cmd) {
     const nome = nomeLiteral(w);
     if (/[$`]/.test(nome)) return `o nome do comando só se sabe ao rodar (${w})`;
     if (/[*?]/.test(nome) || /\[.*\]/.test(nome)) return `o nome do comando é um glob (${w})`;
+    if (comExpansaoDeChaves(primeiro.crua ?? w)) return `o nome do comando vem de uma expansão de chaves (${w})`;
     const divide = expansaoQueDivide(primeiro.crua ?? w, c);
     if (divide) return `o diretório do comando vem de ${divide}, que o shell pode dividir em palavras`;
   }
   return null;
+}
+
+/**
+ * Does this command word, as written, spell its name with a brace expansion (`{rm,-rf,V}`, `r{m,}`,
+ * `{a..c}`)? bash expands it before it looks for the command, so `{rm,-rf,V}` runs `rm -rf V`; zsh
+ * reads a `{` that starts a command as a group and runs nothing. Either way the name is not what the
+ * word says, and it asks (1.42.6). A `${…}` is a parameter, and quoted braces are text.
+ */
+function comExpansaoDeChaves(raw) {
+  let aspa = null;
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
+    if (aspa === "'") { if (c === "'") aspa = null; continue; }
+    if (aspa === '"') { if (c === '"') aspa = null; else if (c === "\\") i++; continue; }
+    if (c === "\\") { i++; continue; }
+    if (c === "'" || c === '"') { aspa = c; continue; }
+    if (c === "`" || (c === "$" && raw[i + 1] === "(")) { i = substituicaoEm(raw, i).fim - 1; continue; }
+    if (c === "$" && raw[i + 1] === "{") {
+      const f = raw.indexOf("}", i + 2);
+      if (f < 0) break;
+      i = f;
+      continue;
+    }
+    if (c === "{") {
+      const f = raw.indexOf("}", i + 1);
+      if (f > i && /,|\.\./.test(raw.slice(i + 1, f))) return true;
+    }
+  }
+  return false;
 }
 
 /**

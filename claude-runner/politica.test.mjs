@@ -435,6 +435,24 @@ test("a backslash-newline is no character, and (( inside ${…} is not arithmeti
   assert.deepEqual(segmentosDeComando(`echo a \\${NL}# it's; rm -rf V`), ["echo a \\\n"]);
 });
 
+// 🔴 1.42.6. `{rm,-rf,V}` is a brace expansion that bash turns into `rm -rf V` before it looks for the command
+// (measured: bash 5.3 runs it, zsh 5.9 does not). The word was one command named `{rm,-rf,v}`. `allow` on 1.36.5 as well.
+test("a command word spelled with a brace expansion asks", () => {
+  const sempre = [
+    "{rm,-rf,V}", "{git,push,--force}", "{curl,https://x}", "{cat,.env}", "r{m,} -rf V", "{rm,-rf,V} # c", "A=1 {rm,-rf,V}",
+    "2>/dev/null {rm,-rf,V}", "{a..c}", "ls; {rm,-rf,V}", "echo hi | {cat,.env}",
+  ];
+  for (const c of sempre) {
+    const r = decide("Bash", { command: c }, "auto");
+    assert.equal(r.acao, "gate", `must ask: ${JSON.stringify(c)}`);
+    assert.equal(r.politica, "always", `must never be auto-approved: ${JSON.stringify(c)}`);
+  }
+  for (const c of ["echo {a,b}", "cp f{,.bak}", "mkdir -p src/{a,b}", "git diff HEAD~{1,2}", "ls ${HOME}/x", "{ echo a; echo b; }",
+                   'echo "{rm,-rf}"', "echo '{a,b}'", "${HOME}/bin/tool run", "find . -name '*.{c,h}'"]) {
+    assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${JSON.stringify(c)}`);
+  }
+});
+
 // 🔴 1.42.6. `bash <<< 'rm -rf V'`: a here-string hands its word to a shell as the script, and the word was data to
 // this policy (a here-document into a shell was read since 1.36.6, the here-string was not). Measured: bash 5.3 and
 // zsh 5.9 run it, `cat <<< '…'` and `read x <<< '…'` do not. `allow` on 1.36.5 as well; the review listed it as open.

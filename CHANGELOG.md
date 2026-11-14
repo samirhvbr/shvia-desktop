@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.42.6 - Ask when a brace expansion spells the name of the command
+
+`{rm,-rf,V}` is a brace expansion that bash turns into `rm -rf V` before it looks for the command: bash 5.3 ran it with no card at the
+`auto` level, and zsh 5.9 does not (it reads a `{` that starts a command as a group). The word was one command named `{rm,-rf,v}`. It was
+`allow` on 1.36.5 as well, and the review's own end-to-end harness listed it (it did not show in the review's text).
+
+- A command word, as written, with an unquoted `{…}` that holds a `,` or a `..` asks as `always`, like a name decided by a variable or a
+  glob: `{git,push,--force}`, `{curl,https://x}`, `r{m,} -rf V`, `{a..c}`. A `${…}` is a parameter, and quoted braces are text.
+
+Measured with `decidir()` at `auto`: those lines were `allow` and ask now; `echo {a,b}`, `cp f{,.bak}`, `mkdir -p src/{a,b}`,
+`git diff HEAD~{1,2}`, `{ echo a; echo b; }` and `${HOME}/bin/tool` stay automatic, because only the first word of a command is read
+for its name. One test holds both sides and fails against 1.42.0's `politica.mjs`. The README loses the bullet (and the list of what
+`auto` reads names the five gaps that the last five entries close: `time`, `env -S`, `function`, a here-string and braces), and the
+comparison corpus moves the lines to the closed ones; the counts in its entry are now the final ones.
+
 ## 1.42.6 - Judge a here-string handed to a shell as the script it is
 
 `bash <<< 'rm -rf V'` ran `rm` with no card at the `auto` level: a here-string hands its word to a shell as the script, and the
@@ -167,20 +182,21 @@ Why five command lines that master 1.36.5 asked about got through 1.36.6 with ev
 02/11 review measured and a few ordinary lines, and nothing compared the new reading of a shell line with the old one.
 `claude-runner/politica-diferencial.test.mjs` does. It holds `claude-runner/fixtures/politica-1.36.5.mjs` (the old `politica.mjs`,
 byte for byte under a banner, in a folder Tauri does not bundle and the installers do not copy) against today's policy at the
-`auto` level, over four sets of lines. Every line is one a shell runs: 906 of the 920 in the first two sets produced their effect
-in both bash 5.3 and zsh 5.9, in a sandbox with `rm`, `git`, `curl`, `dd` and `chmod` stubbed (the other 14 are named in the test's
-header: `sudo` cannot run there, `env -i` clears the PATH the stubs sit on, and `cat .env` to /dev/null prints nothing to see).
+`auto` level, over four sets of lines. Every line is one a shell runs: 1,014 of the 1,041 in the first two sets produced their effect
+in both bash 5.3 and zsh 5.9 (13 more only in bash: brace expansion and `time -p`), in a sandbox with `rm`, `git`, `curl`, `dd` and
+`chmod` stubbed (the other 14 are named in the test's header: `sudo` cannot run there, `env -i` clears the PATH the stubs sit on, and
+`cat .env` to /dev/null prints nothing to see).
 
-- 65 lines of the review and their variants (29 that 1.36.5 asked about, 36 that it never read), with what 1.36.5 said held as
+- 87 lines of the review and their variants (29 that 1.36.5 asked about, 58 that it never read), with what 1.36.5 said held as
   data and checked against the frozen copy.
-- A grid of 95 ways to put a command in a line (prefixes, wrappers, groups, substitutions, here-documents, comments, pipes,
-  redirections) times nine commands, 855 lines: none may be `allow`, and nothing 1.36.5 asked about may be.
+- A grid of 106 ways to put a command in a line (prefixes, wrappers, groups, substitutions, here-documents, comments, pipes,
+  redirections) times nine commands, 954 lines: none may be `allow`, and nothing 1.36.5 asked about may be.
 - Seven lines that got lighter on purpose, each with its reason: a comment, and a here-document body handed to a program that only
   reads it. 1.36.5 asked about them and no shell runs what they hold.
-- Sixteen lines still open, asserted `allow` and named in `claude-runner/README.md`, which the test reads: closing one fails the
+- Eleven lines still open, asserted `allow` and named in `claude-runner/README.md`, which the test reads: closing one fails the
   test until the README loses the line.
 
-Run against 1.42.0's `politica.mjs`, the test fails on all 65 lines of the review and on 214 of the 855 grid lines, 122 of which
+Run against 1.42.0's `politica.mjs`, the test fails on all 87 lines of the review and on 300 of the 954 grid lines, 122 of which
 1.36.5 asked about. `claude-runner/README.md` now says that the fence of 1.36.6 belongs to the four file-writing tools, and has a
 section, "What `auto` does not cover", that starts with the line the entries of 1.36.6 got wrong: a `Bash` command writes anything
 at `auto`. (The counts are those at the end of 1.42.6; the entries above this one added lines to the corpus as they closed more.)
