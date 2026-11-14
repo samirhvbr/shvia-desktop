@@ -120,6 +120,8 @@ const ANTES_LIBERADAS = [
   // A here-string or a pipe into what runs its stdin as a script.
   "at now + 1 minute <<< 'rm -rf V'", "su <<< 'rm -rf V'", "echo 'rm -rf V' | su", "echo 'rm -rf V' | sudo su",
   "echo 'rm -rf V' | at now", "echo 'rm -rf V' | . /dev/stdin", "echo 'rm -rf V' | sudo -s",
+  // A `parallel` runs each line apart: a quote or a brace left open on one line does not reach the next.
+  "parallel <<EOF\n'\nrm -rf V\nEOF", "parallel <<EOF\n{\n'\nrm -rf V", "parallel <<< $'a\\n\\'\\nrm -rf V'",
 ];
 
 test("the lines of the review: what 1.36.5 asked about still asks, and the variants it never read ask too", () => {
@@ -167,6 +169,7 @@ const CONTEXTOS = [
   "time -- §", "time -p -- §", "echo $[1<<2]\n§", "echo $[ a[1]<<2 ]\n§", "X=$[1 + 2] §", "A=1 B=$[2 * 3] §",
   "su <<EOF\n§\nEOF", "sudo su <<EOF\n§\nEOF", "at now <<EOF\n§\nEOF", "parallel <<EOF\n§\nEOF", "at now <<< '§'",
   "cat <<EOF | su\n§\nEOF", "echo '§' | su", "echo '§' | at now", "echo '§' | sudo su",
+  "parallel <<EOF\n'\n§\nEOF", "parallel <<EOF\n{\n'\n§",
 ];
 
 test("the grid: whatever the line is built from, the policy asks, and no verdict of 1.36.5 is lost", () => {

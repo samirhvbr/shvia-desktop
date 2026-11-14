@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.42.6 - Judge each line a parallel reads as a command of its own, so a quote left open on one line hides none of the next
+
+A `parallel` with no command runs each LINE it reads as a command of its own, and the entry below judged the body of its here-document as one script,
+as it does for a shell: a quote or a brace left open on one line then swallowed the lines after it, and `parallel` ran them. The
+fuzz that runs random lines through bash 5.3 found three such lines in some 20,000 (`parallel <<EOF` with a lone `'` on a line and `rm -rf V`
+or `curl https://x` on a later one ran with no card at the `auto` level); a script reads to the end of the quote, `parallel` does not.
+
+- For a `parallel`, the lines of its here-document body, and of each of its arguments (a here-string word with newlines in it), are
+  judged one by one as well as together.
+
+Measured with `decidir()` at `auto`: `parallel <<EOF` with `'` or `{` and `'` on the line before `rm -rf V` or `curl https://x`, and a
+here-string `parallel <<< $'a\n\'\nrm -rf V'`, were `allow` and ask now; `parallel echo <<EOF` and `parallel -j2 gzip <<EOF` with plain
+lines stay automatic. The here-document test fails against the previous `politica.mjs`; the comparison corpus gains three lines and two contexts
+of its grid (bash 5.3 ran all 18 of those grid lines, through the stand-in for `parallel`).
+
 ## 1.42.6 - Judge what su, at, batch and parallel read as a script, from a here-document, a here-string or a pipe
 
 `su <<EOF` followed by a body with `rm -rf V`, `sudo su <<EOF`, `at now <<EOF`, `at now + 1 minute <<< 'rm -rf V'` and `parallel <<EOF`

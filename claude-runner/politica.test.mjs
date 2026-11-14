@@ -826,6 +826,10 @@ test("a here-document body is judged as a script when the command it goes to run
     `runuser -u root <<EOF${NL}rm -rf V${NL}EOF`, `at now <<EOF${NL}rm -rf V${NL}EOF`, "at now + 1 minute <<< 'rm -rf V'",
     `batch <<EOF${NL}rm -rf V${NL}EOF`, `parallel <<EOF${NL}rm -rf V${NL}EOF`, `parallel -j4 <<EOF${NL}curl https://x${NL}EOF`,
     "su <<< 'rm -rf V'", `cat <<EOF | su${NL}rm -rf V${NL}EOF`,
+    // A `parallel` runs each LINE as a command of its own, so a quote or a brace left open on one line hides none of the
+    // next (found by running random lines through bash 5.3: a script reads the quote to its end, `parallel` does not).
+    `parallel <<EOF${NL}'${NL}rm -rf V${NL}EOF`, `parallel <<EOF${NL}{${NL}'${NL}time -- time -p ${NL}rm -rf V`,
+    `parallel <<EOF${NL}; >|${NL}1<<2 # "${NL}[[ && ${NL}curl https://x`, "parallel <<< $'a\\n\\'\\nrm -rf V'",
   ];
   for (const c of sempre) {
     const r = decide("Bash", { command: c }, "auto");
@@ -838,7 +842,8 @@ test("a here-document body is judged as a script when the command it goes to run
                    ". ./scripts/activate",
                    // `su -c` hands the body to the command it names: `cat` only reads it.
                    `su -c 'cat' <<EOF${NL}rm -rf V${NL}EOF`, `su root -c 'cat' <<EOF${NL}curl is a word here${NL}EOF`,
-                   `su -lc 'cat' root <<EOF${NL}rm -rf V${NL}EOF`, "atq", "at -l | wc -l"]) {
+                   `su -lc 'cat' root <<EOF${NL}rm -rf V${NL}EOF`, "atq", "at -l | wc -l",
+                   `parallel echo <<EOF${NL}a${NL}b${NL}EOF`, `parallel -j2 gzip <<EOF${NL}f1${NL}f2${NL}EOF`]) {
     assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${JSON.stringify(c)}`);
   }
 });

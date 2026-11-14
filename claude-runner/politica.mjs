@@ -213,7 +213,12 @@ function scriptsDoComando({ cmd, args }) {
     // No `-c`: `su` starts the login shell, which reads a here-string below, and `script` and `flock` read none.
   }
   if (cmd === "eval") return [args.join(" ")];
-  if (SCRIPT_NOS_ARGS.has(cmd)) return args.filter((a) => !a.startsWith("-"));
+  if (SCRIPT_NOS_ARGS.has(cmd)) {
+    const s = args.filter((a) => !a.startsWith("-"));
+    // A `parallel` runs each LINE of what it is given as a command of its own, so a quote or a brace left open on one
+    // line (a here-string word with newlines in it) does not reach the next: the lines are judged apart as well.
+    return cmd === "parallel" ? [...s, ...s.flatMap((x) => x.split("\n"))] : s;
+  }
   if (cmd === "env") return scriptsDoEnv(args);
   // What runs a here-document as a script runs a here-string the same way (1.42.6).
   if (executaOCorpo({ cmd, args })) return scriptsDeHereString(args);
@@ -562,7 +567,10 @@ function lerCorposDeHeredoc(cmd, inicio, heredocs, segs, internos) {
     }
     const corpo = linhas.join("\n");
     const dono = segs[h.dono] ?? "";
-    if (comandosDoSegmento(dono).some(executaOCorpo)) internos.push(corpo);
+    const donos = comandosDoSegmento(dono);
+    // A `parallel` runs each LINE it reads as a command of its own, so a quote or a brace left open on one line
+    // does not reach the next, as it would in a script: the lines are judged apart as well (found by the fuzz).
+    if (donos.some(executaOCorpo)) internos.push(...(donos.some((c) => c.cmd === "parallel") ? linhas : []), corpo);
     else if (!h.literal) internos.push(...substituicoesDoTexto(corpo));
   }
   return i;
