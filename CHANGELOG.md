@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.42.6 - Judge the string that env -S splits into a command as a script
+
+`env -S 'rm -rf V'` splits its argument into a command and runs it. The policy saw the string as one word, a command named
+`rm -rf v`, so nothing judged what it ran, at the `auto` level. bash 5.3 and zsh 5.9 run it with macOS's `env` (GNU's also has
+`--split-string`). It was `allow` on 1.36.5 as well, and the review of 06/11/2026 listed it as open.
+
+- The value of `-S`, of `--split-string`, the one a cluster ends with (`-iS 'rm -rf V'`) and the one attached to the flag
+  (`-S'rm -rf V'`) are read as scripts, like the value of `bash -c`: assignments, the command, its flags, the network and the
+  protected paths in it are judged. It works behind another runner (`sudo env -S '…'`).
+
+Measured with `decidir()` at `auto`: `env -S 'rm -rf V'`, `env -S 'git push --force'`, `env -S 'curl https://x'`,
+`env -S 'cat .env'`, `sudo env -S 'rm -rf V'` and `env --split-string='rm -rf V'` were `allow` and ask now; `env -S 'echo hi'`,
+`env NODE_ENV=test npm test` and `env -u FOO npm test` stay automatic. One test holds both sides and fails against 1.42.0's
+`politica.mjs`. The README loses the bullet and the comparison corpus moves the line to the closed ones.
+
 ## 1.42.6 - Judge the command behind /usr/bin/time and behind time -p, which ran with no card
 
 `/usr/bin/time rm -rf V` ran `rm` with no card at the `auto` level: only the bare keyword `time` was skipped, and `time` by path was a

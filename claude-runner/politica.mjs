@@ -212,7 +212,29 @@ function scriptsDoComando({ cmd, args }) {
   }
   if (cmd === "eval") return [args.join(" ")];
   if (SCRIPT_NOS_ARGS.has(cmd)) return args.filter((a) => !a.startsWith("-"));
+  if (cmd === "env") return scriptsDoEnv(args);
   return [];
+}
+
+/**
+ * `env -S 'rm -rf V'` splits its argument into a command and runs it (1.42.6): the value of `-S`,
+ * of `--split-string`, and the one a cluster ends with (`-iS 'rm -rf V'`) or carries attached
+ * (`-S'rm -rf V'`), is a script.
+ */
+function scriptsDoEnv(args) {
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--split-string") { if (i + 1 < args.length) out.push(args[++i]); continue; }
+    if (a.startsWith("--split-string=")) { out.push(a.slice("--split-string=".length)); continue; }
+    if (a.startsWith("--") || !a.startsWith("-")) continue;
+    const k = a.indexOf("S");
+    if (k < 0) continue;
+    const resto = a.slice(k + 1);
+    if (resto !== "") out.push(resto);
+    else if (i + 1 < args.length) out.push(args[++i]);
+  }
+  return out;
 }
 
 /**

@@ -435,6 +435,26 @@ test("a backslash-newline is no character, and (( inside ${…} is not arithmeti
   assert.deepEqual(segmentosDeComando(`echo a \\${NL}# it's; rm -rf V`), ["echo a \\\n"]);
 });
 
+// 🔴 1.42.6. `env -S 'rm -rf V'` splits its argument into a command and runs it: the string reached the
+// policy as one word, a command named `rm -rf v`, and nothing judged it. Measured: bash 5.3 and zsh 5.9 run
+// it (macOS's `env`; GNU's has `--split-string` too). `allow` on 1.36.5 as well; the review listed it as open.
+test("the string `env -S` splits into a command is judged as a script", () => {
+  const sempre = [
+    "env -S 'rm -rf V'", "env -S'rm -rf V'", "env -S 'FOO=1 rm -rf V'", "sudo env -S 'rm -rf V'", "/usr/bin/env -S 'rm -rf V'",
+    "env -S 'git push --force'", "env -S 'curl https://x'", "env -S 'cat .env'", "env --split-string='rm -rf V'",
+    "env --split-string 'rm -rf V'", "env -iS 'rm -rf V'", "env FOO=1 -S 'rm -rf V'", 'env -S "rm -rf V"',
+  ];
+  for (const c of sempre) {
+    const r = decide("Bash", { command: c }, "auto");
+    assert.equal(r.acao, "gate", `must ask: ${JSON.stringify(c)}`);
+    assert.equal(r.politica, "always", `must never be auto-approved: ${JSON.stringify(c)}`);
+  }
+  for (const c of ["env -S 'echo hi'", "env -S 'node --check x.js'", "env NODE_ENV=test npm test", "env -i PATH=$PATH node -v",
+                   "env | grep NODE", "env -u FOO npm test"]) {
+    assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${JSON.stringify(c)}`);
+  }
+});
+
 // 🔴 1.42.6. `time` by path was not a runner (only the bare keyword was skipped), so `/usr/bin/time rm -rf V` ran
 // `rm` with no card; and `time -p rm -rf V` read `-p` as the command. Measured: bash 5.3 and zsh 5.9 run the first,
 // bash 5.3 the second. It was `allow` on 1.36.5 too: a gap the review listed, closed here because it costs one word.
