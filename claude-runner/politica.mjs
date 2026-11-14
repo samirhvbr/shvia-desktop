@@ -431,8 +431,7 @@ function estagiosDeComando(cmd, prof = 0) {
     }
     if (aspa === '"') {
       if (ch === '"') { aspa = null; atual += ch; continue; }
-      if (ch === "$" && cmd[i + 1] === "{") { chaves++; atual += "${"; i++; continue; }
-      if (ch === "}" && chaves > 0) { chaves--; atual += ch; continue; }
+      if (paDeDolares(cmd, i)) { atual += "$$"; i++; continue; }
       const sub = substituicaoEm(cmd, i);
       if (sub) {
         internos.push(sub.script);
@@ -440,8 +439,18 @@ function estagiosDeComando(cmd, prof = 0) {
         i = sub.fim - 1;
         continue;
       }
+      if (ch === "$" && cmd[i + 1] === "{") { chaves++; atual += "${"; i++; continue; }
+      if (ch === "}" && chaves > 0) { chaves--; atual += ch; continue; }
       atual += ch;
       continue;
+    }
+    // `$$` is the process id, both characters of it: the `{` after it is text, not the start of `${`.
+    // That is what bash and dash read; zsh reads a `${` there, and the two split the line into different
+    // words (measured: `X=$$$${A:-b c} rm -rf V` runs `rm` in zsh only, `X=$${ rm -rf V` in the others
+    // only). A line that depends on which is not read.
+    if (paDeDolares(cmd, i)) {
+      if (cmd[i + 2] === "{") throw new LinhaIlegivel("$$ seguido de { que o bash e o zsh leem de jeitos diferentes");
+      atual += "$$"; i++; continue;
     }
     if (ch === "$" && cmd[i + 1] === "'") { aspa = "$'"; atual += "$'"; i++; continue; }
     if (ch === "'" || ch === '"') { aspa = ch; atual += ch; continue; }
@@ -460,7 +469,7 @@ function estagiosDeComando(cmd, prof = 0) {
       inicio = true;
       continue;
     }
-    if (ch === "`" || (ch === "$" && cmd[i + 1] === "(")) {
+    if (abreSubstituicao(cmd, i)) {
       const sub = substituicaoEm(cmd, i);
       internos.push(sub.script);
       atual += cmd.slice(i, sub.fim);
@@ -564,11 +573,12 @@ function executaOCorpo({ cmd, args }) {
     && args.some((a) => /^-[a-z]*[si][a-z]*$/.test(a) || a === "--shell" || a === "--login");
 }
 
-/** The scripts of every `$(…)` and backtick in a text the shell expands but does not run. */
+/** The scripts of every `$(…)`, `${ …; }` and backtick in a text the shell expands but does not run. */
 function substituicoesDoTexto(texto) {
   const out = [];
   for (let i = 0; i < texto.length; i++) {
     if (texto[i] === "\\") { i++; continue; }
+    if (paDeDolares(texto, i)) { i++; continue; }
     const sub = substituicaoEm(texto, i);
     if (sub) { out.push(sub.script); i = sub.fim - 1; }
   }
@@ -576,11 +586,58 @@ function substituicoesDoTexto(texto) {
 }
 
 /**
+ * `$$`, the shell's process id, at `i`: both characters are one expansion, so a `{` right after it is
+ * plain text (1.42.6). Read one character at a time, the second `$` opened a `${` that was never there:
+ * in `X=$${ rm -rf V` the tokenizer took the rest of the line for one word, the assignment's, and
+ * nothing judged `rm`, which bash 3.2, bash 5.3 and dash run (zsh does not). Not before a `(`, where
+ * shells differ and the substitution is read as one, the judgment that errs toward a card.
+ */
+function paDeDolares(t, i) {
+  return t[i] === "$" && t[i + 1] === "$" && t[i + 2] !== "(";
+}
+
+/**
+ * bash 5.3's `${ list; }` and `${|list; }` at `i`: a command substitution that runs in the current shell
+ * (the character after the `${` is a blank or a `|`; any other makes it a parameter expansion). Older
+ * bash, dash and zsh refuse it. The body is a script like `$(…)`'s, and until 1.42.6 it was read as
+ * a `${…}` and never judged: `X=${ rm -rf V; }` and `echo ${ rm -rf V; }` ran `rm` in bash 5.3.
+ */
+function eFunsub(t, i) {
+  return t[i] === "$" && t[i + 1] === "{" && /[ \t\n|]/.test(t[i + 2] ?? "");
+}
+
+/** Does a command substitution start at `i`: `$(…)`, a backtick, or bash 5.3's `${ …; }`? */
+function abreSubstituicao(t, i) {
+  return t[i] === "`" || (t[i] === "$" && (t[i + 1] === "(" || eFunsub(t, i)));
+}
+
+/**
  * A command substitution that starts at `i`: `$(…)` up to its matching
- * parenthesis (quotes inside it are its own), or a backtick up to the next unescaped one.
+ * parenthesis (quotes inside it are its own), a backtick up to the next unescaped one, or bash 5.3's
+ * `${ …; }` up to the matching brace (1.42.6).
  * Unterminated, it runs to the end of the line, as the shell would read it.
  */
 function substituicaoEm(cmd, i) {
+  if (eFunsub(cmd, i)) {
+    const ini = i + (cmd[i + 2] === "|" ? 3 : 2);
+    let prof = 1;
+    let aspa = null;
+    let inicio = true; // the character at `j` starts a word: where a `#` is a comment
+    for (let j = ini; j < cmd.length; j++) {
+      const c = cmd[j];
+      const comecaPalavra = inicio;
+      inicio = c === " " || c === "\t" || c === "\n" || c === ";" || c === "&" || c === "|";
+      if (c === "\\" && aspa !== "'") { j++; continue; }
+      if (aspa) { if (c === aspa) aspa = null; continue; }
+      if (c === "#" && comecaPalavra) { while (j + 1 < cmd.length && cmd[j + 1] !== "\n") j++; continue; }
+      if (c === "'" || c === '"') { aspa = c; continue; }
+      // A substitution inside is read whole: a `}` in its text closes nothing here.
+      if (c === "`" || (c === "$" && cmd[j + 1] === "(")) { j = substituicaoEm(cmd, j).fim - 1; continue; }
+      if (c === "{") prof++;
+      else if (c === "}" && --prof === 0) return { script: cmd.slice(ini, j), fim: j + 1 };
+    }
+    return { script: cmd.slice(ini), fim: cmd.length };
+  }
   if (cmd[i] === "$" && cmd[i + 1] === "(") {
     let prof = 1;
     let aspa = null;
@@ -655,7 +712,7 @@ function escapeAnsiC(seg, i) {
  * split on `\`) and `cat .e\nv` named a file that is not `.env`, while the shell ran `rm` and
  * opened `.env`.
  */
-export function tokensDoSegmento(seg, cruas = null) {
+export function tokensDoSegmento(seg, cruas = null, semChaves = false) {
   const out = [];
   let atual = "";
   let aspa = null; // "'", '"', or "$'"
@@ -695,14 +752,16 @@ export function tokensDoSegmento(seg, cruas = null) {
     // splitter keeps `$(…)` whole in the segment, and this tokenizer used to cut it at its first
     // space: in `X=$(echo a b) rm -rf V` the assignment ended at `X=$(echo`, `a` became the
     // command and `rm` its argument, so nothing judged `rm`. The shell reads one word there.
-    if (ch === "`" || (ch === "$" && seg[i + 1] === "(")) {
+    // `$$` is one expansion, the process id: the `{` after it is text, not a `${` that swallows the line (1.42.6).
+    if (paDeDolares(seg, i)) { atual += "$$"; tem = true; i++; continue; }
+    if (abreSubstituicao(seg, i)) {
       const sub = substituicaoEm(seg, i);
       atual += seg.slice(i, sub.fim);
       tem = true;
       i = sub.fim - 1;
       continue;
     }
-    if (ch === "$" && seg[i + 1] === "{") { chaves++; atual += "${"; tem = true; i++; continue; }
+    if (!semChaves && ch === "$" && seg[i + 1] === "{") { chaves++; atual += "${"; tem = true; i++; continue; }
     if (ch === "}" && chaves > 0) { chaves--; atual += ch; continue; }
     if (aspa === '"') {
       if (ch === '"') aspa = null; else atual += ch;
@@ -717,6 +776,12 @@ export function tokensDoSegmento(seg, cruas = null) {
       continue;
     }
     atual += ch;
+  }
+  // A `${` that never closes is a syntax error in every shell, and swallowing the rest of the segment
+  // for it hides what follows: read the segment again with its words split where the blanks are (1.42.6).
+  if (chaves > 0 && !semChaves) {
+    if (cruas) cruas.length = 0;
+    return tokensDoSegmento(seg, cruas, true);
   }
   if (tem || atual !== "") { out.push(atual); cruas?.push(seg.slice(ini)); }
   return out;
@@ -874,7 +939,8 @@ function comExpansaoDeChaves(raw) {
     if (aspa === '"') { if (c === '"') aspa = null; else if (c === "\\") i++; continue; }
     if (c === "\\") { i++; continue; }
     if (c === "'" || c === '"') { aspa = c; continue; }
-    if (c === "`" || (c === "$" && raw[i + 1] === "(")) { i = substituicaoEm(raw, i).fim - 1; continue; }
+    if (paDeDolares(raw, i)) { i++; continue; }
+    if (abreSubstituicao(raw, i)) { i = substituicaoEm(raw, i).fim - 1; continue; }
     if (c === "$" && raw[i + 1] === "{") {
       const f = raw.indexOf("}", i + 2);
       if (f < 0) break;
@@ -907,7 +973,7 @@ function expansaoQueDivide(raw, linha) {
     if (aspa === "'") { if (c === "'") aspa = null; else if (c === "/") ultima = i; continue; }
     if (aspa === "$'") { if (c === "\\") { i++; continue; } if (c === "'") aspa = null; else if (c === "/") ultima = i; continue; }
     if (c === "\\") { i++; continue; }
-    if (c === "`" || (c === "$" && raw[i + 1] === "(")) {
+    if (abreSubstituicao(raw, i)) {
       const sub = substituicaoEm(raw, i);
       exps.push({ ini: i, texto: raw.slice(i, sub.fim), entreAspas: aspa === '"' });
       i = sub.fim - 1;
@@ -956,7 +1022,8 @@ function nomeLiteral(w) {
   let ultima = -1;
   for (let i = 0; i < w.length; i++) {
     const c = w[i];
-    if (c === "`" || (c === "$" && w[i + 1] === "(")) { i = substituicaoEm(w, i).fim - 1; continue; }
+    if (paDeDolares(w, i)) { i++; continue; }
+    if (abreSubstituicao(w, i)) { i = substituicaoEm(w, i).fim - 1; continue; }
     if (c === "$" && w[i + 1] === "{") {
       const fim = w.indexOf("}", i + 2);
       if (fim < 0) break;
