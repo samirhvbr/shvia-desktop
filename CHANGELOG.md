@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.42.6 - Judge what su, at, batch and parallel read as a script, from a here-document, a here-string or a pipe
+
+`su <<EOF` followed by a body with `rm -rf V`, `sudo su <<EOF`, `at now <<EOF`, `at now + 1 minute <<< 'rm -rf V'` and `parallel <<EOF`
+ran the body with no card at the `auto` level: `su` starts the user's login shell, `at` and `batch` read the job they keep for later,
+and a `parallel` with no command runs each line it reads as one, and the policy read the body as text because the command it goes to
+was not a shell. 1.36.5 judged every body line, so it asked about the here-documents (the independent review of this change listed four of them); the
+here-string and the pipe forms (`echo 'rm -rf V' | su`, `| at now`, `| sudo -s`, `| . /dev/stdin`) were `allow` on 1.36.5 and on master.
+
+- A command that runs its standard input as a script owns the here-document, the here-string and the pipe that feed it. Until now that
+  was a shell, `.`, `source`, `sudo -s`, `sudo -i` and `doas -s`; now it is also `su` and `runuser` unless given `-c` (then the body goes to the
+  command they name), `at`, `batch` and `parallel`. The body is split and judged like any script.
+- A pipeline stage that is one of them is a shell fed by a pipe, and asks, as `| bash` does. `parallel` as a stage stays as it was (it
+  takes its stdin as data when it has a command), so `ls | parallel gzip` is automatic.
+- `su` with no `-c` also reads a here-string as its script (the `-c` branch returned first).
+
+Measured with `decidir()` at `auto`, the `su`, `at`, `batch` and `parallel` forms were run through stand-ins that do what the manuals say, since
+the real ones cannot run in the sandbox: all ask now; `su -c 'cat' <<EOF` with a body that holds `rm -rf V`, `sudo tee x <<EOF`, `atq`, `ls | parallel gzip`
+and `echo a | sudo tee out.txt` stay automatic, and the 117 ordinary commands still ask 2 times. Two tests hold both sides and fail against the
+previous `politica.mjs`; the comparison corpus gains 7 + 7 lines, one relief (`su -c 'cat'`, which 1.36.5 asked about) and nine contexts of its grid
+(bash 5.3 and zsh 5.9 ran all 81 grid lines through the stand-ins). `echo 'rm -rf V' | parallel` and the programs that start a shell some other way
+stay open and are named in the README by a later entry of this release.
+
 ## 1.42.6 - Read $[ … ] as arithmetic, so its << opens no here-document and its spaces do not cut the word
 
 `$[ … ]` is the old spelling of `$(( … ))`, and bash 3.2, bash 5.3 and zsh 5.9 still read it. The `<<` in `echo $[1<<2]` opened a

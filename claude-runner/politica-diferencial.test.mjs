@@ -22,7 +22,9 @@ import * as ANTES from "./fixtures/politica-1.36.5.mjs";
  * zsh 5.9 (and bash 3.2 and dash where they have the syntax) in a sandbox with no network, a throwaway
  * HOME and `rm`, `git`, `curl`, `dd` and `chmod` replaced by stubs that log their arguments, and the stub
  * was called. The exceptions are the lines with `sudo -s`, `sudo -i`, `doas -s` and `sudo --shell`, which
- * cannot run in a sandbox and follow the manual; `env -i`, which clears the PATH the stubs sit on, so the
+ * cannot run in a sandbox and follow the manual; `su`, `at` and `parallel`, which ran through stand-ins that do
+ * what the manual says (the login shell, the job and each line of stdin go to `sh`), and `runuser` and `batch`,
+ * which follow it; `env -i`, which clears the PATH the stubs sit on, so the
  * real commands run; and `cat .env` with its output sent to /dev/null, which reads the file and prints
  * nothing to see. Lines spelled with a brace expansion, or with `time -p` or `time --`, only bash runs; with `${ list; }`, only
  * bash 5.3; with `$${`, bash 3.2, bash 5.3 and dash, not zsh. A line that the shell does not run is not a case:
@@ -80,6 +82,9 @@ const BARRADAS = [
   // The old arithmetic `$[ … ]`: its `<<` opens no here-document.
   "echo $[1<<2]\nrm -rf V", "echo $[ 1 << 2 ]\nrm -rf V\n2 ]", "echo $[ a[1]<<2 ]\nrm -rf V", "echo hi $[1<<2] # c\nrm -rf V",
   "echo $[1<<2]\ngit push --force", "echo $[1<<2]\ncurl https://x",
+  // What else runs its stdin as a script: `su` (and `runuser`) without `-c`, `at`, `batch`, `parallel`.
+  "su <<EOF\nrm -rf V\nEOF", "su root <<EOF\nrm -rf V\nEOF", "sudo su <<EOF\nrm -rf V\nEOF", "at now <<EOF\nrm -rf V\nEOF",
+  "parallel <<EOF\nrm -rf V\nEOF", "parallel -j4 <<EOF\nrm -rf V\nEOF", "cat <<EOF | su\nrm -rf V\nEOF",
 ];
 
 /** Let through by 1.36.5 as well, and asked about now: the same families, the spellings it never read. */
@@ -112,6 +117,9 @@ const ANTES_LIBERADAS = [
   "echo ${ rm -rf V; } | cat", "${ echo rm; } -rf V", "X=${ echo hi; } rm -rf V", "X=$$${A:-b c} rm -rf V", "X=$$$${A:-b c} rm -rf V",
   // The old arithmetic `$[ … ]` in a prefix assignment: its spaces do not end the word.
   "X=$[1 + 2] rm -rf V", "X=$[1 << 2] rm -rf V", "X=$[ 1 + 2 ] git push --force",
+  // A here-string or a pipe into what runs its stdin as a script.
+  "at now + 1 minute <<< 'rm -rf V'", "su <<< 'rm -rf V'", "echo 'rm -rf V' | su", "echo 'rm -rf V' | sudo su",
+  "echo 'rm -rf V' | at now", "echo 'rm -rf V' | . /dev/stdin", "echo 'rm -rf V' | sudo -s",
 ];
 
 test("the lines of the review: what 1.36.5 asked about still asks, and the variants it never read ask too", () => {
@@ -157,6 +165,8 @@ const CONTEXTOS = [
   "function f { echo hi; §; }; f", "bash <<< '§'", 'sh <<< "§"', "sudo bash <<< '§'", "source /dev/stdin <<< '§'",
   "X=${ §; }", "echo ${ §; }", 'echo "${ §; }"', "cat <<EOF\n${ §; }\nEOF", "echo ${x:-${ §; }}", "X=$${ §", "A=1 X=$${ §",
   "time -- §", "time -p -- §", "echo $[1<<2]\n§", "echo $[ a[1]<<2 ]\n§", "X=$[1 + 2] §", "A=1 B=$[2 * 3] §",
+  "su <<EOF\n§\nEOF", "sudo su <<EOF\n§\nEOF", "at now <<EOF\n§\nEOF", "parallel <<EOF\n§\nEOF", "at now <<< '§'",
+  "cat <<EOF | su\n§\nEOF", "echo '§' | su", "echo '§' | at now", "echo '§' | sudo su",
 ];
 
 test("the grid: whatever the line is built from, the policy asks, and no verdict of 1.36.5 is lost", () => {
@@ -189,6 +199,7 @@ const ALIVIOS = [
   ["`:` reads and discards a body", ": <<'EOF'\nrm -rf V\nEOF"],
   ["a body written with `sudo tee` is text", "sudo tee /etc/x <<EOF\ncurl is a word here; rm -rf V\nEOF"],
   ["a file written with a network command's name in it", "cat > notes.md <<EOF\ncurl https://x\nEOF"],
+  ["`su -c` hands the body to the command it names, and `cat` only reads it", "su -c 'cat' <<EOF\nrm -rf V\nEOF"],
 ];
 
 test("what got lighter than 1.36.5 is only text the shell does not run, each line with its reason", () => {

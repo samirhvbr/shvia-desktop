@@ -121,9 +121,10 @@ does is decided by `decidir()` in [`politica.mjs`](politica.mjs):
   start; the string `env -S` splits, the body of `function f { … }`, the word a `<<<` hands to a
   shell and a command named by a brace expansion (`{rm,-rf,V}`) are read too (1.42.6).
   A comment is not read (`ls # list; rm -rf V` asks nothing), and a `<<` inside a comment, a
-  `${…}` or a `((…))` opens no here-document. A here-document body is text unless the command it
-  goes to runs it (a shell, `.`, `source`, `sudo -s`). A pipe into any shell asks, named or
-  wrapped as it may be (`| zsh`, `| env bash`, `| "bash"`). A flag that the line completes when it
+  `${…}`, a `$[…]` or a `((…))` opens no here-document. A here-document body is text unless the
+  command it goes to runs it (a shell, `.`, `source`, `sudo -s`, `su`, `at`, `batch`, `parallel`),
+  and so is a here-string. A pipe into any shell asks, named or wrapped as it may be (`| zsh`,
+  `| env bash`, `| "bash"`), and so does a pipe into one of those (`| su`, `| at now`). A flag that the line completes when it
   runs (`-r$(echo f)`) counts as any flag. A redirection in front of the command
   (`2>/dev/null rm -rf V`, `2>&1 bash <<EOF`) is skipped as `KEY=value` is. A line whose command
   name is decided when it runs (a variable, a substitution, a glob) asks as `always`

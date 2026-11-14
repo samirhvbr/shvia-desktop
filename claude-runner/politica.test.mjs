@@ -791,6 +791,9 @@ test("a pipe into any shell asks, however the shell is named or wrapped", () => 
     "echo 'rm -rf V' | { bash; }", "echo 'rm -rf V' | (bash)", "printf 'rm -rf V\\n' | zsh",
     // Quoted or escaped, where no pattern over the text sees a shell.
     "echo 'rm -rf V' | 'sh'", 'echo \'rm -rf V\' | "bash"', "echo 'rm -rf V' | b\\ash",
+    // What else reads its script from the pipe (review of 14/11/2026).
+    "echo 'rm -rf V' | su", "echo 'rm -rf V' | sudo su", "echo 'rm -rf V' | sudo -s", "echo 'rm -rf V' | at now",
+    "echo 'rm -rf V' | batch", "echo 'rm -rf V' | . /dev/stdin", "echo 'rm -rf V' | doas -s",
   ];
   for (const c of sempre) {
     const r = decide("Bash", { command: c }, "auto");
@@ -800,7 +803,8 @@ test("a pipe into any shell asks, however the shell is named or wrapped", () => 
   // A pipe is not a shell: these hand the data to a program that is not reading a script from it.
   for (const c of ["ls | xargs sh -c 'echo $0'", "git log --oneline | head -5", "printf 'a\\n' | sha256sum",
                    "echo a | shasum -a 256", "cat f | xargs -I{} bash -c 'echo {}'", "echo a | tee out.txt | wc -l",
-                   "find . -name '*.sh' | xargs shellcheck", "cat script.sh | wc -l"]) {
+                   "find . -name '*.sh' | xargs shellcheck", "cat script.sh | wc -l", "echo a | sudo tee out.txt",
+                   "printf 'a\\n' | sudo -u app tee x", "echo pw | sudo -S true", "echo a | su -c 'wc -c'"]) {
     assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${c}`);
   }
 });
@@ -814,6 +818,14 @@ test("a here-document body is judged as a script when the command it goes to run
     `. /dev/stdin <<EOF${NL}rm -rf V${NL}EOF`, `source /dev/stdin <<'EOF'${NL}rm -rf V${NL}EOF`,
     `sudo -s <<EOF${NL}rm -rf V${NL}EOF`, `sudo -i <<EOF${NL}rm -rf V${NL}EOF`,
     `doas -s <<EOF${NL}rm -rf V${NL}EOF`, `sudo --shell <<EOF${NL}rm -rf V${NL}EOF`,
+    // Review of 14/11/2026: what else starts a shell or reads a script from stdin. `su` and `runuser` run the login shell
+    // unless given `-c`, `at` and `batch` the job they keep, `parallel` each line as a command; a here-string is the same
+    // body. (Their manuals: they cannot run in the sandbox, which has stand-ins that do what the manuals say.)
+    `su <<EOF${NL}rm -rf V${NL}EOF`, `su root <<EOF${NL}rm -rf V${NL}EOF`, `su - root <<EOF${NL}rm -rf V${NL}EOF`,
+    `sudo su <<EOF${NL}rm -rf V${NL}EOF`, `sudo -u root su <<EOF${NL}git push --force${NL}EOF`,
+    `runuser -u root <<EOF${NL}rm -rf V${NL}EOF`, `at now <<EOF${NL}rm -rf V${NL}EOF`, "at now + 1 minute <<< 'rm -rf V'",
+    `batch <<EOF${NL}rm -rf V${NL}EOF`, `parallel <<EOF${NL}rm -rf V${NL}EOF`, `parallel -j4 <<EOF${NL}curl https://x${NL}EOF`,
+    "su <<< 'rm -rf V'", `cat <<EOF | su${NL}rm -rf V${NL}EOF`,
   ];
   for (const c of sempre) {
     const r = decide("Bash", { command: c }, "auto");
@@ -823,7 +835,10 @@ test("a here-document body is judged as a script when the command it goes to run
   // A body handed to a command that only reads it stays text, quoted word or not.
   for (const c of [`sudo tee /etc/x <<EOF${NL}curl is a word; rm -rf V${NL}EOF`, `sudo -u app tee x <<'EOF'${NL}rm -rf V${NL}EOF`,
                    `sudo -S tee x <<EOF${NL}rm -rf V${NL}EOF`, `cat > f <<EOF${NL}rm -rf V${NL}EOF`, "source .envrc.example",
-                   ". ./scripts/activate"]) {
+                   ". ./scripts/activate",
+                   // `su -c` hands the body to the command it names: `cat` only reads it.
+                   `su -c 'cat' <<EOF${NL}rm -rf V${NL}EOF`, `su root -c 'cat' <<EOF${NL}curl is a word here${NL}EOF`,
+                   `su -lc 'cat' root <<EOF${NL}rm -rf V${NL}EOF`, "atq", "at -l | wc -l"]) {
     assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${JSON.stringify(c)}`);
   }
 });

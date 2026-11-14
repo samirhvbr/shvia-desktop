@@ -209,7 +209,8 @@ function scriptsDoComando({ cmd, args }) {
   }
   if (SCRIPT_NO_C.has(cmd)) {
     const i = args.findIndex((a) => a === "-c" || a === "--command");
-    return i >= 0 && i + 1 < args.length ? [args[i + 1]] : [];
+    if (i >= 0) return i + 1 < args.length ? [args[i + 1]] : [];
+    // No `-c`: `su` starts the login shell, which reads a here-string below, and `script` and `flock` read none.
   }
   if (cmd === "eval") return [args.join(" ")];
   if (SCRIPT_NOS_ARGS.has(cmd)) return args.filter((a) => !a.startsWith("-"));
@@ -320,6 +321,8 @@ function alimentaShell(seg) {
   for (const c of comandosDoSegmento(seg)) {
     if (SEM_STDIN_DO_PIPE.has(c.cmd)) return false;
     if (SHELLS.has(c.cmd)) return scriptsDoComando(c).length === 0;
+    // What else runs its stdin as a script (`| su`, `| at now`, `| sudo -s`, `| . /dev/stdin`) reads the pipe as one too (1.42.6).
+    if (executaOCorpo(c)) return true;
   }
   return false;
 }
@@ -566,13 +569,21 @@ function lerCorposDeHeredoc(cmd, inicio, heredocs, segs, internos) {
 }
 
 /**
- * Does this command run the here-document handed to it as a script? A shell does; so does `.` or
- * `source` (`. /dev/stdin <<EOF`), and `sudo -s` and `sudo -i` start a shell that reads it. Master
- * 1.36.5 judged every body line, so `. /dev/stdin <<EOF` asked; 1.36.6 read the body as text, and
- * the shell it feeds ran it with no card (measured: bash 5.3 runs the `rm -rf V` in it).
+ * Does this command run what it reads on its standard input (a here-document, a here-string, a pipe)
+ * as a script? A shell does; so does `.` or `source` (`. /dev/stdin <<EOF`), and `sudo -s` and `sudo -i`
+ * start a shell that reads it. Master 1.36.5 judged every body line, so `. /dev/stdin <<EOF` asked;
+ * 1.36.6 read the body as text, and the shell it feeds ran it with no card (measured: bash 5.3 runs the
+ * `rm -rf V` in it). The review of 14/11/2026 listed more of the same: `su` and `runuser` start the user's
+ * login shell unless given `-c`, `at` and `batch` read the job they run later, and a `parallel` runs each line
+ * as a command (`su <<EOF`, `at now <<< '…'`, `parallel <<EOF`). `script`, `chroot`, `unshare` and the
+ * like start a shell too and are not read (the README says so).
  */
 function executaOCorpo({ cmd, args }) {
   if (SHELLS.has(cmd) || cmd === "." || cmd === "source") return true;
+  if (cmd === "at" || cmd === "batch" || cmd === "parallel") return true;
+  if (cmd === "su" || cmd === "runuser") {
+    return !args.some((a) => a === "--command" || a.startsWith("--command=") || (!a.startsWith("--") && /^-[a-z]*c[a-z]*$/i.test(a)));
+  }
   return (cmd === "sudo" || cmd === "doas")
     && args.some((a) => /^-[a-z]*[si][a-z]*$/.test(a) || a === "--shell" || a === "--login");
 }
