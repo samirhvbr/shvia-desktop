@@ -222,42 +222,72 @@ mod tests_git_diff {
         assert_eq!(git_diff("/tmp", "")["ok"], false);
     }
 
-    /// O `--` é o que impede um arquivo chamado `-p` (ou homônimo de branch) de
-    /// ser lido como opção ou revisão pelo git.
+    /// The `--` keeps a file whose name reads as an option, or as a revision, from being taken for one by git. The name
+    /// has to be one git would act on: `-p` is an option `git diff` already accepts and it answers with the same patch,
+    /// so a test on `-p` alone passes without the `--`. `--name-only` replaces the patch with a list of names, and the
+    /// diff comes back without its `+depois` line.
+    ///
+    /// Fails loudly without git on purpose: a skipped fence test would read as green.
     #[test]
     fn nome_que_parece_opcao_continua_sendo_caminho() {
-        let Some(dir) = repo_temporario("dash") else { return };
+        let dir = repo_temporario("dash").expect("this test needs git");
         let p = dir.to_string_lossy().into_owned();
-        std::fs::write(dir.join("-p"), "antes\n").unwrap();
+        std::fs::write(dir.join("--name-only"), "antes\n").unwrap();
         crate::processo::comando("git").args(["-C", &p, "add", "-A"]).output().unwrap();
-        crate::processo::comando("git").args(["-C", &p, "commit", "-qm", "add -p"]).output().unwrap();
-        std::fs::write(dir.join("-p"), "depois\n").unwrap();
+        crate::processo::comando("git").args(["-C", &p, "commit", "-qm", "add --name-only"]).output().unwrap();
+        std::fs::write(dir.join("--name-only"), "depois\n").unwrap();
 
-        let r = git_diff(&p, "-p");
+        let r = git_diff(&p, "--name-only");
 
-        assert_eq!(r["ok"], true);
-        assert!(r["diff"].as_str().unwrap().contains("+depois"));
+        assert_eq!(r["ok"], true, "{r}");
+        assert!(r["diff"].as_str().unwrap().contains("+depois"), "{r}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The fence holds inside one repository. The authorized folder is a SUBFOLDER, and `a.txt` at the
     /// repository's root, outside it, has a change. Every way of naming that file from the subfolder is refused or
     /// shows nothing, while a file inside the subfolder still shows its diff.
+    ///
+    /// Four guards stand between the page's `file` and git: the `..` check, the folder's prefix (`sub/`),
+    /// `--literal-pathspecs` and the `--` before the name. A name proves a guard only if the others let it through. The
+    /// first six names below are each stopped by the prefix, and all but `a.txt` by a second guard too, so they cannot tell
+    /// the guards apart. `sub/../a.txt` and `sub/./../a.txt` start with the prefix, and git folds a `..` away with or
+    /// without `--literal-pathspecs` and prints `a.txt`: only the `..` check stops them. `sub2/x.txt` begins with the
+    /// letters of the prefix but is another folder: only a prefix compared by whole path components stops it, and a plain
+    /// string prefix would let it through. The glob that needs `--literal-pathspecs` is `nome_com_curinga_nao_vira_padrao`,
+    /// and the name that needs the `--` is `nome_que_parece_opcao_continua_sendo_caminho`.
+    ///
+    /// Fails loudly without git on purpose: a skipped fence test would read as green.
     #[test]
     fn diff_nao_sai_da_pasta_autorizada_dentro_do_mesmo_repo() {
-        let Some(dir) = repo_temporario("cerca") else { return };
+        let dir = repo_temporario("cerca").expect("this test needs git");
         let sub = dir.join("sub");
         std::fs::create_dir_all(&sub).unwrap();
         std::fs::write(sub.join("s.txt"), "antes\n").unwrap();
+        std::fs::create_dir_all(dir.join("sub2")).unwrap();
+        std::fs::write(dir.join("sub2").join("x.txt"), "antes\n").unwrap();
         let p = dir.to_string_lossy().into_owned();
         crate::processo::comando("git").args(["-C", &p, "add", "-A"]).output().unwrap();
         crate::processo::comando("git").args(["-C", &p, "commit", "-qm", "sub"]).output().unwrap();
         std::fs::write(dir.join("a.txt"), "linha 1\nSEGREDO\n").unwrap();
+        std::fs::write(dir.join("sub2").join("x.txt"), "SEGREDO\n").unwrap();
         std::fs::write(sub.join("s.txt"), "depois\n").unwrap();
         let autorizada = sub.to_string_lossy().into_owned();
 
         let absoluto = dir.join("a.txt").to_string_lossy().into_owned();
-        for fora in ["a.txt", "../a.txt", ":(top)a.txt", ":/a.txt", "./../a.txt", absoluto.as_str()] {
+        for fora in [
+            "a.txt",
+            "../a.txt",
+            ":(top)a.txt",
+            ":/a.txt",
+            "./../a.txt",
+            absoluto.as_str(),
+            // These two start with the folder's prefix, so only the `..` check stops them.
+            "sub/../a.txt",
+            "sub/./../a.txt",
+            // This one shares the letters of the prefix and is another folder, so only a prefix compared by components stops it.
+            "sub2/x.txt",
+        ] {
             let r = git_diff(&autorizada, fora);
             let texto = r["diff"].as_str().unwrap_or_default();
             assert!(!texto.contains("SEGREDO"), "{fora:?} printed a file outside the authorized folder: {r}");
@@ -267,12 +297,43 @@ mod tests_git_diff {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// `--literal-pathspecs` makes git read `file` as a name, never as a pattern. Once the `..` check and the folder's
+    /// prefix have let a name through, the pathspec syntax left is a glob, so this is the test that needs the flag:
+    /// `sub/*.txt` is not `sub/s.txt`, and without the flag git expands it and prints that file's diff.
+    ///
+    /// Fails loudly without git on purpose: a skipped fence test would read as green.
+    #[test]
+    fn nome_com_curinga_nao_vira_padrao() {
+        let dir = repo_temporario("curinga").expect("this test needs git");
+        let sub = dir.join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("s.txt"), "antes\n").unwrap();
+        let p = dir.to_string_lossy().into_owned();
+        crate::processo::comando("git").args(["-C", &p, "add", "-A"]).output().unwrap();
+        crate::processo::comando("git").args(["-C", &p, "commit", "-qm", "sub"]).output().unwrap();
+        std::fs::write(sub.join("s.txt"), "depois\n").unwrap();
+        let autorizada = sub.to_string_lossy().into_owned();
+
+        // The control: the literal name shows its diff, so a pattern that stands for it has something to print.
+        let literal = git_diff(&autorizada, "sub/s.txt");
+        assert!(literal["diff"].as_str().unwrap_or_default().contains("+depois"), "{literal}");
+
+        let curinga = git_diff(&autorizada, "sub/*.txt");
+        assert!(
+            !curinga["diff"].as_str().unwrap_or_default().contains("+depois"),
+            "\"sub/*.txt\" was read as a pattern and printed the diff of sub/s.txt: {curinga}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A project that is a subfolder of a repository: the status lists only that folder, with the paths git gives
     /// (from the repository's top), and each of them opens its diff. Until 1.38.8 the status listed the whole
     /// repository and the diff of `sub/s.txt` ran in `sub/`, looked for `sub/sub/s.txt` and came back empty.
+    ///
+    /// Fails loudly without git on purpose: a skipped fence test would read as green.
     #[test]
     fn projeto_em_subpasta_lista_so_a_pasta_e_abre_o_diff() {
-        let Some(dir) = repo_temporario("subpasta") else { return };
+        let dir = repo_temporario("subpasta").expect("this test needs git");
         let sub = dir.join("sub");
         std::fs::create_dir_all(&sub).unwrap();
         std::fs::write(sub.join("s.txt"), "antes\n").unwrap();
