@@ -822,8 +822,15 @@ const EXECUTORES = new Set([
  * also takes `KEY+=value` and `KEY[i]=value` there; until 1.42.6 those were read as the command.
  */
 function atribuicao(tok) {
+  return nomeAtribuido(tok) !== null;
+}
+
+/** The variable `NAME=value`, `NAME+=value` or `NAME[i]=value` assigns, or null if the word is none of them. */
+function nomeAtribuido(tok) {
   const eq = tok.indexOf("=");
-  return eq > 0 && /^[A-Za-z_][A-Za-z0-9_]*(\[[^\]]*\])?\+?$/.test(tok.slice(0, eq));
+  if (eq <= 0) return null;
+  const m = /^([A-Za-z_][A-Za-z0-9_]*)(?:\[[^\]]*\])?\+?$/.exec(tok.slice(0, eq));
+  return m ? m[1] : null;
 }
 
 /**
@@ -910,7 +917,10 @@ export function comandosDoSegmento(seg) {
  */
 export function sintaxeIlegivel(cmd) {
   const c = String(cmd ?? "");
-  for (const seg of segmentosEfetivos(c)) {
+  const segs = segmentosEfetivos(c);
+  let ligacoes = null; // what the line binds, worked out once and only if a `$NAME` directory asks for it
+  const quemLiga = () => (ligacoes ??= ligacoesDaLinha(c, segs));
+  for (const seg of segs) {
     const [primeiro] = comandosDoSegmento(seg);
     if (!primeiro) continue;
     const w = primeiro.palavra;
@@ -919,10 +929,54 @@ export function sintaxeIlegivel(cmd) {
     if (/[$`]/.test(nome)) return `o nome do comando só se sabe ao rodar (${w})`;
     if (/[*?]/.test(nome) || /\[.*\]/.test(nome)) return `o nome do comando é um glob (${w})`;
     if (comExpansaoDeChaves(primeiro.crua ?? w)) return `o nome do comando vem de uma expansão de chaves (${w})`;
-    const divide = expansaoQueDivide(primeiro.crua ?? w, c);
+    const divide = expansaoQueDivide(primeiro.crua ?? w, c, quemLiga);
     if (divide) return `o diretório do comando vem de ${divide}, que o shell pode dividir em palavras`;
   }
   return null;
+}
+
+/**
+ * Variables the shell sets by itself, to text the line chose: `$_` is the last argument of the previous
+ * command, `REPLY` what `read` took, `BASH_REMATCH` what `[[ x =~ y ]]` matched, `FUNCNAME` the name of a function
+ * the line defined, `BASH_COMMAND` the command being run, and zsh's `reply` and `match` the same. `echo 'rm -rf V
+ * #'; $_/x` runs `rm` in bash (review of 14/11/2026), so none of them is ever read as the environment's.
+ */
+const VARIAVEIS_DO_SHELL = /^(?:_|BASH_\w*|COMP_\w*|COMPREPLY|COPROC\w*|DIRSTACK|FUNCNAME|MAPFILE|OPTARG|READLINE_\w*|REPLY|reply|match|MATCH|mbegin|mend)$/;
+
+/**
+ * Builtins and keywords that give a variable a value that is text: `read`, `mapfile`, `getopts`, `export`,
+ * `declare`, `typeset`, `local`, `readonly` (`declare -n` makes a name another's), `eval`, `source` and `.` (they run
+ * what sets anything), and the loops `for` and `select`. `printf -v NAME` does too, and is checked apart. `cd`
+ * and `pushd` set `PWD` and `OLDPWD` to an absolute path, which cannot name a program by itself; arithmetic
+ * (`let`, `((…))`) only stores numbers; `unset` stores nothing.
+ */
+const LIGAM_VARIAVEIS = new Set([
+  "read", "readarray", "mapfile", "getopts", "export", "declare", "typeset", "local", "readonly",
+  "eval", "source", ".", "for", "select",
+]);
+
+/**
+ * What a line does to variables, for the one question `expansaoQueDivide` asks: could the line itself have
+ * given `$NAME` a value? `comando` is true if any command it may run is one that binds (`LIGAM_VARIAVEIS`,
+ * `printf -v`), `nomes` holds the names of its assignment words as the shell reads them (quotes and
+ * backslashes resolved: `HO\ME='x'` and `"HO""ME=x"` assign `HOME`), and `expansao` is true if a `${NAME=…}`
+ * or `${NAME:=…}` is in it. It looks at every command the line may run, scripts inside scripts included, in any
+ * order: a loop or a function body runs after what comes later in the text.
+ */
+function ligacoesDaLinha(linha, segs) {
+  const nomes = new Set();
+  let comando = false;
+  for (const seg of segs) {
+    for (const tok of tokensDoSegmento(seg)) {
+      const n = nomeAtribuido(tok);
+      if (n !== null) nomes.add(n);
+    }
+    for (const ca of comandosDoSegmento(seg)) {
+      if (LIGAM_VARIAVEIS.has(ca.cmd)) comando = true;
+      if ((ca.cmd === "printf" || ca.cmd === "print") && ca.args.some((a) => a.startsWith("-v"))) comando = true;
+    }
+  }
+  return { comando, nomes, expansao: /\$\{!?[A-Za-z_]\w*(?:\[[^\]]*\])?:?=/.test(linha) };
 }
 
 /**
@@ -960,11 +1014,16 @@ function comExpansaoDeChaves(raw) {
  * or null. `"$HOME/bin/tool"` and `$HOME/bin/tool` both run `tool`; but an unquoted expansion that
  * holds a space is several words, and `X='rm -rf V #'; $X/tool` runs `rm`. So the directory part
  * may hold: anything inside double quotes (no splitting there), `$(pwd)`, and a plain `$NAME` or
- * `${NAME}` that nothing in the line binds (`NAME=…`, `for NAME`, `read NAME`): `$HOME`, `$PWD`,
- * `$CARGO_HOME` come from the environment, not from the line. Every other unquoted expansion asks.
- * `raw` is the word as written.
+ * `${NAME}` that the line cannot have bound: `$HOME`, `$PWD`, `$CARGO_HOME` come from the environment, not
+ * from the line. The line binds one with an assignment word to it (or to `IFS`, which decides how a
+ * value splits), a `${NAME:=…}`, or any command that gives a variable text (`ligacoesDaLinha`:
+ * `read`, `export`, `declare`, `mapfile`, `printf -v`, `eval`, `source`, `for`, …), and the shell binds
+ * `$_`, `$REPLY`, `$BASH_REMATCH` and a few more by itself (`VARIAVEIS_DO_SHELL`). Review of 14/11/2026: 1.42.6's
+ * first draft looked for the name in the text of the line, which `read <<< 'rm -rf V #'; $REPLY/x`, `echo x;
+ * $_/x`, `export HO\ME=…; $HOME/x` and `declare "HO""ME=…"; $HOME/x` all walk past, and each runs `rm` in bash.
+ * Every other unquoted expansion asks. `raw` is the word as written; `quemLiga()` is what the line binds.
  */
-function expansaoQueDivide(raw, linha) {
+function expansaoQueDivide(raw, linha, quemLiga) {
   let aspa = null;
   let ultima = -1; // the last `/` outside an expansion: what follows is the program's name
   const exps = []; // { ini, texto, entreAspas }
@@ -1008,7 +1067,10 @@ function expansaoQueDivide(raw, linha) {
     if (e.texto === "$(pwd)" || e.texto === "`pwd`") continue;
     const simples = /^\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))$/.exec(e.texto);
     const nome = simples && (simples[1] ?? simples[2]);
-    if (nome && !new RegExp(`(^|[^$\\w{])${nome}(?!\\w)`).test(linha)) continue;
+    if (nome && !VARIAVEIS_DO_SHELL.test(nome) && !new RegExp(`(^|[^$\\w{])${nome}(?!\\w)`).test(linha)) {
+      const l = quemLiga();
+      if (!l.comando && !l.expansao && !l.nomes.has(nome) && !l.nomes.has("IFS")) continue;
+    }
     return e.texto;
   }
   return null;

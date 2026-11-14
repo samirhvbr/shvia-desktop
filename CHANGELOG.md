@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.42.6 - Read a plain $NAME in a command's directory as the environment's only when nothing in the line can have bound it
+
+The rule that stopped `$HOME/bin/tool` from asking (the friction entry below) read a plain `$NAME` as the environment's when `NAME` was
+written nowhere in the line, and the text of a line does not show everything a shell binds. The independent review of this change
+(14/11/2026) found four lines that ran `rm` in bash 5.3 with no card at the `auto` level: `echo 'rm -rf V #'; $_/x` (`$_` is the last
+argument of the previous command), `read <<< 'rm -rf V #'; $REPLY/x`, `export HO\ME='rm -rf V #'; $HOME/x` and
+`declare "HO""ME=rm -rf V #"; $HOME/x` (the shell reads the name once the backslash and the quotes are gone). Master asked about each
+one, as it asked about every command that began with `$NAME/`; 1.36.5 did not ask.
+
+- A plain `$NAME` or `${NAME}` in the directory part of a command word is read as the environment's only if the line cannot have bound
+  it: no assignment word to `NAME` or to `IFS` (names read as the shell reads them, quotes and backslashes resolved), no `${NAME:=…}`, no
+  command that gives a variable text anywhere in the line, scripts inside scripts and function bodies included (`read`, `mapfile`,
+  `getopts`, `export`, `declare`, `typeset`, `local`, `readonly`, `eval`, `source`, `.`, `for`, `select`, `printf -v`), and `NAME` is not a
+  variable the shell sets itself to text the line chose (`_`, `REPLY`, `OPTARG`, `MAPFILE`, `FUNCNAME`, `BASH_*`, `COMP_*`, zsh's `reply` and `match`).
+- Every other `$NAME/…` asks as before, and so does a line whose only fault is the friction: `export PATH=… && $HOME/bin/tool` asks
+  again, because `export` is a command that binds (it asked on master).
+
+Measured with `decidir()` at `auto`: the four lines above and some two dozen more spellings (`printf -v`, `mapfile`, a loop, a function
+that assigns, `local`, a nameref, `${HOME:=…}`, `getopts`, `source`, an assignment passed to a function or to a `bash -c`, a name worked
+out in another variable) were `allow` on the draft and ask now; `FOO=bar $HOME/bin/tool`, `CI=1 $PWD/scripts/run.sh`,
+`cd src && $PWD/../scripts/run.sh`, `echo $HOME; $HOME/bin/tool`, `$HOME/bin/tool --home=$HOME` and `git status && $HOME/.cargo/bin/cargo
+build` stay automatic, and the 117 ordinary commands still ask 2 times. One test holds both sides and fails against the previous
+`politica.mjs`. The README names what counts as bound.
+
 ## 1.42.6 - Read $$ as the process id and ${ list; } as a command substitution, so the command after them is judged
 
 The independent review of this change (14/11/2026) found two ways a `${` hid the rest of a line from every check while a shell ran

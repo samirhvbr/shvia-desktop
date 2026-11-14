@@ -457,6 +457,47 @@ test("a command is judged by its name, and $'…' by what it spells; an expansio
   assert.equal(dec("$'a b'"), "a b", "the quote makes one word of it");
 });
 
+// 🔴 1.42.6, the review of 14/11/2026. The first draft of the rule above read a plain `$NAME` as the environment's
+// when `NAME` was written nowhere in the line. A shell binds a variable in ways the text does not show: `$_` is the
+// last argument of the previous command, `read` sets `REPLY`, a name can be spelled with a backslash or in two quoted
+// halves (`export HO\ME=…`, `declare "HO""ME=…"`), and `read "$n"`, `printf -v`, `eval` and `for` bind by a name the
+// line works out. The lines of the review and most of the others run `rm` in bash 5.3 (measured with `rm` stubbed),
+// and master asks about each, as it asked about every `$X/…`. Now a plain `$NAME` is the environment's only if the line has no assignment to it
+// (or to `IFS`), no `${NAME:=…}`, and no command that gives a variable text, and the shell does not set it itself.
+test("a $NAME directory is the environment's only when nothing in the line can have bound it", () => {
+  const sempre = [
+    // The four lines of the review: an implicit binding, and two names the text does not spell.
+    "echo 'rm -rf V #'; $_/x", "read <<< 'rm -rf V #'; $REPLY/x", "export HO\\ME='rm -rf V #'; $HOME/x",
+    'declare "HO""ME=rm -rf V #"; $HOME/x',
+    // Every way to bind: a builtin, a loop, a function, a `${NAME:=…}`, a name worked out, a nameref, a script run.
+    "printf -v HOME 'rm -rf V #'; $HOME/x", "mapfile -t HOME <<< 'rm -rf V #'; $HOME/x", "read HOME <<< 'rm -rf V #'; $HOME/x",
+    "for HOME in 'rm -rf V #'; do $HOME/x; done", "f() { HOME='rm -rf V #'; }; f; $HOME/x", "f() { local HOME='rm -rf V #'; $HOME/x; }; f",
+    "[[ 'rm -rf V #' =~ (.*) ]]; $BASH_REMATCH/x", "n=HOME; read $n <<< 'rm -rf V #'; $HOME/x",
+    "unset HOME; echo ${HOME:='rm -rf V #'} >/dev/null; $HOME/x", "f() { $X/x; }; X='rm -rf V #' f",
+    "exec 3<<<'rm -rf V #'; read -u3 HOME; $HOME/x", "declare -n r=HOME; r='rm -rf V #'; $HOME/x",
+    "set -- -a 'rm -rf V #'; getopts a: o; $OPTARG/x", ". /dev/stdin <<< \"HOME='rm -rf V #'\"; $HOME/x",
+    "{ HOME='rm -rf V #'; $HOME/x; }", "HOME='rm -rf V #' bash -c '$HOME/x'", "echo 'rm -rf V #' | while read X; do $X/x; done",
+    "eval 'X=rm'; ${X}/x", "IFS=/; $HOME/x", "echo ${ HOME='rm -rf V #'; }; $HOME/x",
+    // The names the shell sets by itself, even where nothing in the line is a binder.
+    "echo a; $_/x", "$BASH_COMMAND/x", "f() { $FUNCNAME/x; }; f", "$REPLY/x", "$BASH_SOURCE/x",
+  ];
+  for (const c of sempre) {
+    const r = decide("Bash", { command: c }, "auto");
+    assert.equal(r.acao, "gate", `must ask: ${JSON.stringify(c)}`);
+    assert.equal(r.politica, "always", `must never be auto-approved: ${JSON.stringify(c)}`);
+  }
+  // The environment's `$NAME`, with whatever else an ordinary line holds, stays automatic.
+  const comuns = [
+    "$HOME/.cargo/bin/cargo build", "FOO=bar $HOME/bin/tool", "CI=1 $PWD/scripts/run.sh", "cd . && $PWD/../scripts/run.sh",
+    "echo $HOME; $HOME/bin/tool", "$HOME/bin/tool --home=$HOME", "git status && $HOME/.cargo/bin/cargo build",
+    "$HOME/bin/tool | tee out.log", "$HOME/bin/tool; echo $?", "ls $HOME && $CARGO_HOME/bin/cargo test",
+    "NODE_ENV=test $HOME/.nvm/versions/node/v22/bin/node app.js", "HOME_X=1 $HOME/bin/tool", "$HOME/bin/tool 2>&1 | head",
+  ];
+  for (const c of comuns) {
+    assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${JSON.stringify(c)}`);
+  }
+});
+
 // 🔴 1.42.6. Two things found by comparing the comment rule with the shell over thousands of random
 // lines, each a way for a `'` or a `"` in a comment to swallow the next line while the shell runs it.
 // A backslash and a newline are no character at all: what follows them is where it was before them,
