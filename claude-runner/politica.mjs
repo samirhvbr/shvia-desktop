@@ -204,7 +204,8 @@ const SCRIPT_NOS_ARGS = new Set(["watch", "parallel"]);
 function scriptsDoComando({ cmd, args }) {
   if (SHELLS.has(cmd)) {
     const i = args.findIndex((a) => a === "-c" || (/^-[a-z]*c[a-z]*$/i.test(a) && !a.startsWith("--")));
-    return i >= 0 && i + 1 < args.length ? [args[i + 1]] : [];
+    if (i >= 0) return i + 1 < args.length ? [args[i + 1]] : [];
+    return scriptsDeHereString(args);
   }
   if (SCRIPT_NO_C.has(cmd)) {
     const i = args.findIndex((a) => a === "-c" || a === "--command");
@@ -213,7 +214,20 @@ function scriptsDoComando({ cmd, args }) {
   if (cmd === "eval") return [args.join(" ")];
   if (SCRIPT_NOS_ARGS.has(cmd)) return args.filter((a) => !a.startsWith("-"));
   if (cmd === "env") return scriptsDoEnv(args);
+  // What runs a here-document as a script runs a here-string the same way (1.42.6).
+  if (executaOCorpo({ cmd, args })) return scriptsDeHereString(args);
   return [];
+}
+
+/**
+ * The word a `<<<` hands to a command, as a script: `bash <<< 'rm -rf V'`, `bash <<<'rm -rf V'`. Only for
+ * a command that runs what it reads (`scriptsDoComando` asks `executaOCorpo`): `cat <<< 'rm -rf V'` is data.
+ */
+function scriptsDeHereString(args) {
+  const k = args.findIndex((a) => a.startsWith("<<<"));
+  if (k < 0) return [];
+  const palavra = args[k].length > 3 ? args[k].slice(3) : args[k + 1];
+  return palavra === undefined ? [] : [palavra];
 }
 
 /**

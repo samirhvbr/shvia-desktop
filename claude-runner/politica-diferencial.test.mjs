@@ -91,6 +91,9 @@ const ANTES_LIBERADAS = [
   "env -S 'rm -rf V'", "env -S'rm -rf V'", "sudo env -S 'rm -rf V'", "env -S 'git push --force'", "env -S 'curl https://x'",
   // A function defined with the `function` keyword, then called.
   "function f { rm -rf V; }; f", "function f { git push --force; }; f", "function f { curl https://x; }; f",
+  // A here-string handed to a shell.
+  "bash <<< 'rm -rf V'", "bash <<<'rm -rf V'", "sh <<< 'rm -rf V'", "sudo bash <<< 'rm -rf V'", "source /dev/stdin <<< 'rm -rf V'",
+  "bash <<< 'git push --force'", "bash <<< 'curl https://x'",
 ];
 
 test("the lines of the review: what 1.36.5 asked about still asks, and the variants it never read ask too", () => {
@@ -133,7 +136,7 @@ const CONTEXTOS = [
   "2>/dev/null §", ">/dev/null §", "A=1 2>/dev/null §", "2>&1 §", "2>&1 sudo §", "2>&1 bash <<EOF\n§\nEOF",
   "<< EOF bash\n§\nEOF", "<<-EOF sh\n§\nEOF", "2>/dev/null echo hi; §", "echo a >| out; §", "echo a > out & §",
   "/usr/bin/time §", "/usr/bin/time -p §", "time -p §", "env -S '§'", "sudo env -S '§'", "function f { §; }; f",
-  "function f { echo hi; §; }; f",
+  "function f { echo hi; §; }; f", "bash <<< '§'", 'sh <<< "§"', "sudo bash <<< '§'", "source /dev/stdin <<< '§'",
 ];
 
 test("the grid: whatever the line is built from, the policy asks, and no verdict of 1.36.5 is lost", () => {
@@ -187,7 +190,6 @@ test("what got lighter than 1.36.5 is only text the shell does not run, each lin
  * that 1.36.5 closed (`gate/always`) is, and is named so.
  */
 const LACUNAS = [
-  { linha: "bash <<< 'rm -rf V'", antes: "allow", readme: "bash <<<", quando: "a here-string into a shell" },
   { linha: "F=-rf; rm $F V", antes: "allow", readme: "F=-rf; rm $F", quando: "a flag held in a variable" },
   { linha: "rm $(echo -rf) V", antes: "allow", readme: "rm $(echo -rf)", quando: "a flag a substitution produces" },
   { linha: "cat .e*", antes: "allow", readme: "cat .e*", quando: "a glob that names a protected file" },

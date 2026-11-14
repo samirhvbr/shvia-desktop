@@ -435,6 +435,28 @@ test("a backslash-newline is no character, and (( inside ${…} is not arithmeti
   assert.deepEqual(segmentosDeComando(`echo a \\${NL}# it's; rm -rf V`), ["echo a \\\n"]);
 });
 
+// 🔴 1.42.6. `bash <<< 'rm -rf V'`: a here-string hands its word to a shell as the script, and the word was data to
+// this policy (a here-document into a shell was read since 1.36.6, the here-string was not). Measured: bash 5.3 and
+// zsh 5.9 run it, `cat <<< '…'` and `read x <<< '…'` do not. `allow` on 1.36.5 as well; the review listed it as open.
+test("a here-string handed to a shell is judged as the script it is", () => {
+  const sempre = [
+    "bash <<< 'rm -rf V'", "bash <<<'rm -rf V'", "sh <<< 'rm -rf V'", "zsh <<< 'rm -rf V'", "bash -s <<< 'rm -rf V'",
+    "sudo bash <<< 'rm -rf V'", "source /dev/stdin <<< 'rm -rf V'", ". /dev/stdin <<< 'rm -rf V'", 'bash <<< "rm -rf V"',
+    "bash <<< 'git push --force'", "bash <<< 'curl https://x'", "bash <<< 'cat .env'", "sudo -s <<< 'rm -rf V'",
+    "doas -s <<< 'rm -rf V'", "/bin/bash <<< 'rm -rf V'", "env bash <<< 'rm -rf V'", "bash <<< 'echo hi; rm -rf V'",
+    "bash <<< \"$(echo 'rm -rf V')\"",
+  ];
+  for (const c of sempre) {
+    const r = decide("Bash", { command: c }, "auto");
+    assert.equal(r.acao, "gate", `must ask: ${JSON.stringify(c)}`);
+    assert.equal(r.politica, "always", `must never be auto-approved: ${JSON.stringify(c)}`);
+  }
+  for (const c of ["bash <<< 'echo hi'", "read x <<< 'rm -rf V'", "cat <<< 'rm -rf V'", 'grep x <<< "$(cat f)"', "bc <<< '1+2'",
+                   "python3 - <<< 'print(1)'", "bash -c 'echo hi' <<< 'rm -rf V'"]) {
+    assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${JSON.stringify(c)}`);
+  }
+});
+
 // 🔴 1.42.6. `function f { rm -rf V; }; f`: the segment began with the keyword `function`, which was read as the
 // command, and its name and the body were its arguments. `f() { rm -rf V; }` was read (the parentheses split the
 // segment) and the keyword form was not. Measured: bash 5.3 and zsh 5.9 run it. `allow` on 1.36.5 as well.

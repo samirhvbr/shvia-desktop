@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.42.6 - Judge a here-string handed to a shell as the script it is
+
+`bash <<< 'rm -rf V'` ran `rm` with no card at the `auto` level: a here-string hands its word to a shell as the script, and the
+word was data to the policy. A here-document into a shell has been read since 1.36.6; the here-string was not. bash 5.3 and zsh 5.9
+run it (`cat <<< '…'` and `read x <<< '…'` do not run anything). It was `allow` on 1.36.5 as well, and the review of 06/11/2026
+listed it as open.
+
+- The word after `<<<`, attached (`<<<'…'`) or as the next word, is a script for a command that runs what it reads: a shell (without a
+  `-c` script, which wins), `.` and `source`, `sudo -s`, `sudo -i`, `doas -s` (the same set that owns a here-document body).
+
+Measured with `decidir()` at `auto`: `bash <<< 'rm -rf V'`, `sh`, `zsh`, `bash -s`, `sudo bash`, `source /dev/stdin <<< '…'`,
+`. /dev/stdin <<< '…'`, and a body that runs `git push --force`, `curl` or `cat .env` were `allow` and ask now; `bash <<< 'echo hi'`,
+`cat <<< '…'`, `read x <<< '…'`, `bc <<< '1+2'` and `grep x <<< "$(cat f)"` stay automatic. One test holds both sides and fails against
+1.42.0's `politica.mjs`. The README loses the bullet and the comparison corpus moves the line to the closed ones.
+
 ## 1.42.6 - Skip the function keyword and its name, so the body of function f { … } is judged
 
 `function f { rm -rf V; }; f` ran `rm` with no card at the `auto` level: the segment began with the keyword `function`, which was
