@@ -604,11 +604,14 @@ test("the string `env -S` splits into a command is judged as a script", () => {
 // 🔴 1.42.6. `time` by path was not a runner (only the bare keyword was skipped), so `/usr/bin/time rm -rf V` ran
 // `rm` with no card; and `time -p rm -rf V` read `-p` as the command. Measured: bash 5.3 and zsh 5.9 run the first,
 // bash 5.3 the second. It was `allow` on 1.36.5 too: a gap the review listed, closed here because it costs one word.
-test("the command behind `time` is judged, by path or with -p", () => {
+test("the command behind `time` is judged, by path, with -p or with --", () => {
   const sempre = [
     "/usr/bin/time rm -rf V", "/usr/bin/time -p rm -rf V", "/usr/bin/time -l rm -rf V", "/usr/bin/time -o out rm -rf V",
     "time -p rm -rf V", "time -p git push --force", "/usr/bin/time git push --force", "/usr/bin/time curl https://x",
     "sudo /usr/bin/time rm -rf V", "A=1 /usr/bin/time rm -rf V",
+    // bash's grammar takes `--` after `time` and after `time -p` (review of 14/11/2026): bash 5.3 runs these, zsh does not.
+    "time -- rm -rf V", "time -p -- rm -rf V", "time -- git push --force", "time -p -- curl https://x", "time -- cat .env",
+    "A=1 time -- rm -rf V", "echo hi; time -p -- rm -rf V", "/usr/bin/time -- rm -rf V",
   ];
   for (const c of sempre) {
     const r = decide("Bash", { command: c }, "auto");
@@ -616,7 +619,7 @@ test("the command behind `time` is judged, by path or with -p", () => {
     assert.equal(r.politica, "always", `must never be auto-approved: ${JSON.stringify(c)}`);
   }
   for (const c of ["/usr/bin/time -l npm test", "time npm test", "time -p npm test", "/usr/bin/time -v cargo build",
-                   "time (cd src && npm test)"]) {
+                   "time (cd src && npm test)", "time -- npm test", "time -p -- npm test", "time -p -- cargo build --release"]) {
     assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${JSON.stringify(c)}`);
   }
 });

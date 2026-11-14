@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.42.6 - Skip the -- that bash's time keyword takes, so time -- rm -rf V and time -p -- rm -rf V are judged
+
+`time -- rm -rf V` and `time -p -- rm -rf V` ran `rm` with no card at the `auto` level: bash's grammar takes a `--` after the `time`
+keyword (alone or after `-p`), and the `-p` was skipped but the `--` was read as the command, with `rm` as its argument. bash 5.3 runs both
+(zsh does not take the option). 1.36.5 asked about them; master did not, and the first closure of `time` here stopped at `-p`.
+
+- At the head of a command, `time` skips a `-p` and then a `--`, as the shell's grammar does. `/usr/bin/time -- rm -rf V` already asked (a
+  runner skips every option).
+
+Measured with `decidir()` at `auto`: `time -- rm -rf V`, `time -p -- rm -rf V`, `time -- git push --force`, `time -p -- curl https://x`
+and `time -- cat .env` were `allow` and ask now; `time -- npm test`, `time -p -- cargo build --release` and `time npm test` stay
+automatic. One test holds both sides and fails against the previous `politica.mjs`; the comparison corpus gains four lines and two
+contexts of its grid, all 18 of whose lines bash 5.3 ran.
+
 ## 1.42.6 - Read a plain $NAME in a command's directory as the environment's only when nothing in the line can have bound it
 
 The rule that stopped `$HOME/bin/tool` from asking (the friction entry below) read a plain `$NAME` as the environment's when `NAME` was
