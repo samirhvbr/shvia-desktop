@@ -1916,9 +1916,14 @@ Nada disso **bloqueia**: o que sai do automático vira **cartão**, e quem decid
 > (substitutions inside double quotes, backslashes, runners such as `env -i`, `xargs -r` and
 > `timeout`, the shell's keywords), which the 02/11/2026 review found it did not. That reading
 > asked about fewer lines than 1.36.5 had (a substitution with a space in a word, a `<<` after a `#`
-> or inside `${…}`, a pipe into `zsh`), which the independent review of 06/11/2026 measured and
-> 1.42.6 closed, with a test that holds the policy against the 1.36.5 one. See
-> `claude-runner/README.md`, "What `auto` does not cover", for what is still open.
+> or inside `${…}`, a pipe into `zsh`), which the independent review of 06/11/2026 measured. 1.42.6
+> closes those lines and the families they come from, and holds the policy against 1.36.5 and against
+> master 1.42.4 with a test. A second review, of that fix (14/11/2026), found that its first draft let
+> through lines master asked about (a plain `$NAME` read as the environment's when the line had bound it)
+> and lines 1.36.5 asked about (`time --`, an `$[…]` before a `<<`, a here-document body for `su`, `at` or
+> `parallel`); they are closed too. This note does not say that nothing is open:
+> `claude-runner/README.md`, "What `auto` does not cover", lists each line that still runs with no card,
+> and a test fails the day one of them closes without the README changing.
 
 ### Consequência de desenho: a política virou módulo
 

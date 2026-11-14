@@ -136,9 +136,9 @@ does is decided by `decidir()` in [`politica.mjs`](politica.mjs):
   `eval`, `source` or `for` anywhere in the line, and not a variable the shell sets itself
   (`$_`, `$REPLY`, `$BASH_REMATCH`). `$'…'` is decoded as bash does (`$'\x72m'` is `rm`); an
   escape that cannot be decoded asks.
-  The checks are held against what they replaced: `politica-diferencial.test.mjs` runs about 1,000
-  command lines through this policy and through the frozen 1.36.5 one, and a line that 1.36.5
-  asked about must still ask unless the test names a reason.
+  The checks are held against what they replaced: `politica-diferencial.test.mjs` runs about 1,400
+  command lines through this policy, the frozen 1.36.5 one and the frozen master 1.42.4 one, and a
+  line that either asked about must still ask unless the test names a reason.
 
 ### What `auto` does not cover
 
@@ -155,17 +155,32 @@ this list is edited in the same commit.
   project unasked; that is true of the tools and was never true of the shell.
 - **A word that is decided when the line runs:** a flag held in a variable (`F=-rf; rm $F V`), or
   made by a substitution (`rm $(echo -rf) V`); a glob that names a protected file (`cat .e*`,
-  `cat .en?`, `cat .*` read `.env`). `rm -$X V` and `rm -r$(echo f) V` ask.
+  `cat .en?`, `cat .*` read `.env`). `rm -$X V` and `rm -r$(echo f) V` ask. The same behind a
+  runner: `X=rm; env $X -rf V` (only the first command of each segment is read for a name decided
+  when it runs), and flags that a program reads from its input (`xargs rm <<EOF` with `-rf V` as
+  the body).
+- **A line the shell reads in a way this does not:** a here-string written before the shell's name
+  (`<<< 'rm -rf V' bash`; after it, `bash <<< '…'` asks); a brace expansion behind a runner
+  (`env {rm,-rf,V}`; only a command's own name is read for braces); an abbreviated long option
+  (`env --split 'rm -rf V'`, since GNU `env` takes any unique prefix of `--split-string` and this
+  reads `-S` and the full spelling); and, in zsh only, `function f g { rm -rf V; }; f`, which
+  defines two functions (only one name is skipped).
 - **Something the agent wrote or a program runs later:** a script it wrote and ran
   (`echo 'rm -rf V' > x.sh; bash x.sh`, and `. x.sh`, `source x.sh`); a process substitution into
   a shell (`bash <(echo 'rm -rf V')`); a string the shell runs on exit (`trap 'rm -rf V' EXIT`); a
   program that runs a command (`python3 -c "import os; os.system('rm -rf V')"`, `perl -e`); a
   here-document body that a program runs, which 1.36.6 reads as text (`make -f - <<EOF` with a
-  recipe, `python3 - <<EOF`; 1.36.5 asked about the first).
-- **A shell fed by a pipe from inside a group:** `echo 'rm -rf V' | (cd /tmp; bash)` (`| (bash)`
-  and `| { bash; }` ask; only the first command of the group is looked at).
+  recipe, `python3 - <<EOF`; 1.36.5 asked about the first); a pipe into a `parallel` that has
+  no command (`echo 'rm -rf V' | parallel` runs each line; `parallel <<EOF` is read). Programs
+  that start a shell or keep lines for later, `script`, `chroot`, `unshare` and `crontab -`, are
+  not read as scripts either (not measured here).
+- **A shell fed by a pipe from inside a group, or started with `-c`:**
+  `echo 'rm -rf V' | (cd /tmp; bash)` (`| (bash)` and `| { bash; }` ask; only the first command of
+  the group is looked at), and `echo 'rm -rf V' | env bash -c bash` (the script `bash` is judged
+  on its own, as a command that reads no pipe).
 
-None of these is new in 1.42.6 except `make -f - <<EOF`; the rest ran with no card on 1.36.5 too.
+None of these is new in 1.42.6 except `make -f - <<EOF`; the rest ran with no card on 1.36.5 too,
+and the test records what 1.36.5 said of each.
 
 A **plan turn** (`plano: true` on the user message, the page's "Plan") denies every tool that
 is not a read before the level is consulted (`decidirNoPlano`), so no approval can release a

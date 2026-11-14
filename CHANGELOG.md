@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.42.6 - Name in the README and in ADR-032 what still runs with no card, so neither says closed what the code leaves open
+
+The README ended its list of open lines with "none of these is new except `make -f -`", and ADR-032's note said that 1.42.6 closed the lines of the 06/11/2026 review. Both
+said more than the code did: the independent review of this change (14/11/2026) found lines that 1.36.5 asked about and this change let through (`time --`,
+an `$[…]` before a `<<`, a here-document body for `su`, `at` or `parallel`, all closed by the entries above), and a few more that ran on master and on 1.36.5 and were in no list.
+
+- The README's list of what `auto` does not cover gains the lines that were open and unnamed, all run by a real shell (bash 5.3; `env --split` with GNU
+  `env`, which takes any unique prefix of a long option, zsh for the function with two names, and a stand-in for `parallel`): a here-string written before the
+  shell's name (`<<< 'rm -rf V' bash`), a brace expansion behind a runner (`env {rm,-rf,V}`), an abbreviated `env` option (`env --split '…'`),
+  zsh's `function f g { …; }`, a variable that names the command behind a runner (`X=rm; env $X -rf V`), flags a program reads from its input
+  (`xargs rm <<EOF`), a pipe into a `parallel` with no command, and a shell started with `-c` that reads the pipe (`| env bash -c bash`).
+  Programs that start a shell or keep lines for later (`script`, `chroot`, `unshare`, `crontab -`) are named as not read, and as not measured.
+  The comparison test asserts each of the eight open and requires the README to name it, as it does for the others, and records what 1.36.5 said (it allowed all eight).
+- ADR-032's note says what 1.42.6 closes and what the second review found, and no longer says the review's lines were closed without saying what is not.
+- The README's count of the lines the comparison runs (now about 1,400, against three policies) and the older entry that called its counts the final ones are brought up to date.
+
 ## 1.42.6 - Hold the policy against master 1.42.4 too, so a line master asks about cannot be let through by a closure of another
 
 The comparison corpus held every line 1.36.5 asked about, and it could not see a line that 1.36.5 let through and master asks about. The
@@ -146,7 +162,7 @@ Measured with `decidir()` at `auto`: those lines were `allow` and ask now; `echo
 `git diff HEAD~{1,2}`, `{ echo a; echo b; }` and `${HOME}/bin/tool` stay automatic, because only the first word of a command is read
 for its name. One test holds both sides and fails against 1.42.0's `politica.mjs`. The README loses the bullet (and the list of what
 `auto` reads names the five gaps that the last five entries close: `time`, `env -S`, `function`, a here-string and braces), and the
-comparison corpus moves the lines to the closed ones; the counts in its entry are now the final ones.
+comparison corpus moves the lines to the closed ones; the counts in its entry were the final ones at that point, and the entries above it add to them.
 
 ## 1.42.6 - Judge a here-string handed to a shell as the script it is
 

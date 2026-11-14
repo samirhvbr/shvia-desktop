@@ -26,8 +26,9 @@ import * as MASTER from "./fixtures/politica-1.42.4.mjs";
  * cannot run in a sandbox and follow the manual; `su`, `at` and `parallel`, which ran through stand-ins that do
  * what the manual says (the login shell, the job and each line of stdin go to `sh`), and `runuser` and `batch`,
  * which follow it; `env -i`, which clears the PATH the stubs sit on, so the
- * real commands run; and `cat .env` with its output sent to /dev/null, which reads the file and prints
- * nothing to see. Lines spelled with a brace expansion, or with `time -p` or `time --`, or with an unquoted `$NAME` that holds
+ * real commands run; and `cat .env` with its output sent to /dev/null or into a variable, which reads the
+ * file and prints nothing to see (1,387 of the 1,403 lines of sections 1 and 2 showed their effect in bash 5.3
+ * or zsh 5.9; the other 16 are these exceptions). Lines spelled with a brace expansion, or with `time -p` or `time --`, or with an unquoted `$NAME` that holds
  * the command (zsh does not split it), only bash runs; with `${ list; }`, only bash 5.3; with `$${`, bash 3.2, bash 5.3
  * and dash, not zsh. A line that the shell does not run is not a case:
  * `echo "rm -rf V"` asks nothing, rightly.
@@ -244,6 +245,17 @@ const LACUNAS = [
   { linha: "make -f - <<EOF\nall:\n\trm -rf V\nEOF", antes: SEMPRE, readme: "make -f -", quando: "a body that make runs" },
   { linha: "echo PWNED > CLAUDE.md", antes: "allow", readme: "echo PWNED > CLAUDE.md", quando: "Bash writes an instruction file" },
   { linha: "echo x >> ~/.bashrc", antes: "allow", readme: ">> ~/.bashrc", quando: "Bash writes outside the project" },
+  // Found by the review of 14/11/2026 and the work after it. All were open on master and on 1.36.5; each ran in bash 5.3
+  // (`env --split` with GNU `env`, from Homebrew's coreutils, which takes any unique prefix of a long option; zsh only for
+  // the function with two names; `parallel` through a stand-in that does what its manual says).
+  { linha: "<<< 'rm -rf V' bash", antes: "allow", readme: "<<< 'rm -rf V' bash", quando: "a here-string written before the shell's name" },
+  { linha: "env {rm,-rf,V}", antes: "allow", readme: "env {rm,-rf,V}", quando: "a brace expansion behind a runner" },
+  { linha: "env --split 'rm -rf V'", antes: "allow", readme: "env --split", quando: "an abbreviated long option of env" },
+  { linha: "function f g { rm -rf V; }; f", antes: "allow", readme: "function f g", quando: "zsh's function with two names" },
+  { linha: "X=rm; env $X -rf V", antes: "allow", readme: "env $X -rf V", quando: "a variable that names the command behind a runner" },
+  { linha: "xargs rm <<EOF\n-rf V\nEOF", antes: "allow", readme: "xargs rm <<EOF", quando: "flags a program reads from its input" },
+  { linha: "echo 'rm -rf V' | parallel", antes: "allow", readme: "| parallel", quando: "a parallel with no command as a pipe stage" },
+  { linha: "echo 'rm -rf V' | env bash -c bash", antes: "allow", readme: "env bash -c bash", quando: "a shell started with -c that reads the pipe" },
 ];
 
 test("what still runs with no card is asserted open, and the README names each one", () => {
