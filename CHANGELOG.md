@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.42.5 - Prove the four guards of the gitDiff fence, each with a name that only that guard stops
+
+The fence test `diff_nao_sai_da_pasta_autorizada_dentro_do_mesmo_repo`, added in 1.38.8, names six ways out of an authorized subfolder.
+Since the folder's prefix check came in later in the same release ("Open the diffs of a project that is a subfolder of a repository,
+and list only that folder's changes"), the prefix has stopped all six, so deleting the `..` check, or `--literal-pathspecs`, left
+the whole suite green. The other two guards had the same hole: the folder's prefix could be weakened to a plain string prefix, and
+the `--` before the file name could go, without a test noticing. Each of the four guards now has a name that no other guard stops.
+Only tests change; no production code does.
+
+- `sub/../a.txt` and `sub/./../a.txt` join the fence test. They start with the folder's prefix, and git folds a `..` away
+  whether or not it reads pathspecs literally, so without the `..` check both print `a.txt`, outside the folder.
+- `sub2/x.txt` joins it too: a folder whose name only begins with the letters of the authorized `sub`. The prefix check compares
+  whole path components, so it stops this; a plain string prefix lets it through and prints `sub2/x.txt`.
+- `nome_com_curinga_nao_vira_padrao`: `sub/*.txt` must not stand for `sub/s.txt`. Without `--literal-pathspecs` git expands the
+  glob and prints that file's diff. It is the case the flag alone decides now that the prefix also stops `:(top)a.txt` and
+  `:/a.txt`.
+- `nome_que_parece_opcao_continua_sendo_caminho` now uses a file called `--name-only` instead of `-p`. `git diff` takes `-p` as an
+  option and answers with the same patch, so that name passed without the `--`. `--name-only` swaps the patch for a list of names,
+  and the diff comes back without the file's lines.
+- The fence tests (the fence test itself, `projeto_em_subpasta_lista_so_a_pasta_e_abre_o_diff`, the glob test and the option-name
+  test) fail without git instead of returning silently, as `arquivo_com_acento_ou_espaco_tem_diff_pelo_nome_que_o_status_lista`
+  already did.
+- Proof, each guard deleted or weakened alone: without the `..` check the fence test fails on `sub/../a.txt`; without the prefix
+  check it fails on `a.txt`, and with a plain string prefix on `sub2/x.txt`; without `--literal-pathspecs`,
+  `nome_com_curinga_nao_vira_padrao` fails; without the `--`, `nome_que_parece_opcao_continua_sendo_caminho` fails.
+
 ## 1.42.4 - A Pentest attempt the engine refused as authorization, and the server did not, is recorded as authorization_check
 
 1.42.3 asks the server about the grant after an attempt the engine's inspection refused as `authorization`, and ends the wait
