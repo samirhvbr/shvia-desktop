@@ -149,7 +149,6 @@ this list is edited in the same commit.
   project unasked; that is true of the tools and was never true of the shell.
 - **A command the policy reads as something else:**
   - `env -S 'rm -rf V'`, where `env` splits the string into a command;
-  - `/usr/bin/time rm -rf V`: `time` by path is not the keyword (`command time rm -rf V` asks);
   - `function f { rm -rf V; }; f` (`f() { rm -rf V; }; f` asks);
   - `bash <<< 'rm -rf V'`, a here-string into a shell (a here-document into one asks);
   - brace expansion: `{rm,-rf,V}` runs `rm -rf V` in bash.

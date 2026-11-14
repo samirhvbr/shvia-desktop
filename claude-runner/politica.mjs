@@ -712,6 +712,8 @@ const EXECUTORES = new Set([
   "setsid", "stdbuf", "chrt", "taskset", "unbuffer", "caffeinate", "watch", "strace", "ltrace",
   "flock", "chroot", "busybox", "toybox", "find", "su", "runuser", "nsenter", "unshare",
   "systemd-run", "fakeroot", "firejail", "parallel", "script",
+  // `time` is also the shell's keyword, skipped as one; by path (`/usr/bin/time rm -rf V`) it is a runner (1.42.6).
+  "time",
 ]);
 
 /**
@@ -762,7 +764,12 @@ export function comandosDoSegmento(seg) {
   const toks = tokensDoSegmento(seg, cruas);
   let i = 0;
   for (;;) {
-    if (i < toks.length && (atribuicao(toks[i]) || PALAVRAS_DO_SHELL.has(toks[i]))) { i++; continue; }
+    if (i < toks.length && (atribuicao(toks[i]) || PALAVRAS_DO_SHELL.has(toks[i]))) {
+      // `time -p rm -rf V`: bash's `-p` belongs to the keyword, and was read as the command (1.42.6).
+      if (toks[i] === "time" && toks[i + 1] === "-p") i++;
+      i++;
+      continue;
+    }
     const r = i < toks.length ? palavrasDeRedirecionamento(toks, i) : 0;
     if (r === 0) break;
     i += r;

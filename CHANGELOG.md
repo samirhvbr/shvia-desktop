@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.42.6 - Judge the command behind /usr/bin/time and behind time -p, which ran with no card
+
+`/usr/bin/time rm -rf V` ran `rm` with no card at the `auto` level: only the bare keyword `time` was skipped, and `time` by path was a
+command whose arguments nothing judged. `time -p rm -rf V` read `-p` as the command. bash 5.3 and zsh 5.9 run the first, bash 5.3
+the second (measured with `rm` stubbed). Both were `allow` on 1.36.5 as well: the review of 06/11/2026 listed the first as open, and it
+costs one word.
+
+- `time` is a runner, like `sudo` and `nice`: every word after it that is not an option is judged as the command it may start.
+- After the keyword `time`, bash's `-p` is skipped with it.
+
+Measured with `decidir()` at `auto`: `/usr/bin/time rm -rf V`, `/usr/bin/time -p`, `-l` and `-o out` in front of it, `time -p rm -rf V`
+and `time -p git push --force` were `allow` and ask now; `/usr/bin/time -l npm test`, `time npm test` and `time -p npm test` stay
+automatic. One test holds both sides and fails against 1.42.0's `politica.mjs`. The README loses the bullet and the comparison corpus
+moves the line from the open list to the closed ones.
+
 ## 1.42.6 - Correct what the 1.36.6 text and ADR-032 said about writes, and what the Codex README said of the Claude engine's Auto
 
 The review of 06/11/2026 found three claims that the code did not back, and one comparison that went stale the day 1.36.6 landed.

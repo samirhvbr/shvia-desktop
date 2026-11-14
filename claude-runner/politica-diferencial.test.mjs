@@ -85,6 +85,8 @@ const ANTES_LIBERADAS = [
   "2>/dev/null rm -rf V", ">/dev/null rm -rf V", "</dev/null rm -rf V", "2>&1 rm -rf V", "A=1 2>/dev/null rm -rf V",
   "> out rm -rf V", "2> /dev/null rm -rf V", "&>/dev/null rm -rf V", "<<EOF rm -rf V\nx\nEOF", "<< EOF rm -rf V\nx\nEOF",
   "2>/dev/null git push --force", "2>/dev/null curl https://x", "2>&1 sudo rm -rf V",
+  // The command behind `time`, by path or with `-p`.
+  "/usr/bin/time rm -rf V", "/usr/bin/time -p rm -rf V", "time -p rm -rf V", "/usr/bin/time git push --force",
 ];
 
 test("the lines of the review: what 1.36.5 asked about still asks, and the variants it never read ask too", () => {
@@ -126,6 +128,7 @@ const CONTEXTOS = [
   "echo '§' | timeout 5 bash", "echo '§' | zsh",
   "2>/dev/null §", ">/dev/null §", "A=1 2>/dev/null §", "2>&1 §", "2>&1 sudo §", "2>&1 bash <<EOF\n§\nEOF",
   "<< EOF bash\n§\nEOF", "<<-EOF sh\n§\nEOF", "2>/dev/null echo hi; §", "echo a >| out; §", "echo a > out & §",
+  "/usr/bin/time §", "/usr/bin/time -p §", "time -p §",
 ];
 
 test("the grid: whatever the line is built from, the policy asks, and no verdict of 1.36.5 is lost", () => {
@@ -171,7 +174,7 @@ test("what got lighter than 1.36.5 is only text the shell does not run, each lin
 /**
  * Lines the shell runs and this policy does not read, at the `auto` level, with the verdict of 1.36.5 and
  * the words `claude-runner/README.md` must have for it. The README is the contract: these are the gaps
- * the dev is told about. The first seven are the lines the review of 06/11/2026 listed that remain open; the rest came from
+ * the dev is told about. The first ones are lines the review of 06/11/2026 listed and that remain open; the rest came from
  * the comparison above. Every one was run by the shell with `rm` stubbed (the `echo` and `cat` lines by
  * the files they wrote); the stub was called, and the line was `allow`.
  *
@@ -180,7 +183,6 @@ test("what got lighter than 1.36.5 is only text the shell does not run, each lin
  */
 const LACUNAS = [
   { linha: "env -S 'rm -rf V'", antes: "allow", readme: "env -S", quando: "env splits a string into a command" },
-  { linha: "/usr/bin/time rm -rf V", antes: "allow", readme: "/usr/bin/time rm", quando: "time by path is not the keyword" },
   { linha: "function f { rm -rf V; }; f", antes: "allow", readme: "function f {", quando: "a function defined with the keyword" },
   { linha: "bash <<< 'rm -rf V'", antes: "allow", readme: "bash <<<", quando: "a here-string into a shell" },
   { linha: "F=-rf; rm $F V", antes: "allow", readme: "F=-rf; rm $F", quando: "a flag held in a variable" },

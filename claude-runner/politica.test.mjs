@@ -435,6 +435,26 @@ test("a backslash-newline is no character, and (( inside ${…} is not arithmeti
   assert.deepEqual(segmentosDeComando(`echo a \\${NL}# it's; rm -rf V`), ["echo a \\\n"]);
 });
 
+// 🔴 1.42.6. `time` by path was not a runner (only the bare keyword was skipped), so `/usr/bin/time rm -rf V` ran
+// `rm` with no card; and `time -p rm -rf V` read `-p` as the command. Measured: bash 5.3 and zsh 5.9 run the first,
+// bash 5.3 the second. It was `allow` on 1.36.5 too: a gap the review listed, closed here because it costs one word.
+test("the command behind `time` is judged, by path or with -p", () => {
+  const sempre = [
+    "/usr/bin/time rm -rf V", "/usr/bin/time -p rm -rf V", "/usr/bin/time -l rm -rf V", "/usr/bin/time -o out rm -rf V",
+    "time -p rm -rf V", "time -p git push --force", "/usr/bin/time git push --force", "/usr/bin/time curl https://x",
+    "sudo /usr/bin/time rm -rf V", "A=1 /usr/bin/time rm -rf V",
+  ];
+  for (const c of sempre) {
+    const r = decide("Bash", { command: c }, "auto");
+    assert.equal(r.acao, "gate", `must ask: ${JSON.stringify(c)}`);
+    assert.equal(r.politica, "always", `must never be auto-approved: ${JSON.stringify(c)}`);
+  }
+  for (const c of ["/usr/bin/time -l npm test", "time npm test", "time -p npm test", "/usr/bin/time -v cargo build",
+                   "time (cd src && npm test)"]) {
+    assert.equal(decide("Bash", { command: c }, "auto").acao, "allow", `must stay automatic: ${JSON.stringify(c)}`);
+  }
+});
+
 // 🔴 1.42.6. A redirection in front of the command hid it: the word taken for the command was the
 // redirection and the real command was one of its arguments. `2>/dev/null rm -rf V` was `allow` on 1.36.5 too,
 // and the review listed it as open. What 1.36.6 added is that a shell behind one lost its here-document, so
