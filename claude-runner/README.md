@@ -98,24 +98,89 @@ does is decided by `decidir()` in [`politica.mjs`](politica.mjs):
   command `comandoDeRede()` recognizes as network), a command `comandoDestrutivo()` recognizes as
   destructive and a command in which `caminhoProtegidoNoComando()` finds a protected path always
   ask, with an `always` card the page never approves by itself. These are pattern checks over the
-  command text; the functions and their tests are the exact contract.
-- **Every level, writes (1.36.6):** a write (`Write`, `Edit`, `MultiEdit`, `NotebookEdit`) goes
-  through the same fence as a read before any level releases it. A protected path, an agent
-  instruction file (`ANNA.md`, `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, as in `anna` 0.15.4)
-  or Claude Code's `.claude/settings.json` / `settings.local.json`, and any path outside the
-  project folder ask with an `always` card, by the requested name or by where a symlink really
-  leads. A read outside the project whose card shows only a path inside it (through a symlink)
-  asks as `always` too, because the page's check would read that card as inside.
+  command text; the functions and their tests are the exact contract. A line the policy cannot
+  read to the end (substitutions nested more than 16 deep, scripts in scripts more than 4 deep)
+  asks as `always` too, and so does an error of the policy itself (`decidirSeguro()`, 1.42.6); if
+  the hook fails even so, it denies the call instead of throwing.
+- **Every level, the file-writing tools (1.36.6):** a write by `Write`, `Edit`, `MultiEdit` or
+  `NotebookEdit` goes through the same fence as a read before any level releases it. A protected
+  path, an agent instruction file (`ANNA.md`, `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, as in
+  `anna` 0.15.4) or Claude Code's `.claude/settings.json` / `settings.local.json`, and any path
+  outside the project folder ask with an `always` card, by the requested name or by where a
+  symlink really leads. A read outside the project whose card shows only a path inside it (through
+  a symlink) asks as `always` too, because the page's check would read that card as inside.
+  **This is the fence of those four tools and nothing more:** a `Bash` command is not a write to
+  this policy, so at `auto` a shell can write what they cannot (see "What `auto` does not cover").
 - **`edit`:** file edits inside the fence also run without a card.
 - **`auto`:** what is not in the "always ask" set above runs without a card. The command is read
-  the way the shell runs it (1.36.6): quotes and backslashes resolved, `$(…)` and backticks judged
-  as scripts of their own even inside double quotes, the shell's keywords (`then`, `do`, `!`)
-  skipped, and every word after a command that starts another command (`sudo`, `env`, `xargs`,
-  `timeout`, `nice`, `find -exec`, …) judged as the command it may start. A here-document body is
-  text unless a shell runs it. A line whose command name is decided when it runs (a variable, a
-  substitution, a glob) or that uses `$'…'` asks as `always` (`sintaxeIlegivel()`). A program that
-  builds its own action at run time (`python3 -c …`) is still not seen: the level trusts the agent
-  with the shell, and these checks catch spellings, not intent.
+  the way the shell runs it (1.36.6, corrected in 1.42.6): quotes and backslashes resolved,
+  `$(…)` and backticks judged as scripts of their own even inside double quotes and kept whole in
+  the word they are part of (`X=$(echo a b) rm -rf V` is an assignment and then `rm`), the shell's
+  keywords (`then`, `do`, `!`) skipped, and every word after a command that starts another command
+  (`sudo`, `env`, `xargs`, `timeout`, `nice`, `time`, `find -exec`, …) judged as the command it may
+  start; the string `env -S` splits, the body of `function f { … }`, the word a `<<<` hands to a
+  shell and a command named by a brace expansion (`{rm,-rf,V}`) are read too (1.42.6).
+  A comment is not read (`ls # list; rm -rf V` asks nothing), and a `<<` inside a comment, a
+  `${…}`, a `$[…]` or a `((…))` opens no here-document. A here-document body is text unless the
+  command it goes to runs it (a shell, `.`, `source`, `sudo -s`, `su`, `at`, `batch`, `parallel`),
+  and so is a here-string. A pipe into any shell asks, named or wrapped as it may be (`| zsh`,
+  `| env bash`, `| "bash"`), and so does a pipe into one of those (`| su`, `| at now`). A flag that the line completes when it
+  runs (`-r$(echo f)`) counts as any flag. A redirection in front of the command
+  (`2>/dev/null rm -rf V`, `2>&1 bash <<EOF`) is skipped as `KEY=value` is. A line whose command
+  name is decided when it runs (a variable, a substitution, a glob) asks as `always`
+  (`sintaxeIlegivel()`). The name is the part after the last `/`, so `$HOME/bin/tool` and
+  `$(pwd)/node_modules/.bin/vitest` are `tool` and `vitest`; but a directory that an unquoted
+  expansion may split into words still asks (`X='rm -rf V #'; $X/tool` runs `rm`), and only a
+  quoted one, `$(pwd)` and a plain `$NAME` that the line cannot have bound are read: no assignment
+  to it (or to `IFS`), no `${NAME:=…}`, no `read`, `export`, `declare`, `mapfile`, `printf -v`,
+  `eval`, `source` or `for` anywhere in the line, and not a variable the shell sets itself
+  (`$_`, `$REPLY`, `$BASH_REMATCH`). `$'…'` is decoded as bash does (`$'\x72m'` is `rm`); an
+  escape that cannot be decoded asks.
+  The checks are held against what they replaced: `politica-diferencial.test.mjs` runs about 1,400
+  command lines through this policy, the frozen 1.36.5 one and the frozen master 1.42.4 one, and a
+  line that either asked about must still ask unless the test names a reason.
+
+### What `auto` does not cover
+
+The level trusts the agent with the shell. These checks read the words of a command line: they
+catch spellings, not intent, and they are a tripwire, not a sandbox. Each line below runs with no
+card at `auto`. Every one was run by a real shell (bash 5.3 or zsh 5.9) in a sandbox with `rm` and
+the like stubbed, and its effect was seen: the stub called, the file written or read.
+`politica-diferencial.test.mjs` asserts each is still open and fails the day one closes, so that
+this list is edited in the same commit.
+
+- **`Bash` writes anything.** The fence above belongs to the four file-writing tools.
+  `echo PWNED > CLAUDE.md` and `echo x >> ~/.bashrc` run with no card at `auto`, where `Write` of
+  the same files asks. 1.36.6 said that no level writes an instruction file or a path outside the
+  project unasked; that is true of the tools and was never true of the shell.
+- **A word that is decided when the line runs:** a flag held in a variable (`F=-rf; rm $F V`), or
+  made by a substitution (`rm $(echo -rf) V`); a glob that names a protected file (`cat .e*`,
+  `cat .en?`, `cat .*` read `.env`). `rm -$X V` and `rm -r$(echo f) V` ask. The same behind a
+  runner: `X=rm; env $X -rf V` (only the first command of each segment is read for a name decided
+  when it runs), and flags that a program reads from its input (`xargs rm <<EOF` with `-rf V` as
+  the body).
+- **A line the shell reads in a way this does not:** a here-string written before the shell's name
+  (`<<< 'rm -rf V' bash`; after it, `bash <<< '…'` asks); a brace expansion behind a runner
+  (`env {rm,-rf,V}`; only a command's own name is read for braces); an abbreviated long option
+  (`env --split 'rm -rf V'`, since GNU `env` takes any unique prefix of `--split-string` and this
+  reads `-S` and the full spelling); and, in zsh only, `function f g { rm -rf V; }; f`, which
+  defines two functions (only one name is skipped).
+- **Something the agent wrote or a program runs later:** a script it wrote and ran
+  (`echo 'rm -rf V' > x.sh; bash x.sh`, and `. x.sh`, `source x.sh`); a process substitution into
+  a shell (`bash <(echo 'rm -rf V')`); a string the shell runs on exit (`trap 'rm -rf V' EXIT`); a
+  program that runs a command (`python3 -c "import os; os.system('rm -rf V')"`, `perl -e`); a
+  here-document body that a program runs, which 1.36.6 reads as text (`make -f - <<EOF` with a
+  recipe, `python3 - <<EOF`; 1.36.5 asked about the first); a pipe into a `parallel` that has
+  no command (`echo 'rm -rf V' | parallel` runs each line; `parallel <<EOF` is read). Programs
+  that start a shell or keep lines for later, `script`, `chroot`, `unshare` and `crontab -`, are
+  not read as scripts either (not measured here).
+- **A shell fed by a pipe from inside a group, or started with `-c`:**
+  `echo 'rm -rf V' | (cd /tmp; bash)` (`| (bash)` and `| { bash; }` ask; only the first command of
+  the group is looked at), and `echo 'rm -rf V' | env bash -c bash` (the script `bash` is judged
+  on its own, as a command that reads no pipe).
+
+None of these is new in 1.42.6 except `make -f - <<EOF`; the rest ran with no card on 1.36.5 too,
+and the test records what 1.36.5 said of each.
 
 A **plan turn** (`plano: true` on the user message, the page's "Plan") denies every tool that
 is not a read before the level is consulted (`decidirNoPlano`), so no approval can release a

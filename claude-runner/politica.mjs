@@ -66,14 +66,28 @@ export function expandirHome(p) {
  *
  * A symlink committed in a repository — `dados -> ~/.ssh` — is exactly what a malicious clone
  * would bring, and the lexical check reads `dados/config` as inside the project.
+ *
+ * A symlink whose target does not exist yet is followed by hand (1.42.6): `realpath` fails on it,
+ * the walk used to take it for a new file named like the link, inside the project, and a write
+ * through `evil -> /somewhere/outside/new.txt` creates the target. The SDK refused it on its own
+ * (0.3.314), which this policy does not own. `saltos` counts the links followed, as the kernel
+ * does: a loop of links cannot be written through, so past 40 the path stays as asked.
  */
-export function caminhoReal(abs) {
+export function caminhoReal(abs, saltos = 0) {
   const resto = [];
   let atual = abs;
   for (;;) {
     try {
       return path.join(fs.realpathSync(atual), ...resto);
     } catch {
+      let alvo = null;
+      try { alvo = fs.readlinkSync(atual); } catch { /* not a link, or not there */ }
+      if (alvo !== null) {
+        if (saltos >= 40) return abs;
+        // A relative target is relative to the directory the link really sits in.
+        const dir = caminhoReal(path.dirname(atual), saltos + 1);
+        return path.join(caminhoReal(path.resolve(dir, alvo), saltos + 1), ...resto);
+      }
       const pai = path.dirname(atual);
       if (pai === atual) return abs;
       resto.unshift(path.basename(atual));
@@ -121,8 +135,36 @@ export function dentroDoProjeto(projectDir, p) {
 export function comandoDestrutivo(cmd) {
   const baixo = String(cmd ?? "").toLowerCase();
   if (padraoDeLinhaDestrutivo(baixo)) return true;
-  return segmentosEfetivos(String(cmd ?? "")).some(segmentoDestrutivo);
+  return estagiosEfetivos(String(cmd ?? "")).some(
+    (s) => segmentoDestrutivo(s.texto) || (s.aposPipe && alimentaShell(s.texto)),
+  );
 }
+
+/**
+ * A command line this policy cannot read to the end. It is not guessed at: `decidir` turns it into
+ * an `always` card (1.42.6).
+ */
+export class LinhaIlegivel extends Error {
+  constructor(motivo) {
+    super(motivo);
+    this.name = "LinhaIlegivel";
+    this.motivo = motivo;
+  }
+}
+
+/**
+ * How deep substitutions may nest in one line (`$(a $(b $(c)))`). Real commands go three or four
+ * deep. The splitter reads each level by recursion and every level scans the rest of the line
+ * again: about 10,000 `$(` ran out of stack with a RangeError, and a 25 KB line took 5 s on the way
+ * (review of 06/11/2026). Past the limit the line asks.
+ */
+const ANINHAMENTO_MAXIMO = 16;
+
+/**
+ * How deep scripts may nest in scripts (`bash -c "bash -c '…'"`). Until 1.42.6 a script found past
+ * this was "judged as it stands", which is to say not read: five `bash -c` in a row hid anything.
+ */
+const SCRIPTS_MAXIMOS = 4;
 
 /**
  * The segments a line really runs, including what hides inside a quoted script: `bash -c
@@ -130,15 +172,23 @@ export function comandoDestrutivo(cmd) {
  * splitter keeps a quoted script as ONE argument, so without this step the command inside it was
  * never judged (1.6.15). Every command a segment may start is looked at, not only its first word
  * (`comandosDoSegmento`), so `sudo -i bash -c "…"` and `xargs sh -c '…'` reach the script too.
- * Depth-limited: a script that nests scripts past 4 levels is judged as it stands.
+ * A script that nests scripts past `SCRIPTS_MAXIMOS` levels throws `LinhaIlegivel`: until 1.42.6 it
+ * was judged as it stands, and what it ran was never read.
  */
 export function segmentosEfetivos(cmd, profundidade = 0) {
+  return estagiosEfetivos(cmd, profundidade).map((s) => s.texto);
+}
+
+/** `segmentosEfetivos`, with the pipeline fact of `estagiosDeComando` on each one. */
+function estagiosEfetivos(cmd, profundidade = 0) {
   const out = [];
-  for (const seg of segmentosDeComando(cmd)) {
+  for (const seg of estagiosDeComando(cmd)) {
     out.push(seg);
-    if (profundidade >= 4) continue;
-    for (const ca of comandosDoSegmento(seg)) {
-      for (const script of scriptsDoComando(ca)) out.push(...segmentosEfetivos(script, profundidade + 1));
+    for (const ca of comandosDoSegmento(seg.texto)) {
+      for (const script of scriptsDoComando(ca)) {
+        if (profundidade >= SCRIPTS_MAXIMOS) throw new LinhaIlegivel("scripts dentro de scripts demais para ler");
+        out.push(...estagiosEfetivos(script, profundidade + 1));
+      }
     }
   }
   return out;
@@ -154,15 +204,57 @@ const SCRIPT_NOS_ARGS = new Set(["watch", "parallel"]);
 function scriptsDoComando({ cmd, args }) {
   if (SHELLS.has(cmd)) {
     const i = args.findIndex((a) => a === "-c" || (/^-[a-z]*c[a-z]*$/i.test(a) && !a.startsWith("--")));
-    return i >= 0 && i + 1 < args.length ? [args[i + 1]] : [];
+    if (i >= 0) return i + 1 < args.length ? [args[i + 1]] : [];
+    return scriptsDeHereString(args);
   }
   if (SCRIPT_NO_C.has(cmd)) {
     const i = args.findIndex((a) => a === "-c" || a === "--command");
-    return i >= 0 && i + 1 < args.length ? [args[i + 1]] : [];
+    if (i >= 0) return i + 1 < args.length ? [args[i + 1]] : [];
+    // No `-c`: `su` starts the login shell, which reads a here-string below, and `script` and `flock` read none.
   }
   if (cmd === "eval") return [args.join(" ")];
-  if (SCRIPT_NOS_ARGS.has(cmd)) return args.filter((a) => !a.startsWith("-"));
+  if (SCRIPT_NOS_ARGS.has(cmd)) {
+    const s = args.filter((a) => !a.startsWith("-"));
+    // A `parallel` runs each LINE of what it is given as a command of its own, so a quote or a brace left open on one
+    // line (a here-string word with newlines in it) does not reach the next: the lines are judged apart as well.
+    return cmd === "parallel" ? [...s, ...s.flatMap((x) => x.split("\n"))] : s;
+  }
+  if (cmd === "env") return scriptsDoEnv(args);
+  // What runs a here-document as a script runs a here-string the same way (1.42.6).
+  if (executaOCorpo({ cmd, args })) return scriptsDeHereString(args);
   return [];
+}
+
+/**
+ * The word a `<<<` hands to a command, as a script: `bash <<< 'rm -rf V'`, `bash <<<'rm -rf V'`. Only for
+ * a command that runs what it reads (`scriptsDoComando` asks `executaOCorpo`): `cat <<< 'rm -rf V'` is data.
+ */
+function scriptsDeHereString(args) {
+  const k = args.findIndex((a) => a.startsWith("<<<"));
+  if (k < 0) return [];
+  const palavra = args[k].length > 3 ? args[k].slice(3) : args[k + 1];
+  return palavra === undefined ? [] : [palavra];
+}
+
+/**
+ * `env -S 'rm -rf V'` splits its argument into a command and runs it (1.42.6): the value of `-S`,
+ * of `--split-string`, and the one a cluster ends with (`-iS 'rm -rf V'`) or carries attached
+ * (`-S'rm -rf V'`), is a script.
+ */
+function scriptsDoEnv(args) {
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--split-string") { if (i + 1 < args.length) out.push(args[++i]); continue; }
+    if (a.startsWith("--split-string=")) { out.push(a.slice("--split-string=".length)); continue; }
+    if (a.startsWith("--") || !a.startsWith("-")) continue;
+    const k = a.indexOf("S");
+    if (k < 0) continue;
+    const resto = a.slice(k + 1);
+    if (resto !== "") out.push(resto);
+    else if (i + 1 < args.length) out.push(args[++i]);
+  }
+  return out;
 }
 
 /**
@@ -201,11 +293,43 @@ export function caminhoProtegidoNoComando(cmd) {
   return null;
 }
 
-/** Patterns of the whole LINE, not of one command: pipe to a shell, fork bomb, SQL. */
+/**
+ * Patterns of the whole LINE, not of one command: pipe to a shell, fork bomb, SQL.
+ *
+ * The pipe to a shell is the floor of `alimentaShell` below, which reads the stage as a command:
+ * this one reads text, so it sees `curl x | /bin/zsh` even in a line the splitter reads as quoted. Until
+ * 1.42.6 it knew `sh` and `bash` only (1.36.5 too), and `cat <<EOF | zsh` was the line 1.36.6 stopped
+ * asking about when it began reading here-documents.
+ */
 function padraoDeLinhaDestrutivo(c) {
-  return /\|\s*(sh|bash)\b/.test(c)
+  return /\|&?\s*(?:[\w.-]*\/)*(?:sh|bash|zsh|dash|ksh|ash|fish)\b/.test(c)
     || c.includes("drop table") || c.includes("truncate table") || c.includes("drop database")
     || c.includes(":(){");
+}
+
+/**
+ * Commands that take their stdin as data for another program and not as its script, so a shell
+ * behind them is not reading the pipe: `ls | xargs sh -c '…'` hands each name to the shell as an
+ * argument.
+ */
+const SEM_STDIN_DO_PIPE = new Set(["xargs", "parallel", "find", "watch", "script"]);
+
+/**
+ * Is this stage of a pipeline a shell that reads its script from the pipe? `… | bash` was the only
+ * form asked about; the shell has many ways to say it (1.42.6): `| zsh`, `| dash`, `| /bin/bash`,
+ * `| env bash`, `| sudo -E bash -s`, `| timeout 5 bash`, `| "bash"`, `| b\ash`, `|& sh`, `| { bash; }`.
+ * The stage is read as a command, so quotes, backslashes and the runners in front of the shell
+ * (`comandosDoSegmento`) are resolved. A shell with a `-c` script runs that script, not the pipe, and
+ * the script is judged on its own.
+ */
+function alimentaShell(seg) {
+  for (const c of comandosDoSegmento(seg)) {
+    if (SEM_STDIN_DO_PIPE.has(c.cmd)) return false;
+    if (SHELLS.has(c.cmd)) return scriptsDoComando(c).length === 0;
+    // What else runs its stdin as a script (`| su`, `| at now`, `| sudo -s`, `| . /dev/stdin`) reads the pipe as one too (1.42.6).
+    if (executaOCorpo(c)) return true;
+  }
+  return false;
 }
 
 /**
@@ -225,36 +349,88 @@ function padraoDeLinhaDestrutivo(c) {
  * - **A backslash.** Outside single quotes it makes the next character ordinary: `echo \" ; rm
  *   -rf ~` has no quote in it, and `rm` runs. The splitter treated `\"` as an opening quote and
  *   swallowed the rest of the line.
- * - **`$'…'`** (ANSI-C quoting), where `\'` does not close the quote. Its content is not decoded
- *   here; `sintaxeIlegivel` sends any line that uses it to a card instead.
+ * - **`$'…'`** (ANSI-C quoting), where `\'` does not close the quote. The splitter only has to
+ *   know where it ends; `tokensDoSegmento` decodes it (1.42.6, `escapeAnsiC`).
+ *
+ * ## Text the shell does not read must not open a here-document here (1.42.6)
+ *
+ * 1.36.6 made a here-document body TEXT, not commands, and so every `<<WORD` this loop mistakes
+ * for a here-document hides the lines after it from every check: the shell runs them, this reads
+ * them as a body. Master 1.36.5 had no here-documents and judged those lines. The `<<` of each of
+ * these opens none in bash 3.2, bash 5.3 and zsh (and dash, where it has the syntax), and
+ * `rm -rf V` on the next line runs:
+ *
+ * - **A comment.** `echo hi # <<EOF`, and a comment with an apostrophe in it (`# it's`), which
+ *   also opened a quote that swallowed the next line. A `#` starts one at the start of a word:
+ *   after a blank, a newline, `;`, `&` or `|`. Not after `$`, `{`, a quote, a substitution or a
+ *   `\`-escaped blank, where it is part of a word (`$#`, `${#x}`, `a\ #b`), and not after a
+ *   parenthesis, where a glob group can be followed by one.
+ * - **`${…}` and `((…))`**: `echo ${x%<<EOF}`, `(( x=1<<2 ))`, `for ((i=0; i<<2; i++))`. Neither
+ *   is a comment or a here-document inside, and a `$(…)` in a `${…}` still runs.
+ * - **`<<<`**, a here-string: its word is data. The loop read its second `<` as the start of `<<`.
  */
 export function segmentosDeComando(cmd) {
+  return estagiosDeComando(cmd).map((s) => s.texto);
+}
+
+/**
+ * `segmentosDeComando` with one more fact per segment: whether it is a stage of a pipeline, that is,
+ * it came after a `|` or `|&` (not `||`) and so reads the previous stage's output as its stdin.
+ */
+function estagiosDeComando(cmd, prof = 0) {
+  if (prof > ANINHAMENTO_MAXIMO) throw new LinhaIlegivel("substituições aninhadas demais para ler");
   const segs = [];
+  const apos = []; // apos[k]: segs[k] is a stage of a pipeline
   const internos = [];
   const heredocs = []; // pending `<<WORD`s: { fim, literal, tabs, dono }
   let atual = "";
+  let doPipe = false; // the segment being built is a stage of a pipeline
+  const fechar = (proximoDoPipe = false) => {
+    segs.push(atual); apos.push(doPipe); atual = ""; doPipe = proximoDoPipe;
+  };
   let aspa = null; // "'", '"', or "$'"
+  let inicio = true; // the character at `i` starts a word: the only place a `#` is a comment
+  let chaves = 0; // `${` still open: a comment or a `<<` there is text of the expansion
+  let aritmetica = 0; // parentheses of a `((…))` still open: the same
+  let colchetes = 0; // brackets of an old-style `$[…]` still open: the same
+  let redir = false; // the character before was an unquoted, unescaped `<` or `>`
   for (let i = 0; i < cmd.length; i++) {
     const ch = cmd[i];
+    const comecaPalavra = inicio;
+    const aposRedirecao = redir;
+    inicio = false;
+    redir = false;
     if (ch === "\n" && aspa === null && heredocs.length > 0) {
-      segs.push(atual); atual = "";
+      fechar();
       i = lerCorposDeHeredoc(cmd, i + 1, heredocs, segs, internos) - 1;
       heredocs.length = 0;
+      inicio = true;
       continue;
     }
-    if (ch === "<" && aspa === null && cmd[i + 1] === "<" && cmd[i + 2] !== "<") {
-      const h = marcaDeHeredoc(cmd, i + 2);
-      if (h) {
-        heredocs.push({ ...h, dono: segs.length });
-        atual += cmd.slice(i, h.depois);
-        i = h.depois - 1;
-        continue;
+    if (ch === "<" && aspa === null) {
+      if (cmd.startsWith("<<<", i)) { atual += "<<<"; i += 2; continue; }
+      if (cmd[i + 1] === "<" && chaves === 0 && aritmetica === 0 && colchetes === 0) {
+        const h = marcaDeHeredoc(cmd, i + 2);
+        if (h) {
+          heredocs.push({ ...h, dono: segs.length });
+          atual += cmd.slice(i, h.depois);
+          i = h.depois - 1;
+          continue;
+        }
       }
+    }
+    if (ch === "#" && aspa === null && comecaPalavra && chaves === 0 && aritmetica === 0 && colchetes === 0) {
+      // A comment: the rest of the line is ignored by the shell, its quotes and `<<` included.
+      while (i + 1 < cmd.length && cmd[i + 1] !== "\n") i++;
+      continue;
     }
     if (ch === "\\" && aspa !== "'") {
       // An escaped character is never a quote, a separator or the start of a substitution.
       atual += ch + (cmd[i + 1] ?? "");
       i++;
+      // A backslash and a newline are no character at all to the shell: what follows them is where
+      // it was before them, and the start of a word stays the start of a word (`\⏎# c` is a comment).
+      if (cmd[i] === "\n") inicio = comecaPalavra;
       continue;
     }
     if (aspa === "'" || aspa === "$'") {
@@ -264,6 +440,7 @@ export function segmentosDeComando(cmd) {
     }
     if (aspa === '"') {
       if (ch === '"') { aspa = null; atual += ch; continue; }
+      if (paDeDolares(cmd, i)) { atual += "$$"; i++; continue; }
       const sub = substituicaoEm(cmd, i);
       if (sub) {
         internos.push(sub.script);
@@ -271,29 +448,64 @@ export function segmentosDeComando(cmd) {
         i = sub.fim - 1;
         continue;
       }
+      if (ch === "$" && cmd[i + 1] === "{") { chaves++; atual += "${"; i++; continue; }
+      if (ch === "}" && chaves > 0) { chaves--; atual += ch; continue; }
       atual += ch;
       continue;
     }
+    // `$$` is the process id, both characters of it: the `{` after it is text, not the start of `${`.
+    // That is what bash and dash read; zsh reads a `${` there, and the two split the line into different
+    // words (measured: `X=$$$${A:-b c} rm -rf V` runs `rm` in zsh only, `X=$${ rm -rf V` in the others
+    // only). A line that depends on which is not read.
+    if (paDeDolares(cmd, i)) {
+      if (cmd[i + 2] === "{") throw new LinhaIlegivel("$$ seguido de { que o bash e o zsh leem de jeitos diferentes");
+      atual += "$$"; i++; continue;
+    }
     if (ch === "$" && cmd[i + 1] === "'") { aspa = "$'"; atual += "$'"; i++; continue; }
     if (ch === "'" || ch === '"') { aspa = ch; atual += ch; continue; }
-    if (ch === ";" || ch === "\n" || ch === "|" || ch === "&") {
-      if (cmd[i + 1] === ch) i++;
-      segs.push(atual); atual = "";
+    // The `&` of `2>&1`, `>&2`, `<&0` and `&>file`, and the `|` of `>|`, belong to a redirection. Taken
+    // for a separator they cut it in two, and `2>&1 rm -rf V` became the command `1` with arguments.
+    if ((ch === "&" && (aposRedirecao || cmd[i + 1] === ">")) || (ch === "|" && aposRedirecao)) {
+      atual += ch;
       continue;
     }
-    if (ch === "`" || (ch === "$" && cmd[i + 1] === "(")) {
+    if (ch === ";" || ch === "\n" || ch === "|" || ch === "&") {
+      // `|` and `|&` make the next segment a stage of a pipeline; `||`, `&&` and `;;` do not.
+      let pipe = false;
+      if (ch === "|" && cmd[i + 1] !== "|") { pipe = true; if (cmd[i + 1] === "&") i++; }
+      else if (cmd[i + 1] === ch) i++;
+      fechar(pipe);
+      inicio = true;
+      continue;
+    }
+    if (abreSubstituicao(cmd, i)) {
       const sub = substituicaoEm(cmd, i);
       internos.push(sub.script);
       atual += cmd.slice(i, sub.fim);
       i = sub.fim - 1;
       continue;
     }
-    if (ch === "(" || ch === ")") { segs.push(atual); atual = ""; continue; }
+    if (ch === "$" && cmd[i + 1] === "{") { chaves++; atual += "${"; i++; continue; }
+    if (ch === "}" && chaves > 0) { chaves--; atual += ch; continue; }
+    // `$[ 1 << 2 ]` is arithmetic as `$(( 1 << 2 ))` is: no here-document opens in it (`[`s inside it nest).
+    if (ch === "$" && cmd[i + 1] === "[") { colchetes++; atual += "$["; i++; continue; }
+    if (colchetes > 0 && (ch === "[" || ch === "]")) { colchetes += ch === "[" ? 1 : -1; atual += ch; continue; }
+    if (ch === "(" || ch === ")") {
+      // `((` opens an arithmetic command (or a `for ((` header); count its parentheses to the end.
+      if (ch === "(" && (aritmetica > 0 || (chaves === 0 && cmd[i + 1] === "("))) aritmetica++;
+      else if (ch === ")" && aritmetica > 0) aritmetica--;
+      // `| (bash)`: the group is still the stage the pipe feeds.
+      fechar(ch === "(" && doPipe && atual.trim() === "");
+      continue;
+    }
+    if (ch === " " || ch === "\t") inicio = true;
+    if (ch === "<" || ch === ">") redir = true;
     atual += ch;
   }
-  segs.push(atual);
-  const out = segs.filter((s) => s.trim() !== "");
-  for (const script of internos) out.push(...segmentosDeComando(script));
+  fechar();
+  const out = [];
+  segs.forEach((texto, k) => { if (texto.trim() !== "") out.push({ texto, aposPipe: apos[k] }); });
+  for (const script of internos) out.push(...estagiosDeComando(script, prof + 1));
   return out;
 }
 
@@ -330,7 +542,8 @@ function marcaDeHeredoc(cmd, inicio) {
  * returns where the command line goes on. A body is TEXT handed to a command, not commands, with
  * two exceptions that decide what is judged (1.36.6):
  *
- * - when the command that owns it is a shell (`bash <<EOF`), the body is its script, and it is
+ * - when the command that owns it runs it as a script (`executaOCorpo`: a shell, `bash <<EOF`,
+ *   and since 1.42.6 `. /dev/stdin <<EOF` and `sudo -s <<EOF`), the body is its script, and it is
  *   split like any other line;
  * - when its word is unquoted (`<<EOF`), the shell expands `$(…)` and backticks in it, and runs
  *   them, so those are split as scripts of their own.
@@ -354,17 +567,41 @@ function lerCorposDeHeredoc(cmd, inicio, heredocs, segs, internos) {
     }
     const corpo = linhas.join("\n");
     const dono = segs[h.dono] ?? "";
-    if (comandosDoSegmento(dono).some((c) => SHELLS.has(c.cmd))) internos.push(corpo);
+    const donos = comandosDoSegmento(dono);
+    // A `parallel` runs each LINE it reads as a command of its own, so a quote or a brace left open on one line
+    // does not reach the next, as it would in a script: the lines are judged apart as well (found by the fuzz).
+    if (donos.some(executaOCorpo)) internos.push(...(donos.some((c) => c.cmd === "parallel") ? linhas : []), corpo);
     else if (!h.literal) internos.push(...substituicoesDoTexto(corpo));
   }
   return i;
 }
 
-/** The scripts of every `$(…)` and backtick in a text the shell expands but does not run. */
+/**
+ * Does this command run what it reads on its standard input (a here-document, a here-string, a pipe)
+ * as a script? A shell does; so does `.` or `source` (`. /dev/stdin <<EOF`), and `sudo -s` and `sudo -i`
+ * start a shell that reads it. Master 1.36.5 judged every body line, so `. /dev/stdin <<EOF` asked;
+ * 1.36.6 read the body as text, and the shell it feeds ran it with no card (measured: bash 5.3 runs the
+ * `rm -rf V` in it). The review of 14/11/2026 listed more of the same: `su` and `runuser` start the user's
+ * login shell unless given `-c`, `at` and `batch` read the job they run later, and a `parallel` runs each line
+ * as a command (`su <<EOF`, `at now <<< '…'`, `parallel <<EOF`). `script`, `chroot`, `unshare` and the
+ * like start a shell too and are not read (the README says so).
+ */
+function executaOCorpo({ cmd, args }) {
+  if (SHELLS.has(cmd) || cmd === "." || cmd === "source") return true;
+  if (cmd === "at" || cmd === "batch" || cmd === "parallel") return true;
+  if (cmd === "su" || cmd === "runuser") {
+    return !args.some((a) => a === "--command" || a.startsWith("--command=") || (!a.startsWith("--") && /^-[a-z]*c[a-z]*$/i.test(a)));
+  }
+  return (cmd === "sudo" || cmd === "doas")
+    && args.some((a) => /^-[a-z]*[si][a-z]*$/.test(a) || a === "--shell" || a === "--login");
+}
+
+/** The scripts of every `$(…)`, `${ …; }` and backtick in a text the shell expands but does not run. */
 function substituicoesDoTexto(texto) {
   const out = [];
   for (let i = 0; i < texto.length; i++) {
     if (texto[i] === "\\") { i++; continue; }
+    if (paDeDolares(texto, i)) { i++; continue; }
     const sub = substituicaoEm(texto, i);
     if (sub) { out.push(sub.script); i = sub.fim - 1; }
   }
@@ -372,18 +609,71 @@ function substituicoesDoTexto(texto) {
 }
 
 /**
+ * `$$`, the shell's process id, at `i`: both characters are one expansion, so a `{` right after it is
+ * plain text (1.42.6). Read one character at a time, the second `$` opened a `${` that was never there:
+ * in `X=$${ rm -rf V` the tokenizer took the rest of the line for one word, the assignment's, and
+ * nothing judged `rm`, which bash 3.2, bash 5.3 and dash run (zsh does not). Not before a `(`, where
+ * shells differ and the substitution is read as one, the judgment that errs toward a card.
+ */
+function paDeDolares(t, i) {
+  return t[i] === "$" && t[i + 1] === "$" && t[i + 2] !== "(";
+}
+
+/**
+ * bash 5.3's `${ list; }` and `${|list; }` at `i`: a command substitution that runs in the current shell
+ * (the character after the `${` is a blank or a `|`; any other makes it a parameter expansion). Older
+ * bash, dash and zsh refuse it. The body is a script like `$(…)`'s, and until 1.42.6 it was read as
+ * a `${…}` and never judged: `X=${ rm -rf V; }` and `echo ${ rm -rf V; }` ran `rm` in bash 5.3.
+ */
+function eFunsub(t, i) {
+  return t[i] === "$" && t[i + 1] === "{" && /[ \t\n|]/.test(t[i + 2] ?? "");
+}
+
+/** Does a command substitution start at `i`: `$(…)`, a backtick, or bash 5.3's `${ …; }`? */
+function abreSubstituicao(t, i) {
+  return t[i] === "`" || (t[i] === "$" && (t[i + 1] === "(" || eFunsub(t, i)));
+}
+
+/**
  * A command substitution that starts at `i`: `$(…)` up to its matching
- * parenthesis (quotes inside it are its own), or a backtick up to the next unescaped one.
+ * parenthesis (quotes inside it are its own), a backtick up to the next unescaped one, or bash 5.3's
+ * `${ …; }` up to the matching brace (1.42.6).
  * Unterminated, it runs to the end of the line, as the shell would read it.
  */
 function substituicaoEm(cmd, i) {
+  if (eFunsub(cmd, i)) {
+    const ini = i + (cmd[i + 2] === "|" ? 3 : 2);
+    let prof = 1;
+    let aspa = null;
+    let inicio = true; // the character at `j` starts a word: where a `#` is a comment
+    for (let j = ini; j < cmd.length; j++) {
+      const c = cmd[j];
+      const comecaPalavra = inicio;
+      inicio = c === " " || c === "\t" || c === "\n" || c === ";" || c === "&" || c === "|";
+      if (c === "\\" && aspa !== "'") { j++; continue; }
+      if (aspa) { if (c === aspa) aspa = null; continue; }
+      if (c === "#" && comecaPalavra) { while (j + 1 < cmd.length && cmd[j + 1] !== "\n") j++; continue; }
+      if (c === "'" || c === '"') { aspa = c; continue; }
+      // A substitution inside is read whole: a `}` in its text closes nothing here.
+      if (c === "`" || (c === "$" && cmd[j + 1] === "(")) { j = substituicaoEm(cmd, j).fim - 1; continue; }
+      if (c === "{") prof++;
+      else if (c === "}" && --prof === 0) return { script: cmd.slice(ini, j), fim: j + 1 };
+    }
+    return { script: cmd.slice(ini), fim: cmd.length };
+  }
   if (cmd[i] === "$" && cmd[i + 1] === "(") {
     let prof = 1;
     let aspa = null;
+    let inicio = true; // the character at `j` starts a word: where a `#` is a comment
     for (let j = i + 2; j < cmd.length; j++) {
       const c = cmd[j];
+      const comecaPalavra = inicio;
+      inicio = c === " " || c === "\t" || c === "\n" || c === ";" || c === "&" || c === "|";
       if (c === "\\" && aspa !== "'") { j++; continue; }
       if (aspa) { if (c === aspa) aspa = null; continue; }
+      // A comment hides its parentheses and quotes from the shell: `$(echo a # ) …⏎ …)` ends at
+      // the LAST parenthesis in bash 3.2, bash 5.3, zsh and dash, not at the first (measured).
+      if (c === "#" && comecaPalavra) { while (j + 1 < cmd.length && cmd[j + 1] !== "\n") j++; continue; }
       if (c === "'" || c === '"') { aspa = c; continue; }
       if (c === "(") prof++;
       else if (c === ")" && --prof === 0) return { script: cmd.slice(i + 2, j), fim: j + 1 };
@@ -401,6 +691,40 @@ function substituicaoEm(cmd, i) {
 }
 
 /**
+ * The escape that starts at `seg[i]` (a backslash) inside `$'…'`, decoded the way bash does, and
+ * where it ends: `{ texto, fim }`. The ones a command line really uses are decoded: `\n \t \r \a \b
+ * \e \f \v`, `\\ \' \" \?`, octal (`\162`), `\xHH`, `\uHHHH` and `\UHHHHHHHH`. Any other
+ * backslash stays as bash leaves it, with its character. What this cannot spell as text (a NUL,
+ * `\c`, a lone `\x`) throws `LinhaIlegivel`: the line asks, as every `$'…'` did before 1.42.6.
+ * A `\xHH` of 0x80 or more is a byte of a multi-byte character in bash; here it is the character
+ * of that number, which no name the checks look for contains.
+ */
+function escapeAnsiC(seg, i) {
+  const c = seg[i + 1];
+  if (c === undefined) return { texto: "\\", fim: i + 1 };
+  const simples = { a: "\x07", b: "\b", e: "\x1b", E: "\x1b", f: "\f", n: "\n", r: "\r", t: "\t", v: "\v",
+    "\\": "\\", "'": "'", '"': '"', "?": "?" };
+  if (Object.hasOwn(simples, c)) return { texto: simples[c], fim: i + 2 };
+  const nul = () => new LinhaIlegivel("$'…' com um escape que a política não sabe decodificar");
+  let m;
+  if ((m = /^[0-7]{1,3}/.exec(seg.slice(i + 1, i + 4)))) {
+    const n = parseInt(m[0], 8) & 0xff;
+    if (n === 0) throw nul();
+    return { texto: String.fromCharCode(n), fim: i + 1 + m[0].length };
+  }
+  const hex = { x: 2, u: 4, U: 8 }[c];
+  if (hex) {
+    m = new RegExp(`^[0-9a-fA-F]{1,${hex}}`).exec(seg.slice(i + 2, i + 2 + hex));
+    if (!m) throw nul();
+    const n = parseInt(m[0], 16);
+    if (n === 0 || n > 0x10ffff) throw nul();
+    return { texto: String.fromCodePoint(n), fim: i + 2 + m[0].length };
+  }
+  if (c === "c") throw nul();
+  return { texto: "\\" + c, fim: i + 2 };
+}
+
+/**
  * Tokens of a segment with quotes and backslashes resolved the way the shell resolves them:
  * `cat '.env'`, `cat ".env"` and `cat .e\nv` are all `cat .env`, and `r\m` is `rm`.
  *
@@ -411,20 +735,30 @@ function substituicaoEm(cmd, i) {
  * split on `\`) and `cat .e\nv` named a file that is not `.env`, while the shell ran `rm` and
  * opened `.env`.
  */
-export function tokensDoSegmento(seg) {
+export function tokensDoSegmento(seg, cruas = null, semRegioes = false) {
   const out = [];
   let atual = "";
   let aspa = null; // "'", '"', or "$'"
   let tem = false;
+  let chaves = 0; // `${` still open: its spaces belong to the word, as the shell reads it
+  let colchetes = 0; // `$[` still open: the same
+  let ini = -1; // where the word in progress starts in `seg`; its raw text goes to `cruas`, if asked for
   for (let i = 0; i < seg.length; i++) {
     const ch = seg[i];
+    if (ini < 0 && !(aspa === null && chaves === 0 && colchetes === 0 && /\s/.test(ch))) ini = i;
     if (aspa === "'") {
       if (ch === "'") aspa = null; else atual += ch;
       continue;
     }
     if (aspa === "$'") {
-      // Not decoded: `sintaxeIlegivel` gates the line. Kept raw so the word is still a word.
-      if (ch === "\\") { atual += ch + (seg[i + 1] ?? ""); i++; continue; }
+      // ANSI-C quoting: the shell decodes the escapes, so the word is what they spell (1.42.6). Until
+      // then it was kept raw and every line that used `$'…'` asked, `grep $'\t' f` included.
+      if (ch === "\\") {
+        const esc = escapeAnsiC(seg, i);
+        atual += esc.texto;
+        i = esc.fim - 1;
+        continue;
+      }
       if (ch === "'") aspa = null; else atual += ch;
       continue;
     }
@@ -438,6 +772,24 @@ export function tokensDoSegmento(seg) {
       tem = true;
       continue;
     }
+    // 🔴 A substitution is part of the WORD it sits in, spaces and quotes included (1.42.6). The
+    // splitter keeps `$(…)` whole in the segment, and this tokenizer used to cut it at its first
+    // space: in `X=$(echo a b) rm -rf V` the assignment ended at `X=$(echo`, `a` became the
+    // command and `rm` its argument, so nothing judged `rm`. The shell reads one word there.
+    // `$$` is one expansion, the process id: the `{` after it is text, not a `${` that swallows the line (1.42.6).
+    if (paDeDolares(seg, i)) { atual += "$$"; tem = true; i++; continue; }
+    if (abreSubstituicao(seg, i)) {
+      const sub = substituicaoEm(seg, i);
+      atual += seg.slice(i, sub.fim);
+      tem = true;
+      i = sub.fim - 1;
+      continue;
+    }
+    if (!semRegioes && ch === "$" && seg[i + 1] === "{") { chaves++; atual += "${"; tem = true; i++; continue; }
+    if (ch === "}" && chaves > 0) { chaves--; atual += ch; continue; }
+    // `$[ 1 + 2 ]`, the old arithmetic: one word, spaces and all, as `$(( 1 + 2 ))` is (1.42.6).
+    if (!semRegioes && ch === "$" && seg[i + 1] === "[") { colchetes++; atual += "$["; tem = true; i++; continue; }
+    if (colchetes > 0 && (ch === "[" || ch === "]")) { colchetes += ch === "[" ? 1 : -1; atual += ch; continue; }
     if (aspa === '"') {
       if (ch === '"') aspa = null; else atual += ch;
       continue;
@@ -445,12 +797,20 @@ export function tokensDoSegmento(seg) {
     if (ch === "$" && seg[i + 1] === "'") { aspa = "$'"; tem = true; i++; continue; }
     if (ch === "'" || ch === '"') { aspa = ch; tem = true; continue; }
     if (/\s/.test(ch)) {
-      if (tem || atual !== "") { out.push(atual); atual = ""; tem = false; }
+      if (chaves > 0 || colchetes > 0) { atual += ch; continue; }
+      if (tem || atual !== "") { out.push(atual); cruas?.push(seg.slice(ini, i)); atual = ""; tem = false; }
+      ini = -1;
       continue;
     }
     atual += ch;
   }
-  if (tem || atual !== "") out.push(atual);
+  // A `${` or `$[` that never closes is a syntax error in every shell, and swallowing the rest of the segment
+  // for it hides what follows: read the segment again with its words split where the blanks are (1.42.6).
+  if ((chaves > 0 || colchetes > 0) && !semRegioes) {
+    if (cruas) cruas.length = 0;
+    return tokensDoSegmento(seg, cruas, true);
+  }
+  if (tem || atual !== "") { out.push(atual); cruas?.push(seg.slice(ini)); }
   return out;
 }
 
@@ -480,12 +840,24 @@ const EXECUTORES = new Set([
   "setsid", "stdbuf", "chrt", "taskset", "unbuffer", "caffeinate", "watch", "strace", "ltrace",
   "flock", "chroot", "busybox", "toybox", "find", "su", "runuser", "nsenter", "unshare",
   "systemd-run", "fakeroot", "firejail", "parallel", "script",
+  // `time` is also the shell's keyword, skipped as one; by path (`/usr/bin/time rm -rf V`) it is a runner (1.42.6).
+  "time",
 ]);
 
-/** `KEY=value` before a command (or among a runner's arguments, as `env` takes them). */
+/**
+ * `KEY=value` before a command (or among a runner's arguments, as `env` takes them). The shell
+ * also takes `KEY+=value` and `KEY[i]=value` there; until 1.42.6 those were read as the command.
+ */
 function atribuicao(tok) {
+  return nomeAtribuido(tok) !== null;
+}
+
+/** The variable `NAME=value`, `NAME+=value` or `NAME[i]=value` assigns, or null if the word is none of them. */
+function nomeAtribuido(tok) {
   const eq = tok.indexOf("=");
-  return eq > 0 && /^[A-Za-z_][A-Za-z0-9_]*$/.test(tok.slice(0, eq));
+  if (eq <= 0) return null;
+  const m = /^([A-Za-z_][A-Za-z0-9_]*)(?:\[[^\]]*\])?\+?$/.exec(tok.slice(0, eq));
+  return m ? m[1] : null;
 }
 
 /**
@@ -498,8 +870,22 @@ function nomeDoComando(tok) {
 }
 
 /**
- * Every command a segment may run, as `{ cmd, args, palavra }`: its own (past `KEY=value` and
- * the shell's keywords), and, when that one is a runner (`EXECUTORES`), one for each later word
+ * How many words a redirection takes at `toks[i]`, or 0 if that word is not one: `2>/dev/null`,
+ * `>out`, `2>&1`, `<<EOF` (the target is attached, one word) or `>`, `<<`, `>>` followed by the
+ * target as the next word (two). The shell takes redirections before the command's name as it
+ * takes `KEY=value`, in any order, so `2>&1 bash <<EOF` and `<< EOF bash` run `bash`. (A quoted
+ * word that looks like one reaches here without its quotes: judging the word after it as the
+ * command errs toward a card.)
+ */
+function palavrasDeRedirecionamento(toks, i) {
+  const m = /^(?:\d*|\{[A-Za-z_]\w*\})(&>>|&>|<<<|<<-|<<|>>|>\||>&|<&|<>|>|<)(.*)$/s.exec(toks[i]);
+  if (!m) return 0;
+  return m[2] === "" ? 2 : 1;
+}
+
+/**
+ * Every command a segment may run, as `{ cmd, args, palavra }`: its own (past `KEY=value`, the
+ * redirections in front of it and the shell's keywords), and, when that one is a runner (`EXECUTORES`), one for each later word
  * that is not an option, with the words after it as its arguments.
  *
  * Judging every such word errs toward a card, by design: in `sudo -u root rm -rf /` the word
@@ -509,15 +895,33 @@ function nomeDoComando(tok) {
  * would be the price of guessing them.
  */
 export function comandosDoSegmento(seg) {
-  const toks = tokensDoSegmento(seg);
+  const cruas = [];
+  const toks = tokensDoSegmento(seg, cruas);
   let i = 0;
-  while (i < toks.length && (atribuicao(toks[i]) || PALAVRAS_DO_SHELL.has(toks[i]))) i++;
+  for (;;) {
+    // `function NAME { … }`: the keyword and the name are not the command; the body is (1.42.6).
+    if (i < toks.length && toks[i] === "function") { i += 2; continue; }
+    if (i < toks.length && (atribuicao(toks[i]) || PALAVRAS_DO_SHELL.has(toks[i]))) {
+      // `time -p rm -rf V`: bash's `-p` belongs to the keyword, and was read as the command (1.42.6). So does a
+      // `--` after it or alone (`time -- rm -rf V`, `time -p -- rm -rf V`; bash's grammar has both).
+      if (toks[i] === "time") {
+        if (toks[i + 1] === "-p") i++;
+        if (toks[i + 1] === "--") i++;
+      }
+      i++;
+      continue;
+    }
+    const r = i < toks.length ? palavrasDeRedirecionamento(toks, i) : 0;
+    if (r === 0) break;
+    i += r;
+  }
   if (i >= toks.length) return [];
-  const out = [{ cmd: nomeDoComando(toks[i]), args: toks.slice(i + 1), palavra: toks[i] }];
+  // `crua` is the word as written, quotes and all: `sintaxeIlegivel` needs to know what was quoted.
+  const out = [{ cmd: nomeDoComando(toks[i]), args: toks.slice(i + 1), palavra: toks[i], crua: cruas[i] }];
   if (EXECUTORES.has(out[0].cmd)) {
     for (let j = i + 1; j < toks.length; j++) {
       if (toks[j].startsWith("-") || atribuicao(toks[j])) continue;
-      out.push({ cmd: nomeDoComando(toks[j]), args: toks.slice(j + 1), palavra: toks[j] });
+      out.push({ cmd: nomeDoComando(toks[j]), args: toks.slice(j + 1), palavra: toks[j], crua: cruas[j] });
     }
   }
   return out;
@@ -528,9 +932,14 @@ export function comandosDoSegmento(seg) {
  * as `always`, at every level: the page cannot read it either, and its "inside the project?"
  * check would approve a `confirm` card for it by itself (1.36.6).
  *
- * - `$'…'` decodes escapes when the shell runs it: `$'\x72m' -rf ~` is `rm -rf ~`.
  * - A command whose NAME is decided when the line runs: a variable or substitution (`X=rm; $X
  *   -rf ~`) or a glob (`/bin/r? -rf ~`). `[` and `[[` are the test command, not a glob.
+ *   Its NAME is the part after the last `/` that is outside a substitution (1.42.6): `$HOME/bin/tool`
+ *   and `$(pwd)/node_modules/.bin/vitest` are the commands `tool` and `vitest`, run from a directory
+ *   the line decides, as `./tool` is run from one it names; `$HOME/bin/$tool` is not readable. 1.36.6
+ *   asked about every one of them, 11 of the 117 ordinary commands measured here.
+ * - `$'…'` decodes escapes when the shell runs it (`$'\x72m' -rf ~` is `rm -rf ~`). Since 1.42.6 the
+ *   tokenizer decodes it, so the line is judged as what it spells; an escape it cannot decode asks.
  *
  * It reads the first command of each segment. A program that builds its own action at run time
  * (`python3 -c "import shutil; …"`, a variable handed to a runner) is still not seen: this is a
@@ -539,36 +948,197 @@ export function comandosDoSegmento(seg) {
  */
 export function sintaxeIlegivel(cmd) {
   const c = String(cmd ?? "");
-  for (const seg of segmentosEfetivos(c)) {
-    if (/(^|[^\\])\$'/.test(seg) && aspasSimplesNaoCobrem(seg)) return "$'…'";
+  const segs = segmentosEfetivos(c);
+  let ligacoes = null; // what the line binds, worked out once and only if a `$NAME` directory asks for it
+  const quemLiga = () => (ligacoes ??= ligacoesDaLinha(c, segs));
+  for (const seg of segs) {
     const [primeiro] = comandosDoSegmento(seg);
     if (!primeiro) continue;
     const w = primeiro.palavra;
     if (w === "[" || w === "[[") continue;
-    if (/[$`]/.test(w)) return `o nome do comando só se sabe ao rodar (${w})`;
-    if (/[*?]/.test(w) || /\[.*\]/.test(w)) return `o nome do comando é um glob (${w})`;
+    const nome = nomeLiteral(w);
+    if (/[$`]/.test(nome)) return `o nome do comando só se sabe ao rodar (${w})`;
+    if (/[*?]/.test(nome) || /\[.*\]/.test(nome)) return `o nome do comando é um glob (${w})`;
+    if (comExpansaoDeChaves(primeiro.crua ?? w)) return `o nome do comando vem de uma expansão de chaves (${w})`;
+    const divide = expansaoQueDivide(primeiro.crua ?? w, c, quemLiga);
+    if (divide) return `o diretório do comando vem de ${divide}, que o shell pode dividir em palavras`;
   }
   return null;
 }
 
-/** Is a `$'` in this segment outside single quotes, where the shell decodes it? */
-function aspasSimplesNaoCobrem(seg) {
+/**
+ * Variables the shell sets by itself, to text the line chose: `$_` is the last argument of the previous
+ * command, `REPLY` what `read` took, `BASH_REMATCH` what `[[ x =~ y ]]` matched, `FUNCNAME` the name of a function
+ * the line defined, `BASH_COMMAND` the command being run, and zsh's `reply` and `match` the same. `echo 'rm -rf V
+ * #'; $_/x` runs `rm` in bash (review of 14/11/2026), so none of them is ever read as the environment's.
+ */
+const VARIAVEIS_DO_SHELL = /^(?:_|BASH_\w*|COMP_\w*|COMPREPLY|COPROC\w*|DIRSTACK|FUNCNAME|MAPFILE|OPTARG|READLINE_\w*|REPLY|reply|match|MATCH|mbegin|mend)$/;
+
+/**
+ * Builtins and keywords that give a variable a value that is text: `read`, `mapfile`, `getopts`, `export`,
+ * `declare`, `typeset`, `local`, `readonly` (`declare -n` makes a name another's), `eval`, `source` and `.` (they run
+ * what sets anything), and the loops `for` and `select`. `printf -v NAME` does too, and is checked apart. `cd`
+ * and `pushd` set `PWD` and `OLDPWD` to an absolute path, which cannot name a program by itself; arithmetic
+ * (`let`, `((…))`) only stores numbers; `unset` stores nothing.
+ */
+const LIGAM_VARIAVEIS = new Set([
+  "read", "readarray", "mapfile", "getopts", "export", "declare", "typeset", "local", "readonly",
+  "eval", "source", ".", "for", "select",
+]);
+
+/**
+ * What a line does to variables, for the one question `expansaoQueDivide` asks: could the line itself have
+ * given `$NAME` a value? `comando` is true if any command it may run is one that binds (`LIGAM_VARIAVEIS`,
+ * `printf -v`), `nomes` holds the names of its assignment words as the shell reads them (quotes and
+ * backslashes resolved: `HO\ME='x'` and `"HO""ME=x"` assign `HOME`), and `expansao` is true if a `${NAME=…}`
+ * or `${NAME:=…}` is in it. It looks at every command the line may run, scripts inside scripts included, in any
+ * order: a loop or a function body runs after what comes later in the text.
+ */
+function ligacoesDaLinha(linha, segs) {
+  const nomes = new Set();
+  let comando = false;
+  for (const seg of segs) {
+    for (const tok of tokensDoSegmento(seg)) {
+      const n = nomeAtribuido(tok);
+      if (n !== null) nomes.add(n);
+    }
+    for (const ca of comandosDoSegmento(seg)) {
+      if (LIGAM_VARIAVEIS.has(ca.cmd)) comando = true;
+      if ((ca.cmd === "printf" || ca.cmd === "print") && ca.args.some((a) => a.startsWith("-v"))) comando = true;
+    }
+  }
+  return { comando, nomes, expansao: /\$\{!?[A-Za-z_]\w*(?:\[[^\]]*\])?:?=/.test(linha) };
+}
+
+/**
+ * Does this command word, as written, spell its name with a brace expansion (`{rm,-rf,V}`, `r{m,}`,
+ * `{a..c}`)? bash expands it before it looks for the command, so `{rm,-rf,V}` runs `rm -rf V`; zsh
+ * reads a `{` that starts a command as a group and runs nothing. Either way the name is not what the
+ * word says, and it asks (1.42.6). A `${…}` is a parameter, and quoted braces are text.
+ */
+function comExpansaoDeChaves(raw) {
   let aspa = null;
-  for (let i = 0; i < seg.length; i++) {
-    const ch = seg[i];
-    if (aspa === "'") { if (ch === "'") aspa = null; continue; }
-    if (ch === "\\") { i++; continue; }
-    if (aspa === '"') { if (ch === '"') aspa = null; continue; }
-    if (ch === "$" && seg[i + 1] === "'") return true;
-    if (ch === "'" || ch === '"') aspa = ch;
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
+    if (aspa === "'") { if (c === "'") aspa = null; continue; }
+    if (aspa === '"') { if (c === '"') aspa = null; else if (c === "\\") i++; continue; }
+    if (c === "\\") { i++; continue; }
+    if (c === "'" || c === '"') { aspa = c; continue; }
+    if (paDeDolares(raw, i)) { i++; continue; }
+    if (abreSubstituicao(raw, i)) { i = substituicaoEm(raw, i).fim - 1; continue; }
+    if (c === "$" && raw[i + 1] === "{") {
+      const f = raw.indexOf("}", i + 2);
+      if (f < 0) break;
+      i = f;
+      continue;
+    }
+    if (c === "{") {
+      const f = raw.indexOf("}", i + 1);
+      if (f > i && /,|\.\./.test(raw.slice(i + 1, f))) return true;
+    }
   }
   return false;
 }
 
-/** Does any grouped short flag (`-rvf`) or long flag (`--recursive`) carry this one? */
+/**
+ * The first expansion in the DIRECTORY part of a command word that the shell may split into words,
+ * or null. `"$HOME/bin/tool"` and `$HOME/bin/tool` both run `tool`; but an unquoted expansion that
+ * holds a space is several words, and `X='rm -rf V #'; $X/tool` runs `rm`. So the directory part
+ * may hold: anything inside double quotes (no splitting there), `$(pwd)`, and a plain `$NAME` or
+ * `${NAME}` that the line cannot have bound: `$HOME`, `$PWD`, `$CARGO_HOME` come from the environment, not
+ * from the line. The line binds one with an assignment word to it (or to `IFS`, which decides how a
+ * value splits), a `${NAME:=…}`, or any command that gives a variable text (`ligacoesDaLinha`:
+ * `read`, `export`, `declare`, `mapfile`, `printf -v`, `eval`, `source`, `for`, …), and the shell binds
+ * `$_`, `$REPLY`, `$BASH_REMATCH` and a few more by itself (`VARIAVEIS_DO_SHELL`). Review of 14/11/2026: 1.42.6's
+ * first draft looked for the name in the text of the line, which `read <<< 'rm -rf V #'; $REPLY/x`, `echo x;
+ * $_/x`, `export HO\ME=…; $HOME/x` and `declare "HO""ME=…"; $HOME/x` all walk past, and each runs `rm` in bash.
+ * Every other unquoted expansion asks. `raw` is the word as written; `quemLiga()` is what the line binds.
+ */
+function expansaoQueDivide(raw, linha, quemLiga) {
+  let aspa = null;
+  let ultima = -1; // the last `/` outside an expansion: what follows is the program's name
+  const exps = []; // { ini, texto, entreAspas }
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
+    if (aspa === "'") { if (c === "'") aspa = null; else if (c === "/") ultima = i; continue; }
+    if (aspa === "$'") { if (c === "\\") { i++; continue; } if (c === "'") aspa = null; else if (c === "/") ultima = i; continue; }
+    if (c === "\\") { i++; continue; }
+    if (abreSubstituicao(raw, i)) {
+      const sub = substituicaoEm(raw, i);
+      exps.push({ ini: i, texto: raw.slice(i, sub.fim), entreAspas: aspa === '"' });
+      i = sub.fim - 1;
+      continue;
+    }
+    if (c === "$" && raw[i + 1] === "{") {
+      const fim = raw.indexOf("}", i + 2);
+      const f = fim < 0 ? raw.length : fim + 1;
+      exps.push({ ini: i, texto: raw.slice(i, f), entreAspas: aspa === '"' });
+      i = f - 1;
+      continue;
+    }
+    if (c === "$" && /[A-Za-z_]/.test(raw[i + 1] ?? "")) {
+      const nome = /^[A-Za-z_][A-Za-z0-9_]*/.exec(raw.slice(i + 1))[0];
+      exps.push({ ini: i, texto: "$" + nome, entreAspas: aspa === '"' });
+      i += nome.length;
+      continue;
+    }
+    if (c === "$" && /[0-9@*#?$!-]/.test(raw[i + 1] ?? "")) { // `$1`, `$@`: no plain name, so it asks
+      exps.push({ ini: i, texto: "$" + raw[i + 1], entreAspas: aspa === '"' });
+      i++;
+      continue;
+    }
+    if (c === "/") ultima = i;
+    if (aspa === '"') { if (c === '"') aspa = null; continue; }
+    if (c === '"') aspa = '"';
+    else if (c === "'") aspa = "'";
+    else if (c === "$" && raw[i + 1] === "'") { aspa = "$'"; i++; }
+  }
+  for (const e of exps) {
+    if (e.ini > ultima || e.entreAspas) continue; // in the program's name (judged by `nomeLiteral`), or quoted
+    if (e.texto === "$(pwd)" || e.texto === "`pwd`") continue;
+    const simples = /^\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))$/.exec(e.texto);
+    const nome = simples && (simples[1] ?? simples[2]);
+    if (nome && !VARIAVEIS_DO_SHELL.test(nome) && !new RegExp(`(^|[^$\\w{])${nome}(?!\\w)`).test(linha)) {
+      const l = quemLiga();
+      if (!l.comando && !l.expansao && !l.nomes.has(nome) && !l.nomes.has("IFS")) continue;
+    }
+    return e.texto;
+  }
+  return null;
+}
+
+/**
+ * The part of a command word after its last `/` (or `\`) that is outside a substitution or an
+ * expansion: the name of the program, whatever directory the line puts it in.
+ */
+function nomeLiteral(w) {
+  let ultima = -1;
+  for (let i = 0; i < w.length; i++) {
+    const c = w[i];
+    if (paDeDolares(w, i)) { i++; continue; }
+    if (abreSubstituicao(w, i)) { i = substituicaoEm(w, i).fim - 1; continue; }
+    if (c === "$" && w[i + 1] === "{") {
+      const fim = w.indexOf("}", i + 2);
+      if (fim < 0) break;
+      i = fim;
+      continue;
+    }
+    if (c === "/" || c === "\\") ultima = i;
+  }
+  return w.slice(ultima + 1);
+}
+
+/**
+ * Does any grouped short flag (`-rvf`) or long flag (`--recursive`) carry this one?
+ *
+ * A flag word that an expansion completes (`-r$(echo f)`, `-$X`) is decided when the line runs,
+ * so it may carry any flag: it counts as carrying this one (1.42.6). The tokenizer used to cut
+ * `-r$(echo f)` into pieces and `rm` read no flag at all.
+ */
 function temFlag(args, curta, longas) {
   return args.some((a0) => {
     const a = a0.toLowerCase();
+    if (a.startsWith("-") && /[$`]/.test(a)) return true;
     if (a.startsWith("--")) return longas.includes(a.slice(2).split("=")[0]);
     if (a.startsWith("-")) {
       const curtas = a.slice(1);
@@ -711,21 +1281,9 @@ export function decidir({ projectDir, toolName, toolInput = {}, nivel = "manual"
   if (toolName === "WebFetch" || toolName === "WebSearch") {
     return { acao: "gate", motivo: "saída para a rede", politica: "always" };
   }
-  if (toolName === "Bash" && comandoDestrutivo(toolInput.command)) {
-    return { acao: "gate", motivo: "comando destrutivo", politica: "always" };
-  }
-  if (toolName === "Bash" && comandoDeRede(toolInput.command)) {
-    return { acao: "gate", motivo: "saída para a rede pelo shell", politica: "always" };
-  }
   if (toolName === "Bash") {
-    const protegido = caminhoProtegidoNoComando(toolInput.command);
-    if (protegido) {
-      return { acao: "gate", motivo: `comando cita caminho protegido (${protegido})`, politica: "always" };
-    }
-    const ilegivel = sintaxeIlegivel(toolInput.command);
-    if (ilegivel) {
-      return { acao: "gate", motivo: `comando que a política não consegue ler: ${ilegivel}`, politica: "always" };
-    }
+    const doShell = vereditoDoShell(toolInput.command);
+    if (doShell) return doShell;
   }
   if (edicao.has(toolName)) {
     // 🔴 Until 1.36.6 the `edit` and `auto` levels released every write here, with no fence:
@@ -754,6 +1312,56 @@ export function decidir({ projectDir, toolName, toolInput = {}, nivel = "manual"
     return { acao: "allow", motivo: 'liberado pelo nível "auto"' };
   }
   return { acao: "gate", motivo: "", politica: "confirm" };
+}
+
+/**
+ * What the checks on a shell line say, or null when none of them stops it: destructive, network,
+ * a protected path, a syntax this policy cannot read. A line it cannot read to the end
+ * (`LinhaIlegivel`) asks as `always`; the checks never throw for one (1.42.6).
+ */
+function vereditoDoShell(comando) {
+  try {
+    if (comandoDestrutivo(comando)) {
+      return { acao: "gate", motivo: "comando destrutivo", politica: "always" };
+    }
+    if (comandoDeRede(comando)) {
+      return { acao: "gate", motivo: "saída para a rede pelo shell", politica: "always" };
+    }
+    const protegido = caminhoProtegidoNoComando(comando);
+    if (protegido) {
+      return { acao: "gate", motivo: `comando cita caminho protegido (${protegido})`, politica: "always" };
+    }
+    const ilegivel = sintaxeIlegivel(comando);
+    if (ilegivel) {
+      return { acao: "gate", motivo: `comando que a política não consegue ler: ${ilegivel}`, politica: "always" };
+    }
+    return null;
+  } catch (e) {
+    if (e instanceof LinhaIlegivel) {
+      return { acao: "gate", motivo: `comando que a política não consegue ler: ${e.motivo}`, politica: "always" };
+    }
+    throw e;
+  }
+}
+
+/**
+ * `decidir` for the runner: it never throws. A policy that cannot judge a call has not allowed it,
+ * so an error of any kind becomes an `always` card (1.42.6). Until then the hook had no try/catch,
+ * and a line nested deep enough made `decidir` throw. Measured with the real runner and SDK 0.3.319
+ * (a hook made to throw on one command): the SDK drops the hook's verdict and falls back to its own
+ * permission check, which refused that `rm`. It is not an allow, but the policy's decision is gone,
+ * and what is left is whatever the dev's own settings say.
+ */
+export function decidirSeguro(args) {
+  try {
+    return decidir(args);
+  } catch (e) {
+    return {
+      acao: "gate",
+      motivo: `a política falhou ao julgar ${args?.toolName ?? "a chamada"} (${e?.message ?? e}); pede cartão`,
+      politica: "always",
+    };
+  }
 }
 
 /**
