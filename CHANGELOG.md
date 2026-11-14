@@ -26,6 +26,12 @@ Only tests change; no production code does.
   check it fails on `a.txt`, and with a plain string prefix on `sub2/x.txt`; without `--literal-pathspecs`,
   `nome_com_curinga_nao_vira_padrao` fails; without the `--`, `nome_que_parece_opcao_continua_sendo_caminho` fails.
 
+The notes of 1.38.8 also lose a line. The entry "Keep the diff the Changes tab opens inside the authorized folder" listed, as a
+known limit recorded in ADR-031, that with a subfolder authorized `gitStatus` still lists the changed file names of the whole
+repository. The entry "Open the diffs of a project that is a subfolder of a repository, and list only that folder's changes",
+in the same release, fixed that (`gitStatus` passes `-- .`) and ADR-031 says so, so the line described a limit that no longer
+existed. It is deleted. Only the release notes change.
+
 ## 1.42.4 - A Pentest attempt the engine refused as authorization, and the server did not, is recorded as authorization_check
 
 1.42.3 asks the server about the grant after an attempt the engine's inspection refused as `authorization`, and ends the wait
@@ -553,8 +559,6 @@ case, sees no difference, because `git status` names its files relative to that 
 
 - Proof: `diff_nao_sai_da_pasta_autorizada_dentro_do_mesmo_repo`, on a real repository. Without the path check `../a.txt`
   leaks; without `--literal-pathspecs`, `:(top)a.txt` does.
-- A known limit, recorded in ADR-031: with a subfolder authorized, `gitStatus` still lists the changed file names of the
-  whole repository (names, no content).
 
 ## 1.38.8 - Write env.sh values as single-quoted shell words so a page cannot put a command into the person's shell
 
