@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.42.4 - A Pentest attempt the engine refused as authorization, and the server did not, is recorded as authorization_check
+
+1.42.3 asks the server about the grant after an attempt the engine's inspection refused as `authorization`, and ends the wait
+when the server refuses it too. When the server kept the grant, or could not be reached, the attempt was still recorded as
+`authorization`, so the pair `gave_up` + `authorization` also came at the 12-hour ceiling. The inspection gives the same
+answer for a network that did not respond, so the grant may then still be valid, and the ceiling's notice says to resume.
+shvia-web #752 reads the pair as a grant that is over and offers no Resume, so the notice and the page said opposite things.
+
+Such an attempt is now recorded as `authorization_check` (`Auto::on_attempt_unconfirmed`), the grant that could not be
+confirmed: it counts like any other attempt that could not be made, keeps the engine's sentence in the plan file's `note`,
+and at the ceiling gives up as the ceiling. `authorization` now comes only with `gave_up`, as the server's own refusal.
+`docs/PENTEST/auto-resume.md` says so, and its `lastFailure` row no longer claims more than the code did in 1.42.3.
+
+Tested: the code on a wait, across a restart, and at the ceiling
+(`an_authorization_refusal_the_server_did_not_confirm_is_recorded_as_unconfirmed`); the method without its override turns
+it red. Which method the wait thread calls is read, not run, like the rest of the thread.
+
 ## 1.42.3 - End a Pentest wait for the provider's window as soon as the server refuses its grant
 
 A wait taken back after the app was closed for longer than the grant's lease could never resume anything, and still ran to
