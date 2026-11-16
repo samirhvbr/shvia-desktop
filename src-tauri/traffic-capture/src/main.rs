@@ -40,7 +40,9 @@ use std::time::{Duration, Instant};
 use args::Args;
 use parse::{hex_dump, relative_time, summarize, LinkKind, PacketView, HEX_BYTES_SENT};
 use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
-use pcap_file::pcapng::blocks::interface_description::{InterfaceDescriptionBlock, InterfaceDescriptionOption};
+use pcap_file::pcapng::blocks::interface_description::{
+    InterfaceDescriptionBlock, InterfaceDescriptionOption, InterfaceTsResolution,
+};
 use pcap_file::pcapng::PcapNgWriter;
 use pcap_file::DataLink;
 use serde_json::{json, Value};
@@ -440,10 +442,11 @@ fn start_pcapng(
     let mut writer = PcapNgWriter::new(sink).map_err(|e| format!("could not start the capture file: {e}"))?;
     let mut description = InterfaceDescriptionBlock::new(DataLink::from(dlt.max(0) as u32), SNAPLEN);
     description.options.push(InterfaceDescriptionOption::IfName(Cow::Owned(interface.to_string())));
-    // `pcap-file` writes every packet's time as NANOseconds. A reader assumes microseconds when the
-    // description says nothing (the pcapng default), so without this the exported file's dates were
-    // a thousand times too large — caught by reading the file back with libpcap, a different reader.
-    description.options.push(InterfaceDescriptionOption::IfTsResol(9));
+    // Packet times in NANOseconds, declared here. Since 3.0, `pcap-file` writes each packet's time
+    // in the resolution its interface declares (microseconds, the pcapng default, when it declares
+    // none). Before 3.0 it always wrote nanoseconds, and a file without this option had dates a
+    // thousand times too large, caught by reading the file back with libpcap, a different reader.
+    description.options.push(InterfaceDescriptionOption::IfTsResol(InterfaceTsResolution::NANO));
     let written = writer
         .write_pcapng_block(description)
         .map_err(|e| format!("could not describe the interface in the capture file: {e}"))?;

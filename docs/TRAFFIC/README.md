@@ -34,11 +34,13 @@ the same split:
 - **`etherparse`** (0.21): Ethernet/VLAN/ARP/IPv4/IPv6/TCP/UDP/ICMP/IGMP header parsing for the table. The tolerant
   ("lax") parser, because a NIC doing segmentation offload hands libpcap frames whose IPv4 length
   field is 0, which the strict parser refuses. No protocol-dissector framework: out of scope here.
-- **`pcap-file`**: writes the **pcapng** container. Two facts about it cost a bug each and are now
-  tests: it writes only the section header (the interface description block is the caller's job —
-  without it the file is invalid and `pcap-file` itself refuses to write a packet), and it writes
-  times in nanoseconds (the description must say so, or a reader assumes microseconds and every date
-  is a thousand times too large).
+- **`pcap-file`** (3): writes the **pcapng** container. Two facts about it cost a bug each and are
+  now tests: it writes only the section header (the interface description block is the caller's job —
+  without it the file is invalid and `pcap-file` itself refuses to write a packet), and packet times
+  follow the description's `if_tsresol`. Version 2 always wrote nanoseconds, so a description that
+  did not say so made a reader assume microseconds and every date a thousand times too large. Since
+  version 3 it writes each time in the resolution the description declares. The sidecar still
+  declares nanoseconds, so its files are the same as before (1.42.8).
 
 ## The sidecar's contract
 

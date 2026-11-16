@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.42.8 - Land the four dependency updates Dependabot proposed on 16/11/2026, with pcap-file 3 in the capture sidecar
+
+Dependabot opened four PRs on 16/11/2026. Each lands here as part of one versioned commit, never as a merge of the PR (the rule
+from 1.6.35, `docs/build.md`, "Dependabot"). The changes are the PRs' own files, taken from their branches; all four were cut
+from master 1.42.7, and no two touch the same file.
+
+- **`@anthropic-ai/claude-agent-sdk` 0.3.323 in the Claude runner (#235).** Its changelog (0.3.320 to 0.3.323) has one change
+  that reaches the runner's policy, and it makes the runner stricter. When a tool's permission check fails with an error after a
+  `PreToolUse` hook allowed the call, the SDK now sends the call to `canUseTool`, or refuses it when there is none. The runner
+  has no `canUseTool`, so such a call is now refused. The new `tool_progress` heartbeat during long hooks is a message type
+  the runner's translator does not handle, so it is dropped, as other unknown types are. Measured with 0.3.323 installed:
+  `prova:cd` (the real runner and SDK against a local stand-in for the API), `prova:politica` (140 passed) and `prova:runner`.
+- **`vite` 8.3.8 (#236)**, the front end's build tool: the range in `package.json` and the lock. `npm run build` passes.
+- **`tauri-plugin-opener` 2.7.3, `tauri-plugin-notification` 2.8.1 and `uuid` 1.29.2 (#237).** Opener 2.7.3 changes only
+  the automatic opening of clicked links, which this app turns off (`open_js_links_on_click(false)`). Notification 2.8.1 fixes
+  only Android. The Linux, Windows and macOS jobs passed on the PR.
+- **`pcap-file` 3.0.0 in the capture sidecar (#238)**, a major. On the PR, the sidecar did not compile on Linux or macOS:
+  `InterfaceDescriptionOption::IfTsResol` now takes an `InterfaceTsResolution` instead of a number. The sidecar now passes
+  `InterfaceTsResolution::NANO`, the same nanoseconds as before.
+  - **What changed in the library:** version 2 wrote every packet's time in nanoseconds, whatever the interface description
+    said. Version 3 writes it in the resolution the description declares, and in microseconds, the pcapng default, when it
+    declares none. The bug that the `if_tsresol` option fixed (dates a thousand times too large) can no longer happen.
+    The sidecar still declares nanoseconds, so packet times are written as 1.42.7 wrote them (read in the library's
+    `PcapNgState::encode_timestamp`, not compared byte for byte).
+  - **Measured:** the test that writes a pcapng file through the sidecar's own code and reads it back with libpcap, a
+    different reader, passes. It checks the five packets' bytes, the link type and every time to the microsecond. All 23
+    sidecar tests pass, and so do `cargo clippy --all-targets -D warnings` and `cargo deny check` against
+    `src-tauri/deny.toml`. On the PR, `cargo deny` never ran on the sidecar, because the step that failed comes before it.
+  - The comment in `start_pcapng` and `docs/TRAFFIC/README.md` now say what version 3 does.
+
 ## 1.42.7 - Prove the four guards of the gitDiff fence, each with a name that only that guard stops
 
 The fence test `diff_nao_sai_da_pasta_autorizada_dentro_do_mesmo_repo`, added in 1.38.8, names six ways out of an authorized subfolder.
