@@ -29,6 +29,12 @@ its cause was fixed in 1.42.9). This is PT-33 on the Desktop side.
 - **The viewer and the hold.** The viewer is one at a time: another run's replaces it, and stopping a run closes only its own.
   Closing a window still stops every live run of that window. Each wait for the provider's window holds the computer awake on
   its own (`awake::hold_for`); before, a second wait replaced the first one's hold.
+- **A history record that keeps failing is tried less often.** Every 15 s pass processed every outgoing record, so one
+  whose export could never succeed started the engine for it on every pass. On the owner's Mac (17/11/2026), seven runs of
+  29-30/10 were exported about every 40 s and failed each time: they stopped before their first test, so they have no test
+  catalog, which engine 1.2.56 no longer requires. A record that fails now waits 15 s, then twice as long after each failure,
+  never more than an hour. One success, or an app restart, starts the count again. Test:
+  `a_record_that_keeps_failing_is_tried_less_often_and_a_success_starts_again`, seen failing with the wait removed.
 - **Tests:**
   - `a_call_reaches_the_run_it_names_and_an_unnamed_one_the_run_a_page_always_got`
   - `five_live_runs_fill_the_computer_a_wait_keeps_its_place_and_only_ended_runs_are_let_go`
