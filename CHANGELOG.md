@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.42.9 - Read only the fields this app uses from a run record, so a run past 2 MiB no longer blocks the Pentest
+
+From 11/11 to 17/11/2026 the owner's Mac answered every Pentest page with "Avaliação em andamento: FALTA" ("The Desktop could
+not read the state of the local assessments") and refused every Run with the generic "O Desktop não iniciou a avaliação".
+Measured on that Mac: the engine's run record (`strix_runs/<name>/run.json`) of the run saved on 11/11 is 2,180,455 bytes, and
+the app refused any record above 2 MiB (2,097,152 bytes) before it read a byte of it. The run was written in 46 minutes.
+
+- **What that one refusal stopped.** `saved_run` names the engine's run by the `run_id` in that record, and `recovery::load`
+  needs the name before it takes a saved run back. So every status answered `recoveryBlocked` (the FALTA), and `start` and
+  `resume`, which take the saved run back first, refused too. The history sync skips a run it cannot name, so that run also
+  stopped being sent (on the Mac, seven other runs were read again every 40 s, never this one). The sync of a live
+  run read the same record with its own 2 MiB bound, so a run past it would have stopped syncing while it ran.
+- **What the app reads now.** One reader, `run_record`, keeps the four fields the app uses (`run_id`, `start_time`, `status`,
+  `end_time`) and reads past the rest of the file without holding it, up to 64 MiB. A record must still be a regular private
+  file whose `run_id` is its folder's name, and it must be a JSON object: a derived struct would also take an array field by
+  field, and the reader now refuses one before it parses.
+- **Test.** `a_run_record_past_two_mebibytes_still_names_its_run` names a 3.2 MB record and reads its fields, and refuses an
+  array that starts with the right name. Each half was seen failing: with the 2 MiB bound back, and with the object check
+  removed.
+- **Not in this delivery.** The engine reads the same record with a 2 MiB bound for the PDF report and a 4 MiB bound for the
+  history export, so a long run still loses both; that is a change in the engine. A saved run the app cannot read still
+  blocks a new run, and the page still does not say which check failed: both belong to the work for running more than one
+  assessment at a time (PT-33), where the "Avaliação em andamento" check stops blocking at all.
+
 ## 1.42.8 - Land the four dependency updates Dependabot proposed on 16/11/2026, with pcap-file 3 in the capture sidecar
 
 Dependabot opened four PRs on 16/11/2026. Each lands here as part of one versioned commit, never as a merge of the PR (the rule
