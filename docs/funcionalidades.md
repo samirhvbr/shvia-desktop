@@ -35,6 +35,19 @@ scheme and effective port. Another service on the same hostname does not inherit
   takeover are separate lifecycles. The architecture's persistence table says which state stays
   on this computer and which service owns the rest.
 
+## Up to five assessments at once, and a saved run that cannot be read blocks nothing (1.43.0)
+
+The owner asked on 17/11/2026 for several assessments at the same time ("five simultaneous runs is a reasonable number") and
+for the "Avaliação em andamento" check to warn, never block. The Desktop held one run: a second start was refused while the
+first lived, and one saved run it could not read refused every status, start and resume on the computer (11 to 17/11 on the
+owner's Mac, fixed at its cause in 1.42.9). Now up to five runs live at once, a run waiting for the provider's window keeping
+its place; each run has its own recovery descriptor (`pentest/recovery/<localId>.json`; the one-run file is still read); every
+run-facing bridge call can name its run (`localId`), and a call that names none reaches the run a page before PT-33 was always
+shown, so the current page works unchanged; `pentestStatus` adds `runs`, `capacity` and `problems`; a saved run that cannot be
+taken back is reported for that run alone and tried again after 30 s. The viewer is still one at a time (another run's
+replaces it) and each wait holds the computer awake on its own. Contract: [PENTEST/authorization.md](PENTEST/authorization.md),
+"Several runs at once". Not measured: several real runs at once, on a Mac or anywhere; the WEB page that uses the list.
+
 ## A wait for the provider's window survives an attempt that fails, a restart and the night (1.41.0)
 
 The first real usage window on the owner's Mac (11/11/2026) closed and nothing tried again. Three things change. An

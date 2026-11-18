@@ -705,18 +705,18 @@ fn pentest_action(window: &WebviewWindow, req: &str, action: &str, value: &serde
     };
     let result = match action {
         "startPentest" => pentest::start(window, value, &account),
-        "pentestStatus" => Ok(pentest::status(window, &account)),
+        "pentestStatus" => Ok(pentest::status(window, value, &account)),
         "pentestAutoResume" => pentest::auto_resume(window, value, &account),
-        "openPentestViewer" => pentest::open_viewer(window, &account),
-        "savePentestReport" => pentest::save_report_pdf(window, &account),
+        "openPentestViewer" => pentest::open_viewer(window, value, &account),
+        "savePentestReport" => pentest::save_report_pdf(window, value, &account),
         "pentestLive" => pentest::live(window, value, "status", &account),
         "pentestActivity" => pentest::activity(window, value, &account),
         "pausePentest" => pentest::live(window, value, "pause", &account),
         "continuePentest" => pentest::live(window, value, "resume", &account),
-        "reviewPentest" => pentest::review(window, &account),
+        "reviewPentest" => pentest::review(window, value, &account),
         "retestPentest" => pentest::retest(window, value, &account),
-        "resumePentest" => pentest::resume(window, &account),
-        "stopPentest" => pentest::stop_owned(window, &account),
+        "resumePentest" => pentest::resume(window, value, &account),
+        "stopPentest" => pentest::stop_owned(window, value, &account),
         _ => unreachable!("only protected Pentest actions reach this dispatcher"),
     };
     if !resume_owner::pentest_current(window, &account) {

@@ -1,5 +1,51 @@
 # Changelog
 
+## 1.43.0 - Run up to five assessments at once, and report a saved run that cannot be read instead of blocking every other
+
+The owner asked on 17/11/2026 for several assessments at the same time ("five simultaneous runs is a reasonable number"; five
+had already run at once from a prompt) and said the "Avaliação em andamento" check may warn but must not block. The Desktop
+held one run (`Mutex<Option<Run>>`, one `pentest/recovery.json`): a second start was refused with "Já existe uma avaliação
+neste computador", and one saved run it could not read refused every status, start and resume (11 to 17/11 on the owner's Mac;
+its cause was fixed in 1.42.9). This is PT-33 on the Desktop side.
+
+- **Five at once.** The app holds a list (`Runs`): the live runs, the ones waiting for the provider's window, and the last five
+  that ended. `MAX_ACTIVE` = 5 counts a waiting run, because it starts again by itself. A sixth start, or the resume of an ended
+  run when five are live, is refused with one sentence before any dialog, and again under the lock before the spawn.
+- **Every call names its run.** `pentestStatus`, `stopPentest`, `resumePentest`, `reviewPentest`, `openPentestViewer`,
+  `savePentestReport`, `pentestLive`, `pentestActivity` and `pentestAutoResume` take `localId` (the shim accepts the string or
+  `{localId}`). A call that names a run of another window or account, or a `localId` that is not a string, reaches nothing. A call
+  that names none reaches the run a page before PT-33 was always shown: the newest live run of its window and account, else the
+  newest. The page of 1.42 therefore works unchanged. `recursos.pentestRuns` (5) tells a page the Desktop can do this.
+- **`pentestStatus`** keeps its top level (the run the call names) and adds `runs` (each run of this window and account,
+  described the same way), `capacity` (`{active, max}`) and `problems` (`[{localId, reason}]`).
+- **One descriptor per run**, `pentest/recovery/<localId>.json`, outside the run's directory because that is the engine's
+  working directory and the descriptor carries the grant. Two live runs no longer overwrite each other's crash record. The
+  one-run file of 1.42 is still read, and removed when its run saves again. A file must name the run it is named after.
+- **A saved run that cannot be taken back is that run's problem.** A page's account reads the newest sixteen descriptors once
+  per app start. Each that fails becomes a `problem` with a code (`still_running`, `busy`, `record`, `history`, `unavailable`),
+  is tried again after 30 s (at once, a few times, when the app starts and a wait's lock was busy) and blocks nothing.
+  `recoveryBlocked` remains only for what concerns the whole page. A run of another account or another server is not shown:
+  with one run per computer it had to fail closed, because a new run would have replaced it.
+- **The viewer and the hold.** The viewer is one at a time: another run's replaces it, and stopping a run closes only its own.
+  Closing a window still stops every live run of that window. Each wait for the provider's window holds the computer awake on
+  its own (`awake::hold_for`); before, a second wait replaced the first one's hold.
+- **A history record that keeps failing is tried less often.** Every 15 s pass processed every outgoing record, so one
+  whose export could never succeed started the engine for it on every pass. On the owner's Mac (17/11/2026), seven runs of
+  29-30/10 were exported about every 40 s and failed each time: they stopped before their first test, so they have no test
+  catalog, which engine 1.2.56 no longer requires. A record that fails now waits 15 s, then twice as long after each failure,
+  never more than an hour. One success, or an app restart, starts the count again. Test:
+  `a_record_that_keeps_failing_is_tried_less_often_and_a_success_starts_again`, seen failing with the wait removed.
+- **Tests:**
+  - `a_call_reaches_the_run_it_names_and_an_unnamed_one_the_run_a_page_always_got`
+  - `five_live_runs_fill_the_computer_a_wait_keeps_its_place_and_only_ended_runs_are_let_go`
+  - `each_run_keeps_its_own_descriptor_and_a_broken_one_hides_no_other`
+
+  Each was seen failing with its rule reverted: an unnamed call that ignores live runs, a wait that holds no place, and one shared
+  descriptor. The stand-in test now holds two waits at once. The existing recovery tests read the per-run file. The
+  cross-authority case now expects "not this page's run" instead of an error.
+- **Not measured:** several real runs at once, on Linux or on a Mac; the WEB page that lists the runs and names one in each
+  call (the next delivery); macOS compiles only in CI.
+
 ## 1.42.9 - Read only the fields this app uses from a run record, so a run past 2 MiB no longer blocks the Pentest
 
 From 11/11 to 17/11/2026 the owner's Mac answered every Pentest page with "Avaliação em andamento: FALTA" ("The Desktop could

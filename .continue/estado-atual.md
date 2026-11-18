@@ -12,7 +12,12 @@ Desktop 1.25.x within 1.x, Pentest 1.2.30+ within 1.x (1.26.2: the probe reads `
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Last updated: **13/11/2026** (version 1.42.2). 1.42.2 = the pin moves to engine 1.2.55 (the fork's Release `shvia-v1.2.55`), the
+> Last updated: **17/11/2026** (version 1.43.0). 1.43.0 = up to five assessments at once (PT-33): one recovery descriptor per run,
+> `localId` on every run-facing call (none = the run a page before PT-33 got), `pentestStatus().runs/capacity/problems`, and a
+> saved run that cannot be read reported for that run instead of blocking everything; open: the WEB page that lists the runs,
+> names the run in each call and turns the "Avaliação em andamento" check into information, and several real runs at once on a
+> Mac. Previously, 1.42.9 = the run record (`run.json`) read past 2 MiB (the FALTA of 11 to 17/11 on the owner's Mac).
+> Previously, 1.42.2 = the pin moves to engine 1.2.55 (the fork's Release `shvia-v1.2.55`), the
 > first build with the `report-pdf` command 1.42.0 runs, so `canSavePdf` turns on; it also carries 1.2.51 to 1.2.54 (the ShvIA PDF,
 > the indentation of code in it, the two cache keys 1.40.2 sends, the Opengrep sandbox image) and its `report-pdf` was run over a
 > synthetic run on the published Mac file and, in an amd64 container, on the published Linux file; open: the save dialog on a Mac, a

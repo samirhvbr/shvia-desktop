@@ -97,10 +97,19 @@ pub const BRIDGE_JS: &str = r#"(function () {
     });
   }
 
+  // Which local run a call is about (PT-33, recursos.pentestRuns, 1.43.0): a localId string, or {localId}. With none the
+  // Desktop answers for the run a page before PT-33 was always shown (the newest live one of this window, else the newest).
+  function pentestRun(o) {
+    if (typeof o === 'string') return { localId: o };
+    return o && typeof o.localId === 'string' ? { localId: o.localId } : {};
+  }
+
   window.__shviaCode = {
     // sessão do agente
     startPentest: function (o) { return pentestPost('startPentest', o || {}); },
-    pentestStatus: function () { return pentestPost('pentestStatus'); },
+    // Since 1.43.0 (PT-33) also {runs:[one object per run of this window, as the top level], capacity:{active, max},
+    // problems:[{localId, reason:'still_running'|'busy'|'record'|'history'|'unavailable'}]}. The top level is the run `o` names.
+    pentestStatus: function (o) { return pentestPost('pentestStatus', pentestRun(o)); },
     // Before an assessment (1.35.0): {docker:{state:'ready'|'not_running'|'missing'|'unknown'|'unsupported', canOpen (1.39.0)},
     // credentials:{state:'at_confirmation'}, autoResume:{enabled}}. Detection only: nothing is started or installed.
     pentestPreflight: function () { return post('pentestPreflight'); },
@@ -108,12 +117,12 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // off also cancels a wait. Resolves with the same object as pentestStatus().autoResume: {enabled, covered, state:'none'|'waiting'|
     // 'resuming'|'cancelled'|'gave_up'|'failed', attempt, nextAttemptAt (ms since the epoch, or null), waitedMinutes, ceilingMinutes}.
     pentestAutoResume: function (o) { return pentestPost('pentestAutoResume', o || {}); },
-    openPentestViewer: function () { return pentestPost('openPentestViewer'); },
+    openPentestViewer: function (o) { return pentestPost('openPentestViewer', pentestRun(o)); },
     // The PDF report of THIS window's finished local run, saved where the person picks in the native dialog (1.42.0). It takes
     // nothing: the page names no run, path or file name, and never receives the bytes. Resolves {saved:true} or {saved:false}
     // (the person cancelled); rejects with a sentence when the run is still going, the engine cannot write it or the file cannot
     // be written. Offer it only when pentestStatus().canSavePdf === true.
-    savePentestReport: function () { return pentestPost('savePentestReport'); },
+    savePentestReport: function (o) { return pentestPost('savePentestReport', pentestRun(o)); },
     pentestCompatibility: function () { return post('pentestCompatibility'); },
     pentestInstallEngine: function () { return post('pentestInstallEngine'); },
     // The standing agreement to keep the engine up to date (1.40.0), given only in the install dialog. `o` = {enabled?: false}: with no
@@ -124,7 +133,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
     // {state:'opening'|'starting'|'ready'} (it returns as soon as the app is handed to the system, it does not wait for Docker
     // to answer: keep calling pentestPreflight). Rejects with E_PENTEST_DOCKER_UNSUPPORTED | _NOT_INSTALLED | _UNKNOWN.
     pentestOpenDocker: function () { return post('pentestOpenDocker'); },
-    pentestLive: function () { return pentestPost('pentestLive'); },
+    pentestLive: function (o) { return pentestPost('pentestLive', pentestRun(o)); },
     // What the agents of the local assessment are doing (1.37.0), from the engine's own files on this computer: nothing
     // here goes to the server. `o` = {after?: row id}; without it, the newest window. Resolves with {localId, activity:
     // {events:[{id, at, agent, kind:'say'|'user'|'call'|'result', text, tool?, truncated?}], agents:[{id, name, status}],
@@ -133,7 +142,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
     pentestActivity: function (o) { return pentestPost('pentestActivity', o || {}); },
     pausePentest: function (localId) { return pentestPost('pausePentest', { localId: localId }); },
     continuePentest: function (o) { return pentestPost('continuePentest', o || {}); },
-    stopPentest: function () { return pentestPost('stopPentest'); },
+    stopPentest: function (o) { return pentestPost('stopPentest', pentestRun(o)); },
     // IPv4 Search (recursos.varreduraIPv4, 1.31.0). `o` = {target:'10.100.100.0/22', ports?:'2000,8000-8080', timeoutMs?, probeAll?}.
     // Resolves with {scanId, cidr, addresses, ports, discoveryPorts} AFTER the person confirms in a native dialog; rejects with an
     // 'E_SCAN_*: text' string (E_SCAN_DECLINED when they say no). Progress, hosts as they answer and the final report arrive through
@@ -157,8 +166,8 @@ pub const BRIDGE_JS: &str = r#"(function () {
     trafficStart: function (o) { return post('trafficStart', o || {}); },
     trafficStop: function () { return post('trafficStop'); },
     trafficExport: function () { return post('trafficExport'); },
-    resumePentest: function () { return pentestPost('resumePentest'); },
-    reviewPentest: function () { return pentestPost('reviewPentest'); },
+    resumePentest: function (o) { return pentestPost('resumePentest', pentestRun(o)); },
+    reviewPentest: function (o) { return pentestPost('reviewPentest', pentestRun(o)); },
     retestPentest: function (localId, baselineRef) { return pentestPost('retestPentest', { localId: localId, baselineRef: baselineRef }); },
     spawn: function (o) { return post('spawn', o || {}); },   // erro de motor ausente vem {error, codigo} — ver claudeModels;  {projectDir, apiKey, model?, effort?, url?, engine?, modelDoClaude?, accountId?, autonomy?}  autonomy:{stopByHost, maxIterations, maxCostUsd} = a Run (RUN-20260910), só no motor claude;  engine:'claude' = assinatura; modelDoClaude:true = model/effort vieram de claudeModels(), nao do gateway; accountId = perfil de conta (ver claudeAccounts); sessao + retomavel:true + meta:{projectId, rotulo} = a sessão sobrevive a um reload e a página seguinte a retoma (recursos.retomada)
     send:  function (o, sessao) { return post('send', sessao ? { payload: o, sessao: sessao } : { payload: o }); }, // {type:'user',text} | {id,decision}; sessao = which session (recursos.sessoes)
@@ -373,7 +382,7 @@ pub const BRIDGE_JS: &str = r#"(function () {
     //           shell CAN capture, not that it is allowed to on this machine yet — that is what `trafficPermissionStatus`
     //           answers. Without the flag the page shows the "desktop required" panel, the same way it already does when this
     //           whole object is absent on a plain browser.
-    recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true, retomadaPorConta: true, plano: true, orientar: true, aparelho: true, uso: true, assinatura: __SHVIA_ASSINATURA__, varreduraIPv4: true, captura: true },
+    recursos: { imagem: true, conta: true, run: true, sessoes: true, retomada: true, retomadaPorConta: true, plano: true, orientar: true, aparelho: true, uso: true, assinatura: __SHVIA_ASSINATURA__, varreduraIPv4: true, captura: true, pentestRuns: 5 },
     // chamados pelo Rust (eval):
     _reply: function (id, ok, data) { var r = reqs[id]; if (r) { delete reqs[id]; ok ? r.res(data) : r.rej(data); } },
     _emit: function (evt, sessao, seq) { if (evt && typeof evt === 'object') { if (sessao) evt.sessao = sessao; if (seq) evt.seq = seq; } for (var i = 0; i < listeners.length; i++) { try { listeners[i](evt); } catch (e) {} } }
