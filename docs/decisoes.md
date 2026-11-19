@@ -3174,3 +3174,80 @@ for the current document. A start grant must belong to the same account. Native
 recovery stores the account and origin, and older descriptors without an account
 remain on disk without being adopted. An already authorized background retry is
 tied to the exact saved run and controller. Navigation closes the local viewer.
+
+---
+
+## ADR-050 — Consolidate the Desktop and Mobile repositories
+
+**Status** — Proposed on November 19, 2026. Owner review planned for November 20,
+2026. Implementation awaits that review.
+
+### Proposal
+
+Use the existing public `shvia-desktop` repository for both Tauri clients. Keep
+Desktop at the root to preserve its build and publishing paths. Import
+`shvia-mobile` under `apps/mobile/` with its own Rust and npm manifests, lockfiles,
+version, changelog, CI, and releases. A shared repository lets one pull request
+review and test a change to both shells. The private `shvia-web` repository
+continues to serve the product interface that both apps already load.
+[Desktop build and publication](build.md#distribuição) ·
+[Mobile operations](https://github.com/samirhvbr/shvia-mobile/blob/fa05b3e80725e50cc434958713c5e18c3cef6387/docs/operations.md) ·
+[Web and native client integration](https://github.com/samirhvbr/shvia-mobile/blob/fa05b3e80725e50cc434958713c5e18c3cef6387/docs/integration.md)
+
+### Duplication observed
+
+- At Desktop `cc45ee3` and Mobile `fa05b3e`, 72 tracked file paths matched and
+  28 of those files were byte-identical. Examples include the brand mark and the
+  Vite and TypeScript configuration. The Desktop splash was ported from Mobile.
+  Both stylesheets call for parity, but their fallback backgrounds now differ
+  (`#111317` on Desktop and `#0B0F17` on Mobile). Review that difference before
+  sharing visual tokens.
+  [Desktop styles](https://github.com/samirhvbr/shvia-desktop/blob/cc45ee357da92df48e81658bee063b31d63ac678/src/styles.css) ·
+  [Mobile styles](https://github.com/samirhvbr/shvia-mobile/blob/fa05b3e80725e50cc434958713c5e18c3cef6387/src/styles.css)
+- Both Rust shells repeat the server host list and inject an offline banner
+  that confirms loss of connectivity by probing `/up`. Those are candidates
+  for a small follow-up once both builds pass. Keep platform-specific
+  navigation rules and presentation with their respective apps.
+  [Desktop shell](https://github.com/samirhvbr/shvia-desktop/blob/cc45ee357da92df48e81658bee063b31d63ac678/src-tauri/src/lib.rs#L54) ·
+  [Mobile shell](https://github.com/samirhvbr/shvia-mobile/blob/fa05b3e80725e50cc434958713c5e18c3cef6387/src-tauri/src/lib.rs#L270)
+- The served page calls `window.__shviaCode.saveFile` with `name` and
+  `dataBase64` when available. Desktop implements it through its native Code
+  bridge. Mobile exposes it through its own save command. Test the contract
+  across both shells while keeping native permissions, iOS push and biometrics,
+  Desktop process execution, and the Desktop updater with their respective apps.
+  [Desktop save bridge](https://github.com/samirhvbr/shvia-desktop/blob/cc45ee357da92df48e81658bee063b31d63ac678/src-tauri/src/code_bridge/shim.rs#L192) ·
+  [Mobile save bridge](https://github.com/samirhvbr/shvia-mobile/blob/fa05b3e80725e50cc434958713c5e18c3cef6387/src-tauri/src/lib.rs#L145)
+
+### Costs and rollout
+
+Keeping both repositories separate avoids a migration and leaves parity fixes
+to coordinated pull requests. Bringing the private Web server into the same
+repository would require a change in who can see the code or contribute to the
+public clients. The proposed scope takes on the cost of moving one app's
+source and CI while preserving both delivery paths.
+
+1. Record the source SHAs, branches, tags, release assets, issues, PRs,
+   workflows, settings, and distribution endpoints. Import Mobile on a review
+   branch with its commit ancestry intact. Compare the imported tree against
+   the recorded source.
+2. Route CI and release workflows by app. Scope the working directories,
+   caches, version checks, and permissions. There are 22 overlapping tag names
+   in the audited tag sets. Preserve historical tags and assets at their
+   existing URLs. Keep new Desktop tags numeric and use `mobile-vX.Y.Z` for new
+   Mobile releases so the repository-wide `Latest` badge can continue to point
+   to Desktop.
+3. Validate the existing checks per platform. Test login, offline handling,
+   and downloads with both shells and a browser. Verify a signed Desktop
+   candidate and its update manifest, plus the Mobile app identifiers, signing,
+   build numbers, and device behavior before switching publication.
+4. At cutover, keep historical PRs, reviews, and releases in the origin.
+   Review [Mobile issue #1](https://github.com/samirhvbr/shvia-mobile/issues/1)
+   and transfer it if still active. Keep the old publication path available
+   through one verified Mobile delivery from the new location. If the cutover
+   fails, disable the new release workflow and resume from the recorded source
+   SHA. A Mobile build already uploaded to a store requires a higher build
+   number for the correction.
+
+Estimated engineering effort is **5–8 working days**, plus store processing
+time. The first migration PR covers the repository move and CI parity.
+Extracting common code is a separate follow-up.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.43.1 - Record the proposed consolidation of the Desktop and Mobile repositories
+
+Record the [proposal](docs/decisoes.md#adr-050--consolidate-the-desktop-and-mobile-repositories)
+for owner review on November 20, 2026. It documents the duplicated shell code,
+the independent release paths, and the migration and rollback plan.
+
 ## 1.43.0 - Run up to five assessments at once, and report a saved run that cannot be read instead of blocking every other
 
 The owner asked on 17/11/2026 for several assessments at the same time ("five simultaneous runs is a reasonable number"; five
