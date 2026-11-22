@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.43.1 - Fix nested URL origin handling before landing the native-client proposal
+
+The proposal's fresh RustSec check found RUSTSEC-2026-0592 in the unchanged
+base lockfile: url 2.5.8 recursively handles nested blob origins and can abort
+the process with a stack overflow. The lock now uses the patched url 2.5.9
+and its form_urlencoded 1.2.3 dependency. No advisory exception or check was
+weakened. The remaining local and platform CI checks validate the updated
+dependency tree. ADR-050 remains Proposed: recording it neither approves nor
+implements a repository migration, signing change or shared release scheme.
+
+## 1.43.1 - Record the proposed consolidation of the Desktop and Mobile repositories
+
+Record the [proposal](docs/decisoes.md#adr-050--consolidate-the-desktop-and-mobile-repositories)
+for owner review on November 20, 2026. It documents the duplicated shell code,
+the independent release paths, and the migration and rollback plan.
+
 ## 1.43.0 - Run up to five assessments at once, and report a saved run that cannot be read instead of blocking every other
 
 The owner asked on 17/11/2026 for several assessments at the same time ("five simultaneous runs is a reasonable number"; five
