@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.43.2 - Move cookie to 0.18.3, past the advisory cargo deny started refusing on 23/11/2026
+
+RustSec published RUSTSEC-2026-0594 on 23/11/2026: in `cookie` before 0.18.3, private (encrypted) cookies added after a
+`fork()` can repeat an AES-GCM nonce across the processes. The app's lock had `cookie` 0.18.1, pulled by `tauri`,
+`tauri-runtime` and `wry`, so `cargo deny` failed the "Provas" job of the PR that carries the commit below. Master fails the
+same way, because master's lock has the same 0.18.1 and the advisory is newer than master's last run. The lock now takes 0.18.3, the
+patched release (`cargo update -p cookie --precise 0.18.3`, three lines of `src-tauri/Cargo.lock`), and no advisory exception
+was added. `cargo deny check` passes for the app crate and for the capture sidecar, as CI runs them. Whether the app could
+reach the affected path was not assessed: the upgrade removes the question.
+
+## 1.43.2 - Land the three dependency updates Dependabot proposed on 23/11/2026
+
+Dependabot opened three PRs on 23/11/2026. Each lands here as part of one versioned commit, never as a merge of the PR (the
+rule from 1.6.35, `docs/build.md`, "Dependabot"). The changes are the PRs' own files, taken from their branches; all three were
+cut from master 1.43.1, and no two touch the same file.
+
+- **`@anthropic-ai/claude-agent-sdk` 0.3.329 in the Claude runner (#244).** Its changelog (0.3.324 to 0.3.329) has two breaking
+  changes, both in 0.3.327, and neither reaches the runner. `query()` now refuses options it cannot send to Claude Code, and
+  hook options must be arrays, which the runner's `PreToolUse` and `Stop` matchers already are. The runner passes no `sandbox`,
+  `canUseTool`, `agents` or SDK MCP server, so the changes to those in 0.3.325 to 0.3.328 do not apply. A `PreToolUse` hook that
+  gives no verdict is now reported as a `system` message tagged `hook_no_verdict`; the runner's translator keeps only the `init`
+  system message, so it is dropped. Measured with 0.3.329 installed: `prova:cd` (the real runner and SDK against a local
+  stand-in for the API), `prova:politica` (140 passed), `prova:runner` and `prova:runner-version`.
+  - Dependabot also regenerated the runner's lockfile, whose own `version` had stayed at 1.42.7: `scripts/sync-version.mjs`
+    does not carry `claude-runner/package-lock.json`. It now reads 1.43.1, still one behind.
+- **`@tauri-apps/api` 2.12.5 and `@tauri-apps/cli` 2.12.6 at the root (#245):** the range of `@tauri-apps/api` in
+  `package.json` and the lock. Both stay on 2.12, the minor of the `tauri` crate. `npm run build` passes.
+- **`tauri` 2.12.7, `tauri-build` 2.7.6, `uuid` 1.29.3 and `zeroize` 1.9.2 in the app (#246)**, in `src-tauri/Cargo.lock`
+  only, with `tauri-codegen` and `tauri-macros` 2.7.6, `tauri-runtime` 2.12.4, `tauri-runtime-wry` 2.12.5 and `tauri-utils`
+  2.10.4 moving with them. On the PR, the Linux checks and the macOS, Windows cross-compiled and Windows MSVC jobs passed with
+  this lockfile.
+
+Dependabot's #243 (`EmbarkStudios/cargo-deny-action` 2.1.1 → 2.1.3 in `.github/workflows/ci.yml`) was merged as it was on
+23/11/2026, before this commit, so it reached master without a version or a CHANGELOG entry. It is recorded here: it moves the
+pin of the action that runs `cargo deny`, and nothing in the app changes with it.
+
 ## 1.43.1 - Fix nested URL origin handling before landing the native-client proposal
 
 The proposal's fresh RustSec check found RUSTSEC-2026-0592 in the unchanged
