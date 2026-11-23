@@ -12,7 +12,10 @@ Desktop 1.25.x within 1.x, Pentest 1.2.30+ within 1.x (1.26.2: the probe reads `
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Last updated: **23/11/2026** (version 1.43.3). 1.43.3 = the pin moves to engine 1.2.57 (Release `shvia-v1.2.57`), which
+> Last updated: **23/11/2026** (version 1.44.0). 1.44.0 = the app keeps the person's Codex CLI current once a day through
+> the manager that installed it (Homebrew or npm; ADR-051, `SHVIA_CODEX_AUTO=0` turns it off); 1.43.4 = the About dialog
+> has a Claude Code row (the Agent SDK's, not the terminal's `claude`) and names the anna row. Open: a real Homebrew upgrade
+> and the whole pass inside the app on a Mac. Previously, 1.43.3 = the pin moves to engine 1.2.57 (Release `shvia-v1.2.57`), which
 > exports the history and report of a run started from the site's «Executar» (no identity context), so the owner's five runs of
 > 06/11 to 21/11 can close on the site; it also carries 1.2.56 (exports read `run.json` up to 64 MiB; a run with no catalog exports);
 > open: those five runs actually closing after the update, on the owner's Mac. Previously, 1.43.0 = up to five assessments at once (PT-33): one recovery descriptor per run,

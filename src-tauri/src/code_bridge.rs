@@ -50,6 +50,8 @@ use sessao::*;
 pub(crate) mod resume_owner;
 mod atualizacao;
 pub(crate) use atualizacao::na_abertura;
+// The Codex CLI follows its releases, once a day, after the runners pass (1.44.0).
+mod codex_em_dia;
 mod aparelho;
 // IPv4 Search (1.31.0): a TCP connect scan of one private range, from this computer. Not glob-imported: the arms below address it by path.
 mod ipv4_search;

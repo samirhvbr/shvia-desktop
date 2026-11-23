@@ -261,6 +261,25 @@ fn texto_do_claude(runner: &str, claude: &str, runner_sabe: bool) -> String {
     }
 }
 
+/// The installed `codex-runner`'s own version, or None without a runner or a clean answer (1.44.0).
+pub(super) fn versao_do_codex_runner() -> Option<String> {
+    let mut sonda = resolve_runner("codex-runner")?.comando();
+    sonda.arg("--version");
+    let saida = saida_com_prazo(sonda, PRAZO_VERSAO).ok().filter(|o| o.status.success())?;
+    versao_limpa(&String::from_utf8_lossy(&saida.stdout))
+}
+
+/// `codex-runner --atualizar-codex` (1.44.0): its stdout, or why it did not answer.
+pub(super) fn atualizar_codex_pelo_runner() -> Result<String, String> {
+    let mut sonda = resolve_runner("codex-runner").ok_or("codex-runner não encontrado")?.comando();
+    sonda.arg("--atualizar-codex");
+    let saida = saida_com_prazo(sonda, super::codex_em_dia::PRAZO_ATUALIZACAO).map_err(|e| e.to_string())?;
+    if !saida.status.success() {
+        return Err(format!("o runner saiu com {}", saida.status));
+    }
+    Ok(String::from_utf8_lossy(&saida.stdout).into_owned())
+}
+
 /// A version as a runner prints it, or `None` for anything else (empty, NDJSON, a sentence).
 fn versao_limpa(bruto: &str) -> Option<String> {
     let s = bruto.trim();

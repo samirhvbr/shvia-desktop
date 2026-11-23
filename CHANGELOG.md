@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.44.0 - The app keeps the Codex CLI current once a day, through the manager that installed it
+
+On 23/11/2026 the owner's About dialog read «Motor do Codex v0.163.0 (runner 1.7.0)» on Desktop 1.43.2, while npm and the
+Homebrew cask had Codex 0.171.0. The app updated itself and its runners; the `codex` the Codex runner starts is the person's
+own install, and nothing updated it. The owner asked for it to be automatic (ADR-051).
+
+- **At start, after the runners, at most once every 20 hours**, the app runs `codex-runner --atualizar-codex`
+  (`src-tauri/src/code_bridge/codex_em_dia.rs`). The runner (1.8.0, `codex-runner/atualizar.mjs`) resolves the `codex` it
+  starts, reads where the binary really lives and updates it through that manager:
+  - Homebrew cask (`…/Caskroom/codex/…`): `brew upgrade --cask codex`, with the `brew` of that prefix. Homebrew decides; the
+    npm registry, which can be ahead of the cask for hours, is not asked, so a cask with nothing newer is "up to date".
+  - Homebrew formula (`…/Cellar/codex/…`): `brew upgrade codex`.
+  - npm global (`…/node_modules/@openai/codex/…`, also the shim on Windows): `npm install -g @openai/codex@<latest>`, with the
+    npm of that prefix, only when the registry has a newer version.
+  - Anything else (the standalone installer, a checkout): nothing runs.
+- **What the person is told:** an update, with both versions; a failure, once per newest version, with the reason and the
+  command to run by hand; an install the app does not manage, once per newest version, that a newer Codex exists. Up to date
+  says nothing. The last pass and the notices given are kept in `codex-atualizacao.json` in the app's config folder.
+- **`SHVIA_CODEX_AUTO=0`** (the spellings of `SHVIA_RUNNERS_AUTO`) turns it off. A runner older than 1.8.0 is never asked: it
+  would start in host mode with the flag.
+- The runner's installers copy `atualizar.mjs`; `prova:politica` runs its tests.
+
+Measured on this Linux machine:
+- the npm path end to end, in a throwaway prefix: Codex 0.170.0 installed there, the mode answered
+  `{"resultado":"atualizado","atual":"0.170.0","ultima":"0.171.0","novo":"0.171.0","metodo":"npm"}` in 5 s, and `codex
+  --version` then read 0.171.0;
+- the standalone install here (0.164.0): `sem_metodo`, nothing run.
+
+The decision (`atualizar.mjs`, 8 cases) and the pass (`codex_em_dia.rs`, 5 cases: update told, next pass a day later, a
+failure told once per version, an unmanaged install only told, off/old runner/no runner ask nothing) have tests.
+
+Not measured: a real Homebrew upgrade (no Homebrew here), and the pass inside the app on a Mac.
+
 ## 1.43.4 - The About dialog tells the Code mode engines apart, with a row for the Claude Code the app runs
 
 On 23/11/2026 the owner read «Motor do Code v0.16.6 (empacotado)» in the About dialog, compared it with `claude --version`

@@ -3251,3 +3251,47 @@ source and CI while preserving both delivery paths.
 Estimated engineering effort is **5–8 working days**, plus store processing
 time. The first migration PR covers the repository move and CI parity.
 Extracting common code is a separate follow-up.
+
+## ADR-051 — The app keeps the person's Codex CLI current, through the manager that installed it
+
+- **Date:** 23/11/2026 · **Status:** **Accepted**, by the owner's answer in the session to the proposal "na abertura, atualiza
+  o Codex pelo gerenciador que o instalou, uma vez por dia, com aviso e desligável": *"1- sim"*. Extends
+  [ADR-040](#adr-040--the-app-installs-the-runners-it-needs-not-only-updates-them) from the runners to the CLI the Codex
+  runner starts.
+
+### Context
+
+The app updates itself (the updater), keeps the runners current (ADR-036) and installs a missing one (ADR-040). The
+`codex` the Codex runner starts is not the app's: it is the person's own install, and nothing updated it. Measured on the
+owner's Mac on 23/11/2026, About dialog of Desktop 1.43.2: «Motor do Codex v0.163.0 (runner 1.7.0)», `codex-cli 0.163.0`
+from Homebrew, while npm and the Homebrew cask had 0.171.0, eight releases ahead. The owner asked how to make it automatic.
+
+Bundling the Codex CLI in the installer, as anna is, was weighed and set aside: Codex ships about weekly, so a pinned copy
+would lag between Desktop releases, the installer would grow, and the `codex` in the person's terminal would still be the
+other one.
+
+### Decision
+
+At start, in the same background thread as the runners and after them, at most once every 20 hours
+(`code_bridge/codex_em_dia.rs`), the app runs `codex-runner --atualizar-codex` (`codex-runner/atualizar.mjs`). The runner
+resolves the `codex` it starts, reads where the binary really lives, and updates it through that manager:
+
+| where the binary lives | what runs |
+|---|---|
+| `…/Caskroom/codex/…` (Homebrew cask) | `brew upgrade --cask codex` (Homebrew decides; the npm registry is not asked, it can be ahead of the cask for hours) |
+| `…/Cellar/codex/…` (Homebrew formula) | `brew upgrade codex` |
+| `…/node_modules/@openai/codex/…` (npm global) | `npm install -g @openai/codex@<latest on the registry>`, with the npm of that prefix, only when newer |
+| anywhere else (the standalone installer, a checkout, `SHVIA_CODEX_BIN` elsewhere) | nothing runs; once per newest version, a notification says a newer one exists |
+
+An update is told with both versions; a failure is told once per newest version, with the reason and the command to run by
+hand; up to date is silent. `SHVIA_CODEX_AUTO=0` (the spellings of `SHVIA_RUNNERS_AUTO`) switches it off. A runner older
+than 1.8.0 is never asked: it would start in host mode with the flag.
+
+### Consequences
+
+- The person's terminal `codex` is updated too: it is the same program, and that is the point.
+- A Codex session already running keeps the binary it started with; the next one starts the new version. On Windows an npm
+  install over a running `codex.exe` can fail; it is told once and tried again the next day.
+- Not measured: a real Homebrew upgrade (no Homebrew on the machine that built this), and the whole pass inside the app on a
+  Mac. Measured: the npm path end to end in a throwaway prefix (0.170.0 → 0.171.0, 5 s), and the standalone case on Linux
+  (`sem_metodo`, nothing run).

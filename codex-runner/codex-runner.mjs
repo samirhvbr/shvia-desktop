@@ -121,6 +121,53 @@ if (process.argv.includes("--codex-version")) {
   process.exit(0);
 }
 
+// `--atualizar-codex` brings the `codex` THIS runner starts up to date through the manager that installed it
+// (Homebrew or npm), prints one JSON line and exits (`atualizar.mjs`, 1.44.0). The desktop asks it once a day.
+if (process.argv.includes("--atualizar-codex")) {
+  const { spawnSync } = await import("node:child_process");
+  const { realpathSync } = await import("node:fs");
+  const { atualizarCodex } = await import("./atualizar.mjs");
+  const alvo = resolverCodex({ existe: existsSync, listar: readdirSync });
+  const rodar = (cmd, args, timeout) => spawnSync(cmd, args, {
+    encoding: "utf8",
+    timeout,
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+    // A `.cmd` (npm on Windows) does not start without a shell since Node 20.12.2.
+    shell: process.platform === "win32" && /\.cmd$/i.test(cmd),
+    env: { ...process.env, HOMEBREW_NO_ENV_HINTS: "1", NO_UPDATE_NOTIFIER: "1" },
+  });
+  const linha = atualizarCodex({
+    versao: () => {
+      const r = rodar(alvo.comando, [...alvo.prefixo, "--version"], 8000);
+      const v = r.status === 0 ? String(r.stdout ?? "").trim().split(/\s+/).pop() ?? "" : "";
+      return /^\d+\.\d+/.test(v) ? v : "";
+    },
+    caminhoReal: () => {
+      // The npm shim on Windows: the runner starts `node codex.js`, whose path names the install.
+      const bruto = alvo.prefixo[0] ?? alvo.comando;
+      const achado = path.isAbsolute(bruto)
+        ? bruto
+        : String(process.env.PATH ?? "").split(path.delimiter).filter(Boolean)
+          .map((d) => path.join(d, bruto)).find((f) => existsSync(f)) ?? "";
+      try { return achado ? realpathSync(achado) : ""; } catch { return achado; }
+    },
+    ultimaNoNpm: () => {
+      const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+      const r = rodar(npm, ["view", "@openai/codex", "version"], 30_000);
+      const v = r.status === 0 ? String(r.stdout ?? "").trim() : "";
+      return /^\d+\.\d+\.\d+$/.test(v) ? v : "";
+    },
+    rodar: (cmd, args) => {
+      const r = rodar(cmd, args, 15 * 60_000);
+      return { ok: r.status === 0, saida: `${r.stdout ?? ""}\n${r.stderr ?? ""}${r.error ? `\n${r.error.message}` : ""}` };
+    },
+    existe: existsSync,
+  });
+  process.stdout.write(JSON.stringify(linha) + "\n");
+  process.exit(0);
+}
+
 const PROJECT_DIR = argOf("--cwd") || process.cwd();
 const MODEL = argOf("--model");
 const EFFORT = argOf("--effort");

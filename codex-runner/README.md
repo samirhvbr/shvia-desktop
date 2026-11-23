@@ -12,6 +12,7 @@ the user off their subscription and onto pay-per-token without saying so.
 ./install.sh          # copies to ~/.local/share/shvia-codex-runner + ~/.local/bin
 codex-runner --version
 codex-runner --codex-version   # the `codex` this runner would start, e.g. 0.164.0 (1.7.0)
+codex-runner --atualizar-codex # updates that `codex` through Homebrew or npm; one JSON line (1.8.0, ADR-051)
 ```
 
 No npm dependency: it drives the `codex` CLI the user already has.

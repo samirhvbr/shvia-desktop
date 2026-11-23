@@ -689,6 +689,13 @@ installation is disabled with `SHVIA_RUNNERS_AUTO`. It does not downgrade a newe
 version. Code in `src-tauri/src/code_bridge/atualizacao.rs`,
 decision in ADR-036.
 
+**1.44.0 — the Codex CLI follows its releases.** After the runners, at most once every 20 hours, the app runs
+`codex-runner --atualizar-codex` (runner 1.8.0, `codex-runner/atualizar.mjs`): the `codex` the runner starts is updated
+through the manager that installed it, read from its real path (`brew upgrade --cask codex`, `brew upgrade codex`, or
+`npm install -g @openai/codex@<latest>` with the npm of that prefix). An install of any other kind is not touched; a newer
+version is announced once. An update is told with both versions, a failure once per newest version with the command to run.
+`SHVIA_CODEX_AUTO=0` turns it off. Code in `src-tauri/src/code_bridge/codex_em_dia.rs`, decision in ADR-051.
+
 ## Phase 8 — reaching the app from anywhere (1.10.0)
 
 **1.10.0 — the quick window and `shvia://`.** `Ctrl+Shift+Espaço` (`⌘⇧Espaço`) shows a small
