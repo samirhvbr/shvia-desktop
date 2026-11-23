@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.43.2 - Move cookie to 0.18.3, past the advisory cargo deny started refusing on 23/11/2026
+
+RustSec published RUSTSEC-2026-0594 on 23/11/2026: in `cookie` before 0.18.3, private (encrypted) cookies added after a
+`fork()` can repeat an AES-GCM nonce across the processes. The app's lock had `cookie` 0.18.1, pulled by `tauri`,
+`tauri-runtime` and `wry`, so `cargo deny` failed the "Provas" job of the PR that carries the commit below. Master fails the
+same way, because master's lock has the same 0.18.1 and the advisory is newer than master's last run. The lock now takes 0.18.3, the
+patched release (`cargo update -p cookie --precise 0.18.3`, three lines of `src-tauri/Cargo.lock`), and no advisory exception
+was added. `cargo deny check` passes for the app crate and for the capture sidecar, as CI runs them. Whether the app could
+reach the affected path was not assessed: the upgrade removes the question.
+
 ## 1.43.2 - Land the three dependency updates Dependabot proposed on 23/11/2026
 
 Dependabot opened three PRs on 23/11/2026. Each lands here as part of one versioned commit, never as a merge of the PR (the
