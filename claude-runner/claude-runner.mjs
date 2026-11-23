@@ -81,6 +81,25 @@ if (process.argv.includes("--version")) {
   process.exit(0);
 }
 
+// `--claude-code-version` prints the Claude Code version THIS runner runs (bare, as in `2.1.329`) and
+// exits; nothing when the Agent SDK is not installed. The runner never starts the `claude` on PATH: the SDK
+// carries its own Claude Code, pinned by this runner's lockfile, so the terminal's `claude --version` can
+// differ (the owner's Mac on 23/11/2026: terminal 2.1.330, runner 2.1.329). The SDK records the version it
+// carries as `claudeCodeVersion` in its package.json, read here without loading the SDK.
+if (process.argv.includes("--claude-code-version")) {
+  const { readFileSync } = await import("node:fs");
+  const { dirname, resolve } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  let v = "";
+  try {
+    const raiz = dirname(fileURLToPath(import.meta.url));
+    const sdk = resolve(raiz, "node_modules/@anthropic-ai/claude-agent-sdk/package.json");
+    v = String(JSON.parse(readFileSync(sdk, "utf8")).claudeCodeVersion ?? "");
+  } catch { /* no SDK beside the runner: the desktop says so instead of guessing */ }
+  if (v) process.stdout.write(`${v}\n`);
+  process.exit(v ? 0 : 1);
+}
+
 // ------------------------------------------------------- subscription auth, normalized
 //
 // This block used to sit BELOW the `--modelos` branch, which exits the process — so model

@@ -189,6 +189,7 @@ write in that turn. Tests: `politica.test.mjs`, `plano.test.mjs`.
 | Flag | What it does |
 |---|---|
 | `--version` | Prints `claude-runner <version>` from `package.json` (a version carrier of this repository) and exits |
+| `--claude-code-version` | Prints the Claude Code version the Agent SDK beside it carries (`claudeCodeVersion`, e.g. `2.1.329`) and exits; nothing and exit 1 without the SDK. Not the `claude` on PATH, which the runner never starts (1.43.4) |
 | `--modelos` | Prints the Claude Code catalogue from the SDK's `supportedModels()` and exits; a control request, no turn |
 | `--uso` | Prints the plan limits of the account it was started under (`uso.mjs`) and exits; no turn, no tokens |
 | `--model`, `--effort`, `--cwd` | Model, effort level and project folder of the session |

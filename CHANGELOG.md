@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.43.4 - The About dialog tells the Code mode engines apart, with a row for the Claude Code the app runs
+
+On 23/11/2026 the owner read «Motor do Code v0.16.6 (empacotado)» in the About dialog, compared it with `claude --version`
+2.1.330 in a terminal, and asked whether something was wrong. Nothing was: that row is anna, the ShvIA engine of the Code
+mode, bundled with the app and at its latest release (0.16.6). The dialog had no row for Claude Code at all.
+
+- **A «Claude Code» row**, between anna and Codex, with the version the Code mode actually runs, then the runner
+  (`v2.1.329 (runner 1.43.4)`). That is NOT the `claude` on PATH: the runner never starts it, and the Agent SDK it loads
+  carries its own Claude Code, pinned by `claude-runner/package-lock.json` (0.3.329 → 2.1.329 today). The terminal can be
+  ahead or behind; the row says which one the app uses.
+  - `claude-runner --claude-code-version` prints it, read from the SDK's own `package.json` (`claudeCodeVersion`) without
+    loading the SDK, and prints nothing (exit 1) when the SDK is not installed. The row then reads «Agent SDK não instalado».
+  - The app asks only a runner from 1.43.4 on: an older one does not know the flag and would start in host mode with it,
+    the same guard the Codex row has.
+- **«Motor do Code (anna)»** instead of «Motor do Code», with a tooltip, so the row is not read as Claude Code again.
+- «Copiar» carries the new row.
+
+Measured: the new runner mode against the Agent SDK installed on this Linux machine printed `2.1.301` (its SDK is 0.3.301,
+an older install), and with no SDK beside it printed nothing and exited 1. The Rust text of the row has unit cases. The
+dialog itself was not opened on a Mac.
+
 ## 1.43.3 - Pin the Pentest engine at 1.2.57, so a run started from the site's «Executar» sends its final state and report and closes on the site
 
 Every run started from the site's «Executar» stayed RUNNING and partial in «Meus testes», with no report on the site. On

@@ -467,6 +467,12 @@ for the Linux/macOS profile, Windows refusal and pending integrated pilot.
   which `codex` it starts. Two Node starts, so the row says `verificando…` and a background thread fills it in. It says
   `não instalado` with no runner, `codex não encontrado (runner …)`, or `? (runner 1.6.0)` for a runner older than the flag,
   which is never asked; Copiar carries it.
+- **About shows Claude Code, and names the anna row (1.43.4).** A *Claude Code* row between *Motor do Code (anna)* and
+  *Motor do Codex*, the owner's question of 23/11/2026: the Claude Code the Code mode runs, which is the one inside the
+  claude-runner's Agent SDK (pinned by its lockfile), not the `claude` on PATH, then the runner (`v2.1.329 (runner 1.43.4)`).
+  Asked as `claude-runner --claude-code-version` (runner 1.43.4+), off the UI thread like the Codex row. It says
+  `Agent SDK não instalado (runner …)` when the SDK is missing and `? (runner …)` for an older runner. The anna row is now
+  labeled *Motor do Code (anna)*, so it is not read as Claude Code.
 
 ## Local Code, the bridge and session capabilities
 
