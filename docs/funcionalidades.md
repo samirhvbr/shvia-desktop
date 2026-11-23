@@ -181,6 +181,11 @@ The first long runs on the owner's Mac (30/10 and 02/11/2026) found what a Linux
   history and of the control snapshot (`cached_input_tokens`, `unknown_cache_attempts`, 1.2.53: the two keys that 1.40.2 sends arrive
   filled instead of null), and the sandbox image `strix-sandbox:1.4.1-shvia-ac827485f0ca`, pinned by digest, with Opengrep 1.31.0 and its
   offline rules (1.2.54), downloaded once by a computer that has 1.3.1.
+- **Engine 1.2.57 (1.43.3)** exports the history and the report of a run started from the site's «Executar» (scope-only, no identity
+  context), which every engine before it refused (`assessment_history_unavailable`). The sync worker can then send such a run's final
+  state and report, so it stops reading RUNNING on the site. Its `context_sha256` is the sha256 of `null`; this app checks only that it is
+  64 hex characters. It also carries 1.2.56, which reads the run record up to 64 MiB in both exports and exports a run that stopped before
+  its first test.
 - **Open Docker (1.39.0)**: on a Mac whose Docker is installed and not answering, `pentestPreflight().docker.canOpen` is `true`
   and `pentestOpenDocker()` hands Docker Desktop to the system (`/usr/bin/open` with the app's own path). It asks Docker first,
   launches only for a daemon that verifiably does not answer, and answers `starting` for 45 s afterwards instead of launching

@@ -12,7 +12,10 @@ Desktop 1.25.x within 1.x, Pentest 1.2.30+ within 1.x (1.26.2: the probe reads `
 > **Ler primeiro.** Notas de continuidade: o que está **em aberto**. O que já
 > está implementado mora em [`../docs/funcionalidades.md`](../docs/funcionalidades.md),
 > e o porquê das decisões em [`../docs/decisoes.md`](../docs/decisoes.md).
-> Last updated: **17/11/2026** (version 1.43.0). 1.43.0 = up to five assessments at once (PT-33): one recovery descriptor per run,
+> Last updated: **23/11/2026** (version 1.43.3). 1.43.3 = the pin moves to engine 1.2.57 (Release `shvia-v1.2.57`), which
+> exports the history and report of a run started from the site's «Executar» (no identity context), so the owner's five runs of
+> 06/11 to 21/11 can close on the site; it also carries 1.2.56 (exports read `run.json` up to 64 MiB; a run with no catalog exports);
+> open: those five runs actually closing after the update, on the owner's Mac. Previously, 1.43.0 = up to five assessments at once (PT-33): one recovery descriptor per run,
 > `localId` on every run-facing call (none = the run a page before PT-33 got), `pentestStatus().runs/capacity/problems`, and a
 > saved run that cannot be read reported for that run instead of blocking everything; open: the WEB page that lists the runs,
 > names the run in each call and turns the "Avaliação em andamento" check into information, and several real runs at once on a

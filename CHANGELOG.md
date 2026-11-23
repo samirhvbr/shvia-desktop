@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.43.3 - Pin the Pentest engine at 1.2.57, so a run started from the site's «Executar» sends its final state and report and closes on the site
+
+Every run started from the site's «Executar» stayed RUNNING and partial in «Meus testes», with no report on the site. On
+23/11/2026 the owner's five runs, 06/11 to 21/11, were all still RUNNING although each had ended on the engine.
+
+- **Why.** The site's quick authorization approves a policy and no identity context. Every engine up to 1.2.56 refused to
+  export the history or the report of such a run (`load_review_scope` required the context), answering
+  `{"error":"assessment_history_unavailable"}`. The sync worker sends a finished run's final state only from that export,
+  so it tried again on every pass (at most once an hour since 1.43.0), and the site kept the last snapshot taken while the
+  run was alive.
+- **The fix is in the engine.** Fork 1.2.57 (samirhvbr/strix#66) exports such a run, with `context_sha256` set to the
+  sha256 of `null`. This app's checks stay as they are: it does not check a history export's `context_sha256`, and for a
+  report it only requires 64 hex characters (`prepare_report` in `sync.rs`). The site accepts the history and the report
+  of an already claimed run under an expired grant.
+- **What the pin does.** `pentest-engine.json` moves from 1.2.55 to 1.2.57, with the sha256 and size of each asset of the
+  Release `shvia-v1.2.57`. The pin also carries 1.2.56, which never had a Release of its own: both exports read the run
+  record up to 64 MiB, and a run that stopped before its first test exports with no tests. The floor
+  (`PENTEST_MINIMO`) does not move: an older engine still runs, it just cannot close such a run.
+- **After the update.** The app restarts, which clears each record's retry wait, so the next sync pass exports those
+  runs again. Their outgoing records are intact, so each sends its final state, then its report where the person
+  consented.
+
+- **Measured with the packaged engines.** On a synthetic scope-only run, the Linux x86_64 PyInstaller builds were each started
+  with only `HOME`, `PATH` and `LITELLM_MODE` set. 1.2.55 answered `history` and `report-export` with exit 1
+  (`assessment_history_unavailable`, `assessment_report_unavailable`), the failure of the owner's runs. 1.2.57 answered both with exit 0
+  and `context_sha256` = `74234e98…b90b`, the sha256 of `null`.
+- **Assets.** `pentest-aarch64-apple-darwin` was built on the owner's Mac from the tag: 95,382,752 bytes, sha256 `17f4d505…`,
+  `--fork-version` 1.2.57. `pentest-x86_64-unknown-linux-gnu` was built on Linux from the tag: 107,646,808 bytes, sha256
+  `d9adaca9…`. The sha256 values pinned here are the ones GitHub reports for the attached files.
+
+Not measured: the Mac engine running `history` on a real run, and the owner's five runs actually closing.
+
 ## 1.43.2 - Move cookie to 0.18.3, past the advisory cargo deny started refusing on 23/11/2026
 
 RustSec published RUSTSEC-2026-0594 on 23/11/2026: in `cookie` before 0.18.3, private (encrypted) cookies added after a
