@@ -221,12 +221,12 @@ jobs:
       # the `time = "=0.3.41"` pin had RUSTSEC-2026-0009, exactly where F-31 predicted.
       # Since 1.6.5 it runs every check (advisories, bans, licenses, sources): licenses used
       # to fail on the app crate itself, which is private (`publish = false`).
-      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+      - uses: EmbarkStudios/cargo-deny-action@17aeb3c839e42274e2b8adf721c8c65edfdc74dd # v2.1.3
         with:
           manifest-path: src-tauri/Cargo.toml
           command: check
       # The capture sidecar has its own lock file, so it is checked on its own, against the same policy.
-      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+      - uses: EmbarkStudios/cargo-deny-action@17aeb3c839e42274e2b8adf721c8c65edfdc74dd # v2.1.3
         with:
           manifest-path: src-tauri/traffic-capture/Cargo.toml
           arguments: --all-features --config src-tauri/deny.toml
