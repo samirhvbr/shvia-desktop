@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.44.1 - A published Desktop build refuses an anna older than the latest shvia-code Release
+
+On 23/11/2026 the owner asked for the Code engine bundled in a Desktop release to be automatic too. anna is packaged from
+the build machine (`--anna`, `SHVIA_ANNA_BIN`, or the `anna` on PATH), and the only gate was the floor in
+`scripts/stage-anna.mjs` (`ANNA_MINIMO`, 0.16.5): a release could carry any anna above it, however far behind the latest.
+
+- `scripts/stage-anna.mjs --exigir-ultima` compares the engine it would package with the latest Release of
+  `samirhvbr/shvia-code`, read from the public GitHub API. An older one stops the build with the version it found, the
+  latest, and how to fix it. Not being able to read the Release stops it too: a check that passes when it cannot look is
+  not one.
+- **Both paths check it:** staging, and `--reuse-check`, so a reused bundle behind the latest Release is rebuilt (and the
+  staging that follows refuses it again unless the anna found now is the latest).
+- `./build-local.sh --publish` passes the flag; a build that is not published does not. `SHVIA_ANNA_ANTIGO_OK=1` publishes
+  an older engine on purpose and prints that it did.
+- Not covered: `build-local.ps1` (Windows), which has no `--publish` and does not pass the flag.
+
+Measured with stand-in binaries that print `anna 0.16.5` and `anna 0.16.6`, against the real API (latest Release 0.16.6):
+- with the flag: 0.16.5 refused (exit 1), 0.16.6 staged;
+- 0.16.5 with `SHVIA_ANNA_ANTIGO_OK=1`, and without the flag: staged;
+- `--reuse-check`: exit 3 for a bundle of 0.16.5, and exit 0 for the real anna 0.16.6.
+
+`prova:reuso` and `prova:sem-anna` pass.
+
 ## 1.44.0 - The app keeps the Codex CLI current once a day, through the manager that installed it
 
 On 23/11/2026 the owner's About dialog read «Motor do Codex v0.163.0 (runner 1.7.0)» on Desktop 1.43.2, while npm and the
