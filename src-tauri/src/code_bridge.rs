@@ -50,6 +50,8 @@ use sessao::*;
 pub(crate) mod resume_owner;
 mod atualizacao;
 pub(crate) use atualizacao::na_abertura;
+// The Codex CLI follows its releases, once a day, after the runners pass (1.44.0).
+mod codex_em_dia;
 mod aparelho;
 // IPv4 Search (1.31.0): a TCP connect scan of one private range, from this computer. Not glob-imported: the arms below address it by path.
 mod ipv4_search;
@@ -68,7 +70,7 @@ pub(crate) use pentest::engine_update as pentest_engine_update;
 mod traffic;
 pub(crate) use traffic::release as release_traffic;
 pub use sessao::Sidecars;
-pub(crate) use motores::{engine_status, versao_do_anna, versao_do_codex};
+pub(crate) use motores::{engine_status, versao_do_anna, versao_do_claude, versao_do_codex};
 
 /// How long each external call may take before the bridge gives up on it (1.6.19).
 ///

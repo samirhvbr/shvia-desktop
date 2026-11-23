@@ -492,6 +492,19 @@ pub(crate) fn na_abertura(app: tauri::AppHandle) {
         for (base, resultado) in resultados {
             eprintln!("ShvIA: runner {base}: {resultado:?}");
         }
+        // Then the Codex CLI the runner starts (1.44.0): after the runners, so the runner asked is the one this app
+        // brought, and in this same background thread.
+        let codex = super::codex_em_dia::passar_pelo_codex(&super::codex_em_dia::Maquina {
+            registro: app.path().app_config_dir().ok().map(|d| d.join(super::codex_em_dia::REGISTRO)),
+            agora: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
+            env: &|k| std::env::var(k).ok(),
+            versao_do_runner: &super::motores::versao_do_codex_runner,
+            atualizar: &super::motores::atualizar_codex_pelo_runner,
+            avisar: &avisar,
+        });
+        if let Some(l) = codex {
+            eprintln!("ShvIA: codex: {l:?}");
+        }
     });
 }
 

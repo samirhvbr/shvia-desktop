@@ -492,7 +492,8 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
     '<dt>Build desktop</dt><dd id="shvia-about-build"></dd>' +
     '<dt>ShvIA servidor</dt><dd id="shvia-about-server" aria-live="polite">…</dd>' +
     '<dt>Workspace</dt><dd id="shvia-about-workspace" aria-live="polite">…</dd>' +
-    '<dt>Motor do Code</dt><dd id="shvia-about-anna"></dd>' +
+    '<dt title="O motor próprio do ShvIA no Modo Code, empacotado com o app">Motor do Code (anna)</dt><dd id="shvia-about-anna"></dd>' +
+    '<dt title="O Claude Code que o Modo Code roda: o do Agent SDK do claude-runner, não o claude do terminal">Claude Code</dt><dd id="shvia-about-claude" aria-live="polite">verificando…</dd>' +
     '<dt>Motor do Codex</dt><dd id="shvia-about-codex" aria-live="polite">verificando…</dd>' +
     '<dt>Motor do Pentest</dt><dd id="shvia-about-pentest" aria-live="polite"></dd>' +
     '<dt id="shvia-about-pentest-required-label" title="O motor que esta versão do Desktop traz fixado">Pentest deste app</dt><dd id="shvia-about-pentest-required"></dd>' +
@@ -665,9 +666,10 @@ const ABOUT_MODAL_JS: &str = r#"(function () {
     // o diagnóstico de 19/08 custar uma manhã.
     var pentestFound = card.querySelector('#shvia-about-pentest').textContent;
     var codexFound = card.querySelector('#shvia-about-codex').textContent;
+    var claudeFound = card.querySelector('#shvia-about-claude').textContent;
     var text = 'ShvIA Desktop\nBuild (desktop): v__SHVIA_BUILD__\nShvIA (servidor): ' + serverVersion +
       '\nWorkspace: ' + workspaceVersion +
-      '\nMotor do Code: __SHVIA_ANNA__\nMotor do Codex: ' + codexFound + '\nMotor do Pentest: ' + pentestFound +
+      '\nMotor do Code (anna): __SHVIA_ANNA__\nClaude Code: ' + claudeFound + '\nMotor do Codex: ' + codexFound + '\nMotor do Pentest: ' + pentestFound +
       (pentestRequired ? ' · deste app ' + pentestRequired + '\nPentest mínimo (servidor): ' + pentestMin : '') +
       '\nServidor: ' + host + '\n' + env;
     function done(ok) {
@@ -1702,14 +1704,18 @@ pub fn run() {
                     let _ = win.unminimize();
                     let _ = win.set_focus();
                     let _ = win.eval(&js);
-                    // The Codex row asks the runner, two Node starts: off the UI thread, like the Pentest probe.
-                    {
+                    // The Codex and Claude Code rows ask their runners, two Node starts each: off the UI thread, like
+                    // the Pentest probe.
+                    for (id, sonda) in [
+                        ("shvia-about-codex", code_bridge::versao_do_codex as fn() -> String),
+                        ("shvia-about-claude", code_bridge::versao_do_claude as fn() -> String),
+                    ] {
                         let win = win.clone();
                         std::thread::spawn(move || {
-                            let texto = code_bridge::versao_do_codex();
+                            let texto = sonda();
                             let literal = serde_json::to_string(&texto).unwrap_or_else(|_| "\"?\"".into());
                             let _ = win.eval(format!(
-                                "(function(){{var e=document.getElementById('shvia-about-codex');if(e){{e.textContent={literal};}}}})();"
+                                "(function(){{var e=document.getElementById('{id}');if(e){{e.textContent={literal};}}}})();"
                             ));
                         });
                     }

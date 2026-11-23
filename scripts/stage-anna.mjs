@@ -52,6 +52,47 @@ const opt = (n) => {
   return i >= 0 && args[i + 1] ? args[i + 1] : null;
 };
 
+// ── --exigir-ultima: a release packages the latest anna, not just one above the floor (1.44.1) ─────────
+// The floor (`ANNA_MINIMO`) stops a release that lacks a fix someone wrote down. It does not stop a release that is
+// merely behind, and the anna this script packages is whatever is installed on the build machine. The owner asked on
+// 23/11/2026 for a Desktop release never to carry an older anna than the latest shvia-code Release. `build-local.sh
+// --publish` passes `--exigir-ultima`; a build that is not published is not asked. The latest Release is read from the
+// public GitHub API. Not being able to read it refuses too (a check that passes when it cannot look is not a check);
+// `SHVIA_ANNA_ANTIGO_OK=1` publishes an older anna on purpose, and says so.
+const EXIGIR_ULTIMA = args.includes("--exigir-ultima");
+
+async function ultimaReleaseDoAnna() {
+  const r = await fetch("https://api.github.com/repos/samirhvbr/shvia-code/releases/latest", {
+    headers: { "User-Agent": "shvia-desktop-build", Accept: "application/vnd.github+json" },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const tag = String((await r.json()).tag_name ?? "").replace(/^v/, "");
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(tag);
+  if (!m) throw new Error(`the latest Release tag is "${tag}"`);
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+/** Why `partes` must not be published as the bundled anna, or null when it may. */
+async function atrasDaUltima(partes, texto) {
+  if (!EXIGIR_ULTIMA) return null;
+  if (process.env.SHVIA_ANNA_ANTIGO_OK === "1") {
+    console.warn(`[stage-anna] SHVIA_ANNA_ANTIGO_OK=1: ${texto} is published without checking the latest anna Release.`);
+    return null;
+  }
+  let ultima;
+  try {
+    ultima = await ultimaReleaseDoAnna();
+  } catch (e) {
+    return `could not read the latest shvia-code Release (${e.message}); SHVIA_ANNA_ANTIGO_OK=1 publishes without checking`;
+  }
+  if (compara(partes, ultima) < 0) {
+    return `${texto} is older than the latest anna Release ${ultima.join(".")}; install it (cd ../shvia-code && ./install.sh), `
+      + "pass --anna with it, or set SHVIA_ANNA_ANTIGO_OK=1 to publish the older one on purpose";
+  }
+  return null;
+}
+
 /** Target triple do Rust — o sufixo que o Tauri exige no nome do sidecar. */
 function targetTriple() {
   try {
@@ -122,6 +163,10 @@ if (args.includes("--reuse-check")) {
 
   if (temBundle && !pBundle) recusa("the staged Anna did not report a release version");
   if (pBundle && compara(pBundle, ANNA_MINIMO) < 0) recusa(`the bundle carries ${vBundle}, below Anna ${ANNA_MINIMO.join(".")}`);
+  // A bundle behind the latest Release is rebuilt; the staging that follows refuses it again unless the anna found now
+  // is the latest one.
+  const atras = pBundle ? await atrasDaUltima(pBundle, `the bundle's ${vBundle}`) : null;
+  if (atras) recusa(atras);
 
   if (!achado) {
     console.log(`anna in the bundle: ${vBundle ?? "none"} (no other anna found)`);
@@ -282,6 +327,12 @@ if (menor !== -1 && partes[menor] < ANNA_MINIMO[menor]) {
   console.error("            Packaging it ships a Code engine without the fixes the floor exists for (see ANNA_MINIMO).");
   console.error("            Conserte instalando o anna atual e rodando de novo:");
   console.error("              cd ../SHVIA-CODE (ou ../shvia-code) && ./install.sh   # ou: --from /caminho/para/anna");
+  process.exit(1);
+}
+
+const atras = await atrasDaUltima(partes, `${origem} ("${versao}")`);
+if (atras) {
+  console.error(`[stage-anna] ${atras}.`);
   process.exit(1);
 }
 

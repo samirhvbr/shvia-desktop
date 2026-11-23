@@ -61,7 +61,12 @@ The minimum is defined in the script; a version merely printed in an old build l
 a compatibility check. It is `anna` 0.16.5: gateway/memory requests must not follow redirects,
 and this also includes 0.16.3's Auto shell approval fixes. Both staging and bundle reuse
 reject an engine below that floor. A build machine whose PATH `anna` is older stops the build: install the current one
-from SHVIA-CODE (`./install.sh` builds it from source) or pass `--anna <path>`. Absence removes a stale staged binary, and the wrappers override
+from SHVIA-CODE (`./install.sh` builds it from source) or pass `--anna <path>`.
+**A published build also requires the latest anna Release (1.44.1).** `./build-local.sh --publish` passes
+`--exigir-ultima`, and both staging and bundle reuse then compare the engine with the latest Release of
+`samirhvbr/shvia-code` (public GitHub API): an older one stops the publish, and so does not being able to read the
+Release. `SHVIA_ANNA_ANTIGO_OK=1` publishes an older engine on purpose and says so in the log. A build that is not
+published is not asked, and `build-local.ps1` (Windows, no `--publish`) does not pass the flag. Absence removes a stale staged binary, and the wrappers override
 `externalBin` with an empty list. A path named with `--anna` or `SHVIA_ANNA_BIN` that does not exist is not an
 absence: it stops the build (1.38.13), because a typo used to publish a release with no Code engine. `--no-anna`/`-NoAnna` therefore means **no bundled SHVIA
 engine**, not that every other local/remote Code engine disappears. An independently

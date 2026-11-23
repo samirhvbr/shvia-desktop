@@ -1,5 +1,82 @@
 # Changelog
 
+## 1.44.1 - A published Desktop build refuses an anna older than the latest shvia-code Release
+
+On 23/11/2026 the owner asked for the Code engine bundled in a Desktop release to be automatic too. anna is packaged from
+the build machine (`--anna`, `SHVIA_ANNA_BIN`, or the `anna` on PATH), and the only gate was the floor in
+`scripts/stage-anna.mjs` (`ANNA_MINIMO`, 0.16.5): a release could carry any anna above it, however far behind the latest.
+
+- `scripts/stage-anna.mjs --exigir-ultima` compares the engine it would package with the latest Release of
+  `samirhvbr/shvia-code`, read from the public GitHub API. An older one stops the build with the version it found, the
+  latest, and how to fix it. Not being able to read the Release stops it too: a check that passes when it cannot look is
+  not one.
+- **Both paths check it:** staging, and `--reuse-check`, so a reused bundle behind the latest Release is rebuilt (and the
+  staging that follows refuses it again unless the anna found now is the latest).
+- `./build-local.sh --publish` passes the flag; a build that is not published does not. `SHVIA_ANNA_ANTIGO_OK=1` publishes
+  an older engine on purpose and prints that it did.
+- Not covered: `build-local.ps1` (Windows), which has no `--publish` and does not pass the flag.
+
+Measured with stand-in binaries that print `anna 0.16.5` and `anna 0.16.6`, against the real API (latest Release 0.16.6):
+- with the flag: 0.16.5 refused (exit 1), 0.16.6 staged;
+- 0.16.5 with `SHVIA_ANNA_ANTIGO_OK=1`, and without the flag: staged;
+- `--reuse-check`: exit 3 for a bundle of 0.16.5, and exit 0 for the real anna 0.16.6.
+
+`prova:reuso` and `prova:sem-anna` pass.
+
+## 1.44.0 - The app keeps the Codex CLI current once a day, through the manager that installed it
+
+On 23/11/2026 the owner's About dialog read «Motor do Codex v0.163.0 (runner 1.7.0)» on Desktop 1.43.2, while npm and the
+Homebrew cask had Codex 0.171.0. The app updated itself and its runners; the `codex` the Codex runner starts is the person's
+own install, and nothing updated it. The owner asked for it to be automatic (ADR-051).
+
+- **At start, after the runners, at most once every 20 hours**, the app runs `codex-runner --atualizar-codex`
+  (`src-tauri/src/code_bridge/codex_em_dia.rs`). The runner (1.8.0, `codex-runner/atualizar.mjs`) resolves the `codex` it
+  starts, reads where the binary really lives and updates it through that manager:
+  - Homebrew cask (`…/Caskroom/codex/…`): `brew upgrade --cask codex`, with the `brew` of that prefix. Homebrew decides; the
+    npm registry, which can be ahead of the cask for hours, is not asked, so a cask with nothing newer is "up to date".
+  - Homebrew formula (`…/Cellar/codex/…`): `brew upgrade codex`.
+  - npm global (`…/node_modules/@openai/codex/…`, also the shim on Windows): `npm install -g @openai/codex@<latest>`, with the
+    npm of that prefix, only when the registry has a newer version.
+  - Anything else (the standalone installer, a checkout): nothing runs.
+- **What the person is told:** an update, with both versions; a failure, once per newest version, with the reason and the
+  command to run by hand; an install the app does not manage, once per newest version, that a newer Codex exists. Up to date
+  says nothing. The last pass and the notices given are kept in `codex-atualizacao.json` in the app's config folder.
+- **`SHVIA_CODEX_AUTO=0`** (the spellings of `SHVIA_RUNNERS_AUTO`) turns it off. A runner older than 1.8.0 is never asked: it
+  would start in host mode with the flag.
+- The runner's installers copy `atualizar.mjs`; `prova:politica` runs its tests.
+
+Measured on this Linux machine:
+- the npm path end to end, in a throwaway prefix: Codex 0.170.0 installed there, the mode answered
+  `{"resultado":"atualizado","atual":"0.170.0","ultima":"0.171.0","novo":"0.171.0","metodo":"npm"}` in 5 s, and `codex
+  --version` then read 0.171.0;
+- the standalone install here (0.164.0): `sem_metodo`, nothing run.
+
+The decision (`atualizar.mjs`, 8 cases) and the pass (`codex_em_dia.rs`, 5 cases: update told, next pass a day later, a
+failure told once per version, an unmanaged install only told, off/old runner/no runner ask nothing) have tests.
+
+Not measured: a real Homebrew upgrade (no Homebrew here), and the pass inside the app on a Mac.
+
+## 1.43.4 - The About dialog tells the Code mode engines apart, with a row for the Claude Code the app runs
+
+On 23/11/2026 the owner read «Motor do Code v0.16.6 (empacotado)» in the About dialog, compared it with `claude --version`
+2.1.330 in a terminal, and asked whether something was wrong. Nothing was: that row is anna, the ShvIA engine of the Code
+mode, bundled with the app and at its latest release (0.16.6). The dialog had no row for Claude Code at all.
+
+- **A «Claude Code» row**, between anna and Codex, with the version the Code mode actually runs, then the runner
+  (`v2.1.329 (runner 1.43.4)`). That is NOT the `claude` on PATH: the runner never starts it, and the Agent SDK it loads
+  carries its own Claude Code, pinned by `claude-runner/package-lock.json` (0.3.329 → 2.1.329 today). The terminal can be
+  ahead or behind; the row says which one the app uses.
+  - `claude-runner --claude-code-version` prints it, read from the SDK's own `package.json` (`claudeCodeVersion`) without
+    loading the SDK, and prints nothing (exit 1) when the SDK is not installed. The row then reads «Agent SDK não instalado».
+  - The app asks only a runner from 1.43.4 on: an older one does not know the flag and would start in host mode with it,
+    the same guard the Codex row has.
+- **«Motor do Code (anna)»** instead of «Motor do Code», with a tooltip, so the row is not read as Claude Code again.
+- «Copiar» carries the new row.
+
+Measured: the new runner mode against the Agent SDK installed on this Linux machine printed `2.1.301` (its SDK is 0.3.301,
+an older install), and with no SDK beside it printed nothing and exited 1. The Rust text of the row has unit cases. The
+dialog itself was not opened on a Mac.
+
 ## 1.43.3 - Pin the Pentest engine at 1.2.57, so a run started from the site's «Executar» sends its final state and report and closes on the site
 
 Every run started from the site's «Executar» stayed RUNNING and partial in «Meus testes», with no report on the site. On

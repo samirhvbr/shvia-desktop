@@ -1073,9 +1073,9 @@ can_reuse_build() {
   else
     local anna_rc=0
     if [ -n "$ANNA_FROM" ]; then
-      REUSE_ANNA="$(node scripts/stage-anna.mjs --reuse-check --from "$ANNA_FROM" 2>&1)" || anna_rc=$?
+      REUSE_ANNA="$(node scripts/stage-anna.mjs --reuse-check --from "$ANNA_FROM" ${ANNA_EXIGIR_ULTIMA:+"$ANNA_EXIGIR_ULTIMA"} 2>&1)" || anna_rc=$?
     else
-      REUSE_ANNA="$(node scripts/stage-anna.mjs --reuse-check 2>&1)" || anna_rc=$?
+      REUSE_ANNA="$(node scripts/stage-anna.mjs --reuse-check ${ANNA_EXIGIR_ULTIMA:+"$ANNA_EXIGIR_ULTIMA"} 2>&1)" || anna_rc=$?
     fi
     if [ "$anna_rc" -ne 0 ]; then
       REUSE_MOTIVO="$REUSE_ANNA"
@@ -1449,6 +1449,11 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+# A published release packages the latest anna Release, not just one above the floor (1.44.1, scripts/stage-anna.mjs
+# --exigir-ultima). SHVIA_ANNA_ANTIGO_OK=1 publishes an older one on purpose.
+ANNA_EXIGIR_ULTIMA=""
+if [ "$PUBLISH" = "1" ]; then ANNA_EXIGIR_ULTIMA="--exigir-ultima"; fi
+
 # 🔴 What is published must be what is committed (1.6.34). Nothing tied a publish to the
 # repository: uncommitted changes — this checkout is shared by several sessions — shipped as
 # "version X" and matched no commit. The owner chose: refuse when something the BUILD reads is
@@ -1679,9 +1684,9 @@ if [ "$REUSE" -eq 0 ]; then
     # Only anna's files: the folder also holds the Pentest engine, which --no-anna says nothing about.
     rm -f src-tauri/binaries/anna-*
   elif [ -n "$ANNA_FROM" ]; then
-    node scripts/stage-anna.mjs --from "$ANNA_FROM"
+    node scripts/stage-anna.mjs --from "$ANNA_FROM" ${ANNA_EXIGIR_ULTIMA:+"$ANNA_EXIGIR_ULTIMA"}
   else
-    node scripts/stage-anna.mjs
+    node scripts/stage-anna.mjs ${ANNA_EXIGIR_ULTIMA:+"$ANNA_EXIGIR_ULTIMA"}
   fi
 
   step "[D6] Pentest engine into the bundle"

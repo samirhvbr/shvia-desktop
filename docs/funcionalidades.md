@@ -467,6 +467,12 @@ for the Linux/macOS profile, Windows refusal and pending integrated pilot.
   which `codex` it starts. Two Node starts, so the row says `verificando…` and a background thread fills it in. It says
   `não instalado` with no runner, `codex não encontrado (runner …)`, or `? (runner 1.6.0)` for a runner older than the flag,
   which is never asked; Copiar carries it.
+- **About shows Claude Code, and names the anna row (1.43.4).** A *Claude Code* row between *Motor do Code (anna)* and
+  *Motor do Codex*, the owner's question of 23/11/2026: the Claude Code the Code mode runs, which is the one inside the
+  claude-runner's Agent SDK (pinned by its lockfile), not the `claude` on PATH, then the runner (`v2.1.329 (runner 1.43.4)`).
+  Asked as `claude-runner --claude-code-version` (runner 1.43.4+), off the UI thread like the Codex row. It says
+  `Agent SDK não instalado (runner …)` when the SDK is missing and `? (runner …)` for an older runner. The anna row is now
+  labeled *Motor do Code (anna)*, so it is not read as Claude Code.
 
 ## Local Code, the bridge and session capabilities
 
@@ -682,6 +688,13 @@ only; **1.13.0 also installs missing runners** when Node.js 18+ is available, un
 installation is disabled with `SHVIA_RUNNERS_AUTO`. It does not downgrade a newer installed
 version. Code in `src-tauri/src/code_bridge/atualizacao.rs`,
 decision in ADR-036.
+
+**1.44.0 — the Codex CLI follows its releases.** After the runners, at most once every 20 hours, the app runs
+`codex-runner --atualizar-codex` (runner 1.8.0, `codex-runner/atualizar.mjs`): the `codex` the runner starts is updated
+through the manager that installed it, read from its real path (`brew upgrade --cask codex`, `brew upgrade codex`, or
+`npm install -g @openai/codex@<latest>` with the npm of that prefix). An install of any other kind is not touched; a newer
+version is announced once. An update is told with both versions, a failure once per newest version with the command to run.
+`SHVIA_CODEX_AUTO=0` turns it off. Code in `src-tauri/src/code_bridge/codex_em_dia.rs`, decision in ADR-051.
 
 ## Phase 8 — reaching the app from anywhere (1.10.0)
 

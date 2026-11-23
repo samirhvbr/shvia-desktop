@@ -223,6 +223,63 @@ pub(crate) fn versao_do_codex() -> String {
     texto_do_codex(&runner, &codex, sabe)
 }
 
+/// The first `claude-runner` that answers `--claude-code-version` (it follows the app's version). An older
+/// runner does not know the flag and would start in host mode with it, so it is never asked.
+const CLAUDE_CODE_VERSION_DESDE: &str = "1.43.4";
+
+/// The About dialog's "Claude Code" row: the Claude Code the runner runs, which is the one inside its Agent
+/// SDK and not the `claude` on PATH, then the runner. Two Node starts, so the caller runs this off the UI thread.
+pub(crate) fn versao_do_claude() -> String {
+    let Some(lancamento) = resolve_runner("claude-runner") else {
+        return "não instalado".into();
+    };
+    let perguntar = |flag: &str| -> String {
+        let mut sonda = lancamento.comando();
+        sonda.arg(flag);
+        saida_com_prazo(sonda, PRAZO_VERSAO)
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default()
+    };
+    // `claude-runner 1.43.4`: the number after the name.
+    let runner = perguntar("--version").rsplit(' ').next().unwrap_or_default().to_string();
+    let sabe = versao_limpa(&runner)
+        .is_some_and(|v| super::atualizacao::comparar(&v, CLAUDE_CODE_VERSION_DESDE) != std::cmp::Ordering::Less);
+    let claude = if sabe { perguntar("--claude-code-version") } else { String::new() };
+    texto_do_claude(&runner, &claude, sabe)
+}
+
+/// The row's text from the two answers. "Agent SDK não instalado" only when a runner that knows how to look
+/// finds no SDK beside it; a runner too old to ask leaves the version unknown.
+fn texto_do_claude(runner: &str, claude: &str, runner_sabe: bool) -> String {
+    let runner = versao_limpa(runner).map_or_else(|| "runner ?".to_string(), |v| format!("runner {v}"));
+    match versao_limpa(claude) {
+        Some(v) => format!("v{v} ({runner})"),
+        None if runner_sabe => format!("Agent SDK não instalado ({runner})"),
+        None => format!("? ({runner})"),
+    }
+}
+
+/// The installed `codex-runner`'s own version, or None without a runner or a clean answer (1.44.0).
+pub(super) fn versao_do_codex_runner() -> Option<String> {
+    let mut sonda = resolve_runner("codex-runner")?.comando();
+    sonda.arg("--version");
+    let saida = saida_com_prazo(sonda, PRAZO_VERSAO).ok().filter(|o| o.status.success())?;
+    versao_limpa(&String::from_utf8_lossy(&saida.stdout))
+}
+
+/// `codex-runner --atualizar-codex` (1.44.0): its stdout, or why it did not answer.
+pub(super) fn atualizar_codex_pelo_runner() -> Result<String, String> {
+    let mut sonda = resolve_runner("codex-runner").ok_or("codex-runner não encontrado")?.comando();
+    sonda.arg("--atualizar-codex");
+    let saida = saida_com_prazo(sonda, super::codex_em_dia::PRAZO_ATUALIZACAO).map_err(|e| e.to_string())?;
+    if !saida.status.success() {
+        return Err(format!("o runner saiu com {}", saida.status));
+    }
+    Ok(String::from_utf8_lossy(&saida.stdout).into_owned())
+}
+
 /// A version as a runner prints it, or `None` for anything else (empty, NDJSON, a sentence).
 fn versao_limpa(bruto: &str) -> Option<String> {
     let s = bruto.trim();
@@ -612,6 +669,9 @@ mod tests_motor {
         assert_eq!(texto_do_codex("1.6.0", "", false), "? (runner 1.6.0)");
         assert_eq!(texto_do_codex("{\"type\":\"error\"}", "", false), "? (runner ?)");
         assert_eq!(texto_do_codex("1.7.0", "{\"type\":\"model\"}", true), "codex não encontrado (runner 1.7.0)");
+        assert_eq!(texto_do_claude("1.43.4", "2.1.329", true), "v2.1.329 (runner 1.43.4)");
+        assert_eq!(texto_do_claude("1.43.4", "", true), "Agent SDK não instalado (runner 1.43.4)");
+        assert_eq!(texto_do_claude("1.43.2", "", false), "? (runner 1.43.2)");
     }
 
     /// A bundled program is the file beside the executable and nothing else: a program that IS on
