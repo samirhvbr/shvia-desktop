@@ -1,30 +1,17 @@
 param([IntPtr]$Handle, [string]$EvidenceDirectory)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
-Add-Type @'
-using System;
-using System.Runtime.InteropServices;
-
-public static class SmokeWindow {
-  [StructLayout(LayoutKind.Sequential)]
-  public struct Rect {
-    public int Left, Top, Right, Bottom;
-  }
-  [DllImport("user32.dll")]
-  public static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
-}
-'@
-$element = [Windows.Automation.AutomationElement]::FromHandle($Handle)
-$password = New-Object Windows.Automation.PropertyCondition(
-  [Windows.Automation.AutomationElement]::IsPasswordProperty, $true
+$element = [System.Windows.Automation.AutomationElement]::FromHandle($Handle)
+$password = [System.Windows.Automation.PropertyCondition]::new(
+  [System.Windows.Automation.AutomationElement]::IsPasswordProperty, $true
 )
-$document = New-Object Windows.Automation.PropertyCondition(
-  [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Document
+$document = [System.Windows.Automation.PropertyCondition]::new(
+  [System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Document
 )
 $deadline = (Get-Date).AddSeconds(35)
 do {
-  $page = $element.FindFirst([Windows.Automation.TreeScope]::Descendants, $document)
-  $field = $element.FindFirst([Windows.Automation.TreeScope]::Descendants, $password)
+  $page = $element.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $document)
+  $field = $element.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $password)
   if ($field -and $page.Current.Name -like '*ShvIA*') { break }
   Start-Sleep -Seconds 1
 } while ((Get-Date) -lt $deadline)

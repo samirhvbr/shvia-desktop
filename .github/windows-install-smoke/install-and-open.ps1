@@ -51,6 +51,46 @@ $env:SHVIA_RUNNERS_AUTO = '0'
 $env:SHVIA_CODEX_AUTO = '0'
 $env:RUST_BACKTRACE = '1'
 
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class SmokeWindow {
+  private delegate bool WindowCallback(IntPtr hwnd, IntPtr data);
+  [DllImport("user32.dll")]
+  private static extern bool EnumWindows(WindowCallback callback, IntPtr data);
+  [DllImport("user32.dll")]
+  private static extern bool IsWindowVisible(IntPtr hwnd);
+  [DllImport("user32.dll")]
+  private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint process);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+  private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int size);
+
+  public static IntPtr Find(uint processId, string expectedTitle) {
+    IntPtr result = IntPtr.Zero;
+    EnumWindows((hwnd, data) => {
+      uint owner;
+      GetWindowThreadProcessId(hwnd, out owner);
+      if (owner != processId || !IsWindowVisible(hwnd)) return true;
+      var text = new StringBuilder(256);
+      GetWindowText(hwnd, text, text.Capacity);
+      if (text.ToString() != expectedTitle) return true;
+      result = hwnd;
+      return false;
+    }, IntPtr.Zero);
+    return result;
+  }
+
+  [StructLayout(LayoutKind.Sequential)]
+  public struct Rect {
+    public int Left, Top, Right, Bottom;
+  }
+  [DllImport("user32.dll")]
+  public static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
+}
+'@
+
 function Get-ShvIAWindow($Process) {
   for ($attempt = 0; $attempt -lt 24; $attempt++) {
     $Process.Refresh()
@@ -61,7 +101,8 @@ function Get-ShvIAWindow($Process) {
       $crashes | Select-Object TimeCreated, ProviderName, Id, Message | Format-List | Out-String | Write-Output
       throw "Installed Desktop process exited before opening a window: $($Process.ExitCode)"
     }
-    if ($Process.MainWindowHandle -ne [IntPtr]::Zero) { return $Process.MainWindowHandle }
+    $window = [SmokeWindow]::Find($Process.Id, "ShvIA")
+    if ($window -ne [IntPtr]::Zero) { return $window }
     Start-Sleep -Seconds 1
   }
   throw "The installed Desktop process is still running (PID $($Process.Id)) without a visible window."
@@ -70,8 +111,7 @@ function Get-ShvIAWindow($Process) {
 $app = Start-Process -FilePath $exe.FullName -WorkingDirectory $exe.DirectoryName -PassThru
 try {
   $handle = Get-ShvIAWindow $app
-  if ($app.MainWindowTitle -ne 'ShvIA') { throw "Unexpected window title: '$($app.MainWindowTitle)'" }
-  Write-Output "Verified ShvIA $version, $engine, PID $($app.Id), title '$($app.MainWindowTitle)'"
+  Write-Output "Verified ShvIA $version, $engine, PID $($app.Id), title 'ShvIA'"
   Write-Output "Installed binary: $($exe.FullName)"
   Get-CimInstance Win32_Process -Filter "ParentProcessId = $($app.Id)" |
     Select-Object ProcessId, Name, SessionId | Format-Table | Out-String | Write-Output
