@@ -46,18 +46,36 @@ if ($LASTEXITCODE -ne 0 -or $engine -ne 'anna 0.16.6') { throw "Unexpected bundl
 
 # Enable loopback diagnostics only in the disposable process environment.
 $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=19383 --remote-debugging-address=127.0.0.1'
+$env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $env:RUNNER_TEMP 'ShvIA-WebView2'
 $env:SHVIA_RUNNERS_AUTO = '0'
 $env:SHVIA_CODEX_AUTO = '0'
+$env:RUST_BACKTRACE = '1'
+
+function Get-ShvIAWindow($Process) {
+  for ($attempt = 0; $attempt -lt 24; $attempt++) {
+    $Process.Refresh()
+    if ($Process.HasExited) {
+      $crashes = Get-WinEvent -FilterHashtable @{
+        LogName = 'Application'; Level = 2; StartTime = (Get-Date).AddMinutes(-2)
+      } -ErrorAction SilentlyContinue | Where-Object { $_.Message -like "*$($exe.Name)*" }
+      $crashes | Select-Object TimeCreated, ProviderName, Id, Message | Format-List | Out-String | Write-Output
+      throw "Installed Desktop process exited before opening a window: $($Process.ExitCode)"
+    }
+    if ($Process.MainWindowHandle -ne [IntPtr]::Zero) { return $Process.MainWindowHandle }
+    Start-Sleep -Seconds 1
+  }
+  throw "The installed Desktop process is still running (PID $($Process.Id)) without a visible window."
+}
+
 $app = Start-Process -FilePath $exe.FullName -WorkingDirectory $exe.DirectoryName -PassThru
 try {
-  node "$PSScriptRoot/verify-webview.mjs" $evidence
-  if ($LASTEXITCODE -ne 0) { throw 'The ShvIA login page did not load in WebView2.' }
-  $app.Refresh()
-  if ($app.HasExited -or $app.MainWindowHandle -eq [IntPtr]::Zero -or $app.MainWindowTitle -ne 'ShvIA') {
-    throw "Expected native ShvIA window. Title: '$($app.MainWindowTitle)'"
-  }
+  $handle = Get-ShvIAWindow $app
+  if ($app.MainWindowTitle -ne 'ShvIA') { throw "Unexpected window title: '$($app.MainWindowTitle)'" }
   Write-Output "Verified ShvIA $version, $engine, PID $($app.Id), title '$($app.MainWindowTitle)'"
   Write-Output "Installed binary: $($exe.FullName)"
+  Get-CimInstance Win32_Process -Filter "ParentProcessId = $($app.Id)" |
+    Select-Object ProcessId, Name, SessionId | Format-Table | Out-String | Write-Output
+  & "$PSScriptRoot/verify-window.ps1" -Handle $handle -EvidenceDirectory $evidence
 } finally {
   if (-not $app.HasExited) { Stop-Process -Id $app.Id }
 }

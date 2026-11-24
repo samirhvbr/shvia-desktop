@@ -1,4 +1,4 @@
-name: Windows installer smoke (1.44.1)
+name: Windows installer validation (1.44.1)
 
 on:
   push:
@@ -6,72 +6,11 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  build:
-    name: Package 1.44.1 for Windows x64
-    runs-on: windows-2025
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: a4888b44de6045b330f9970ce880d1e4e78501ba # Desktop tag 1.44.1
-          persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: samirhvbr/shvia-code
-          ref: feebd8761c6410f002166934f11823c6817994f3 # Anna tag 0.16.6
-          path: anna-source
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '22'
-      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
-        with:
-          targets: x86_64-pc-windows-msvc
-      - name: Build and check Anna 0.16.6
-        shell: pwsh
-        working-directory: anna-source
-        run: |
-          cargo build --release --locked --target x86_64-pc-windows-msvc
-          if ($LASTEXITCODE -ne 0) { throw "Anna build failed: $LASTEXITCODE" }
-          $engine = Join-Path $env:RUNNER_TEMP 'anna.exe'
-          Copy-Item target/x86_64-pc-windows-msvc/release/anna.exe $engine
-          $version = & $engine --version
-          if ($LASTEXITCODE -ne 0 -or $version -ne 'anna 0.16.6') { throw "Unexpected Anna version: $version" }
-          Write-Output $version
-          Remove-Item target -Recurse -Force
-      - name: Build NSIS and MSI using the Desktop packaging script
-        shell: pwsh
-        run: |
-          if ((git rev-parse HEAD) -ne 'a4888b44de6045b330f9970ce880d1e4e78501ba' -or
-              (Get-Content version.md -Raw).Trim() -ne '1.44.1' -or $env:RUNNER_ARCH -ne 'X64') {
-            throw 'Unexpected Desktop commit, version, or runner architecture'
-          }
-          ./build-local.ps1 -SkipGitPull -NoSign -Anna (Join-Path $env:RUNNER_TEMP 'anna.exe')
-      - name: Collect unsigned test installers and checksums
-        shell: pwsh
-        run: |
-          $exportDir = (New-Item -ItemType Directory test-packages).FullName
-          $bundle = 'src-tauri/target/release/bundle'
-          foreach ($relative in @('nsis/ShvIA_1.44.1_x64-setup.exe', 'msi/ShvIA_1.44.1_x64_en-US.msi')) {
-            $file = Join-Path $bundle $relative
-            Copy-Item -LiteralPath $file -Destination $exportDir
-            $hash = Get-FileHash -LiteralPath $file -Algorithm SHA256
-            $name = Split-Path $file -Leaf
-            "$($hash.Hash.ToLowerInvariant())  $name" | Set-Content -Encoding ascii "test-packages/$name.sha256"
-            Get-Content "test-packages/$name.sha256"
-          }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: shvia-desktop-1.44.1-windows-x64-unsigned-test-installers
-          path: test-packages
-          if-no-files-found: error
-          retention-days: 7
-
   validate:
     name: Install and open (${{ matrix.bundle }})
-    needs: build
     strategy:
       fail-fast: false
       matrix:
@@ -90,8 +29,10 @@ jobs:
         with:
           name: shvia-desktop-1.44.1-windows-x64-unsigned-test-installers
           path: test-packages
+          run-id: 45470555167
+          github-token: ${{ github.token }}
       - name: Install Desktop and verify the login page in its WebView2
-        shell: pwsh
+        shell: powershell
         env:
           INSTALLER_KIND: ${{ matrix.bundle }}
         run: |
