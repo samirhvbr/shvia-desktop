@@ -1,0 +1,44 @@
+name: Windows 1.43.3 update baseline
+
+on:
+  push:
+    branches: [test/windows-update-1.44.1]
+    paths: [.github/workflows/windows-update-baseline.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    name: Build the 1.43.3 MSI and NSIS baseline
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 84d45cf353b1aa8b26e20cef5bde3e5fe8e5c142 # Desktop tag 1.43.3
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Build Windows installers for the update test
+        shell: pwsh
+        run: |
+          if ((Get-Content version.md -Raw).Trim() -ne '1.43.3' -or $env:RUNNER_ARCH -ne 'X64') {
+            throw 'Unexpected baseline version or runner architecture'
+          }
+          ./build-local.ps1 -SkipGitPull -NoSign -NoAnna
+          $out = (New-Item -ItemType Directory baseline).FullName
+          $bundle = 'src-tauri/target/release/bundle'
+          foreach ($relative in @('nsis/ShvIA_1.43.3_x64-setup.exe', 'msi/ShvIA_1.43.3_x64_en-US.msi')) {
+            Copy-Item -LiteralPath (Join-Path $bundle $relative) -Destination $out
+          }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: shvia-desktop-1.43.3-windows-x64-update-baseline
+          path: baseline
+          if-no-files-found: error
+          retention-days: 7
