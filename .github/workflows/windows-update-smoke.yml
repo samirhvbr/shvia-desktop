@@ -1,0 +1,46 @@
+name: ShvIA Desktop 1.44.1 public Windows update
+
+on:
+  push:
+    branches: [test/windows-update-1.44.1]
+    paths:
+      - .github/workflows/windows-update-smoke.yml
+      - .github/windows-install-smoke/update-on-windows.ps1
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  upgrade:
+    name: Public upgrade via ${{ matrix.bundle }}
+    runs-on: windows-2025
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        bundle: [nsis, msi]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/windows-install-smoke
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          run-id: 45848166473
+          github-token: ${{ github.token }}
+          name: shvia-desktop-1.43.3-windows-x64-update-baseline
+          path: baseline
+      - name: Accept the updater offer from the installed Desktop
+        shell: powershell
+        env:
+          INSTALLER_KIND: ${{ matrix.bundle }}
+        run: ./.github/windows-install-smoke/update-on-windows.ps1 -InstallerKind $env:INSTALLER_KIND -PackageDirectory baseline -EvidenceDirectory update-evidence
+      - name: Save evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-upgrade-${{ matrix.bundle }}
+          path: update-evidence
+          if-no-files-found: warn
+          retention-days: 7
