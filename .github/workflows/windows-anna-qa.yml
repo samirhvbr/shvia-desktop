@@ -1,0 +1,54 @@
+name: Public Windows Desktop login and Anna 1.44.1
+
+on:
+  push:
+    branches: [test/windows-anna-login-1.44.1]
+    paths:
+      - .github/workflows/windows-anna-qa.yml
+      - .github/windows-anna-qa/**
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: Install, sign in, and read a local file with Anna
+    runs-on: windows-2025
+    environment: windows-1441-anna-qa
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/windows-anna-qa
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Install the public 1.44.1 NSIS package
+        shell: pwsh
+        run: |
+          if ($env:RUNNER_ARCH -ne 'X64') { throw 'Expected Windows x64' }
+          $installer = Join-Path $env:RUNNER_TEMP 'ShvIA_1.44.1_x64-setup.exe'
+          Invoke-WebRequest -Uri 'https://ai.shvia.org/storage/desktop/ShvIA_1.44.1_x64-setup.exe' -OutFile $installer
+          $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash
+          if ($hash -ne '3728b4eba18d5eca4a13a6f135c860b1c988093e29b02c6e31208eabcf30fbcc') {
+            throw 'The public installer checksum did not match the tested release'
+          }
+          $dir = Join-Path $env:RUNNER_TEMP 'ShvIA'
+          if (Test-Path -LiteralPath $dir) { throw 'Expected a clean VM' }
+          $setup = Start-Process -FilePath $installer -ArgumentList '/S', "/D=$dir" -PassThru -Wait
+          if ($setup.ExitCode -ne 0) { throw "Installer exited with code $($setup.ExitCode)" }
+          $exe = Get-ChildItem -LiteralPath $dir -File |
+            Where-Object { $_.Name -in @('ShvIA.exe', 'shvia-desktop.exe') } |
+            Select-Object -First 1
+          if (-not $exe -or $exe.VersionInfo.ProductVersion -ne '1.44.1') { throw 'Desktop version mismatch' }
+          $engine = & (Join-Path $dir 'anna.exe') --version
+          if ($LASTEXITCODE -ne 0 -or $engine -ne 'anna 0.16.6') { throw 'Bundled Anna version mismatch' }
+          "DESKTOP_QA_EXE=$($exe.FullName)" >> $env:GITHUB_ENV
+          Write-Output 'Verified public SHA-256, installed Desktop 1.44.1 and bundled Anna 0.16.6'
+      - name: Authenticate in the Desktop and exercise local Anna
+        shell: powershell
+        env:
+          QA_EMAIL: ${{ secrets.QA_EMAIL }}
+          QA_PASSWORD: ${{ secrets.QA_PASSWORD }}
+        run: ./.github/windows-anna-qa/run-desktop.ps1
