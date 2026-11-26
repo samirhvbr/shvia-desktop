@@ -88,17 +88,37 @@ try {
     form.requestSubmit();
     return true;
   }, origin, email, password), "Could not submit the login form");
-  await waitFor("an authenticated view with Code", async () => {
+  const loginLanding = await waitFor("the authenticated panel or chat", async () => {
     const current = await target();
     if (!current || current.id !== page.id) return false;
     try {
-      return await pageCall((expected) => location.origin === expected &&
-        !!document.querySelector(".workspace-shell.app-shell button[data-m=code]"), origin);
+      return await pageCall((expected) => {
+        if (location.origin !== expected) return false;
+        if (location.pathname === "/painel" && document.querySelector('a[href$="/chat"]')) return "panel";
+        if (location.pathname === "/chat" && document.querySelector(".workspace-shell.app-shell")) return "chat";
+        return false;
+      }, origin);
     } catch {
       return false;
     }
   });
   console.log("Signed in through the public ShvIA login page in the installed Desktop.");
+  if (loginLanding === "panel") {
+    assert(await pageCall(() => {
+      const link = document.querySelector('a[href$="/chat"]');
+      if (!link || new URL(link.href).origin !== location.origin) return false;
+      link.click();
+      return true;
+    }), "Could not open Chat from the panel");
+    await waitFor("the authenticated Chat surface", async () => {
+      try {
+        return await pageCall(() => location.pathname === "/chat" &&
+          !!document.querySelector(".workspace-shell.app-shell"));
+      } catch {
+        return false;
+      }
+    });
+  }
 
   const chooseFolder = async (path) => {
     const picker = fileURLToPath(new URL("./choose-folder.ps1", import.meta.url));
