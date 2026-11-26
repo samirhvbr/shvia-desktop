@@ -32,6 +32,8 @@ public static class ShvIAUpgradeWindow {
     private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint process);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int size);
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
     [StructLayout(LayoutKind.Sequential)]
     public struct Rect {
         public int Left, Top, Right, Bottom;
@@ -117,12 +119,20 @@ function Confirm-Upgrade($Process) {
     $buttons = $prompt.FindAll([System.Windows.Automation.TreeScope]::Descendants, $buttonCondition)
     $install = $buttons | Where-Object { $_.Current.Name.Replace('&', '').Trim() -ieq 'Instalar e reiniciar' } |
         Select-Object -First 1
-    if (-not $install) {
-        throw "Could not find the install button. Buttons: $(@($buttons | ForEach-Object { $_.Current.Name }) -join ', ')"
-    }
     Save-Screenshot $handle 'update-offer.png'
-    $invoke = $install.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
-    $invoke.Invoke()
+    if ($install) {
+        $invoke = $install.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+        $invoke.Invoke()
+    } else {
+        # rfd 0.17.2 implements this confirmation with a Windows task dialog.
+        # TDM_CLICK_BUTTON and the pinned rfd custom OK ID select its install action.
+        $tdmClickButton = 0x0466
+        $customOk = [IntPtr]1000
+        if (-not [ShvIAUpgradeWindow]::PostMessage($handle, $tdmClickButton, $customOk, [IntPtr]::Zero)) {
+            throw 'Could not activate the install button in the native update dialog.'
+        }
+        Write-Output 'Activated the install action using the native task dialog message.'
+    }
     Write-Output "Accepted the native update confirmation for $baseline -> $expected."
 }
 
