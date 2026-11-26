@@ -136,7 +136,10 @@ export async function runAnnaUiSteps(evaluate, chooseFolder, { folder, marker, t
         /429|quota|cota|rate.limit/i.test(text) ? "quota or rate limit" :
         /model|modelo|infra/i.test(text) ? "model or infrastructure" :
         /anna|engine|motor|agent|agente/i.test(text) ? "engine" : "unclassified";
-      return { error: category };
+      const detail = text.replace(/(?:Bearer\s+|shvia_[a-z]+_)[A-Za-z0-9_.-]+/gi, "[credential]")
+        .replace(/\b[A-Za-z0-9_.+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]")
+        .replace(/\b[A-Za-z0-9_-]{24,}\b/g, "[opaque value]").trim().slice(0, 400);
+      return { error: category, detail };
     }
     if (timeline.querySelector(".ct-card__foot .ct-btn--primary")) return { error: "unexpected approval request" };
     const answers = [...timeline.querySelectorAll(".ct-assistant")].slice(before.answers);
@@ -149,7 +152,7 @@ export async function runAnnaUiSteps(evaluate, chooseFolder, { folder, marker, t
     const content = raw.replace(/^`([\s\S]+)`$/, "$1").trim();
     return { matched: content === expected, observedReadTool: read };
   }, timeoutMs, baseline, marker);
-  assert(!outcome.error, "Anna Code mode reported " + outcome.error);
+  assert(!outcome.error, "Anna Code mode reported " + outcome.error + ": " + outcome.detail);
   assert(outcome.observedReadTool, "The Code timeline did not show a read_file call for probe.txt");
   assert(outcome.matched, "Anna's final assistant answer did not exactly match the synthetic marker");
   console.log("Anna completed read_file and returned the unique marker from probe.txt.");

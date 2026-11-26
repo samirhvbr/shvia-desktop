@@ -41,7 +41,10 @@ try {
   $env:QA_MARKER = $marker
   $env:QA_DESKTOP_PID = $app.Id
   node "$PSScriptRoot/desktop-qa.mjs"
-  if ($LASTEXITCODE -ne 0) { throw 'The installed Desktop did not complete the login and local file task' }
+  if ($LASTEXITCODE -ne 0) {
+    Write-Output "Observed bundled Anna child: $(Test-Path -LiteralPath $engineProof)"
+    throw 'The installed Desktop did not complete the login and local file task'
+  }
   if (-not (Test-Path -LiteralPath $engineProof)) { throw 'Did not observe the bundled Anna process' }
   Get-Content -LiteralPath $engineProof
   if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $before) { throw 'The read-only fixture changed' }
