@@ -49,6 +49,7 @@ jobs:
       - name: Authenticate in the Desktop and exercise local Anna
         shell: powershell
         env:
+          QA_RELOAD: "1"
           QA_EMAIL: ${{ secrets.QA_EMAIL }}
           QA_PASSWORD: ${{ secrets.QA_PASSWORD }}
         run: ./.github/windows-anna-qa/run-desktop.ps1

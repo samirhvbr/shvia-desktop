@@ -120,6 +120,35 @@ try {
     });
   }
 
+  if (process.env.QA_RELOAD === "1") {
+    await pageCall(() => { setTimeout(() => location.reload(), 0); });
+    await delay(2_000);
+    await waitFor("Chat after the in-app reload", async () => {
+      try {
+        return await pageCall(() => !!document.querySelector(".workspace-shell.app-shell") && !!window.__shviaCode);
+      } catch {
+        return false;
+      }
+    });
+    console.log("Reloaded the authenticated Chat as suggested by the Desktop.");
+  }
+  await pageCall(() => {
+    const bridge = window.__shviaCode;
+    window.__qaCodeProof = [];
+    for (const name of ["bindAgentOwner", "sessions", "spawn"]) {
+      const original = bridge?.[name];
+      if (typeof original !== "function") continue;
+      bridge[name] = function (...args) {
+        return Promise.resolve(original.apply(this, args)).then(value => {
+          window.__qaCodeProof.push({ name, ok: true });
+          return value;
+        }, error => {
+          window.__qaCodeProof.push({ name, ok: false, ownerRequired: error?.codigo === "desktop_owner_required" });
+          throw error;
+        });
+      };
+    }
+  });
   const chooseFolder = async (path) => {
     const picker = fileURLToPath(new URL("./choose-folder.ps1", import.meta.url));
     const { stdout } = await exec("powershell.exe",
@@ -131,5 +160,7 @@ try {
   assert(proof.matched && proof.observedReadTool);
   console.log("Completed Code mode with the synthetic account and a read-only local task.");
 } finally {
+  const calls = await pageCall(() => window.__qaCodeProof).catch(() => undefined);
+  if (calls) console.log("Native bridge outcomes:", JSON.stringify(calls.slice(-12)));
   socket.close();
 }
