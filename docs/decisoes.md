@@ -3295,3 +3295,36 @@ than 1.8.0 is never asked: it would start in host mode with the flag.
 - Not measured: a real Homebrew upgrade (no Homebrew on the machine that built this), and the whole pass inside the app on a
   Mac. Measured: the npm path end to end in a throwaway prefix (0.170.0 → 0.171.0, 5 s), and the standalone case on Linux
   (`sem_metodo`, nothing run).
+
+## ADR-052 — The Mac build is universal: one app for Apple Silicon and Intel
+
+- **Date:** 27/11/2026 · **Status:** **Accepted**, by the owner's request in the session: *"Vamos publicar também a versão
+  para mac intel"*. The universal form, rather than a second Intel build, is this ADR's choice, for the reason below.
+
+### Context
+
+Until 1.44.1 the Mac build was Apple Silicon only (`ShvIA_<version>_aarch64.dmg`), so the download page had nothing for an
+Intel Mac. The update endpoint (shvia-web `DesktopUpdateController`) takes the plugin's `darwin-<arch>` target, keeps only
+the OS, and answers every Mac with the one `.app.tar.gz` that `release.json` lists under `macos`. The manifest has no
+architecture field, and on the Mac the updater file has no version or architecture in its name.
+
+### Decision
+
+The Mac build targets `universal-apple-darwin`: one `.app` whose executables each carry an arm64 and an x86_64 slice, in
+one `.dmg` and one `.app.tar.gz`. `build-local.sh` stages the Intel slice of each sidecar (`scripts/stage-mac-universal.mjs`)
+and refuses to finish, and to publish, unless every executable in `Contents/MacOS` carries both. `--mac-arm-only` keeps an
+Apple Silicon-only build for local tests, and `--publish` refuses it.
+
+A separate Intel build was set aside. It needs a second updater file under another name, a manifest that records
+architectures, and an endpoint that picks by them, in two repositories. Until all of that agrees, the Apple Silicon file
+reaching an Intel Mac through the updater installs an app that does not start there, with no way back through the updater.
+
+### Consequences
+
+- Every Mac downloads both slices: the `.dmg` and the `.app.tar.gz` roughly double (6.6 MB for 1.44.1).
+- The build Mac must be Apple Silicon with Rosetta and the `x86_64-apple-darwin` Rust target, and it compiles the app twice.
+- anna's Intel slice is built from the shvia-code checkout at the staged version, because shvia-code publishes no Mac
+  binaries (its Release carries only `anna-x86_64-unknown-linux-musl`).
+- Pentest stays Apple Silicon only: there is no Intel Mac engine. On an Intel Mac the app offers none to install.
+- No change on the server. The download page labels a file by the architecture in its name, so `universal` needs to be
+  one of the names it knows (shvia-site `public/js/download.js`).

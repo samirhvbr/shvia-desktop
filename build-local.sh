@@ -44,6 +44,17 @@
 #                                    # rotation: signed with the OLD key, carrying the NEW
 #                                    # pubkey (docs/build.md, "Rotating the updater key")
 #   ./build-local.sh --force         # reconstrói mesmo já havendo build da versão
+#   ./build-local.sh --anna-x86_64 /path/to/anna  # (macOS) the Intel slice of anna, instead of building it
+#   ./build-local.sh --mac-arm-only  # (macOS) Apple Silicon only, for a quicker LOCAL build; never published
+#
+# UNIVERSAL MAC BUILD (1.44.2, ADR-052): on macOS the app is built for `universal-apple-darwin`, one .app
+# with the Apple Silicon and the Intel slices, because the update endpoint hands every Mac the same
+# `.app.tar.gz`. Each sidecar gets its Intel slice from scripts/stage-mac-universal.mjs (anna is built
+# from the shvia-code checkout at the staged version, or named with --anna-x86_64), and before anything
+# is published every Mach-O in the app must carry both slices. Needs `rustup target add
+# x86_64-apple-darwin` and Rosetta. Tauri writes a universal bundle under
+# src-tauri/target/universal-apple-darwin/; it is moved to src-tauri/target/release/bundle, where the rest
+# of this script (verification, manifest, reuse, publish) reads it.
 #
 # REUSO DE BUILD: se já existe build DESTA versão no disco e nenhuma fonte mudou,
 # o script NÃO recompila — vai direto ao manifesto (e à publicação, com
@@ -149,6 +160,9 @@ NO_ANNA=0
 PENTEST_FROM=""
 NO_PENTEST=0
 NO_TRAFFIC=0
+# macOS: the Intel slice of anna (--anna-x86_64), and whether the build is universal (ADR-052).
+ANNA_X86_FROM=""
+MAC_ARM_ONLY=0
 
 # ── Cronômetro do build: tempo total (parede) + por etapa ───────────────────
 # Mesmo padrão do SHVTERM/build-local.sh: o "built in Xs" do Vite/cargo é só
@@ -598,6 +612,45 @@ verify_macos_signature() {
   fi
 }
 
+# Every Mach-O in Contents/MacOS (the app and its sidecars) carries the slices this build promises:
+# arm64 and x86_64 for the universal build, arm64 for --mac-arm-only (ADR-052). It reads the updater's
+# `.app.tar.gz` when there is one, because that file is what reaches Macs already running the app, and
+# the `.app` otherwise (a --no-sign build has no updater file). It runs after the build and again before
+# a publish, which also covers a reused bundle. An Intel slice missing from one sidecar would not fail
+# anywhere else: the app would start on an Intel Mac and that one feature would not.
+confere_fatias_do_mac() {
+  [ "$_BUILD_OS" = macOS ] || return 0
+  local esperado="arm64" base="src-tauri/target/release/bundle/macos" tgz app tmp="" f achou falhou=0 n=0
+  if [ -n "$MAC_TARGET" ]; then esperado="arm64 x86_64"; fi
+  tgz="$(find "$base" -maxdepth 1 -name '*.app.tar.gz' -print -quit 2>/dev/null || true)"
+  if [ -n "$tgz" ]; then
+    tmp="$(mktemp -d)"
+    tar -xzf "$tgz" -C "$tmp"
+    app="$(find "$tmp" -maxdepth 1 -name '*.app' -print -quit)"
+  else
+    app="$(find "$base" -maxdepth 1 -name '*.app' -print -quit 2>/dev/null || true)"
+  fi
+  if [ -z "$app" ]; then
+    echo "  ✗ no .app nor .app.tar.gz in $base to check which architectures the app carries." >&2
+    [ -n "$tmp" ] && rm -rf "$tmp"
+    return 1
+  fi
+  for f in "$app"/Contents/MacOS/*; do
+    [ -f "$f" ] || continue
+    n=$((n + 1))
+    achou="$(lipo -archs "$f" 2>/dev/null | tr ' ' '\n' | sort | tr '\n' ' ' | sed 's/ $//')"
+    if [ "$achou" = "$esperado" ]; then
+      echo "    ✔ $(basename "$f"): $achou"
+    else
+      echo "  ✗ $(basename "$f") carries [${achou:-not a Mach-O}], expected [$esperado]" >&2
+      falhou=1
+    fi
+  done
+  [ -n "$tmp" ] && rm -rf "$tmp"
+  if [ "$n" -eq 0 ]; then echo "  ✗ no executable in $app/Contents/MacOS" >&2; return 1; fi
+  return "$falhou"
+}
+
 # macOS: destrava imagens .dmg DESTE repo que ficaram montadas de um build anterior.
 # Contexto do bug: o bundle_dmg.sh cria um rw.*.dmg temporário, monta em
 # /Volumes/dmg.XXXX (nome interno do volume = "ShvIA"), arruma a janela via
@@ -610,7 +663,8 @@ detach_stale_build_images() {
   [ "$_BUILD_OS" = macOS ] || return 0
   command -v hdiutil >/dev/null 2>&1 || return 0
   local bundle_abs devs d
-  bundle_abs="$(pwd)/src-tauri/target/release/bundle"
+  # The whole target/ folder (1.44.2): a universal build makes its images under target/universal-apple-darwin/.
+  bundle_abs="$(pwd)/src-tauri/target/"
   devs="$(hdiutil info 2>/dev/null | awk -v b="$bundle_abs" '
     /^image-path/            { p = (index($0, b) > 0) }
     p && /^\/dev\/disk[0-9]/ { print $1; p = 0 }
@@ -1090,7 +1144,8 @@ can_reuse_build() {
   # `--no-pentest` build published without the engine. The bundles are what the last build recorded in
   # `bundle/.bundles` (a bundle from before 1.38.13 has no record and is rebuilt once); the Pentest engine is
   # `stage-pentest.mjs --reuse-check`, by SHA-256; the capture sidecar is whether one is staged.
-  local feito pedido="${BUNDLES:-all}"
+  # 1.44.2: the Mac target is part of what was asked, so an Apple Silicon-only bundle is never reused as universal.
+  local feito pedido="${BUNDLES:-all}${MAC_TARGET:+ $MAC_TARGET}"
   feito="$(cat src-tauri/target/release/bundle/.bundles 2>/dev/null || true)"
   if [ "$feito" != "$pedido" ]; then
     REUSE_MOTIVO="this run asks for --bundles $pedido; the bundle on disk was built with ${feito:-no record of it (a build from before 1.38.13)}"
@@ -1331,6 +1386,7 @@ publish_release() {
     if [ -n "$_achado_db" ]; then arquivos+=("$_achado_db"); fi
   done
 
+  confere_fatias_do_mac || return 1
   confere_assinatura_apple || return 1
   confere_chaves_do_manifesto || return 1
 
@@ -1442,6 +1498,8 @@ while [ $# -gt 0 ]; do
     --pentest)      shift; PENTEST_FROM="${1:-}" ;;
     --no-pentest)   NO_PENTEST=1 ;;
     --no-traffic)   NO_TRAFFIC=1 ;;
+    --anna-x86_64)  shift; ANNA_X86_FROM="${1:-}" ;;
+    --mac-arm-only) MAC_ARM_ONLY=1 ;;
     --transicao-de-chave) TRANSICAO_DE_CHAVE=1 ;;
     -h|--help)      usage; exit 0 ;;
     *) echo "opção desconhecida: $1 (use --help)" >&2; exit 2 ;;
@@ -1492,6 +1550,20 @@ if [ "$PUBLISH" -eq 1 ]; then
 fi
 # The transition release of a key rotation is declared, and checked, before anything runs.
 confere_transicao_de_chave || exit 2
+
+# The target of a Mac build: universal unless --mac-arm-only (ADR-052). Empty elsewhere, so the
+# `tauri build` lines below pass no --target on Linux.
+MAC_TARGET=""
+if [ "$_BUILD_OS" = macOS ] && [ "$MAC_ARM_ONLY" -eq 0 ]; then MAC_TARGET=universal-apple-darwin; fi
+# 🔴 An Apple Silicon-only build cannot be published (1.44.2). The endpoint gives every Mac the same
+# .app.tar.gz, so once Intel Macs run the app, publishing it would update them to an app they cannot start.
+if [ "$PUBLISH" -eq 1 ] && [ "$MAC_ARM_ONLY" -eq 1 ]; then
+  echo "" >&2
+  echo "  ✗ --publish com --mac-arm-only: o updater entrega o mesmo .app.tar.gz a todo Mac, e um Mac Intel" >&2
+  echo "    atualizado para ele não abre mais o app. Publique o build universal (sem --mac-arm-only)." >&2
+  echo "" >&2
+  exit 2
+fi
 
 # 🔴 A test build cannot be published (1.6.22). `--no-sign` skips the Apple signature and
 # notarization, and until 1.6.22 nothing stopped `--publish` from shipping it — directly, or
@@ -1707,6 +1779,16 @@ if [ "$REUSE" -eq 0 ]; then
     node scripts/stage-traffic-capture.mjs
   fi
 
+  if [ -n "$MAC_TARGET" ]; then
+    step "[D8] Intel slices of the sidecars (universal Mac build)"
+    if [ -n "$ANNA_X86_FROM" ]; then
+      node scripts/stage-mac-universal.mjs --anna-x86_64 "$ANNA_X86_FROM"
+    else
+      node scripts/stage-mac-universal.mjs
+    fi
+    rm -rf "src-tauri/target/$MAC_TARGET/release/bundle"
+  fi
+
   step "[3/3] Tauri build"
   # ── bundle overrides (1.6.24) ──
   # Tauri REQUIRES every `externalBin` to exist — measured: "resource path
@@ -1735,14 +1817,27 @@ if [ "$REUSE" -eq 0 ]; then
   # Quatro braços explícitos em vez de montar array de argumentos: o bash do macOS
   # é 3.2, e ali `"${arr[@]}"` de array VAZIO com `set -u` aborta com "unbound
   # variable" (testado). Verboso, mas roda nos três SOs.
+  # `${MAC_TARGET:+…}` expands to nothing off macOS (and with --mac-arm-only), which bash 3.2 accepts
+  # under `set -u` where an empty array would not.
   if [ -n "$BUNDLES" ] && [ -n "$_CFG" ]; then
-    npx tauri build --bundles "$BUNDLES" --config "$_CFG"
+    npx tauri build ${MAC_TARGET:+--target "$MAC_TARGET"} --bundles "$BUNDLES" --config "$_CFG"
   elif [ -n "$BUNDLES" ]; then
-    npx tauri build --bundles "$BUNDLES"
+    npx tauri build ${MAC_TARGET:+--target "$MAC_TARGET"} --bundles "$BUNDLES"
   elif [ -n "$_CFG" ]; then
-    npx tauri build --config "$_CFG"
+    npx tauri build ${MAC_TARGET:+--target "$MAC_TARGET"} --config "$_CFG"
   else
-    npx tauri build
+    npx tauri build ${MAC_TARGET:+--target "$MAC_TARGET"}
+  fi
+
+  # A universal bundle lands under target/<triple>/; everything after this reads target/release/bundle.
+  if [ -n "$MAC_TARGET" ]; then
+    rm -rf src-tauri/target/release/bundle
+    mkdir -p src-tauri/target/release
+    mv "src-tauri/target/$MAC_TARGET/release/bundle" src-tauri/target/release/bundle
+  fi
+  if [ "$_BUILD_OS" = macOS ]; then
+    step "[macOS] the app carries the slices it promises (lipo)"
+    confere_fatias_do_mac || exit 1
   fi
 
 
@@ -1753,7 +1848,7 @@ if [ "$REUSE" -eq 0 ]; then
   fi
   # Which bundles this build made, for the reuse check of a later run (step 6 of can_reuse_build).
   mkdir -p src-tauri/target/release/bundle
-  printf '%s\n' "${BUNDLES:-all}" > src-tauri/target/release/bundle/.bundles
+  printf '%s\n' "${BUNDLES:-all}${MAC_TARGET:+ $MAC_TARGET}" > src-tauri/target/release/bundle/.bundles
 fi
 
 # ── Pacote Arch Linux (.pkg.tar.zst) ─────────────────────────────────────────

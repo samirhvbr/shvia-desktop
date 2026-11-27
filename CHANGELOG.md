@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.44.2 - The Mac build is universal, one app for Apple Silicon and Intel Macs
+
+On 27/11/2026 the owner asked to publish the Mac build for Intel too. Until 1.44.1 it was Apple Silicon only
+(`ShvIA_<version>_aarch64.dmg`), and the update endpoint hands every Mac the same `.app.tar.gz`, whatever the
+architecture in the plugin's target. A universal app is the one file that is right on both, with nothing to change on
+the server ([ADR-052](docs/decisoes.md#adr-052--the-mac-build-is-universal-one-app-for-apple-silicon-and-intel)).
+
+- `build-local.sh` builds for `universal-apple-darwin` on macOS and moves Tauri's bundle to the usual
+  `src-tauri/target/release/bundle`, so the manifest, the reuse check and the publish read the same place.
+- `scripts/stage-mac-universal.mjs` (step D8) adds the Intel slice of each sidecar and joins it with `lipo`:
+  - anna is built from the shvia-code checkout, which must be clean and at the staged version, or named with
+    `--anna-x86_64`;
+  - traffic-capture is built from this repository.
+  - Each Intel slice is run under Rosetta first (`--version`, `--list-interfaces`).
+  - A staged Pentest engine is refused, because there is no Intel Mac engine.
+- After the build, and again before a publish, every executable in `Contents/MacOS` must carry `arm64 x86_64`. The check
+  reads the `.app.tar.gz` that existing installs download.
+- `--mac-arm-only` keeps an Apple Silicon-only build for local tests, and `--publish` refuses it: an Intel Mac updated
+  to it could no longer start the app.
+- The reuse record (`bundle/.bundles`) includes the target, so an Apple Silicon-only bundle is never reused as a
+  universal one.
+- `docs/build.md` ("Universal Mac build") and the README say what the build machine needs: Rosetta and
+  `rustup target add x86_64-apple-darwin`. They also say what Intel Macs do not get: Pentest, which has no Intel Mac
+  engine.
+
 ## 1.44.1 - A published Desktop build refuses an anna older than the latest shvia-code Release
 
 On 23/11/2026 the owner asked for the Code engine bundled in a Desktop release to be automatic too. anna is packaged from
