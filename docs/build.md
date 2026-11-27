@@ -24,12 +24,13 @@ decision.
 | SO | Como (na raiz do repo) | Saída |
 |----|------------------------|-------|
 | **Linux** | `./build-local.sh` | `.deb` + `.AppImage` + `.rpm` |
-| **macOS** | `./build-local.sh` | `.dmg` + `.app.tar.gz` |
+| **macOS** | `./build-local.sh` | `.dmg` + `.app.tar.gz`, universal (Apple Silicon + Intel) |
 | **Windows** | `.\build-local.ps1` (ou duplo-clique `build-local.cmd`) | `.msi` + `-setup.exe` |
 
 Saída em `src-tauri/target/release/bundle/`. Opções (Linux/macOS): `--skip-npm-ci`,
 `--bundles <deb|appimage|rpm|dmg|app>`, `--anna <path>`, `--no-anna`, `--pentest <path>`,
-`--no-pentest`, `--no-traffic`, `--no-sign`, `--skip-git-pull`, `--force` (`-f`), `--publish`
+`--no-pentest`, `--no-traffic`, `--no-sign`, `--skip-git-pull`, `--force` (`-f`), on macOS
+`--anna-x86_64 <path>` and `--mac-arm-only` (see [Universal Mac build](#universal-mac-build-1442)), `--publish`
 with `--dest <dest>` and `--base-url <url>`, and `--transicao-de-chave` for the one updater-key
 transition release (see [Rotating the updater key](#rotating-the-updater-key-prepared-in-1640-publishing-it-is-the-owners-act));
 `./build-local.sh --help` prints the script's own list. Windows uses PowerShell parameters:
@@ -123,8 +124,8 @@ repos/samirhvbr/strix/releases/tags/<tag> --jq '.assets[] | "\(.name) \(.size)"'
 `pentest-engine.json` with the new version, and raise the floor in `stage-pentest.mjs` and `compatibility.rs` together only if
 the Desktop needs something the older engine lacks.
 
-**Which platforms the pin carries.** The ones this Desktop is published for: the Mac build is Apple Silicon only and the Linux
-packages are x86_64 only (release 1.35.2), so the pin lists `aarch64-apple-darwin` and `x86_64-unknown-linux-gnu`, and
+**Which platforms the pin carries.** The ones this Desktop is published for: the Mac engine is Apple Silicon only (the app itself is universal since 1.44.2, but no Intel Mac engine is
+built) and the Linux packages are x86_64 only, so the pin lists `aarch64-apple-darwin` and `x86_64-unknown-linux-gnu`, and
 `npm run prova:pentest` and the Rust test `the_pin_offers_a_file_for_each_platform_and_refuses_a_malformed_one` refuse a pin
 that forgets one of them. The pin has one version, and a platform's file has to answer exactly that version, so a platform
 with no binary for it cannot stay on an older engine: it is left out, and a build for it carries no engine
@@ -193,7 +194,36 @@ PyInstaller engine that cannot load its libraries says so there), `o sistema blo
 - **Linux** — `.deb` + `.AppImage` (+ `.rpm`), via `targets: "all"` do `tauri.conf.json`,
   **+ `.pkg.tar.zst`** (Arch), que não vem do bundler do Tauri — ver
   [Arch Linux](#arch-linux-pkgtarzst--repo-pacman).
-- **macOS** — `.dmg` + `.app.tar.gz`.
+- **macOS** — `.dmg` + `.app.tar.gz`, one universal app for Apple Silicon and Intel since 1.44.2 —
+  see [Universal Mac build](#universal-mac-build-1442).
+
+### Universal Mac build (1.44.2)
+
+The Mac build targets `universal-apple-darwin` ([ADR-052](decisoes.md#adr-052--the-mac-build-is-universal-one-app-for-apple-silicon-and-intel)).
+The update endpoint gives every Mac the same `.app.tar.gz`, so one app with both slices is what serves Intel
+Macs without a second updater file or an endpoint that picks by architecture.
+
+- **Build machine:** Apple Silicon, with `rustup target add x86_64-apple-darwin` and Rosetta
+  (`softwareupdate --install-rosetta --agree-to-license`). Every Intel slice is run under Rosetta before it
+  is bundled.
+- **Sidecars:** `scripts/stage-mac-universal.mjs` (step D8) adds `<name>-x86_64-apple-darwin` and joins it
+  with the Apple Silicon one into `<name>-universal-apple-darwin`, the three files Tauri reads.
+  - `anna`: built from the shvia-code checkout (`$SHVIA_CODE_DIR`, else the `shvia-code` folder next to this
+    repository's main checkout) with `cargo build --release --locked --target x86_64-apple-darwin`. The
+    checkout must be clean and at the version of the staged anna, and the Intel binary must answer the same
+    `anna X.Y.Z`. `--anna-x86_64 <path>` (or `$SHVIA_ANNA_BIN_X86_64`) names one instead.
+  - `traffic-capture`: built from `src-tauri/traffic-capture` for x86_64 and run once with
+    `--list-interfaces`.
+  - The Pentest engine: refused. No Intel Mac engine is published, and a Mac build does not bundle it by
+    default (ADR-046). On an Intel Mac the app offers no engine to install (`engine::offer` finds no
+    `x86_64-apple-darwin` entry in `pentest-engine.json`), so Pentest is not available there.
+- **Output:** Tauri writes under `src-tauri/target/universal-apple-darwin/release/bundle`; the script moves it to
+  `src-tauri/target/release/bundle`, so the manifest, the reuse check and the publish read the usual place.
+  The files are `ShvIA_<version>_universal.dmg` and `ShvIA.app.tar.gz`.
+- **Gate:** after the build and again before a publish, every executable in `Contents/MacOS` must carry
+  `arm64 x86_64` (`lipo -archs`), read from the `.app.tar.gz` that existing installs download.
+- **`--mac-arm-only`:** an Apple Silicon-only build for a quicker local test. `--publish` refuses it: an
+  Intel Mac updated to it could no longer start the app.
 - **Windows** — `.msi` (WiX) + `-setup.exe` (NSIS).
 
 ## Pré-requisitos
